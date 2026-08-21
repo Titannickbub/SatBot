@@ -1,5 +1,15 @@
 # Sat Bot
 
+## Site do desenvolvedor
+
+https://titannickbub.neocities.org/
+
+## Grupos do bot
+
+- WhatsApp: https://chat.whatsapp.com/Kz372Jw4zax7Sik0wW8UpT
+- Telegram: https://t.me/satela_chats
+- Discord: https://discord.gg/yaC9CrgrF4
+
 Sat Bot é um bot multi-plataforma para Discord, Telegram e WhatsApp, pensado para rodar em qualquer ambiente com Node.js.
 
 Ele foi estruturado como base de automação e atendimento, com carregamento automático de comandos, funções e plataformas, além de suporte a execução em Windows, Linux, macOS e Termux.

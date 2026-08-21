@@ -1,0 +1,1 @@
+Comandos de diagnóstico, configuração e operações internas do core, responsáveis pelo funcionamento e gestão do bot.

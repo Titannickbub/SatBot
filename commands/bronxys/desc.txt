@@ -1,0 +1,33 @@
+Comandos Bronxys - Integração com API Bronxys para download de mídia
+
+Funcionalidades:
+- play: Baixa áudio/música do YouTube, Spotify, TikTok
+- video: Baixa vídeos de diversas plataformas
+- tiktok: Baixa vídeos/áudios do TikTok
+- instagram: Baixa fotos e vídeos do Instagram
+- testbronxys: Testa configuração da API
+
+Configuração:
+1. Obtenha uma chave API em https://api.bronxyshost.com.br
+2. Configure em settings/bronxys.json com sua apiKey
+3. Use !testbronxys para validar
+
+Plataformas suportadas:
+- YouTube (música e vídeo)
+- Spotify
+- TikTok
+- Instagram
+- Twitter/X
+- Facebook
+- Kwai
+- SoundCloud
+
+Limites de arquivo (por plataforma):
+- Discord: 25MB (sem Nitro)
+- Telegram: 20MB (Telegram Bot API)
+- WhatsApp: 16MB
+
+API Download:
+- Os arquivos são baixados como buffer (não são encaminhados links da API)
+- Assim o token da API não é exposto em links compartilhados
+- Validação automática de tamanho por plataforma
