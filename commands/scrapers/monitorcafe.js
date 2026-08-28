@@ -50,44 +50,61 @@ async function checkMonitorPermission(message) {
     return !!(message.sender?.isAdmin);
 }
 
-function helpText(prefix) {
-    return [
-        `*☕ Monitor do café — Ajuda*`,
-        ``,
-        `*O que faz:*`,
-        `  Monitora e compara cotações do café em grupos e plataformas, usando fontes como Minasul, Coocafé e CCCMG.`,
-        `  O monitor mantém um histórico compartilhado e permite uma configuração própria por chat, sem misturar grupos.`,
-        ``,
-        `*Subcomandos:*`,
-        `  \`${prefix}monitorcafe config [both|loop|monitor] [fontes...] [horarios...]\` — Habilita o monitor para este chat e define o modo de operação.`,
-        `  \`${prefix}monitorcafe run\` — Executa uma verificação imediata agora.`,
-        `  \`${prefix}monitorcafe status\` — Mostra a configuração atual deste chat.`,
-        `  \`${prefix}monitorcafe help\` — Exibe esta ajuda.`,
-        ``,
-        `*Modos de operação:*`,
-        `  • \`both\` — Combina a verificação contínua (com avisos APENAS se houver alteração de preço) com o envio da cotação nos horários selecionados.`,
-        `    Uso: \`${prefix}monitorcafe config both minasul,coocafe 07:00 13:00 20:00\``,
-        `  • \`loop\` (ou \`scheduled\`) — Envia a cotação atual apenas nos horários selecionados (ex: 07:00, 13:00, 20:00).`,
-        `    Uso: \`${prefix}monitorcafe config loop minasul,coocafe 07:00 13:00 20:00\``,
-        `  • \`monitor\` — Verifica periodicamente a cada 1h e envia aviso no chat APENAS se houver alteração de preço nas fontes acompanhadas.`,
-        `    Uso: \`${prefix}monitorcafe config monitor coocafe,cccmg\``,
-        ``,
-        `*Como usar:*`,
-        `  1. Configure o monitor no chat desejado com o modo que você quer.`,
-        `  2. Informe as fontes desejadas, separadas por vírgula.`,
-        `  3. Use \`${prefix}monitorcafe run\` para testar imediatamente.`,
-        `  4. Use \`${prefix}monitorcafe status\` para ver o estado atual.`,
-        ``,
-        `*Fontes aceitas:*`,
-        `  minasul, coocafe, cccmg ou all`,
-        ``,
-        `*Exemplos:*`,
-        `  \`${prefix}monitorcafe config both minasul,coocafe 07:00 13:00 20:00\``,
-        `  \`${prefix}monitorcafe config loop all 07:00 13:00 20:00\``,
-        `  \`${prefix}monitorcafe config monitor cccmg\``,
-        `  \`${prefix}monitorcafe run\``,
-        `  \`${prefix}monitorcafe status\``
-    ].join("\n");
+function helpText(message) {
+    const p = message.prefix;
+    const plat = message.platform;
+
+    let header = '*☕ MONITOR DO CAFÉ — AJUDA*';
+    if (plat === 'discord') header = '🎮 *MONITOR DO CAFÉ (Discord) — AJUDA*';
+    else if (plat === 'whatsapp') header = '📱 *MONITOR DO CAFÉ (WhatsApp) — AJUDA*';
+    else if (plat === 'telegram') header = '✈️ *MONITOR DO CAFÉ (Telegram) — AJUDA*';
+
+    const lines = [];
+    lines.push(header);
+    lines.push('');
+    lines.push('Descrição:');
+    lines.push('  Monitora e compara cotações do café usando fontes como Minasul, Coocafé e CCCMG. Mantém histórico local por chat e envia alertas conforme configuração.');
+    lines.push('');
+    lines.push('📋 COMANDOS DISPONÍVEIS:');
+    lines.push('  `' + p + 'monitorcafe config [both|loop|monitor] [fontes...] [horarios...]`');
+    lines.push('    ↳ Habilita/configura o monitor neste chat e define modo, fontes e horários.');
+    lines.push('');
+    lines.push('  `' + p + 'monitorcafe run`');
+    lines.push('    ↳ Executa uma verificação imediata e envia resultado neste chat.');
+    lines.push('');
+    lines.push('  `' + p + 'monitorcafe status`');
+    lines.push('    ↳ Mostra a configuração atual e o estado do monitor para este chat.');
+    lines.push('');
+    lines.push('  `' + p + 'monitorcafe help`');
+    lines.push('    ↳ Exibe esta ajuda.');
+    lines.push('');
+    lines.push('⚙️ MODOS DE OPERAÇÃO:');
+    lines.push('  • `both` — Combina verificação contínua (envia aviso somente se houver alteração de preço) com envios em horários fixos.');
+    lines.push('    Ex.: `' + p + 'monitorcafe config both minasul,coocafe 07:00 13:00 20:00`');
+    lines.push('');
+    lines.push('  • `loop` / `scheduled` — Envia a cotação nos horários configurados (ex: 07:00, 13:00, 20:00).');
+    lines.push('    Ex.: `' + p + 'monitorcafe config loop minasul,coocafe 07:00 13:00 20:00`');
+    lines.push('');
+    lines.push('  • `monitor` — Verifica periodicamente (ex: cada 1h) e envia mensagem somente se houver alteração de preço nas fontes monitoradas.');
+    lines.push('    Ex.: `' + p + 'monitorcafe config monitor coocafe,cccmg`');
+    lines.push('');
+    lines.push('📌 COMO USAR:');
+    lines.push('  1. Configure o monitor no chat desejado com o modo e fontes desejadas.');
+    lines.push('  2. Opcionalmente defina horários para envios (para `both` ou `loop`).');
+    lines.push('  3. Teste com `' + p + 'monitorcafe run`.');
+    lines.push('  4. Consulte o estado com `' + p + 'monitorcafe status`.');
+    lines.push('');
+    lines.push('🔎 FONTES ACEITAS:');
+    lines.push('  minasul, coocafe, cccmg, all');
+    lines.push('');
+    lines.push('📌 EXEMPLOS:');
+    lines.push('  ' + p + 'monitorcafe config both minasul,coocafe 07:00 13:00 20:00');
+    lines.push('  ' + p + 'monitorcafe config loop all 07:00 13:00 20:00');
+    lines.push('  ' + p + 'monitorcafe config monitor cccmg');
+    lines.push('  ' + p + 'monitorcafe run');
+    lines.push('  ' + p + 'monitorcafe status');
+
+    return lines.join('\n');
 }
 
 module.exports = {
@@ -161,7 +178,7 @@ Use config para habilitar o monitor, run para executar uma verificação agora e
         }
 
         if (sub === "help" || sub === "ajuda") {
-            return message.reply({ text: helpText(message.prefix) });
+            return message.reply({ text: helpText(message) });
         }
 
         const state = loadMonitorConfig({ platform: message.platform, chatId: message.chatId, threadId: message.threadId || null });

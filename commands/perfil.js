@@ -1,12 +1,11 @@
 const fs = require("fs");
 const path = require("path");
-const { resolvePlatformProfile } = require("../../functions/profiles");
-const { fetchBuffer } = require("../../functions/api");
+const { resolvePlatformProfile } = require("../functions/profiles");
+const { fetchBuffer } = require("../functions/api");
 
 module.exports = {
     name: "perfil",
     aliases: ["profile", "minhaconta"],
-    category: "system",
     description: "Mostra a conta atual e a conta central vinculada.",
     usage: "{prefix}perfil",
 

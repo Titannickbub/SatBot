@@ -174,7 +174,7 @@ Funções disponíveis:
 
         // ── 5c. message ─────────────────────────────────────────────────
         if (subCmd === "message") {
-            const newMsg = args.slice(2).join(" ").trim();
+            const newMsg = (message.getArgText ? message.getArgText(2) : args.slice(2).join(" ")).trim();
             if (!newMsg) {
                 return message.reply({ text: "❌ Informe a mensagem. Ex: !antilink chat message Links são proibidos aqui!" });
             }
@@ -323,37 +323,76 @@ Funções disponíveis:
 // ─────────────────────────────────────────────────────────────
 
 function _help(message) {
-    const p   = message.prefix;
+    const p = message.prefix;
     const plat = message.platform;
     const lvls = getAvailableLevels(message);
     const levelList = lvls.map(l => `*${l}* (${getLevelLabel(plat, l)})`).join(" | ");
 
-    return (
-`🔗 *Antilink — Ajuda*
+    // Precompute a readable list of actions to avoid complex nested template expressions
+    const actionsList = Object.entries(ACTIONS).map(([k, v]) => `• \`${k}\` — ${v}`).join("\n  ");
 
-Níveis disponíveis aqui:
-  ${levelList}
+    let header = `🔗 *ANTILINK — AJUDA*`;
+    if (plat === "discord") header = `🎮 *ANTILINK (Discord) — AJUDA*`;
+    else if (plat === "whatsapp") header = `📱 *ANTILINK (WhatsApp) — AJUDA*`;
+    else if (plat === "telegram") header = `✈️ *ANTILINK (Telegram) — AJUDA*`;
 
-Comandos:
-  ${p}antilink status
-  ${p}antilink <nivel> on|off
-  ${p}antilink <nivel> action delete|warn|kick|ban
-  ${p}antilink <nivel> message <texto...>
-  ${p}antilink <nivel> ignoreparent on|off
-  ${p}antilink <nivel> ignoresame on|off
-  ${p}antilink <nivel> ignoremedia on|off
-  ${p}antilink <nivel> whitelist add|remove|list <link>
-  ${p}antilink <nivel> userwhitelist add|remove|list <ID>
+    const lines = [];
+    lines.push(header);
+    lines.push("");
+    lines.push("Níveis disponíveis aqui:");
+    lines.push("  " + levelList);
+    lines.push("");
+    lines.push("Descrição:");
+    lines.push("Gerencia regras de remoção de mensagens contendo links e aplica punições automáticas por nível (server/categoria/chat).");
+    lines.push("");
+    lines.push("⚙️ COMANDOS PRINCIPAIS:");
+    lines.push('  • `' + p + 'antilink status`');
+    lines.push("    ↳ Exibe o status e configurações aplicadas nos níveis disponíveis.");
+    lines.push("");
+    lines.push('  • `' + p + 'antilink <nivel> on|off`');
+    lines.push("    ↳ Ativa ou desativa o antilink no nível especificado.");
+    lines.push("");
+    lines.push('  • `' + p + 'antilink <nivel> action <delete|warn|kick|ban>`');
+    lines.push("    ↳ Define a punição automática. Ações fortes (kick/ban) exigem permissão do bot.");
+    lines.push("");
+    lines.push('  • `' + p + 'antilink <nivel> message <texto...>`');
+    lines.push("    ↳ Mensagem personalizada enviada ao punir (use variáveis como {user}, {group}).");
+    lines.push("");
+    lines.push('  • `' + p + 'antilink <nivel> ignoreparent on|off`');
+    lines.push("    ↳ Faz o nível atual ignorar (ou herdar) regras dos níveis superiores.");
+    lines.push("");
+    lines.push('  • `' + p + 'antilink <nivel> ignoresame on|off`');
+    lines.push("    ↳ Permite/nega links do próprio grupo/servidor.");
+    lines.push("");
+    lines.push('  • `' + p + 'antilink <nivel> ignoremedia on|off`');
+    lines.push("    ↳ Permite/nega links de mídias (YouTube, TikTok, Instagram...).");
+    lines.push("");
+    lines.push('  • `' + p + 'antilink <nivel> whitelist add|remove|list <domínio>`');
+    lines.push("    ↳ Gerencia domínios permitidos.");
+    lines.push("");
+    lines.push('  • `' + p + 'antilink <nivel> userwhitelist add|remove|list <ID>`');
+    lines.push("    ↳ Gerencia usuários isentos.");
+    lines.push("");
+    lines.push("🛡️ AÇÕES DISPONÍVEIS:");
+    lines.push("  " + actionsList);
+    lines.push("");
+    lines.push("💡 OBSERVAÇÕES:");
+    lines.push("  • Algumas ações (kick/ban) exigem permissões administrativas do bot.");
+    lines.push("  • Use `" + p + "antilink <nivel> action delete` para garantir apenas remoção sem punição adicional.");
+    lines.push("  • As listas brancas e usuários isentos são específicas por nível.");
+    lines.push("");
+    lines.push("📌 EXEMPLOS:");
+    lines.push("  " + p + "antilink status");
+    lines.push("  " + p + "antilink chat on");
+    lines.push("  " + p + "antilink chat action warn");
+    lines.push("  " + p + "antilink chat ignoresame on");
+    lines.push("  " + p + "antilink chat whitelist add github.com");
+    lines.push("  " + p + "antilink chat userwhitelist add 5511999990000");
 
-Exemplos:
-  ${p}antilink server on
-  ${p}antilink chat action warn
-  ${p}antilink chat message Links proibidos!
-  ${p}antilink chat ignoreparent on
-  ${p}antilink chat whitelist add youtube.com
-  ${p}antilink chat userwhitelist add 5511999990000`
-    );
+    return lines.join("\n");
 }
+
+
 
 async function _status(message, adapter) {
     const platform  = message.platform;

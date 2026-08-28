@@ -24,7 +24,7 @@ module.exports = {
         const cccmg   = cccmgResult.status  === "fulfilled" ? cccmgResult.value  : null;
 
         if (!minasul && !coocafe && !cccmg) {
-            return message.reply({ text: "❌ Não foi possível buscar cotações de nenhuma fonte agora. Tente novamente mais tarde." });
+            return message.reply({ text: "⚠️ O serviço de cotações do café está indisponível ou instável no momento. Tente novamente em alguns minutos." });
         }
 
         // Carrega estado anterior para variação da última atualização

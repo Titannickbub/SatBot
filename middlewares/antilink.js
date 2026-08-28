@@ -49,7 +49,6 @@ module.exports = {
 
         // Resolve qual config de antilink está ativa (respeitando herança)
         if (!resolved || !resolved.config.enabled) {
-            console.log(`[ANTILINK] 🚫 Ignorado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId} | motivo: sem config ativa`);
             return true;
         }
 

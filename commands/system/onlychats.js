@@ -108,7 +108,7 @@ SUBCOMANDOS:
         }
 
         if (action === "msg" || action === "message" || action === "mensagem") {
-            const newMsg = args.slice(1).join(" ");
+            const newMsg = (message.getArgText ? message.getArgText(1) : args.slice(1).join(" ")).trim();
             if (!newMsg) {
                 return await message.reply({
                     text: `❌ Informe o texto da mensagem de bloqueio.\nExemplo: \`${p}onlychats msg ⚠️ Este bot não está autorizado a responder neste chat.\``

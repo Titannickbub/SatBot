@@ -185,6 +185,7 @@ async function runWeatherReport(options = {}) {
     const send = options.send !== false;
     const target = options.target || null;
     const city = (options.city || config.city || null);
+    const isRetry = Boolean(options.isRetry);
 
     if (!city) {
         const text = "❌ Nenhuma cidade definida para o monitor de clima.";
@@ -204,12 +205,30 @@ async function runWeatherReport(options = {}) {
         }
         return { text, data };
     } catch (err) {
-        const message = `❌ Erro ao consultar previsão: ${err.message || err}`;
+        console.warn(`[WEATHER MONITOR] Erro ao consultar clima para ${city}:`, err.message || err);
+
         if (send && target && target.platform && target.chatId) {
             const adapter = options.adapter || (global.platformRegistry && global.platformRegistry[target.platform]);
-            if (adapter) await adapter.sendText(target.chatId, target.threadId || null, message);
+            if (adapter) {
+                if (!isRetry) {
+                    const retryMsg = "⚠️ Não foi possível consultar o clima atual por instabilidade do provedor. Tentaremos novamente em 5 minutos...";
+                    await adapter.sendText(target.chatId, target.threadId || null, retryMsg).catch(() => {});
+
+                    setTimeout(() => {
+                        runWeatherReport({
+                            ...options,
+                            isRetry: true
+                        }).catch(() => {});
+                    }, 5 * 60 * 1000);
+                } else {
+                    const failMsg = "❌ Não foi possível consultar o clima atual após nova tentativa devido a instabilidades no provedor.";
+                    await adapter.sendText(target.chatId, target.threadId || null, failMsg).catch(() => {});
+                }
+            }
         }
-        return { text: message, error: err };
+
+        const friendlyMsg = "⚠️ O serviço de previsão do tempo está indisponível ou instável no momento. Tente novamente em alguns minutos.";
+        return { text: friendlyMsg, error: err };
     }
 }
 

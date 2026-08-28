@@ -55,6 +55,7 @@ class CrossplayStore {
       if (!this.data.crossplayGroups) this.data.crossplayGroups = {};
       if (!this.data.linkCodes) this.data.linkCodes = {};
       if (!this.data.recentHistory) this.data.recentHistory = {};
+      await this.cleanupDuplicatesAndOrphans();
     } catch (err) {
       if (err.code !== 'ENOENT') throw err;
       this.data = { centralIdentities: {}, crossplayGroups: {}, linkCodes: {}, recentHistory: {} };
@@ -62,6 +63,60 @@ class CrossplayStore {
       await this._atomicWrite(JSON.stringify(this.data, null, 2));
     }
     return this;
+  }
+
+  async cleanupDuplicatesAndOrphans() {
+    let changed = false;
+
+    // 1. Audit chat references across groups to remove duplicates
+    const seenChats = new Map();
+
+    const groupEntries = Object.entries(this.data.crossplayGroups || {}).sort((a, b) => {
+      const timeA = new Date(a[1].updatedAt || a[1].createdAt || 0).getTime();
+      const timeB = new Date(b[1].updatedAt || b[1].createdAt || 0).getTime();
+      return timeB - timeA;
+    });
+
+    for (const [groupId, group] of groupEntries) {
+      if (!Array.isArray(group.chats)) {
+        group.chats = [];
+        changed = true;
+      }
+      const uniqueChats = [];
+      for (const chat of group.chats) {
+        const normChatId = String(chat.chatId);
+        const normThreadId = chat.threadId ? String(chat.threadId) : 'null';
+        const key = `${chat.platform}:${normChatId}:${normThreadId}`;
+        if (!seenChats.has(key)) {
+          seenChats.set(key, groupId);
+          uniqueChats.push(chat);
+        } else {
+          console.warn(`[CROSSPLAY_CLEANUP] Removendo chat duplicado (${key}) do grupo ${groupId} (já no grupo ${seenChats.get(key)})`);
+          changed = true;
+        }
+      }
+      group.chats = uniqueChats;
+
+      if (group.chats.length === 0) {
+        console.warn(`[CROSSPLAY_CLEANUP] Removendo grupo vazio sem chats: ${groupId}`);
+        delete this.data.crossplayGroups[groupId];
+        changed = true;
+      }
+    }
+
+    // 2. Remove expired link codes
+    const now = new Date();
+    for (const [code, entry] of Object.entries(this.data.linkCodes || {})) {
+      if (entry.expiresAt && new Date(entry.expiresAt) < now) {
+        delete this.data.linkCodes[code];
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this._markDirty();
+      await this.saveNow();
+    }
   }
 
   async _ensureDirForFile() {
@@ -135,32 +190,61 @@ class CrossplayStore {
 
     const { centralId = null, centralName = null, threadId = null, ttlMinutes = 5 } = opts;
     const central = centralId ? await this.ensureCentral(centralId, { name: centralName || null }) : null;
-    const groupId = this._genId();
     const code = this._genCode(8);
     const expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
-    const group = {
-      id: groupId,
-      centralId: central?.id || null,
-      displayName: central?.name || centralName || 'Conta central',
-      createdAt: this._nowISO(),
-      updatedAt: this._nowISO(),
-      chats: []
-    };
 
+    let groupId = null;
+    let group = null;
+
+    // Se a plataforma e o chatId foram passados, verifica se o chat JÁ pertencia a um grupo existente
     if (platform && chatId) {
-      group.chats.push({
-        platform,
-        chatId: String(chatId),
-        threadId: threadId ? String(threadId) : null,
-        linkedAt: this._nowISO(),
-        receiveMedia: ['text', 'image', 'video', 'audio', 'document', 'sticker'],
-        ignoreMedia: []
-      });
+      const existingGroup = await this.findByChat(platform, chatId, threadId);
+      if (existingGroup) {
+        groupId = existingGroup.id;
+        group = this.data.crossplayGroups[groupId];
+        if (central?.id) group.centralId = central.id;
+        if (central?.name || centralName) group.displayName = central?.name || centralName;
+        group.updatedAt = this._nowISO();
+      }
     }
 
-    this.data.crossplayGroups[groupId] = group;
-    this.data.linkCodes[code] = { code, groupId, centralId: central?.id || null, threadId: threadId ? String(threadId) : null, expiresAt, createdAt: this._nowISO(), usedBy: [] };
+    // Se o chat não pertencia a nenhum grupo, cria um novo grupo
+    if (!group) {
+      groupId = this._genId();
+      group = {
+        id: groupId,
+        centralId: central?.id || null,
+        displayName: central?.name || centralName || 'Conta central',
+        createdAt: this._nowISO(),
+        updatedAt: this._nowISO(),
+        chats: []
+      };
+
+      if (platform && chatId) {
+        group.chats.push({
+          platform,
+          chatId: String(chatId),
+          threadId: threadId ? String(threadId) : null,
+          linkedAt: this._nowISO(),
+          receiveMedia: ['text', 'image', 'video', 'audio', 'document', 'sticker'],
+          ignoreMedia: []
+        });
+      }
+
+      this.data.crossplayGroups[groupId] = group;
+    }
+
+    this.data.linkCodes[code] = {
+      code,
+      groupId,
+      centralId: central?.id || null,
+      threadId: threadId ? String(threadId) : null,
+      expiresAt,
+      createdAt: this._nowISO(),
+      usedBy: []
+    };
     this._markDirty();
+    await this.saveNow();
     return { code, expiresAt, groupId };
   }
 
@@ -170,6 +254,7 @@ class CrossplayStore {
     if (new Date(entry.expiresAt) < new Date()) {
       delete this.data.linkCodes[code];
       this._markDirty();
+      await this.saveNow();
       throw new Error('code-expired');
     }
     const central = centralId ? await this.ensureCentral(centralId, { name: centralName || null }) : (entry.centralId ? await this.ensureCentral(entry.centralId) : null);
@@ -182,9 +267,17 @@ class CrossplayStore {
       entry.usedBy = Array.isArray(entry.usedBy) ? entry.usedBy : [];
       entry.usedBy.push({ platform, chatId: normalizedChatId, threadId: normalizedThreadId, linkedAt: this._nowISO(), reused: true });
       this._markDirty();
+      await this.saveNow();
       return { ...existing, groupId: group.id, centralId: central?.id || entry.centralId, reused: true };
     }
-    group.chats.push({
+
+    // Desvincula o chat de qualquer OUTRO grupo onde possa ter estado anteriormente
+    await this.unlinkChat(platform, normalizedChatId, normalizedThreadId);
+
+    const targetGroup = this.data.crossplayGroups[entry.groupId];
+    if (!targetGroup) throw new Error('group-not-found');
+
+    targetGroup.chats.push({
       platform,
       chatId: normalizedChatId,
       threadId: normalizedThreadId,
@@ -192,13 +285,14 @@ class CrossplayStore {
       receiveMedia: ['text', 'image', 'video', 'audio', 'document', 'sticker'],
       ignoreMedia: []
     });
-    group.centralId = central?.id || group.centralId || entry.centralId || null;
-    group.displayName = central?.name || group.displayName || centralName || 'Conta central';
-    group.updatedAt = this._nowISO();
+    targetGroup.centralId = central?.id || targetGroup.centralId || entry.centralId || null;
+    targetGroup.displayName = central?.name || targetGroup.displayName || centralName || 'Conta central';
+    targetGroup.updatedAt = this._nowISO();
     entry.usedBy = Array.isArray(entry.usedBy) ? entry.usedBy : [];
     entry.usedBy.push({ platform, chatId: normalizedChatId, threadId: normalizedThreadId, linkedAt: this._nowISO() });
     this._markDirty();
-    return { platform, chatId: normalizedChatId, threadId: normalizedThreadId, groupId: group.id, centralId: group.centralId };
+    await this.saveNow();
+    return { platform, chatId: normalizedChatId, threadId: normalizedThreadId, groupId: targetGroup.id, centralId: targetGroup.centralId };
   }
 
   async findByChat(platform, chatId, threadId = null) {
@@ -299,6 +393,7 @@ class CrossplayStore {
     Object.assign(current, next);
     group.updatedAt = this._nowISO();
     this._markDirty();
+    await this.saveNow();
     return next;
   }
 
@@ -355,22 +450,55 @@ class CrossplayStore {
       }
     }
 
-    // Detecção de stickers do Vencord / FakeNitro: [Name](https://media.discordapp.net/stickers/ID.png?...)
-    const VENCORD_STICKER_STANDALONE = /^\s*\[([a-zA-Z0-9_]+)\]\((https?:\/\/(?:cdn|media)\.discordapp\.(?:com|net)\/stickers\/(\d+)\.[a-zA-Z0-9]+(?:\?[^\s)]*)?)\)\s*$/i;
-    const VENCORD_STICKER_INLINE = /\[([a-zA-Z0-9_]+)\]\((https?:\/\/(?:cdn|media)\.discordapp\.(?:com|net)\/stickers\/(\d+)\.[a-zA-Z0-9]+(?:\?[^\s)]*)?)\)/gi;
+    // Detecção de stickers do Vencord / FakeNitro: [Name](https://media.discordapp.net/stickers/ID.png?...) ou link direto
+    const VENCORD_STICKER_STANDALONE = /^\s*\[([^\]]+)\]\((https?:\/\/(?:cdn|media)\.discord(?:app)?\.(?:com|net)\/stickers\/(\d+)(?:\.[a-zA-Z0-9]+)?(?:\?[^\s)]*)?)\)\s*$/i;
+    const VENCORD_STICKER_RAW_STANDALONE = /^\s*(https?:\/\/(?:cdn|media)\.discord(?:app)?\.(?:com|net)\/stickers\/(\d+)(?:\.[a-zA-Z0-9]+)?(?:\?[^\s)]*)?)\s*$/i;
+    const VENCORD_STICKER_INLINE = /\[([^\]]+)\]\((https?:\/\/(?:cdn|media)\.discord(?:app)?\.(?:com|net)\/stickers\/(\d+)(?:\.[a-zA-Z0-9]+)?(?:\?[^\s)]*)?)\)/gi;
 
     if (text && !media) {
+      let stickerName = null;
+      let stickerUrl = null;
+      let stickerId = null;
+
       const stickerMatch = text.trim().match(VENCORD_STICKER_STANDALONE);
       if (stickerMatch) {
-        const stickerName = stickerMatch[1];
-        const stickerUrl = stickerMatch[2];
-        const stickerId = stickerMatch[3];
+        stickerName = stickerMatch[1];
+        stickerUrl = stickerMatch[2];
+        stickerId = stickerMatch[3];
+      } else {
+        const rawMatch = text.trim().match(VENCORD_STICKER_RAW_STANDALONE);
+        if (rawMatch) {
+          stickerUrl = rawMatch[1];
+          stickerId = rawMatch[2];
+          try {
+            const parsedUrl = new URL(stickerUrl);
+            const nameParam = parsedUrl.searchParams.get('name');
+            if (nameParam) {
+              stickerName = nameParam.replace(/\+/g, ' ');
+            }
+          } catch (_) {}
+          if (!stickerName) stickerName = 'Sticker';
+        }
+      }
+
+      if (stickerUrl) {
         console.log(`[CROSSPLAY] 🎨 Sticker do Vencord sozinho detectado (${stickerName}:${stickerId}), convertendo para figurinha...`);
+        let ext = 'png';
+        const extMatch = stickerUrl.match(/\/stickers\/\d+\.([a-zA-Z0-9]+)(?:\?|$)/i);
+        if (extMatch) {
+          ext = extMatch[1].toLowerCase();
+        }
+        let mimeType = 'image/png';
+        if (ext === 'webp') mimeType = 'image/webp';
+        else if (ext === 'gif') mimeType = 'image/gif';
+        else if (ext === 'json') mimeType = 'application/json';
+
         media = {
           type: 'sticker',
-          mimeType: 'image/png',
+          mimeType,
           url: stickerUrl,
           stickerName,
+          fileName: `${stickerName}.${ext}`,
           getBuffer: async () => {
             const api = require('./api');
             return await api.fetchBuffer(stickerUrl);
@@ -384,29 +512,34 @@ class CrossplayStore {
       text = text.replace(VENCORD_STICKER_INLINE, (fullMatch, name) => `🎭`);
     }
 
-    let rawMediaType = media?.type || media?.mimeType || null;
-    
-    // Extrai tipo de mídia correto: "image/jpeg" -> "image", "video/mp4" -> "video", etc
     let mediaType = null;
-    if (typeof rawMediaType === 'string') {
-      const cleaned = rawMediaType.toLowerCase();
-      if (cleaned.includes('sticker')) {
-        mediaType = 'sticker';
-      } else if (cleaned.startsWith('image/') || cleaned.includes('image') || /(jpeg|jpg|png|webp|gif)/i.test(cleaned)) {
-        mediaType = 'image';
-      } else if (cleaned.startsWith('video/') || cleaned.includes('video') || /(mp4|mkv|avi|mov|webm)/i.test(cleaned)) {
-        mediaType = 'video';
-      } else if (
-        cleaned.startsWith('audio/') ||
-        cleaned.includes('audio') ||
-        /(mp3|mpeg|ogg|opus|wav|m4a|aac|amr|mid|flac)/i.test(cleaned)
-      ) {
-        mediaType = 'audio';
-      } else if (cleaned.includes('document') || cleaned.includes('pdf')) {
-        mediaType = 'document';
-      } else {
-        mediaType = cleaned.split('/')[0];
-      }
+    let rawType = String(media?.type || '').toLowerCase();
+    let rawMime = String(media?.mimeType || '').toLowerCase();
+    let fileName = media?.fileName || '';
+    let fileExt = fileName ? path.extname(fileName).toLowerCase() : '';
+
+    if (rawType === 'sticker' || rawMime.includes('sticker')) {
+      mediaType = 'sticker';
+    } else if (
+      rawType === 'image' || rawMime.startsWith('image/') ||
+      ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'].includes(fileExt) ||
+      /(jpeg|jpg|png|webp|gif)/i.test(rawMime)
+    ) {
+      mediaType = 'image';
+    } else if (
+      rawType === 'video' || rawMime.startsWith('video/') ||
+      ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.flv', '.3gp'].includes(fileExt) ||
+      /(mp4|mkv|avi|mov|webm)/i.test(rawMime)
+    ) {
+      mediaType = 'video';
+    } else if (
+      rawType === 'audio' || rawMime.startsWith('audio/') ||
+      ['.mp3', '.ogg', '.opus', '.wav', '.m4a', '.aac', '.flac', '.amr'].includes(fileExt) ||
+      /(mp3|mpeg|ogg|opus|wav|m4a|aac|amr|flac)/i.test(rawMime)
+    ) {
+      mediaType = 'audio';
+    } else if (media) {
+      mediaType = 'document';
     }
     
     const isCommand = typeof message.text === 'string' && message.text.startsWith(message.prefix || '!');
@@ -443,31 +576,12 @@ class CrossplayStore {
         continue;
       }
 
-      // Texto, imagens, vídeos, áudio e stickers
-      const isImageMedia = media && (mediaType === 'image' || mediaType === 'jpeg' || mediaType === 'png' || mediaType === 'jpg' || mediaType?.startsWith?.('image/'));
-      const isVideoMedia = media && (mediaType === 'video' || mediaType?.startsWith?.('video/'));
-      const isAudioMedia = media && (mediaType === 'audio' || mediaType?.startsWith?.('audio/'));
-      const isStickerMedia = media && (mediaType === 'sticker' || mediaType?.startsWith?.('sticker/'));
-      const isTextOnly = !media || (media && !isImageMedia && !isVideoMedia && !isAudioMedia && !isStickerMedia);
-
-      if (media && !isImageMedia && !isVideoMedia && !isAudioMedia && !isStickerMedia) {
-        console.log(`[CROSSPLAY] ⏭️  Pulando mídia tipo "${mediaType}" (apenas texto, imagens, vídeos, áudio e stickers são suportados)`);
-        // Enviar apenas o texto se houver
-        if (text) {
-          const platformRegistry = global.platformRegistry || {};
-          const adapter = platformRegistry[target.platform];
-          if (adapter) {
-            try {
-              const payloadText = `${prefix}${text}`.trim();
-              await adapter.sendText?.(String(target.chatId), target.threadId || null, payloadText);
-              console.log(`[CROSSPLAY] ✅ Texto enviado para ${target.platform} (fallback)`);
-            } catch (err) {
-              console.error(`[CROSSPLAY] ❌ Erro ao enviar texto para ${target.platform}:`, err.message);
-            }
-          }
-        }
-        continue;
-      }
+      // Texto, imagens, vídeos, áudio, stickers e documentos
+      const isImageMedia = media && mediaType === 'image';
+      const isVideoMedia = media && mediaType === 'video';
+      const isAudioMedia = media && mediaType === 'audio';
+      const isStickerMedia = media && mediaType === 'sticker';
+      const isDocumentMedia = media && mediaType === 'document';
 
       const allowed = mediaType ? await crossplayStore.shouldRelayMedia(sourceGroup.id, target.platform, target.chatId, mediaType, target.threadId) : true;
       if (!allowed) {
@@ -707,19 +821,66 @@ class CrossplayStore {
             continue;
           }
 
-          // Envia a figurinha como imagem com legenda
+          let sentSticker = false;
           if (adapter.sendImg && typeof adapter.sendImg === 'function') {
             console.log(`[CROSSPLAY]   - Chamando adapter.sendImg() (figurinha como imagem)...`);
-            await adapter.sendImg(String(target.chatId), threadIdToUse, mediaBuffer, stickerCaption);
-            console.log(`[CROSSPLAY] ✅ Figurinha enviada como imagem para ${target.platform}`);
-          } else if (adapter.sendFile && typeof adapter.sendFile === 'function') {
-            await adapter.sendFile(String(target.chatId), threadIdToUse, mediaBuffer, stickerCaption, 'sticker.png');
-            console.log(`[CROSSPLAY] ✅ Figurinha enviada como arquivo para ${target.platform}`);
-          } else {
-            console.log(`[CROSSPLAY] ❌ Adapter não tem sendImg ou sendFile, enviando texto`);
+            try {
+              await adapter.sendImg(String(target.chatId), threadIdToUse, mediaBuffer, stickerCaption);
+              console.log(`[CROSSPLAY] ✅ Figurinha enviada como imagem para ${target.platform}`);
+              sentSticker = true;
+            } catch (imgErr) {
+              console.warn(`[CROSSPLAY] ⚠️ sendImg falhou ao enviar figurinha para ${target.platform} (${imgErr.message}). Tentando sendFile...`);
+            }
+          }
+
+          if (!sentSticker && adapter.sendFile && typeof adapter.sendFile === 'function') {
+            try {
+              await adapter.sendFile(String(target.chatId), threadIdToUse, mediaBuffer, stickerCaption, 'sticker.webp');
+              console.log(`[CROSSPLAY] ✅ Figurinha enviada como arquivo para ${target.platform}`);
+              sentSticker = true;
+            } catch (fileErr) {
+              console.warn(`[CROSSPLAY] ⚠️ sendFile falhou ao enviar figurinha para ${target.platform} (${fileErr.message}).`);
+            }
+          }
+
+          if (!sentSticker) {
+            console.log(`[CROSSPLAY] ❌ Adapter não conseguiu enviar figurinha como imagem ou arquivo, enviando texto`);
             if (adapter.sendText) {
               await adapter.sendText(String(target.chatId), threadIdToUse, stickerCaption);
               console.log(`[CROSSPLAY] ✅ Texto informativo enviado para ${target.platform} (fallback)`);
+            }
+          }
+        } else if (isDocumentMedia && media) {
+          console.log(`[CROSSPLAY] 📄 Processando documento/arquivo para ${target.platform}...`);
+          
+          let mediaBuffer = null;
+          if (typeof media.getBuffer === 'function') {
+            try {
+              mediaBuffer = await media.getBuffer();
+            } catch (bufErr) {
+              console.error(`[CROSSPLAY] ⚠️ Erro ao obter buffer do documento:`, bufErr.message);
+            }
+          } else if (Buffer.isBuffer(media)) {
+            mediaBuffer = media;
+          } else if (media.data && Buffer.isBuffer(media.data)) {
+            mediaBuffer = media.data;
+          }
+
+          if (!mediaBuffer || !Buffer.isBuffer(mediaBuffer) || mediaBuffer.length === 0) {
+            console.log(`[CROSSPLAY] ❌ Buffer inválido para documento, enviando apenas texto`);
+            if (payloadText && adapter.sendText) {
+              await adapter.sendText(String(target.chatId), threadIdToUse, payloadText);
+              console.log(`[CROSSPLAY] ✅ Texto enviado para ${target.platform} (fallback)`);
+            }
+          } else {
+            const docName = media.fileName || 'document.bin';
+            const docMime = media.mimeType || 'application/octet-stream';
+            if (adapter.sendFile && typeof adapter.sendFile === 'function') {
+              await adapter.sendFile(String(target.chatId), threadIdToUse, mediaBuffer, payloadText, docName, docMime);
+              console.log(`[CROSSPLAY] ✅ Documento "${docName}" enviado com sucesso para ${target.platform}`);
+            } else if (payloadText && adapter.sendText) {
+              await adapter.sendText(String(target.chatId), threadIdToUse, payloadText);
+              console.log(`[CROSSPLAY] ✅ Texto enviado para ${target.platform} (fallback sem sendFile)`);
             }
           }
         } else if (payloadText) {

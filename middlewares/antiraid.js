@@ -48,12 +48,10 @@ module.exports = {
         const isImmune = sender.isAdmin || sender.isOwner || sender.canManageMessages;
 
         if (!shouldApplyAntiRaid(message)) {
-            console.log(`[ANTIRAID] 🚫 Ignorado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId} | motivo: sem config ativa`);
             return true;
         }
 
         if (isImmune) {
-            console.log(`[ANTIRAID] 🚫 Ignorado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId} | motivo: usuário imune`);
             return true;
         }
 

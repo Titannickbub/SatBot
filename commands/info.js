@@ -190,11 +190,15 @@ module.exports = {
         const commands = core.getCommands();
 
         const command = commands[nome];
+        const seen = new Set();
         const categoryCommands = Object.values(commands)
-            .filter(cmd =>
-                cmd.category &&
-                cmd.category.toLowerCase() === nome
-            );
+            .filter(cmd => {
+                if (!cmd.category || cmd.category.toLowerCase() !== nome) return false;
+                const signature = `${cmd.name || ''}|${cmd.category || ''}|${cmd.file || ''}`;
+                if (seen.has(signature)) return false;
+                seen.add(signature);
+                return true;
+            });
 
         if (!command && !categoryCommands.length) {
             return message.reply({ text: "❌ Comando ou categoria não encontrado." });

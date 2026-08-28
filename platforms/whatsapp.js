@@ -245,15 +245,56 @@ async function start(onMessage) {
             (botLid && cleanQuotedNum === botLid)
           );
 
+          const qMsg = contextInfo.quotedMessage || {};
+          const qImage = qMsg.imageMessage;
+          const qVideo = qMsg.videoMessage;
+          const qAudio = qMsg.audioMessage;
+          const qDocument = qMsg.documentMessage;
+          const qSticker = qMsg.stickerMessage;
+
+          let qMediaKey = null;
+          let qMediaType = null;
+          let qMimeType = null;
+
+          if (qImage) { qMediaKey = qImage; qMediaType = "image"; qMimeType = qImage.mimetype; }
+          else if (qVideo) { qMediaKey = qVideo; qMediaType = "video"; qMimeType = qVideo.mimetype; }
+          else if (qAudio) { qMediaKey = qAudio; qMediaType = "audio"; qMimeType = qAudio.mimetype; }
+          else if (qDocument) {
+            const docMime = String(qDocument.mimetype || "").toLowerCase();
+            const isAudioDocument = docMime.startsWith("audio/") || /(mp3|mpeg|ogg|opus|wav|m4a|aac|amr|mid|flac)/i.test(docMime);
+            qMediaKey = qDocument;
+            qMediaType = isAudioDocument ? "audio" : "document";
+            qMimeType = qDocument.mimetype;
+          }
+          else if (qSticker) { qMediaKey = qSticker; qMediaType = "sticker"; qMimeType = qSticker.mimetype || "image/webp"; }
+
+          let qMedia = null;
+          if (qMediaKey) {
+            let _qCachedBuffer = null;
+            qMedia = {
+              type: qMediaType,
+              mimeType: qMimeType,
+              raw: qMediaKey,
+              getBuffer: async () => {
+                if (_qCachedBuffer) return _qCachedBuffer;
+                const { getFileBuffer } = require("../functions/api");
+                _qCachedBuffer = await getFileBuffer(qMediaKey, qMediaType);
+                return _qCachedBuffer;
+              }
+            };
+          }
+
           quoted = {
             messageId: String(contextInfo.stanzaId),
             userId: quotedParticipant || userId,
             username: null,
             fromMe: isQuotedFromMe,
-            text: contextInfo.quotedMessage?.conversation ||
-              contextInfo.quotedMessage?.extendedTextMessage?.text ||
-              contextInfo.quotedMessage?.imageMessage?.caption ||
-              contextInfo.quotedMessage?.videoMessage?.caption ||
+            raw: qMsg,
+            media: qMedia,
+            text: qMsg.conversation ||
+              qMsg.extendedTextMessage?.text ||
+              qMsg.imageMessage?.caption ||
+              qMsg.videoMessage?.caption ||
               ""
           };
         }
@@ -513,8 +554,24 @@ async function start(onMessage) {
             messagePayload.fileName = data.filename || data.fileName || "document";
 
             await sock.sendMessage(chatId, messagePayload, { quoted: msg });
+          },
+          replySticker: async function (sticker) {
+            if (!sticker) {
+              throw new Error("[WHATSAPP] replySticker precisa de um buffer, URL ou caminho de arquivo.");
+            }
+            let stickerPayload;
+            if (Buffer.isBuffer(sticker)) {
+              stickerPayload = sticker;
+            } else if (typeof sticker === "string" && /^https?:\/\//i.test(sticker)) {
+              stickerPayload = { url: sticker };
+            } else if (typeof sticker === "string") {
+              const resolvedPath = path.isAbsolute(sticker) ? sticker : path.join(process.cwd(), sticker);
+              stickerPayload = fs.readFileSync(resolvedPath);
+            } else {
+              stickerPayload = sticker;
+            }
+            await sock.sendMessage(chatId, { sticker: stickerPayload }, { quoted: msg });
           }
-
 
         };
 
@@ -843,6 +900,23 @@ async function checkUserPermission(chatId, userId) {
   }
 }
 
+async function sendSticker(chatId, threadId, sticker) {
+  if (!global.whatsappSock) throw new Error("[WHATSAPP] Socket não iniciado.");
+  let stickerPayload;
+  if (Buffer.isBuffer(sticker)) {
+    stickerPayload = sticker;
+  } else if (typeof sticker === "string" && /^https?:\/\//i.test(sticker)) {
+    stickerPayload = { url: sticker };
+  } else if (typeof sticker === "string") {
+    const resolvedPath = path.isAbsolute(sticker) ? sticker : path.join(process.cwd(), sticker);
+    stickerPayload = fs.readFileSync(resolvedPath);
+  } else {
+    stickerPayload = sticker;
+  }
+  const result = await global.whatsappSock.sendMessage(chatId, { sticker: stickerPayload });
+  return String(result.key.id);
+}
+
 module.exports = {
 
   name: "whatsapp",
@@ -858,6 +932,8 @@ module.exports = {
   sendAudio,
 
   sendFile,
+
+  sendSticker,
 
   checkBotPermission,
 

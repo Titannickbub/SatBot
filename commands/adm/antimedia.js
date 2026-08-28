@@ -132,7 +132,7 @@ Funções disponíveis:
         }
 
         if (subCmd === "message") {
-            const newMsg = args.slice(2).join(" ").trim();
+            const newMsg = (message.getArgText ? message.getArgText(2) : args.slice(2).join(" ")).trim();
             if (!newMsg) {
                 return message.reply({ text: "❌ Informe a mensagem. Ex: !antimedia chat message Mídia proibida aqui!" });
             }
@@ -231,29 +231,67 @@ function _help(message) {
     const lvls = getAvailableLevels(message);
     const levelList = lvls.map(l => `*${l}* (${getLevelLabel(plat, l)})`).join(" | ");
 
-    return (
-`📹 *Antimedia — Ajuda*
+    const actionsList = Object.entries(ACTIONS).map(([k, v]) => `• \`${k}\` — ${v}`).join("\n  ");
+    const mediaKinds = ['image','video','audio','sticker','location','document','contact','voice','gif'].join(', ');
 
-Níveis disponíveis aqui:
-  ${levelList}
+    let header = '📹 *ANTIMEDIA — AJUDA*';
+    if (plat === 'discord') header = '🎮 *ANTIMEDIA (Discord) — AJUDA*';
+    else if (plat === 'whatsapp') header = '📱 *ANTIMEDIA (WhatsApp) — AJUDA*';
+    else if (plat === 'telegram') header = '✈️ *ANTIMEDIA (Telegram) — AJUDA*';
 
-Comandos:
-  ${p}antimedia status
-  ${p}antimedia <nivel> on|off
-  ${p}antimedia <nivel> action delete|warn|kick|ban
-  ${p}antimedia <nivel> message <texto...>
-  ${p}antimedia <nivel> add <image, video, audio, sticker, location, document>
-  ${p}antimedia <nivel> remove <image, video, audio, sticker, location, document>
-  ${p}antimedia <nivel> list
-  ${p}antimedia <nivel> ignoreparent on|off
-  ${p}antimedia <nivel> userwhitelist add|remove|list <ID>
+    const lines = [];
+    lines.push(header);
+    lines.push('');
+    lines.push('Níveis disponíveis aqui:');
+    lines.push('  ' + levelList);
+    lines.push('');
+    lines.push('Descrição:');
+    lines.push('Gerencia regras que bloqueiam tipos de mídia e aplica punições automáticas por nível (server/categoria/chat).');
+    lines.push('');
+    lines.push('⚙️ COMANDOS PRINCIPAIS:');
+    lines.push('  • `' + p + 'antimedia status`');
+    lines.push('    ↳ Exibe o status e configurações aplicadas nos níveis disponíveis.');
+    lines.push('');
+    lines.push('  • `' + p + 'antimedia <nivel> on|off`');
+    lines.push('    ↳ Ativa ou desativa o antimedia no nível especificado.');
+    lines.push('');
+    lines.push('  • `' + p + 'antimedia <nivel> action <delete|warn|kick|ban>`');
+    lines.push('    ↳ Define a punição automática. Ações fortes (kick/ban) exigem permissão do bot.');
+    lines.push('');
+    lines.push('  • `' + p + 'antimedia <nivel> message <texto...>`');
+    lines.push('    ↳ Mensagem personalizada enviada ao punir.');
+    lines.push('');
+    lines.push('  • `' + p + 'antimedia <nivel> add <mídia,...>`');
+    lines.push('    ↳ Adiciona tipos de mídia proibidos. Tipos válidos: ' + mediaKinds + '.');
+    lines.push('');
+    lines.push('  • `' + p + 'antimedia <nivel> remove <mídia,...>`');
+    lines.push('    ↳ Remove tipos de mídia da lista proibida.');
+    lines.push('');
+    lines.push('  • `' + p + 'antimedia <nivel> list`');
+    lines.push('    ↳ Lista as mídias atualmente proibidas neste nível.');
+    lines.push('');
+    lines.push('  • `' + p + 'antimedia <nivel> ignoreparent on|off`');
+    lines.push('    ↳ Faz o nível atual ignorar (ou herdar) regras dos níveis superiores.');
+    lines.push('');
+    lines.push('  • `' + p + 'antimedia <nivel> userwhitelist add|remove|list <ID>`');
+    lines.push('    ↳ Gerencia usuários isentos do bloqueio de mídia.');
+    lines.push('');
+    lines.push('🛡️ AÇÕES DISPONÍVEIS:');
+    lines.push('  ' + actionsList);
+    lines.push('');
+    lines.push('💡 OBSERVAÇÕES:');
+    lines.push('  • Algumas ações (kick/ban) exigem permissões administrativas do bot.');
+    lines.push('  • Use `' + p + 'antimedia <nivel> action delete` para apenas remover a mídia sem ação adicional.');
+    lines.push('  • As listas e configurações são específicas por nível.');
+    lines.push('');
+    lines.push('📌 EXEMPLOS:');
+    lines.push('  ' + p + 'antimedia status');
+    lines.push('  ' + p + 'antimedia chat on');
+    lines.push('  ' + p + 'antimedia chat action warn');
+    lines.push('  ' + p + 'antimedia chat add image, video, sticker');
+    lines.push('  ' + p + 'antimedia chat message Mídia proibida aqui!');
 
-Exemplos:
-  ${p}antimedia server on
-  ${p}antimedia chat action warn
-  ${p}antimedia chat add image, video, sticker
-  ${p}antimedia chat message Mídia proibida aqui!`
-    );
+    return lines.join('\n');
 }
 
 async function _status(message, adapter) {

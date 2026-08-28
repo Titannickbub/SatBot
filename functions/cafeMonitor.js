@@ -837,36 +837,74 @@ function buildSnapshotText(sourcePayloads, state, changes, previousSnapshot = nu
 async function runCafeMonitor(options = {}) {
     const config = options.config || loadMonitorConfig(options.target);
     const sources = options.sources || config.sources || ["Minasul", "Coocafe", "CCCMG"];
-    const payloads = await collectCurrentPayloads(sources);
-    const { state, previousSnapshot, changes } = updateMonitorState(payloads);
+    const isRetry = Boolean(options.isRetry);
 
-    const targetSources = pickSourceList(sources).map(s => s.toLowerCase());
-    const relevantChanges = (changes || []).filter(c =>
-        targetSources.includes("all") || targetSources.includes(String(c.source || "").toLowerCase())
-    );
-
-    const shouldSend = options.send !== false && options.target && (
-        !options.onlyIfChanged || relevantChanges.length > 0
-    );
-
-    const text = buildSnapshotText(payloads, state, relevantChanges.length > 0 ? relevantChanges : changes, previousSnapshot);
-
-    if (shouldSend) {
-        const adapter = options.adapter || (global.platformRegistry && global.platformRegistry[options.target.platform]);
-        if (adapter && options.target.platform && options.target.chatId) {
-            await adapter.sendText(options.target.chatId, options.target.threadId || null, text);
+    try {
+        const payloads = await collectCurrentPayloads(sources);
+        const hasAnyPayload = Object.values(payloads || {}).some(Boolean);
+        if (!hasAnyPayload) {
+            throw new Error("Nenhuma fonte de cotação do café disponível no momento.");
         }
-    }
 
-    return {
-        text,
-        state,
-        changes,
-        relevantChanges,
-        snapshot: state.lastSnapshot,
-        payloads,
-        sent: Boolean(shouldSend)
-    };
+        const { state, previousSnapshot, changes } = updateMonitorState(payloads);
+
+        const targetSources = pickSourceList(sources).map(s => s.toLowerCase());
+        const relevantChanges = (changes || []).filter(c =>
+            targetSources.includes("all") || targetSources.includes(String(c.source || "").toLowerCase())
+        );
+
+        const shouldSend = options.send !== false && options.target && (
+            !options.onlyIfChanged || relevantChanges.length > 0 || isRetry
+        );
+
+        const text = buildSnapshotText(payloads, state, relevantChanges.length > 0 ? relevantChanges : changes, previousSnapshot);
+
+        if (shouldSend) {
+            const adapter = options.adapter || (global.platformRegistry && global.platformRegistry[options.target.platform]);
+            if (adapter && options.target.platform && options.target.chatId) {
+                await adapter.sendText(options.target.chatId, options.target.threadId || null, text);
+            }
+        }
+
+        return {
+            text,
+            state,
+            changes,
+            relevantChanges,
+            snapshot: state.lastSnapshot,
+            payloads,
+            sent: Boolean(shouldSend)
+        };
+    } catch (err) {
+        console.warn(`[CAFE MONITOR] Erro ao consultar mercado do café:`, err.message || err);
+
+        if (options.send !== false && options.target && options.target.platform && options.target.chatId) {
+            const adapter = options.adapter || (global.platformRegistry && global.platformRegistry[options.target.platform]);
+            if (adapter) {
+                if (!isRetry) {
+                    const retryMsg = "⚠️ Não foi possível consultar o mercado do café por instabilidade do provedor. Tentaremos novamente em 5 minutos...";
+                    await adapter.sendText(options.target.chatId, options.target.threadId || null, retryMsg).catch(() => {});
+
+                    setTimeout(() => {
+                        runCafeMonitor({
+                            ...options,
+                            isRetry: true
+                        }).catch(() => {});
+                    }, 5 * 60 * 1000);
+                } else {
+                    const failMsg = "❌ Não foi possível consultar as cotações do café após nova tentativa devido a instabilidades no provedor.";
+                    await adapter.sendText(options.target.chatId, options.target.threadId || null, failMsg).catch(() => {});
+                }
+            }
+        }
+
+        const friendlyMsg = "⚠️ O serviço de cotações do café está indisponível ou instável no momento. Tente novamente em alguns minutos.";
+        return {
+            text: friendlyMsg,
+            error: err,
+            sent: false
+        };
+    }
 }
 
 module.exports = {

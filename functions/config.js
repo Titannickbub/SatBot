@@ -18,6 +18,16 @@ const DEFAULT_CONFIG = {
     uploads: {
         discordChannelId: null,
         telegramChatId: null
+    },
+    sticker: {
+        packName: "Sat Bot",
+        authorName: "Satela"
+    },
+    blockcmd_su: {
+        enabled: false,
+        action: "reply",
+        message: null,
+        blockedCommands: []
     }
 };
 
@@ -33,6 +43,16 @@ function normalizeConfig(data) {
         uploads: {
             ...DEFAULT_CONFIG.uploads,
             ...(source.uploads && typeof source.uploads === "object" ? source.uploads : {})
+        },
+        sticker: {
+            ...DEFAULT_CONFIG.sticker,
+            ...(source.sticker && typeof source.sticker === "object" ? source.sticker : {})
+        },
+        blockcmd_su: {
+            enabled: source.blockcmd_su?.enabled === true,
+            action: source.blockcmd_su?.action || "reply",
+            message: source.blockcmd_su?.message || null,
+            blockedCommands: Array.isArray(source.blockcmd_su?.blockedCommands) ? source.blockcmd_su.blockedCommands : []
         }
     };
 
@@ -738,62 +758,102 @@ function isChatAllowedByOnlyChats(message) {
     return false;
 }
 
+function getStickerConfig() {
+    const data = load();
+    const botName = getBotName() || "Sat Bot";
+    const defaults = {
+        packName: botName,
+        authorName: "Satela"
+    };
+    if (!data.sticker) {
+        data.sticker = defaults;
+        save(data);
+        return data.sticker;
+    }
+    return {
+        packName: data.sticker.packName || defaults.packName,
+        authorName: data.sticker.authorName || defaults.authorName
+    };
+}
+
+function setStickerPack(packName) {
+    const data = load();
+    data.sticker = getStickerConfig();
+    data.sticker.packName = packName ? String(packName).trim() : "Sat Bot";
+    save(data);
+    return data.sticker;
+}
+
+function setStickerAuthor(authorName) {
+    const data = load();
+    data.sticker = getStickerConfig();
+    data.sticker.authorName = authorName ? String(authorName).trim() : "Satela";
+    save(data);
+    return data.sticker;
+}
+
+function setStickerConfig(packName, authorName) {
+    const data = load();
+    data.sticker = getStickerConfig();
+    if (typeof packName === "string" && packName.trim()) {
+        data.sticker.packName = packName.trim();
+    }
+    if (typeof authorName === "string" && authorName.trim()) {
+        data.sticker.authorName = authorName.trim();
+    }
+    save(data);
+    return data.sticker;
+}
+
+function getGlobalBlockcmd() {
+    const conf = getConfig();
+    const bc = conf.blockcmd_su || {};
+    return {
+        enabled: bc.enabled === true,
+        action: bc.action || "reply",
+        message: bc.message || null,
+        blockedCommands: Array.isArray(bc.blockedCommands) ? bc.blockedCommands : []
+    };
+}
+
+function setGlobalBlockcmd(newConfig) {
+    const current = getGlobalBlockcmd();
+    const updated = {
+        ...current,
+        ...newConfig
+    };
+    return updateConfig({ blockcmd_su: updated });
+}
+
 module.exports = {
-
     getConfig,
-
     getPrefix,
-
     setPrefix,
-
     getPlatforms,
-
     setPlatform,
-
     getUploadConfig,
-
     setUploadChannel,
-
     isPlatformEnabled,
-
     syncPlatforms,
-
     getDefaultAutoDownloadConfig,
     getAutoDownloadConfig,
     setAutoDownloadEnabled,
-
     getAntiPVConfig,
-
     setAntiPVEnabled,
-
     setAntiPVMode,
-
     setAntiPVMessage,
-
     setAntiPVMedia,
-
     addAntiPVCommand,
-
     removeAntiPVCommand,
-
     addAntiPVUser,
-
     removeAntiPVUser,
-
     saveAntiPVMediaLocally,
-
     getIgnoreInitialSeconds,
-
     setIgnoreInitialSeconds,
-
     parseTimeString,
-
     formatTimeString,
-
     getBotName,
-
     setBotName,
-
     getDefaultOnlyChatsConfig,
     getOnlyChatsConfig,
     setOnlyChatsEnabled,
@@ -801,6 +861,11 @@ module.exports = {
     setOnlyChatsMessage,
     addOnlyChatsItem,
     removeOnlyChatsItem,
-    isChatAllowedByOnlyChats
-
+    isChatAllowedByOnlyChats,
+    getStickerConfig,
+    setStickerPack,
+    setStickerAuthor,
+    setStickerConfig,
+    getGlobalBlockcmd,
+    setGlobalBlockcmd
 };

@@ -20,11 +20,11 @@ Regras e Limitações por Plataforma:
     • Suportado exclusivamente em GRUPOS (chatType = group).
     • NÃO disponível em Comunidades ou mensagens privadas.
 
-Armazenamento Otimizado de Mídias (Discord CDN):
-  • Mídias (fotos, vídeos, GIFs de até 25MB) enviadas com !welcome media são
-    automaticamente enviadas ao canal de mídia do Discord (ID: 1532068325771972798).
-  • O link público do Discord CDN é extraído e salvo nas configurações, evitando
-    o uso de espaço em disco local.
+Armazenamento Otimizado de Mídias:
+  • Mídias enviadas com !welcome media são armazenadas automaticamente
+    no melhor provedor disponível: Discord CDN, Telegram ou disco local.
+  • A prioridade é: Discord configurado → Telegram configurado → disco local.
+  • Isso economiza espaço em disco independente da plataforma usada.
 
 Sub-comandos:
   !welcome status
@@ -60,7 +60,7 @@ module.exports = {
 Recursos principais:
 • Ativação/Desativação individual por chat/tópico.
 • Modos de envio: Apenas Texto ou Texto + Mídia (imagem, vídeo, GIF).
-• Armazenamento inteligente de mídias no Discord CDN (canal 1532068325771972798) para economizar espaço no servidor.
+• Armazenamento inteligente de mídias: Discord CDN, Telegram ou local (por prioridade de disponibilidade).
 • Variáveis dinâmicas no texto: {user}, {mention}, {group}, {server}, {count}, {members}.
 • Teste em tempo real com !welcome test.
 
@@ -191,7 +191,7 @@ Regras por plataforma:
 
         // ── TEXT (mensagem de boas-vindas) ─────────────────────────────
         if (subCommand === "text" || subCommand === "texto" || subCommand === "message" || subCommand === "mensagem") {
-            const newText = args.slice(1).join(" ").trim();
+            const newText = (message.getArgText ? message.getArgText(1) : args.slice(1).join(" ")).trim();
 
             if (!newText) {
                 let textHelp = `❌ *Por favor, digite o texto da mensagem de boas-vindas.*\n\n`;
@@ -255,21 +255,30 @@ Regras por plataforma:
                         targetMedia.mimeType || "image/png"
                     );
 
-                    saveWelcomeConfig(platform, serverId, chatId, threadId, {
+                    const updateData = {
                         media: {
                             url: uploaded.url,
                             type: uploaded.type,
                             fileName: uploaded.fileName || "welcome_media"
                         }
-                    });
+                    };
+
+                    const captionText = (message.getArgText ? message.getArgText(1) : "").trim();
+                    if (captionText && !captionText.startsWith("http://") && !captionText.startsWith("https://")) {
+                        updateData.text = captionText;
+                    }
+
+                    saveWelcomeConfig(platform, serverId, chatId, threadId, updateData);
 
                     let successMsg = `✅ *Mídia de Boas-Vindas armazenada com sucesso!*\n\n`;
                     successMsg += `📁 *Tipo de Mídia:* ${uploaded.type.toUpperCase()}\n`;
                     successMsg += `📊 *Tamanho do Arquivo:* ${(uploaded.size / (1024 * 1024)).toFixed(2)} MB\n`;
-                    if (platform === "whatsapp") {
-                        successMsg += `💾 *Armazenado localmente no servidor do bot.*\n\n`;
+                    if (uploaded.storageProvider === "discord") {
+                        successMsg += `☁️ *Armazenado no Discord CDN.* URL pública gerada e salva.\n\n`;
+                    } else if (uploaded.storageProvider === "telegram") {
+                        successMsg += `☁️ *Armazenado no Telegram.* file\_id salvo para reenvio.\n\n`;
                     } else {
-                        successMsg += `☁️ *Armazenado em nuvem conforme a configuração.*\n\n`;
+                        successMsg += `💾 *Armazenado localmente no disco do bot.*\n\n`;
                     }
                     successMsg += `💡 *Dica:* Se necessário, altere o modo para mídia com \`${message.prefix}welcome mode media\`.`;
 
@@ -278,30 +287,14 @@ Regras por plataforma:
                     console.error("[welcome command] Erro ao processar e salvar mídia:", err);
                     return message.reply({ text: `❌ Falha ao processar e salvar mídia: ${err.message}` });
                 }
-            }
-
-            // 3. Nenhuma mídia fornecida → mostra ajuda do subcomando media
-            let mediaHelp = `❌ *Nenhuma mídia detectada.*\n\n`;
-            mediaHelp += `Como definir a mídia de boas-vindas:\n`;
-            mediaHelp += `1️⃣ *Anexar na mensagem:* Envie uma foto, vídeo ou GIF com a legenda \`${message.prefix}welcome media\`\n`;
-            mediaHelp += `2️⃣ *Responder a uma mídia:* Responda a uma imagem/vídeo/GIF no chat com \`${message.prefix}welcome media\`\n`;
-            mediaHelp += `3️⃣ *Via URL direta:* Digite \`${message.prefix}welcome media <URL_DA_MIDIA>\``;
-            return message.reply({ text: mediaHelp });
-        }
-
-        // ── RESET ───────────────────────────────────────────────────────
-        if (subCommand === "reset" || subCommand === "reseta") {
-            const defaultConfig = getDefaultWelcomeConfig();
-            saveWelcomeConfig(platform, serverId, chatId, threadId, defaultConfig);
-            return message.reply({
-                text: `🔄 *Configurações de Boas-Vindas deste chat foram resetadas para os valores padrão!*\n\nEstado: 🔕 Desativado\nModo: 📝 Apenas Texto`
-            });
-        }
-
-        // ── TEST ────────────────────────────────────────────────────────
         if (subCommand === "test" || subCommand === "teste") {
-            const sampleUser = message.username ? `@${message.username}` : `<@${message.userId}>`;
-            const sampleGroup = message.chatType === "group" ? "Grupo de Demonstração" : "Servidor de Demonstração";
+            // No Discord, a mencião real é <@userId> (renderizada pelo cliente)
+            const sampleUser = platform === "discord"
+                ? `<@${message.userId}>`
+                : (message.username ? `@${message.username}` : `@Usuário Teste`);
+            const sampleGroup = platform === "discord"
+                ? (message.raw?.guild?.name || "Servidor de Demonstração")
+                : (message.chatType === "group" ? "Grupo de Demonstração" : "Servidor de Demonstração");
 
             const previewText = formatWelcomeText(currentConfig.text, {
                 user: sampleUser,

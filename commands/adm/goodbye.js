@@ -50,7 +50,7 @@ module.exports = {
 Recursos principais:
 • Ativação/Desativação individual por chat/tópico.
 • Modos de envio: Apenas Texto ou Texto + Mídia (imagem, vídeo, GIF).
-• Armazenamento inteligente de mídias no Discord CDN (canal 1532068325771972798).
+• Armazenamento inteligente de mídias: Discord CDN, Telegram ou local (por prioridade de disponibilidade).
 • Variáveis dinâmicas no texto: {user}, {mention}, {group}, {server}, {count}, {members}.
 • Teste em tempo real com !goodbye test.
 
@@ -173,7 +173,7 @@ Regras por plataforma:
 
         // ── TEXT ────────────────────────────────────────────────────────
         if (subCommand === "text" || subCommand === "texto" || subCommand === "message" || subCommand === "mensagem") {
-            const newText = args.slice(1).join(" ").trim();
+            const newText = (message.getArgText ? message.getArgText(1) : args.slice(1).join(" ")).trim();
             if (!newText) {
                 let textHelp = `❌ *Por favor, digite o texto da mensagem de despedida.*\n\n`;
                 textHelp += `Exemplo:\n`;
@@ -221,15 +221,24 @@ Regras por plataforma:
                         targetMedia.mimeType || "image/png"
                     );
 
-                    saveGoodbyeConfig(platform, serverId, chatId, threadId, { media: { url: uploaded.url, type: uploaded.type } });
+                    const updateData = { media: { url: uploaded.url, type: uploaded.type } };
+
+                    const captionText = (message.getArgText ? message.getArgText(1) : "").trim();
+                    if (captionText && !captionText.startsWith("http://") && !captionText.startsWith("https://")) {
+                        updateData.text = captionText;
+                    }
+
+                    saveGoodbyeConfig(platform, serverId, chatId, threadId, updateData);
 
                     let responseText = `✅ *Mídia de Despedida armazenada com sucesso!*\n\n`;
                     responseText += `📁 *Tipo:* ${uploaded.type.toUpperCase()}\n`;
                     responseText += `📊 *Tamanho:* ${(uploaded.size / (1024 * 1024)).toFixed(2)} MB\n`;
-                    if (platform === "whatsapp") {
-                        responseText += `💾 *Armazenado localmente no servidor do bot.*`;
+                    if (uploaded.storageProvider === "discord") {
+                        responseText += `☁️ *Armazenado no Discord CDN.* URL pública gerada e salva.`;
+                    } else if (uploaded.storageProvider === "telegram") {
+                        responseText += `☁️ *Armazenado no Telegram.* file\_id salvo para reenvio.`;
                     } else {
-                        responseText += `☁️ *Armazenado em nuvem conforme a configuração.*`;
+                        responseText += `💾 *Armazenado localmente no disco do bot.*`;
                     }
 
                     return message.reply({ text: responseText });

@@ -1,6 +1,15 @@
 const fs = require("fs");
 const path = require("path");
 
+/** Retorna a hora atual no formato [HH:MM:SS] */
+function _ts() {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    const ss = String(now.getSeconds()).padStart(2, "0");
+    return `[${hh}:${mm}:${ss}]`;
+}
+
 const authFlow = require("./functions/authFlow");
 
 const commands = {};
@@ -58,11 +67,11 @@ function loadFunctions() {
                 );
 
             console.log(
-                `✅[CORE] Função carregada: ${name}`
+                `${_ts()} ✅[CORE] Função carregada: ${name}`
             );
         } catch (err) {
             console.error(
-                `❌[CORE] Falha ao carregar função: ${name}`,
+                `${_ts()} ❌[CORE] Falha ao carregar função: ${name}`,
                 err
             );
             continue;
@@ -91,12 +100,12 @@ function loadMiddlewares() {
             const middleware = require(path.join(middlewaresDir, file));
             if (middleware.name && typeof middleware.execute === "function") {
                 middlewares.push(middleware);
-                console.log(`✅[CORE] Middleware carregado: ${middleware.name}`);
+                console.log(`${_ts()} ✅[CORE] Middleware carregado: ${middleware.name}`);
             } else {
-                console.warn(`❌[CORE] Middleware inválido em: ${file}`);
+                console.warn(`${_ts()} ❌[CORE] Middleware inválido em: ${file}`);
             }
         } catch (err) {
-            console.error(`❌[CORE] Falha ao carregar middleware: ${name}`, err);
+            console.error(`${_ts()} ❌[CORE] Falha ao carregar middleware: ${name}`, err);
         }
 
     }
@@ -160,7 +169,7 @@ function loadCommands() {
             command = require(file);
         } catch (err) {
             console.error(
-                `❌[CORE] Falha ao carregar comando: ${file}`,
+                `${_ts()} ❌[CORE] Falha ao carregar comando: ${file}`,
                 err
             );
             continue;
@@ -172,7 +181,7 @@ function loadCommands() {
         ) {
 
             console.warn(
-                `❌[CORE] Comando inválido: ${file}`
+                `${_ts()} ❌[CORE] Comando inválido: ${file}`
             );
 
             continue;
@@ -207,7 +216,7 @@ function loadCommands() {
                 if (!alias || typeof alias !== 'string') continue;
                 const aliasKey = alias.toLowerCase();
                 if (commands[aliasKey] && commands[aliasKey] !== commandEntry) {
-                    console.warn(`❌[CORE] Alias de comando já em uso: ${aliasKey}`);
+                    console.warn(`${_ts()} ❌[CORE] Alias de comando já em uso: ${aliasKey}`);
                     continue;
                 }
                 commands[aliasKey] = commandEntry;
@@ -215,7 +224,7 @@ function loadCommands() {
         }
 
         console.log(
-            `✅[CORE] Comando carregado: ${command.name} > ${category || "Raiz" }`
+            `${_ts()} ✅[CORE] Comando carregado: ${command.name} > ${category || "Raiz" }`
         );
 
     }
@@ -256,7 +265,7 @@ function loadPlatforms() {
         ) {
 
         console.log(
-            `⛔[CORE] Plataforma desativada: ${platformName}`
+            `${_ts()} ⛔[CORE] Plataforma desativada: ${platformName}`
         );
 
         continue;
@@ -273,7 +282,7 @@ function loadPlatforms() {
         );
     } catch (err) {
         console.error(
-            `❌[CORE] Falha ao carregar plataforma: ${platformName}`,
+            `${_ts()} ❌[CORE] Falha ao carregar plataforma: ${platformName}`,
             err
         );
         continue;
@@ -288,7 +297,7 @@ function loadPlatforms() {
 
     }
     console.log(
-        `✅[CORE] Plataforma carregada: ${file}`
+        `${_ts()} ✅[CORE] Plataforma carregada: ${file}`
     );
 
 }
@@ -299,7 +308,7 @@ async function handleMessage(message) {
 
 
 console.log(
-        `📩[${message.platform}] ${message.username || "desconhecido"} (${message.userId}): ${message.text}`
+        `${_ts()} 📩[${message.platform}] ${message.username || "desconhecido"} (${message.userId}): ${message.text}`
     );
     
     const config =
@@ -314,7 +323,7 @@ console.log(
         const formatTime = functions.config && typeof functions.config.formatTimeString === "function"
             ? functions.config.formatTimeString(ignoreInitialSeconds)
             : `${ignoreInitialSeconds}s`;
-        console.log(`⏳[CORE] Mensagem ignorada (carregamento inicial / warmup: ${(uptime / 1000).toFixed(1)}s / ${formatTime})`);
+        console.log(`${_ts()} ⏳[CORE] Mensagem ignorada (carregamento inicial / warmup: ${(uptime / 1000).toFixed(1)}s / ${formatTime})`);
         return;
     }
 
@@ -335,15 +344,15 @@ console.log(
                 const crossplayStore = functions.crossplay || global.crossplayStore;
                 if (crossplayStore && typeof crossplayStore.ensureCentral === 'function') {
                     await crossplayStore.ensureCentral(central.id, { name: central.name }).catch(err => {
-                        console.error('❌[CORE] Crossplay ensureCentral error:', err);
+                        console.error(`${_ts()} ❌[CORE] Crossplay ensureCentral error:`, err);
                     });
                 }
             }).catch(err => {
-                console.error('❌[CORE] CentralAccounts error:', err);
+                console.error(`${_ts()} ❌[CORE] CentralAccounts error:`, err);
             });
         }
     } catch (err) {
-        console.error('❌[CORE] Erro ao garantir Conta Central:', err);
+        console.error(`${_ts()} ❌[CORE] Erro ao garantir Conta Central:`, err);
     }
 
     message.sender = message.sender || { isAdmin: false, canManageMessages: false };
@@ -361,7 +370,7 @@ console.log(
                     return;
                 }
             } catch (err) {
-                console.error(`❌[CORE] Erro ao executar middleware '${middleware.name}':`, err);
+                console.error(`${_ts()} ❌[CORE] Erro ao executar middleware '${middleware.name}':`, err);
             }
         }
     }
@@ -390,6 +399,48 @@ const commandName = parts[0]
     message.command = commandName;
 
 message.args = parts.slice(1);
+
+message.getArgText = function (fromIndex = 1) {
+    if (!this.text) return "";
+    const rawText = this.text;
+    
+    if (fromIndex <= 0) {
+        const cmdName = this.command ? (this.prefix + this.command) : "";
+        if (!cmdName) return rawText.trim();
+        const cmdIdx = rawText.toLowerCase().indexOf(cmdName.toLowerCase());
+        if (cmdIdx === -1) return rawText.trim();
+        return rawText.slice(cmdIdx + cmdName.length).replace(/^[ \t]*\r?\n?/, "");
+    }
+
+    const args = this.args || [];
+    if (fromIndex > args.length) return "";
+
+    let searchPos = 0;
+    const fullLower = rawText.toLowerCase();
+
+    if (this.command) {
+        const cmdLower = (this.prefix + this.command).toLowerCase();
+        const cmdMatch = fullLower.indexOf(cmdLower, searchPos);
+        if (cmdMatch !== -1) {
+            searchPos = cmdMatch + cmdLower.length;
+        }
+    }
+
+    for (let i = 0; i < fromIndex; i++) {
+        const token = args[i];
+        if (!token) break;
+        const tokenLower = String(token).toLowerCase();
+        const found = fullLower.indexOf(tokenLower, searchPos);
+        if (found !== -1) {
+            searchPos = found + tokenLower.length;
+        } else {
+            break;
+        }
+    }
+
+    const remaining = rawText.slice(searchPos);
+    return remaining.replace(/^[ \t]*\r?\n?/, "");
+};
 
 message.uptime =
     Date.now() - status.startedAt;
@@ -426,7 +477,7 @@ message.core = {
                     return;
                 }
             } catch (err) {
-                console.error(`❌[CORE] Erro ao executar middleware '${middleware.name}':`, err);
+                console.error(`${_ts()} ❌[CORE] Erro ao executar middleware '${middleware.name}':`, err);
             }
         }
     }
@@ -437,7 +488,7 @@ message.core = {
 
     } catch (err) {
 
-        console.error(err);
+        console.error(`${_ts()} ❌[CORE] Erro ao executar comando:`, err);
 
         await message.reply({
             text: "❌ Erro interno."
@@ -473,7 +524,7 @@ async function start() {
             process.on('SIGINT', saveAndExit);
             process.on('SIGTERM', saveAndExit);
         } catch (err) {
-            console.error('❌[CORE] Falha ao inicializar functions.centralAccounts:', err);
+            console.error(`${_ts()} ❌[CORE] Falha ao inicializar functions.centralAccounts:`, err);
         }
     }
 
@@ -486,7 +537,7 @@ async function start() {
             global.crossplayStore = crossplayStore;
             functions.crossplay = crossplayStore;
         } catch (err) {
-            console.error('❌[CORE] Falha ao inicializar functions.crossplay:', err);
+            console.error(`${_ts()} ❌[CORE] Falha ao inicializar functions.crossplay:`, err);
         }
     }
 
@@ -502,8 +553,8 @@ async function start() {
         const code = functions.owners.generateCode();
         console.log("");
         console.log("=================================");
-        console.log("[SU] Nenhum Super Usuário encontrado.");
-        console.log(`[SU] Código: ${code}`);
+        console.log(`${_ts()} [SU] Nenhum Super Usuário encontrado.`);
+        console.log(`${_ts()} [SU] Código: ${code}`);
         console.log("=================================");
         console.log("");
     }
@@ -511,46 +562,46 @@ async function start() {
     const bootstrap = await authFlow.handleInitialBootstrap();
     if (bootstrap.status === "bootstrap") {
         global.__pendingAuthBootstrapPlatform = bootstrap.platform;
-        console.log(`[AUTH] Bootstrap da plataforma: ${bootstrap.platform}`);
+        console.log(`${_ts()} [AUTH] Bootstrap da plataforma: ${bootstrap.platform}`);
     } else if (bootstrap.status === "skipped") {
         global.__pendingAuthBootstrapPlatform = null;
-        console.log("[AUTH] Nenhuma plataforma foi configurada para iniciar neste ciclo.");
+        console.log(`${_ts()} [AUTH] Nenhuma plataforma foi configurada para iniciar neste ciclo.`);
     }
 
-    console.log(`✅[CORE] Plataformas carregadas (count=${platforms.length}): ${platforms.map((p, i) => `#${i}:${Object.keys(p).join(',') || 'module'}`).join(' | ')}`);
+    console.log(`${_ts()} ✅[CORE] Plataformas carregadas (count=${platforms.length}): ${platforms.map((p, i) => `#${i}:${Object.keys(p).join(',') || 'module'}`).join(' | ')}`);
 
     for (let i = 0; i < platforms.length; i++) {
         const platform = platforms[i];
         const name = platform && (platform.name || platform.file || "unknown");
         const isEnabled = authFlow.isPlatformEnabled(name);
         if (!isEnabled) {
-            console.log(`⏭️[CORE] Plataforma ignorada por configuração: ${name}`);
+            console.log(`${_ts()} ⏭️[CORE] Plataforma ignorada por configuração: ${name}`);
             continue;
         }
-        console.log(`♻️[CORE] Iniciando plataforma [${i}]: ${name}`);
+        console.log(`${_ts()} ♻️[CORE] Iniciando plataforma [${i}]: ${name}`);
         try {
             await platform.start(handleMessage);
-            console.log(`✅[CORE] Plataforma [${i}] inicializada: ${name}`);
+            console.log(`${_ts()} ✅[CORE] Plataforma [${i}] inicializada: ${name}`);
         } catch (err) {
-            console.error(`❌[CORE] Erro ao iniciar plataforma [${name}]:`, err.message || err);
+            console.error(`${_ts()} ❌[CORE] Erro ao iniciar plataforma [${name}]:`, err.message || err);
         }
     }
 
-    console.log("🔛[CORE] Satella online.");
+    console.log(`${_ts()} 🔛[CORE] Satella online.`);
 
     // Inicia o motor de agendamentos em background
     try {
         const schedulerHelper = require("./functions/schedulerHelper");
         schedulerHelper.startScheduler();
     } catch (err) {
-        console.error("❌[CORE] Falha ao iniciar o motor de agendamentos:", err.message || err);
+        console.error(`${_ts()} ❌[CORE] Falha ao iniciar o motor de agendamentos:`, err.message || err);
     }
 
     try {
         const cafeMonitor = require("./functions/cafeMonitor");
         cafeMonitor.startMonitorLoop();
     } catch (err) {
-        console.error("❌[CORE] Falha ao iniciar o monitor do café:", err.message || err);
+        console.error(`${_ts()} ❌[CORE] Falha ao iniciar o monitor do café:`, err.message || err);
     }
 }
 

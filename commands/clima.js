@@ -15,11 +15,15 @@ module.exports = {
         const target = { platform: message.platform, chatId: message.chatId, threadId: message.threadId || null };
 
         if (!q) {
-            return message.reply({ text: `⚠️ Uso correto:\n${message.prefix}clima [cidade]\n${message.prefix}clima set <cidade>\n${message.prefix}clima times HH:MM,HH:MM\n${message.prefix}clima enable|disable|status` });
+            return message.reply({ text: _help(message) });
         }
 
         const parts = q.split(/\s+/);
         const cmd = parts[0].toLowerCase();
+
+        if (cmd === "help" || cmd === "ajuda") {
+            return message.reply({ text: _help(message) });
+        }
 
         if (cmd === "set") {
             const city = parts.slice(1).join(" ").trim();
@@ -76,9 +80,60 @@ module.exports = {
         await message.reply({ text: "☁️ Consultando previsão do tempo, aguarde..." });
         try {
             const res = await weatherMonitor.runWeatherReport({ city: cityQuery, send: false });
+            if (res.error) {
+                return message.reply({ text: "⚠️ O serviço de previsão do tempo está indisponível ou instável no momento. Tente novamente em alguns minutos." });
+            }
             return message.reply({ text: res.text });
         } catch (err) {
-            return message.reply({ text: `❌ Erro ao consultar previsão: ${err.message || err}` });
+            return message.reply({ text: "⚠️ O serviço de previsão do tempo está indisponível ou instável no momento. Tente novamente em alguns minutos." });
         }
     }
+
 };
+
+function _help(message) {
+    const p = message.prefix;
+    const plat = message.platform;
+
+    let header = '☁️ *CLIMA — AJUDA*';
+    if (plat === 'discord') header = '🎮 *CLIMA (Discord) — AJUDA*';
+    else if (plat === 'whatsapp') header = '📱 *CLIMA (WhatsApp) — AJUDA*';
+    else if (plat === 'telegram') header = '✈️ *CLIMA (Telegram) — AJUDA*';
+
+    const lines = [];
+    lines.push(header);
+    lines.push('');
+    lines.push('Consulte a previsão do tempo e configure envios automáticos por chat.');
+    lines.push('');
+    lines.push('📋 COMANDOS:');
+    lines.push('  `' + p + 'clima <cidade>`');
+    lines.push('    ↳ Busca a previsão imediata para a cidade informada.');
+    lines.push('');
+    lines.push('  `' + p + 'clima set <cidade>`');
+    lines.push('    ↳ Define a cidade padrão para envios agendados neste chat.');
+    lines.push('');
+    lines.push('  `' + p + 'clima times HH:MM,HH:MM`');
+    lines.push('    ↳ Define horários diários para envio automático.');
+    lines.push('');
+    lines.push('  `' + p + 'clima enable|disable`');
+    lines.push('    ↳ Ativa ou desativa os envios automáticos de previsão.');
+    lines.push('');
+    lines.push('  `' + p + 'clima status`');
+    lines.push('    ↳ Mostra a configuração atual do monitor de clima neste chat.');
+    lines.push('');
+    lines.push('  `' + p + 'clima run`');
+    lines.push('    ↳ Executa uma verificação imediata e envia a previsão (teste).');
+    lines.push('');
+    lines.push('💡 DICAS:');
+    lines.push('  • Para busca rápida: `' + p + 'clima São Paulo`');
+    lines.push('  • Configure horários e ative o monitor para receber previsões automáticas.');
+    lines.push('');
+    lines.push('📌 EXEMPLOS:');
+    lines.push('  ' + p + 'clima Salvador');
+    lines.push('  ' + p + 'clima set São Paulo');
+    lines.push('  ' + p + 'clima times 08:00,18:00');
+    lines.push('  ' + p + 'clima enable');
+    lines.push('  ' + p + 'clima run');
+
+    return lines.join('\n');
+}

@@ -1,7 +1,6 @@
 module.exports = {
     name: "nomecentral",
     aliases: ["centralnome"],
-    category: "system",
     description: "Altera o nome da conta central vinculada ao usuário.",
     usage: "{prefix}nomecentral <novo nome>",
 

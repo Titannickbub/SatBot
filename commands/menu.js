@@ -61,7 +61,9 @@ const core = require("../core");
 module.exports = {
 
     name: "menu",
-    
+
+    aliases: ["help", "ajuda"],
+
     description:
         "Exibe o menu de comandos e permite listar comandos por categoria.",
 
@@ -104,7 +106,7 @@ module.exports = {
             text += "\n";
             text + "===================\n";
             return text;
-       };
+        };
 
         const paginate = (items, pageSize) => {
             const pages = [];
@@ -147,7 +149,7 @@ module.exports = {
             if (!text) {
                 text = "❌ Nenhum comando registrado.";
             }
-             text += "===================";
+            text += "===================";
             return await message.reply({ text });
         }
 
@@ -168,7 +170,7 @@ module.exports = {
                 : `📂 ${category}`;
             text += formatSection(title, page);
         });
-         text += "===================";
+        text += "===================";
 
         await message.reply({ text });
 

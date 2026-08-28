@@ -85,7 +85,25 @@ async function start(onMessage) {
         }
     };
 
-    client.once("clientReady", () => {
+    async function registerSlashCommands(cli) {
+        try {
+            const slashCommandsArray = [
+                {
+                    name: "start",
+                    description: "Apresentação da Satela e primeiros passos."
+                }
+            ];
+
+            if (cli.application) {
+                await cli.application.commands.set(slashCommandsArray);
+                console.log(`🟩[DISCORD] Slash command /start registrado com sucesso!`);
+            }
+        } catch (err) {
+            console.error("❌[DISCORD] Erro ao registrar slash command /start:", err);
+        }
+    }
+
+    client.once("clientReady", async () => {
         console.log(
             `🟩[DISCORD] Conectado como ${client.user.tag}`
         );
@@ -95,6 +113,7 @@ async function start(onMessage) {
         }
         updateDiscordPresence();
         setInterval(updateDiscordPresence, 60_000);
+        await registerSlashCommands(client);
         // Sincroniza todas as guildas ativas na inicialização
         client.guilds.cache.forEach(guild => {
             syncGuild(guild);
@@ -160,12 +179,229 @@ async function start(onMessage) {
         }
     });
 
-    client.on("guildMemberRemove", async (member) => {
+    client.on("interactionCreate", async (interaction) => {
+        if (!interaction.isChatInputCommand()) return;
+
         try {
-            await welcomeHelper.handleDiscordMemberLeave(member);
+            await interaction.deferReply().catch(() => {});
         } catch (err) {
-            console.error("❌[DISCORD] Erro ao processar guildMemberRemove para goodbye:", err);
+            console.error("❌[DISCORD] Erro ao deferir interação:", err);
         }
+
+        const isPrivate = !interaction.guild;
+
+        if (interaction.guild && !syncedGuilds.has(interaction.guild.id)) {
+            syncGuild(interaction.guild);
+            syncedGuilds.add(interaction.guild.id);
+        }
+
+        const isAdmin = isPrivate ? true : (interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) || false);
+        const canManageMessages = isPrivate ? true : (interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages) || false);
+
+        const config = require("../functions/config").getConfig();
+        const prefix = config.prefix || "!";
+
+        const commandName = interaction.commandName;
+        const optionsData = interaction.options?.data || [];
+        const args = optionsData.map(opt => String(opt.value)).filter(Boolean);
+        const commandText = `${prefix}${commandName}${args.length ? " " + args.join(" ") : ""}`;
+
+        let repliedToInteraction = false;
+
+        const message = {
+            platform: "discord",
+            chatId: String(interaction.channelId),
+            threadId: interaction.channel?.isThread?.() ? String(interaction.channelId) : null,
+            target: {
+                chatId: String(interaction.channelId),
+                threadId: interaction.channel?.isThread?.() ? String(interaction.channelId) : null
+            },
+            userId: String(interaction.user.id),
+            username: interaction.user.username,
+            displayName: (interaction.member && (interaction.member.displayName || interaction.member.nickname)) || interaction.user.username,
+            text: commandText,
+            raw: interaction,
+            messageId: String(interaction.id),
+            createdAt: interaction.createdTimestamp,
+            apiPing: client.ws.ping,
+            chatType: interaction.guild ? "group" : "private",
+            isPrivate,
+            botId: String(client.user.id),
+            botUsername: client.user.username,
+            mentionedJids: [],
+            mentionedChannelIds: [],
+            sender: {
+                isAdmin,
+                canManageMessages
+            },
+            quoted: null,
+            delete: async function () {
+                try {
+                    await interaction.deleteReply();
+                    return true;
+                } catch (err) {
+                    console.error("❌[DISCORD] Falha ao deletar resposta de interação:", err);
+                    return false;
+                }
+            },
+            media: null,
+            reply: async function (data) {
+                try {
+                    if (typeof data === "object" && data !== null && (data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url)) {
+                        const image = data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url;
+                        return await this.replyImg({ image, caption: data.caption || data.text || "" });
+                    }
+
+                    let text = "";
+                    if (typeof data === "string") {
+                        text = data;
+                    } else if (data && data.text) {
+                        text = data.text;
+                    }
+
+                    if (!text) return null;
+
+                    const MAX_LEN = 2000;
+                    const chunks = [];
+                    let remaining = text;
+                    while (remaining.length > 0) {
+                        if (remaining.length <= MAX_LEN) {
+                            chunks.push(remaining);
+                            break;
+                        }
+                        let cutIndex = remaining.lastIndexOf("\n", MAX_LEN);
+                        if (cutIndex <= 0) cutIndex = MAX_LEN;
+                        chunks.push(remaining.substring(0, cutIndex));
+                        remaining = remaining.substring(cutIndex).replace(/^\n/, "");
+                    }
+
+                    for (let i = 0; i < chunks.length; i++) {
+                        const chunk = chunks[i];
+                        if (!repliedToInteraction) {
+                            repliedToInteraction = true;
+                            if (interaction.deferred || interaction.replied) {
+                                await interaction.editReply({ content: chunk });
+                            } else {
+                                await interaction.reply({ content: chunk });
+                            }
+                        } else {
+                            if (interaction.deferred || interaction.replied) {
+                                await interaction.followUp({ content: chunk });
+                            } else {
+                                await interaction.channel.send(chunk);
+                            }
+                        }
+                    }
+                } catch (err) {
+                    const reason = err && err.message ? err.message : String(err);
+                    console.warn(`[DISCORD] ⚠️ Falha ao responder interação: ${reason}`);
+                    return null;
+                }
+            },
+            react: async function (emoji) {
+                try {
+                    const replyMsg = await interaction.fetchReply();
+                    if (replyMsg) await replyMsg.react(emoji);
+                } catch (err) {
+                    console.error("❌[DISCORD] Falha ao reagir em resposta de interação:", err);
+                }
+            },
+            replyImg: async function (data) {
+                const caption = data.caption || data.text || "";
+                const image = data.url || data.image || data.file;
+                if (!image) throw new Error("❌[DISCORD] replyImg precisa de url, image ou file.");
+
+                let payload = {};
+                if (Buffer.isBuffer(image)) {
+                    payload = { content: caption, files: [{ attachment: image, name: "image.png" }] };
+                } else if (typeof image === "string" && /^https?:\/\//i.test(image)) {
+                    payload = { embeds: [new EmbedBuilder().setImage(image).setDescription(caption)] };
+                } else {
+                    payload = { content: caption, files: [image] };
+                }
+
+                if (!repliedToInteraction && (interaction.deferred || interaction.replied)) {
+                    repliedToInteraction = true;
+                    await interaction.editReply(payload);
+                } else if (!repliedToInteraction) {
+                    repliedToInteraction = true;
+                    await interaction.reply(payload);
+                } else {
+                    await interaction.followUp(payload);
+                }
+            },
+            replyVideo: async function (data) {
+                const caption = data.caption || data.text || "";
+                const video = data.url || data.video || data.file;
+                if (!video) throw new Error("❌[DISCORD] replyVideo precisa de url, video ou file.");
+
+                let payload = {};
+                if (Buffer.isBuffer(video)) {
+                    payload = { content: caption, files: [{ attachment: video, name: "video.mp4" }] };
+                } else if (typeof video === "string" && /^https?:\/\//i.test(video)) {
+                    payload = { content: `${caption}${caption ? "\n" : ""}${video}` };
+                } else {
+                    payload = { content: caption, files: [video] };
+                }
+
+                if (!repliedToInteraction && (interaction.deferred || interaction.replied)) {
+                    repliedToInteraction = true;
+                    await interaction.editReply(payload);
+                } else if (!repliedToInteraction) {
+                    repliedToInteraction = true;
+                    await interaction.reply(payload);
+                } else {
+                    await interaction.followUp(payload);
+                }
+            },
+            replyAudio: async function (data) {
+                const caption = data.caption || data.text || "";
+                const audio = data.url || data.audio || data.file;
+                if (!audio) throw new Error("❌[DISCORD] replyAudio precisa de url, audio ou file.");
+
+                let payload = {};
+                if (Buffer.isBuffer(audio)) {
+                    payload = { content: caption, files: [{ attachment: audio, name: "audio.mp3" }] };
+                } else if (typeof audio === "string" && /^https?:\/\//i.test(audio)) {
+                    payload = { content: `${caption}${caption ? "\n" : ""}${audio}` };
+                } else {
+                    payload = { content: caption, files: [audio] };
+                }
+
+                if (!repliedToInteraction && (interaction.deferred || interaction.replied)) {
+                    repliedToInteraction = true;
+                    await interaction.editReply(payload);
+                } else if (!repliedToInteraction) {
+                    repliedToInteraction = true;
+                    await interaction.reply(payload);
+                } else {
+                    await interaction.followUp(payload);
+                }
+            },
+            replyFile: async function (data) {
+                const caption = data.caption || data.text || "";
+                const file = data.url || data.file || data.document;
+                if (!file) throw new Error("❌[DISCORD] replyFile precisa de url, file ou document.");
+
+                let fileData = file;
+                if (Buffer.isBuffer(file)) {
+                    fileData = { attachment: file, name: data.filename || "file.bin" };
+                }
+                const payload = { content: caption, files: [fileData] };
+
+                if (!repliedToInteraction && (interaction.deferred || interaction.replied)) {
+                    repliedToInteraction = true;
+                    await interaction.editReply(payload);
+                } else if (!repliedToInteraction) {
+                    repliedToInteraction = true;
+                    await interaction.reply(payload);
+                } else {
+                    await interaction.followUp(payload);
+                }
+            }
+        };
+
+        await onMessage(message);
     });
 
     client.on("messageCreate", async (msg) => {
@@ -204,8 +440,8 @@ async function start(onMessage) {
         let quoted = null;
         if (msg.reference && msg.reference.messageId) {
             try {
-                const quotedMsg = msg.channel.messages.cache.get(msg.reference.messageId) || 
-                                  await msg.channel.messages.fetch(msg.reference.messageId);
+                const quotedMsg = msg.channel.messages.cache.get(msg.reference.messageId) ||
+                    await msg.channel.messages.fetch(msg.reference.messageId);
                 if (quotedMsg) {
                     quoted = {
                         messageId: String(quotedMsg.id),
@@ -223,6 +459,7 @@ async function start(onMessage) {
         }
 
         const mentionedJids = msg.mentions?.users ? msg.mentions.users.map(u => String(u.id)) : [];
+        const mentionedChannelIds = msg.mentions?.channels ? msg.mentions.channels.map(c => String(c.id)) : [];
 
         const message = {
 
@@ -285,6 +522,8 @@ async function start(onMessage) {
 
             mentionedJids,
 
+            mentionedChannelIds,
+
             sender: {
                 isAdmin,
                 canManageMessages
@@ -294,8 +533,8 @@ async function start(onMessage) {
 
             delete: async function (messageId) {
                 try {
-                    const targetMsg = msg.channel.messages.cache.get(messageId) || 
-                                      await msg.channel.messages.fetch(messageId);
+                    const targetMsg = msg.channel.messages.cache.get(messageId) ||
+                        await msg.channel.messages.fetch(messageId);
                     if (targetMsg) {
                         await targetMsg.delete();
                         return true;
@@ -323,10 +562,21 @@ async function start(onMessage) {
                 }
                 const attachment = msg.attachments.first();
                 if (!attachment) return null;
+                const ct = (attachment.contentType || '').toLowerCase();
+                const fn = (attachment.name || '').toLowerCase();
+                let type = 'document';
+                if (ct.startsWith('image/') || /\.(jpeg|jpg|png|webp|gif)$/i.test(fn)) {
+                    type = 'image';
+                } else if (ct.startsWith('video/') || /\.(mp4|mkv|avi|mov|webm)$/i.test(fn)) {
+                    type = 'video';
+                } else if (ct.startsWith('audio/') || /\.(mp3|ogg|opus|wav|m4a|aac|flac)$/i.test(fn)) {
+                    type = 'audio';
+                }
                 return {
                     url: attachment.url,
                     fileName: attachment.name,
                     mimeType: attachment.contentType,
+                    type,
                     getBuffer: async () => {
                         const { fetchBuffer } = require("../functions/api");
                         return await fetchBuffer(attachment.url);
@@ -571,13 +821,14 @@ async function sendImg(
     chatId,
     threadId,
     image,
-    caption
+    caption,
+    filename
 ) {
 
     const { Readable } = require('stream');
     // Helper to convert Buffer to a readable stream for Discord API
     function bufferToStream(buffer) {
-      return Readable.from(buffer);
+        return Readable.from(buffer);
     }
 
     if (!global.discordClient) {
@@ -586,7 +837,7 @@ async function sendImg(
         );
     }
 
-    const channel = await getDiscordChannel(chatId);
+    const channel = await getDiscordChannel(threadId || chatId);
 
     if (!channel) {
 
@@ -604,7 +855,7 @@ async function sendImg(
     if (Buffer.isBuffer(image)) {
         // Buffer from WhatsApp, send as file (use Buffer directly)
         msg = await channel.send({
-            files: [{ attachment: image, name: 'image.png' }],
+            files: [{ attachment: image, name: filename || 'image.png' }],
             content: caption || ""
         });
     } else if (isRemoteUrl) {
@@ -633,13 +884,14 @@ async function sendVideo(
     chatId,
     threadId,
     video,
-    caption
+    caption,
+    filename
 ) {
 
     const { Readable } = require('stream');
     // Helper to convert Buffer to a readable stream for Discord API
     function bufferToStream(buffer) {
-      return Readable.from(buffer);
+        return Readable.from(buffer);
     }
     if (!global.discordClient) {
         throw new Error(
@@ -647,7 +899,7 @@ async function sendVideo(
         );
     }
 
-    const channel = await getDiscordChannel(chatId);
+    const channel = await getDiscordChannel(threadId || chatId);
 
     if (!channel) {
 
@@ -665,7 +917,7 @@ async function sendVideo(
     if (Buffer.isBuffer(video)) {
         // Buffer from WhatsApp, send as file (assume mp4)
         msg = await channel.send({
-            files: [{ attachment: video, name: 'video.mp4' }],
+            files: [{ attachment: video, name: filename || 'video.mp4' }],
             content: caption || ""
         });
     } else if (isRemoteUrl) {
@@ -687,13 +939,14 @@ async function sendAudio(
     chatId,
     threadId,
     audio,
-    caption
+    caption,
+    filename
 ) {
 
     const { Readable } = require('stream');
     // Helper to convert Buffer to a readable stream for Discord API
     function bufferToStream(buffer) {
-      return Readable.from(buffer);
+        return Readable.from(buffer);
     }
 
     if (!global.discordClient) {
@@ -702,7 +955,7 @@ async function sendAudio(
         );
     }
 
-    const channel = await getDiscordChannel(chatId);
+    const channel = await getDiscordChannel(threadId || chatId);
 
     if (!channel) {
 
@@ -720,7 +973,7 @@ async function sendAudio(
     if (Buffer.isBuffer(audio)) {
         // Buffer from WhatsApp, send as file (assume mp3)
         msg = await channel.send({
-            files: [{ attachment: audio, name: 'audio.mp3' }],
+            files: [{ attachment: audio, name: filename || 'audio.mp3' }],
             content: caption || ""
         });
     } else if (isRemoteUrl) {
@@ -751,7 +1004,7 @@ async function sendFile(
         );
     }
 
-    const channel = await getDiscordChannel(chatId);
+    const channel = await getDiscordChannel(threadId || chatId);
 
     if (!channel) {
         throw new Error(
@@ -788,8 +1041,8 @@ async function checkBotPermission(chatId, action) {
         const perms = channel.permissionsFor(me);
         if (!perms) return false;
         if (action === "delete" || action === "warn") return perms.has(PermissionFlagsBits.ManageMessages);
-        if (action === "kick")    return perms.has(PermissionFlagsBits.KickMembers);
-        if (action === "ban")     return perms.has(PermissionFlagsBits.BanMembers);
+        if (action === "kick") return perms.has(PermissionFlagsBits.KickMembers);
+        if (action === "ban") return perms.has(PermissionFlagsBits.BanMembers);
         return false;
     } catch {
         return false;

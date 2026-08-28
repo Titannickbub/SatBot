@@ -102,37 +102,55 @@ function scheduleCard(s, prefix) {
     return lines.join("\n");
 }
 
-function helpText(prefix) {
-    return [
-        `*⏰ Sistema de Agendamentos — Ajuda*`,
-        ``,
-        `*Criação e gerenciamento:*`,
-        `  \`${prefix}agendar list\` — Lista agendamentos do chat`,
-        `  \`${prefix}agendar add <nome>\` — Cria novo agendamento (desativado)`,
-        `  \`${prefix}agendar del <id>\` — Remove agendamento`,
-        `  \`${prefix}agendar on <id>\` — Ativa`,
-        `  \`${prefix}agendar off <id>\` — Desativa`,
-        `  \`${prefix}agendar status <id>\` — Detalhes do agendamento`,
-        `  \`${prefix}agendar test <id>\` — Dispara imediatamente (teste)`,
-        ``,
-        `*Configuração de gatilho (\`set ... trigger\`):*`,
-        `  \`${prefix}agendar set <id> trigger interval 2h30m\` — A cada X tempo`,
-        `  \`${prefix}agendar set <id> trigger fixed 07:00 20:00\` — Em horário(s) fixo(s)`,
-        ``,
-        `*Configuração de repetição (\`set ... repeat\`):*`,
-        `  \`${prefix}agendar set <id> repeat once\` — Executa uma vez`,
-        `  \`${prefix}agendar set <id> repeat daily\` — Todo dia`,
-        `  \`${prefix}agendar set <id> repeat weekly seg qua sex\` — Dias da semana`,
-        `  \`${prefix}agendar set <id> repeat monthly 15\` — Dia 15 de cada mês`,
-        ``,
-        `*Mensagem e mídia:*`,
-        `  \`${prefix}agendar set <id> text <texto...>\` — Define o texto`,
-        `  \`${prefix}agendar set <id> mode text|media\` — Alterna modo`,
-        `  \`${prefix}agendar set <id> media <url>\` — Mídia via URL`,
-        `  \`${prefix}agendar set <id> media\` — Mídia via anexo ou reply`,
-        ``,
-        `*Dias da semana aceitos:* seg/mon, ter/tue, qua/wed, qui/thu, sex/fri, sab/sat, dom/sun ou 0-6`
-    ].join("\n");
+function helpText(message) {
+    const p = message.prefix;
+    const plat = message.platform;
+
+    let header = '*⏰ SISTEMA DE AGENDAMENTOS — AJUDA*';
+    if (plat === 'discord') header = '🎮 *AGENDAMENTOS (Discord) — AJUDA*';
+    else if (plat === 'whatsapp') header = '📱 *AGENDAMENTOS (WhatsApp) — AJUDA*';
+    else if (plat === 'telegram') header = '✈️ *AGENDAMENTOS (Telegram) — AJUDA*';
+
+    const lines = [];
+    lines.push(header);
+    lines.push('');
+    lines.push('*Criação e gerenciamento:*');
+    lines.push('  `' + p + 'agendar list` — Lista agendamentos do chat');
+    lines.push('  `' + p + 'agendar add <nome>` — Cria novo agendamento (desativado)');
+    lines.push('  `' + p + 'agendar del <id>` — Remove agendamento');
+    lines.push('  `' + p + 'agendar on <id>` — Ativa');
+    lines.push('  `' + p + 'agendar off <id>` — Desativa');
+    lines.push('  `' + p + 'agendar status <id>` — Detalhes do agendamento');
+    lines.push('  `' + p + 'agendar test <id>` — Dispara imediatamente (teste)');
+    lines.push('');
+    lines.push('*Configuração de gatilho (`set ... trigger`):*');
+    lines.push('  `' + p + 'agendar set <id> trigger interval 2h30m` — A cada X tempo');
+    lines.push('  `' + p + 'agendar set <id> trigger fixed 07:00 20:00` — Em horário(s) fixo(s)');
+    lines.push('');
+    lines.push('*Configuração de repetição (`set ... repeat`):*');
+    lines.push('  `' + p + 'agendar set <id> repeat once` — Executa uma vez');
+    lines.push('  `' + p + 'agendar set <id> repeat daily` — Todo dia');
+    lines.push('  `' + p + 'agendar set <id> repeat weekly seg qua sex` — Dias da semana');
+    lines.push('  `' + p + 'agendar set <id> repeat monthly 15` — Dia 15 de cada mês');
+    lines.push('');
+    lines.push('*Mensagem e mídia:*');
+    lines.push('  `' + p + 'agendar set <id> text <texto...>` — Define o texto');
+    lines.push('  `' + p + 'agendar set <id> mode text|media` — Alterna modo');
+    lines.push('  `' + p + 'agendar set <id> media <url>` — Mídia via URL');
+    lines.push('  `' + p + 'agendar set <id> media` — Mídia via anexo ou reply');
+    lines.push('');
+    lines.push('*Dias da semana aceitos:* seg/mon, ter/tue, qua/wed, qui/thu, sex/fri, sab/sat, dom/sun ou 0-6');
+
+    lines.push('');
+    lines.push('💡 EXEMPLOS:');
+    lines.push('  ' + p + 'agendar list');
+    lines.push('  ' + p + 'agendar add Bom dia');
+    lines.push('  ' + p + 'agendar set abc1 trigger fixed 07:00');
+    lines.push('  ' + p + 'agendar set abc1 repeat daily');
+    lines.push('  ' + p + 'agendar set abc1 text Bom dia! ☀️');
+    lines.push('  ' + p + 'agendar on abc1');
+
+    return lines.join('\n');
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -352,7 +370,7 @@ async function handleSet(message, args) {
 
     // ── text ──────────────────────────────────────────────────
     if (field === "text" || field === "texto") {
-        const text = rest.join(" ").trim();
+        const text = (message.getArgText ? message.getArgText(3) : rest.join(" ")).trim();
         if (!text) return message.reply({ text: `❌ Informe o texto da mensagem.` });
         editSchedule(id, { message: { text } });
         return message.reply({ text: `✅ Texto atualizado:\n"${text}"` });
@@ -399,7 +417,13 @@ async function handleSet(message, args) {
                     targetMedia.mimeType || "image/png"
                 );
 
-                editSchedule(id, { message: { media: { url: uploaded.url, type: uploaded.type } } });
+                const updateObj = { message: { media: { url: uploaded.url, type: uploaded.type } } };
+                const captionText = (message.getArgText ? message.getArgText(3) : "").trim();
+                if (captionText && !/^https?:\/\//i.test(captionText)) {
+                    updateObj.message.text = captionText;
+                }
+
+                editSchedule(id, updateObj);
 
                 return message.reply({
                     text: [
@@ -474,7 +498,7 @@ Os dados são salvos em settings/schedules.json, independente das configuraçõe
         const sub  = (args[0] || "").toLowerCase();
 
         if (!sub || sub === "help" || sub === "ajuda") {
-            return message.reply({ text: helpText(message.prefix) });
+            return message.reply({ text: helpText(message) });
         }
 
         if (sub === "list" || sub === "lista") return handleList(message);

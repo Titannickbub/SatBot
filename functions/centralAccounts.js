@@ -139,6 +139,20 @@ class CentralAccountsStore {
 
   async cleanupMergeCodes() { const now = Date.now(); let removed = 0; for (const [code, entry] of Object.entries(this.data.mergeCodes)) { if (new Date(entry.expiresAt).getTime() < now) { delete this.data.mergeCodes[code]; removed++; } } if (removed) this._markDirty(); return removed; }
 
+  getTelegramStickerPack(centralId) {
+    const central = this.getCentralById(centralId);
+    return central?.telegramStickerPack || null;
+  }
+
+  async setTelegramStickerPack(centralId, packName) {
+    const central = this.getCentralById(centralId);
+    if (!central) throw new Error('central not found');
+    central.telegramStickerPack = packName || null;
+    central.lastActivityAt = this._nowISO();
+    this._markDirty();
+    return central;
+  }
+
   async stop() { this.stopAutoSave(); this.stopCleanup(); await this.saveNow(); }
 }
 

@@ -376,6 +376,7 @@ Esses itens devem ser ignorados e gerados em cada ambiente individual.
 
 Acompanhe as mudanças do projeto em:
 
+- [changelog/1.1/README.md](changelog/1.1/README.md)
 - [changelog/1.0/README.md](changelog/1.0/README.md)
 
 ## Site do desenvolvedor

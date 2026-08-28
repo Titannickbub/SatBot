@@ -11,7 +11,7 @@ module.exports = {
     ],
 
     async execute(message) {
-        let prompt = message.args.join(" ");
+        let prompt = (message.getArgText ? message.getArgText(0) : message.args.join(" ")).trim();
 
         if (!prompt && message.quoted?.text) {
             prompt = `Explique ou responda sobre esta mensagem: "${message.quoted.text}"`;
@@ -26,20 +26,30 @@ module.exports = {
         }
 
         const aiHelper = message.functions.aiHelper || require("../../functions/aiHelper");
+        const owners = message.functions.owners;
+        const isOwner = owners && typeof owners.isOwner === "function" ? owners.isOwner(message) : false;
+
+        const thinkingMsg = message.platform === "discord" ? "🧠 **Satella pensando...**" : "🧠 *Satella pensando...*";
 
         await message.reply({
-            text: "🧠 *Satella pensando...*"
+            text: thinkingMsg
         });
 
         try {
-            const responseText = await aiHelper.chatAI(prompt);
+            const responseText = await aiHelper.chatAI(prompt, {
+                platform: message.platform,
+                isOwner: isOwner
+            });
             return await message.reply({
                 text: responseText
             });
         } catch (err) {
             console.error("❌[IA] Erro ao processar resposta:", err);
+            const errText = message.platform === "discord"
+                ? `❌ **Erro ao obter resposta da IA**: ${err.message}`
+                : `❌ Erro ao obter resposta da IA: ${err.message}`;
             return await message.reply({
-                text: `❌ Erro ao obter resposta da IA: ${err.message}`
+                text: errText
             });
         }
     }

@@ -38,7 +38,7 @@ module.exports = {
 
         } catch (error) {
             console.error("[COMANDO CCCMG]", error.message);
-            await message.reply({ text: "❌ Não foi possível buscar a cotação do CCCMG agora. Tente novamente mais tarde." });
+            await message.reply({ text: "⚠️ O serviço de cotações do CCCMG está indisponível ou instável no momento. Tente novamente em alguns minutos." });
         }
     }
 };

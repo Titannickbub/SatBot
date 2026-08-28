@@ -56,8 +56,8 @@ module.exports = {
             await message.reply({ text });
             await message.react("✅");
         } catch (error) {
-            console.error("[COMANDO CAFE]", error.message);
-            await message.reply({ text: "❌ Não foi possível buscar a cotação do café agora. Tente mais tarde." });
+            console.error("[COMANDO COOCAFE]", error.message);
+            await message.reply({ text: "⚠️ O serviço de cotações da Coocafé está indisponível ou instável no momento. Tente novamente em alguns minutos." });
         }
     }
 };

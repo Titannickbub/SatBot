@@ -11,7 +11,7 @@ module.exports = {
     ],
 
     async execute(message) {
-        const prompt = message.args.join(" ");
+        const prompt = (message.getArgText ? message.getArgText(0) : message.args.join(" ")).trim();
 
         if (!prompt) {
             return await message.reply({

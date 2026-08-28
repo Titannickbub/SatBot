@@ -81,13 +81,70 @@ async function start(onMessage) {
         let quoted = null;
         if (ctx.message.reply_to_message) {
             const replyTo = ctx.message.reply_to_message;
+
+            let quotedMedia = null;
+            let qFileId = null;
+            let qMimeType = null;
+            let qFileName = null;
+            let qType = null;
+
+            if (replyTo.photo) {
+                const photo = replyTo.photo[replyTo.photo.length - 1];
+                qFileId = photo.file_id;
+                qMimeType = "image/jpeg";
+                qType = "image";
+            } else if (replyTo.sticker) {
+                qFileId = replyTo.sticker.file_id;
+                qMimeType = "image/webp";
+                qType = "sticker";
+            } else if (replyTo.video) {
+                qFileId = replyTo.video.file_id;
+                qMimeType = replyTo.video.mime_type || "video/mp4";
+                qFileName = replyTo.video.file_name;
+                qType = "video";
+            } else if (replyTo.animation) {
+                qFileId = replyTo.animation.file_id;
+                qMimeType = replyTo.animation.mime_type || "video/mp4";
+                qFileName = replyTo.animation.file_name;
+                qType = "video";
+            } else if (replyTo.audio) {
+                qFileId = replyTo.audio.file_id;
+                qMimeType = replyTo.audio.mime_type || "audio/mpeg";
+                qFileName = replyTo.audio.file_name;
+                qType = "audio";
+            } else if (replyTo.voice) {
+                qFileId = replyTo.voice.file_id;
+                qMimeType = replyTo.voice.mime_type || "audio/ogg";
+                qType = "audio";
+            } else if (replyTo.document) {
+                qFileId = replyTo.document.file_id;
+                qMimeType = replyTo.document.mime_type || "application/octet-stream";
+                qFileName = replyTo.document.file_name;
+                qType = "document";
+            }
+
+            if (qFileId) {
+                quotedMedia = {
+                    fileId: qFileId,
+                    mimeType: qMimeType,
+                    fileName: qFileName,
+                    type: qType,
+                    getBuffer: async () => {
+                        const { fetchBuffer } = require("../functions/api");
+                        const fileLink = await bot.telegram.getFileLink(qFileId);
+                        return await fetchBuffer(fileLink.href);
+                    }
+                };
+            }
+
             quoted = {
                 messageId: String(replyTo.message_id),
                 userId: replyTo.from ? String(replyTo.from.id) : null,
                 username: replyTo.from?.username || null,
                 fromMe: replyTo.from ? String(replyTo.from.id) === String(ctx.botInfo.id) : false,
                 isBot: replyTo.from ? !!replyTo.from.is_bot : false,
-                text: replyTo.text || replyTo.caption || ""
+                text: replyTo.text || replyTo.caption || "",
+                media: quotedMedia
             };
         }
 
@@ -148,7 +205,7 @@ async function start(onMessage) {
                         const config = require("../functions/config").getConfig();
                         const prefix = config.prefix || "!";
                         const rest = trimmedText.substring(firstWord.length).trim();
-                        return `${prefix}menu${rest ? " " + rest : ""}`;
+                        return `${prefix}start${rest ? " " + rest : ""}`;
                     }
                 }
                 return rawText;
@@ -217,6 +274,11 @@ async function start(onMessage) {
                     mimeType = ctx.message.video.mime_type;
                     fileName = ctx.message.video.file_name;
                     type = "video";
+                } else if (ctx.message.animation) {
+                    fileId = ctx.message.animation.file_id;
+                    mimeType = ctx.message.animation.mime_type || "video/mp4";
+                    fileName = ctx.message.animation.file_name;
+                    type = "video";
                 } else if (ctx.message.audio) {
                     fileId = ctx.message.audio.file_id;
                     mimeType = ctx.message.audio.mime_type;
@@ -278,6 +340,8 @@ async function start(onMessage) {
                     const emojiMap = {
                         "🔎": "🤔", // Lupa vira o emoji pensando
                         "📥": "⚡", // Download vira o raio
+                        "⏳": "⚡", // Ampulheta vira o raio
+                        "⌛": "⚡", // Ampulheta vira o raio
                         "✅": "👍", // Check vira joinha
                         "❌": "👎"  // X vira desjoinha
                     };
@@ -434,6 +498,37 @@ async function start(onMessage) {
                 }
 
                 await ctx.replyWithDocument(input, options);
+            },
+
+            replySticker: async function (data) {
+                const options = {};
+
+                if (this.target.threadId) {
+                    options.message_thread_id = Number(this.target.threadId);
+                }
+
+                let input = null;
+
+                if (typeof data === "string") {
+                    input = data;
+                } else if (Buffer.isBuffer(data)) {
+                    input = { source: data };
+                } else if (typeof data === "object" && data !== null) {
+                    const raw = data.sticker || data.file || data.buffer || data.url || data.source;
+                    if (typeof raw === "string") {
+                        input = raw;
+                    } else if (Buffer.isBuffer(raw)) {
+                        input = { source: raw };
+                    }
+                }
+
+                if (!input) {
+                    throw new Error(
+                        "❌[TELEGRAM] replySticker precisa de um buffer WebP, string file_id/URL ou objeto `sticker`/`file`/`buffer`."
+                    );
+                }
+
+                await ctx.replyWithSticker(input, options);
             }
         };
         await onMessage(message);

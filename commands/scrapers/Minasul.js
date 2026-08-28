@@ -41,7 +41,7 @@ module.exports = {
             await message.react("✅");
         } catch (error) {
             console.error("[COMANDO MINASUL]", error.message);
-            await message.reply({ text: "❌ Não foi possível buscar a cotação da Minasul agora. Tente mais tarde." });
+            await message.reply({ text: "⚠️ O serviço de cotações da Minasul está indisponível ou instável no momento. Tente novamente em alguns minutos." });
         }
     }
 };

@@ -233,6 +233,18 @@ Subcomandos:
             return await onlychatsCmd.execute(message);
         }
 
+        if (
+            action === "sticker" ||
+            action === "stickers" ||
+            action === "figurinha" ||
+            action === "figurinhas"
+        ) {
+            return await alterarStickerConfig(
+                message,
+                args.slice(1)
+            );
+        }
+
         return await ajuda(
             message
         );
@@ -264,6 +276,12 @@ ${p}config setuploads discord 1532068325771972798
 
 ${p}config ignoreinitial 30s
 ${p}config ignoreinitial 5m
+
+🎨 Figurinhas (Stickers):
+${p}config sticker
+${p}config sticker pack <nome do pacote>
+${p}config sticker autor <nome do autor>
+${p}config sticker <pacote> | <autor>
 
 🔒 Anti-PV:
 ${p}config antipv status
@@ -348,13 +366,31 @@ Plataformas
     }
 
     const uploads = config.uploads || {};
-    text +=
 
-        `\nUploads\n`;
-    text +=
-        `  • Discord: ${uploads.discordChannelId || "não definido"}\n`;
-    text +=
-        `  • Telegram: ${uploads.telegramChatId || "não definido"}\n`;
+    // Determina o provedor ativo com base na configuração e disponibilidade
+    let activeProvider = "💾 Local (disco)";
+    let activeProviderHint = "Configure com !config setuploads para usar nuvem.";
+    if (uploads.discordChannelId && global.discordClient) {
+        activeProvider = `☁️ Discord CDN (canal ${uploads.discordChannelId})`;
+        activeProviderHint = "Todas as plataformas usarão este canal para uploads.";
+    } else if (uploads.telegramChatId) {
+        activeProvider = `☁️ Telegram (chat ${uploads.telegramChatId})`;
+        activeProviderHint = "Todas as plataformas usarão este chat para uploads.";
+    } else if (uploads.discordChannelId) {
+        activeProvider = `⚠️ Discord configurado, mas offline (canal ${uploads.discordChannelId})`;
+        activeProviderHint = "Discord está offline — usando disco local como fallback.";
+    }
+
+    text += `\nUploads de Mídia\n`;
+    text += `  • Provedor ativo: ${activeProvider}\n`;
+    text += `  • Discord: ${uploads.discordChannelId || "não configurado"}\n`;
+    text += `  • Telegram: ${uploads.telegramChatId || "não configurado"}\n`;
+    text += `  ℹ️ ${activeProviderHint}\n`;
+
+    const stickerCfg = typeof configFn.getStickerConfig === "function" ? configFn.getStickerConfig() : { packName: "Sat Bot", authorName: "Satela" };
+    text += `\n🎨 Figurinhas (Stickers)\n`;
+    text += `  • Pacote (Pack): ${stickerCfg.packName}\n`;
+    text += `  • Autor (Publisher): ${stickerCfg.authorName}\n`;
 
     const antipv = message.functions.config.getAntiPVConfig ? message.functions.config.getAntiPVConfig() : {};
     text += `\n🔒 Anti-PV\n`;
@@ -371,6 +407,75 @@ Plataformas
         text
     });
 
+}
+
+async function alterarStickerConfig(message, subArgs) {
+    const configFn = message.functions.config;
+    if (!configFn || typeof configFn.getStickerConfig !== "function") {
+        return await message.reply({ text: "❌ Módulo de configuração não disponível." });
+    }
+
+    if (!subArgs || !subArgs.length) {
+        const cfg = configFn.getStickerConfig();
+        return await message.reply({
+            text: `🎨 *Configuração de Figurinhas (Stickers)*\n\n` +
+                  `📦 *Nome do Pacote (Pack):* ${cfg.packName}\n` +
+                  `👤 *Autor (Publisher):* ${cfg.authorName}\n\n` +
+                  `⚙️ *Como alterar:*\n` +
+                  `• \`${message.prefix}config sticker pack <nome>\`\n` +
+                  `• \`${message.prefix}config sticker autor <nome>\`\n` +
+                  `• \`${message.prefix}config sticker <pacote> | <autor>\`\n` +
+                  `• \`${message.prefix}config sticker reset\` (restaura padrão)`
+        });
+    }
+
+    const sub = subArgs[0].toLowerCase();
+    const restText = subArgs.slice(1).join(" ").trim();
+
+    if (sub === "pack" || sub === "pacote") {
+        if (!restText) {
+            return await message.reply({ text: `❌ Informe o nome do pacote.\nExemplo: \`${message.prefix}config sticker pack Meus Stickers\`` });
+        }
+        const updated = configFn.setStickerPack(restText);
+        return await message.reply({ text: `✅ Nome do pacote de figurinhas atualizado para: *${updated.packName}*` });
+    }
+
+    if (sub === "author" || sub === "autor" || sub === "publisher") {
+        if (!restText) {
+            return await message.reply({ text: `❌ Informe o nome do autor.\nExemplo: \`${message.prefix}config sticker autor Meu Nome\`` });
+        }
+        const updated = configFn.setStickerAuthor(restText);
+        return await message.reply({ text: `✅ Autor das figurinhas atualizado para: *${updated.authorName}*` });
+    }
+
+    if (sub === "reset" || sub === "padrao") {
+        const botName = typeof configFn.getBotName === "function" ? configFn.getBotName() : "Sat Bot";
+        const updated = configFn.setStickerConfig(botName, "Satela");
+        return await message.reply({ text: `✅ Configuração de figurinhas restaurada:\n📦 Pacote: *${updated.packName}*\n👤 Autor: *${updated.authorName}*` });
+    }
+
+    const fullText = subArgs.join(" ").trim();
+    if (fullText.includes("|") || fullText.includes(",")) {
+        const separator = fullText.includes("|") ? "|" : ",";
+        const parts = fullText.split(separator).map(s => s.trim());
+        const packName = parts[0];
+        const authorName = parts.slice(1).join(separator).trim();
+
+        if (packName && authorName) {
+            const updated = configFn.setStickerConfig(packName, authorName);
+            return await message.reply({
+                text: `✅ Configuração de figurinhas atualizada!\n📦 Pacote: *${updated.packName}*\n👤 Autor: *${updated.authorName}*`
+            });
+        }
+    }
+
+    return await message.reply({
+        text: `❌ Subcomando inválido.\n\n` +
+              `Uso:\n` +
+              `• \`${message.prefix}config sticker pack <nome>\`\n` +
+              `• \`${message.prefix}config sticker autor <nome>\`\n` +
+              `• \`${message.prefix}config sticker <pacote> | <autor>\``
+    });
 }
 
 async function alterarIgnoreInitial(message, timeStr) {
@@ -445,7 +550,7 @@ async function gerenciarAntiPV(message, subArgs) {
     }
 
     if (subAction === "msg" || subAction === "mensagem") {
-        const textMsg = subArgs.slice(1).join(" ");
+        const textMsg = (message.getArgText ? message.getArgText(2) : subArgs.slice(1).join(" ")).trim();
         if (!textMsg) {
             return await message.reply({ text: "❌ Informe o texto da mensagem personalizada do Anti-PV." });
         }

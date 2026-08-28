@@ -131,7 +131,7 @@ Funções disponíveis:
         }
 
         if (subCmd === "message") {
-            const newMsg = args.slice(2).join(" ").trim();
+            const newMsg = (message.getArgText ? message.getArgText(2) : args.slice(2).join(" ")).trim();
             if (!newMsg) {
                 return message.reply({ text: "❌ Informe a mensagem. Ex: !antipalavras chat message Palavras ofensivas não são permitidas!" });
             }
@@ -231,29 +231,63 @@ function _help(message) {
     const lvls = getAvailableLevels(message);
     const levelList = lvls.map(l => `*${l}* (${getLevelLabel(plat, l)})`).join(" | ");
 
-    return (
-`⚠️ *Antipalavras — Ajuda*
+    const actionsList = Object.entries(ACTIONS).map(([k, v]) => `• \`${k}\` — ${v}`).join("\n  ");
 
-Níveis disponíveis aqui:
-  ${levelList}
+    let header = '⚠️ *ANTIPALAVRAS — AJUDA*';
+    if (plat === 'discord') header = '🎮 *ANTIPALAVRAS (Discord) — AJUDA*';
+    else if (plat === 'whatsapp') header = '📱 *ANTIPALAVRAS (WhatsApp) — AJUDA*';
+    else if (plat === 'telegram') header = '✈️ *ANTIPALAVRAS (Telegram) — AJUDA*';
 
-Comandos:
-  ${p}antipalavras status
-  ${p}antipalavras <nivel> on|off
-  ${p}antipalavras <nivel> action delete|warn|kick|ban
-  ${p}antipalavras <nivel> message <texto...>
-  ${p}antipalavras <nivel> add <palavra1, palavra2, frase>
-  ${p}antipalavras <nivel> remove <palavra1, palavra2, frase>
-  ${p}antipalavras <nivel> list
-  ${p}antipalavras <nivel> ignoreparent on|off
-  ${p}antipalavras <nivel> userwhitelist add|remove|list <ID>
+    const lines = [];
+    lines.push(header);
+    lines.push('');
+    lines.push('Gerencie a filtragem automática de palavras e frases proibidas por nível.');
+    lines.push('');
+    lines.push('📋 Níveis disponíveis:');
+    lines.push('  ' + levelList);
+    lines.push('');
+    lines.push('⚙️ COMANDOS DISPONÍVEIS:');
+    lines.push('  `' + p + 'antipalavras status`');
+    lines.push('    ↳ Exibe as configurações e estado por nível.');
+    lines.push('');
+    lines.push('  `' + p + 'antipalavras <nivel> on|off`');
+    lines.push('    ↳ Ativa ou desativa o antipalavras no nível especificado.');
+    lines.push('');
+    lines.push('  `' + p + 'antipalavras <nivel> action <delete|warn|kick|ban>`');
+    lines.push('    ↳ Define a punição aplicada quando uma palavra proibida for detectada.');
+    lines.push('');
+    lines.push('  `' + p + 'antipalavras <nivel> message <texto...>`');
+    lines.push('    ↳ Define uma mensagem personalizada enviada ao punir.');
+    lines.push('');
+    lines.push('  `' + p + 'antipalavras <nivel> add <palavra, outra, frase>`');
+    lines.push('    ↳ Adiciona palavras ou frases à lista proibida (separadas por vírgula).');
+    lines.push('');
+    lines.push('  `' + p + 'antipalavras <nivel> remove <palavra, outra>`');
+    lines.push('    ↳ Remove itens da lista proibida.');
+    lines.push('');
+    lines.push('  `' + p + 'antipalavras <nivel> list`');
+    lines.push('    ↳ Lista as palavras e frases proibidas neste nível.');
+    lines.push('');
+    lines.push('  `' + p + 'antipalavras <nivel> ignoreparent on|off`');
+    lines.push('    ↳ Define se o nível atual ignora regras de níveis superiores.');
+    lines.push('');
+    lines.push('  `' + p + 'antipalavras <nivel> userwhitelist add|remove|list <ID>`');
+    lines.push('    ↳ Gerencia usuários isentos do filtro.');
+    lines.push('');
+    lines.push('🛡️ AÇÕES DISPONÍVEIS:');
+    lines.push('  ' + actionsList);
+    lines.push('');
+    lines.push('💡 OBSERVAÇÕES:');
+    lines.push('  • Use `'+p+'antipalavras <nivel> action delete` para apenas remover mensagens sem notificar.');
+    lines.push('  • As listas são específicas por nível e podem herdar regras de níveis superiores, a menos que ignoreparent esteja ativado.');
+    lines.push('');
+    lines.push('📌 EXEMPLOS:');
+    lines.push('  ' + p + 'antipalavras server on');
+    lines.push('  ' + p + 'antipalavras chat add palavra, xingamento, frase ruim');
+    lines.push('  ' + p + 'antipalavras chat action warn');
+    lines.push('  ' + p + 'antipalavras chat userwhitelist add 5511999990000');
 
-Exemplos:
-  ${p}antipalavras server on
-  ${p}antipalavras chat add palavra, outra, frase proibida
-  ${p}antipalavras chat action warn
-  ${p}antipalavras chat userwhitelist add 5511999990000`
-    );
+    return lines.join('\n');
 }
 
 async function _status(message, adapter) {

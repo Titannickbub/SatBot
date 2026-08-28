@@ -50,7 +50,13 @@ Subcomandos:
         const prefix = message.prefix || "!";
 
         if (!args.length) {
-            return await showStatus(message);
+            // Quando nenhum subcomando for informado, exibir a ajuda padronizada em vez do status.
+            return await message.reply({ text: _help(message) });
+        }
+
+        const first = (args[0] || "").toLowerCase();
+        if (first === "help" || first === "ajuda" || first === "?") {
+            return await message.reply({ text: _help(message) });
         }
 
         const action = args[0].toLowerCase();
@@ -83,7 +89,7 @@ Subcomandos:
         }
 
         if (action === "msg" || action === "mensagem" || action === "message") {
-            const textMsg = args.slice(1).join(" ");
+            const textMsg = (message.getArgText ? message.getArgText(1) : args.slice(1).join(" ")).trim();
             if (!textMsg) {
                 return await message.reply({
                     text: `❌ Informe o texto da mensagem personalizada do Anti-PV.\nExemplo: ${prefix}antipv msg ⚠️ Atendimento indisponível no PV.`
@@ -225,4 +231,43 @@ async function showStatus(message) {
     txt += `• Comandos liberados: ${antipv.commandWhitelist?.length ? antipv.commandWhitelist.join(", ") : "Nenhum"}\n`;
     txt += `• Usuários liberados: ${antipv.userWhitelist?.length ? antipv.userWhitelist.join(", ") : "Nenhum"}\n`;
     return await message.reply({ text: txt });
+}
+
+function _help(message) {
+    const p = message.prefix || "!";
+    const plat = message.platform;
+
+    let header = '*🛡️ ANTI-PV — AJUDA*';
+    if (plat === 'discord') header = '🎮 *ANTI-PV (Discord) — AJUDA*';
+    else if (plat === 'whatsapp') header = '📱 *ANTI-PV (WhatsApp) — AJUDA*';
+    else if (plat === 'telegram') header = '✈️ *ANTI-PV (Telegram) — AJUDA*';
+
+    const lines = [];
+    lines.push(header);
+    lines.push('');
+    lines.push('Gerencia o bloqueio de mensagens em mensagens privadas (PV).');
+    lines.push('');
+    lines.push('⚙️ COMANDOS:');
+    lines.push('  `' + p + 'antipv status|list`');
+    lines.push('    ↳ Mostra status atual do Anti-PV.');
+    lines.push('  `' + p + 'antipv on`');
+    lines.push('  `' + p + 'antipv off`');
+    lines.push('  `' + p + 'antipv mode <ignore|reply>`');
+    lines.push('  `' + p + 'antipv msg <texto>`');
+    lines.push('  `' + p + 'antipv media` (envie junto a mídia ou responda a uma mídia)');
+    lines.push('  `' + p + 'antipv media none` (remove a mídia salva)');
+    lines.push('  `' + p + 'antipv allowcmd <add|remove|list> <comando>`');
+    lines.push('  `' + p + 'antipv allowuser <add|remove|list> <userId>` (ou responda ao usuário)');
+    lines.push('');
+    lines.push('📌 VARIÁVEIS / DICAS:');
+    lines.push('  - Ao usar `media`, responda a uma mídia ou passe uma URL pública.');
+    lines.push('  - Para liberar um usuário responda a mensagem do usuário com: `' + p + 'antipv allowuser add`');
+    lines.push('');
+    lines.push('📌 EXEMPLOS:');
+    lines.push('  ' + p + 'antipv mode reply');
+    lines.push('  ' + p + 'antipv msg ⚠️ Atendimento indisponível no PV.');
+    lines.push('  ' + p + 'antipv allowcmd add ping');
+    lines.push('');
+    lines.push('Use `' + p + 'antipv help` para ver esta ajuda.');
+    return lines.join('\n');
 }

@@ -9,8 +9,8 @@ const STANDALONE_EMOJI_REGEX = /^\s*<(a)?:([a-zA-Z0-9_]+):(\d+)>\s*$/i;
 
 // Regex para capturar emojis do Vencord / FakeNitro (markdown links para CDN do Discord)
 // Exemplo: [NaoSmile](https://cdn.discordapp.com/emojis/845390820705697843.webp?size=48&animated=true&name=NaoSmile&lossless=true)
-const VENCORD_EMOJI_REGEX = /\[([a-zA-Z0-9_]+)\]\((https?:\/\/(?:cdn|media)\.discordapp\.(?:com|net)\/emojis\/(\d+)\.[a-zA-Z0-9]+(?:\?[^\s)]*)?)\)/gi;
-const STANDALONE_VENCORD_REGEX = /^\s*\[([a-zA-Z0-9_]+)\]\((https?:\/\/(?:cdn|media)\.discordapp\.(?:com|net)\/emojis\/(\d+)\.[a-zA-Z0-9]+(?:\?[^\s)]*)?)\)\s*$/i;
+const VENCORD_EMOJI_REGEX = /\[([^\]]+)\]\((https?:\/\/(?:cdn|media)\.discord(?:app)?\.(?:com|net)\/emojis\/(\d+)(?:\.[a-zA-Z0-9]+)?(?:\?[^\s)]*)?)\)/gi;
+const STANDALONE_VENCORD_REGEX = /^\s*\[([^\]]+)\]\((https?:\/\/(?:cdn|media)\.discord(?:app)?\.(?:com|net)\/emojis\/(\d+)(?:\.[a-zA-Z0-9]+)?(?:\?[^\s)]*)?)\)\s*$/i;
 
 /**
  * Carrega o dicionário de emojis do arquivo settings/discord_emojis.json

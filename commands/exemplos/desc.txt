@@ -1,1 +1,0 @@
-Comandos de exemplo e referência que mostram como usar a Satella em diferentes casos.

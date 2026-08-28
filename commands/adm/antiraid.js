@@ -53,7 +53,12 @@ module.exports = {
         const resolved = resolveAntiRaidConfig(message);
         const currentCfg = resolved?.config || { enabled: false, action: "mute", maxMessagesPerWindow: 8, windowSeconds: 12 };
 
-        if (!args.length || args[0].toLowerCase() === "status") {
+        const first = (args[0] || "").toLowerCase();
+        if (!args.length || first === "help" || first === "ajuda") {
+            return message.reply({ text: _help(message) });
+        }
+
+        if (first === "status") {
             const lines = [
                 "🛡️ *Status do Anti-Raid*",
                 "",
@@ -169,3 +174,50 @@ module.exports = {
         return message.reply({ text: `❌ Comando inválido. Use: ${message.prefix}antiraid` });
     }
 };
+
+// ─────────────────────────────────────────────────────────────
+// HELP: versão estilo Welcome
+// ─────────────────────────────────────────────────────────────
+function _help(message) {
+    const p = message.prefix;
+    const plat = message.platform;
+
+    let header = '🛡️ *ANTI-RAID — AJUDA*';
+    if (plat === 'discord') header = '🎮 *ANTI-RAID (Discord) — AJUDA*';
+    else if (plat === 'whatsapp') header = '📱 *ANTI-RAID (WhatsApp) — AJUDA*';
+    else if (plat === 'telegram') header = '✈️ *ANTI-RAID (Telegram) — AJUDA*';
+
+    const actions = ['mute', 'kick', 'ban'].map(a => `• \`${a}\``).join(' — ');
+
+    const lines = [];
+    lines.push(header);
+    lines.push('');
+    lines.push('Protege seu grupo/servidor contra ataques automatizados e comportamento malicioso (flood, spam, links, menções e webhooks suspeitos).');
+    lines.push('');
+    lines.push('📋 COMANDOS DISPONÍVEIS:');
+    lines.push('  `' + p + 'antiraid status`');
+    lines.push('    ↳ Exibe o estado atual e limites configurados.');
+    lines.push('');
+    lines.push('  `' + p + 'antiraid on` | `' + p + 'antiraid off`');
+    lines.push('    ↳ Ativa ou desativa a proteção no nível atual.');
+    lines.push('');
+    lines.push('  `' + p + 'antiraid action <mute|kick|ban>`');
+    lines.push('    ↳ Define a ação tomada contra contas que violam limites. Ações disponíveis: ' + actions + '.');
+    lines.push('');
+    lines.push('  `' + p + 'antiraid flood <limite> <segundos>`');
+    lines.push('    ↳ Ajusta o limite de mensagens (ex: `'+p+'antiraid flood 8 12` = 8 mensagens em 12s).');
+    lines.push('');
+    lines.push('  Também é possível passar `on|off|status|action|flood` diretamente como argumentos.');
+    lines.push('');
+    lines.push('⚙️ DICAS E REGRAS:');
+    lines.push('  • No Discord, aplique por servidor para proteger todos os canais (server scope).');
+    lines.push('  • No WhatsApp, o anti-raid funciona em grupos (chat scope).');
+    lines.push('  • Ajuste limites com cuidado para não afetar participantes legítimos.');
+    lines.push('');
+    lines.push('📌 EXEMPLOS:');
+    lines.push('  ' + p + 'antiraid on');
+    lines.push('  ' + p + 'antiraid action mute');
+    lines.push('  ' + p + 'antiraid flood 10 15');
+
+    return lines.join('\n');
+}

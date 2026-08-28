@@ -3,6 +3,7 @@ const { isOwner } = require("../../functions/owners");
 
 module.exports = {
     name: "ban",
+    aliases: ["kill"],
     category: "adm",
     description: "Bane um usuário do grupo ou servidor. Use respondendo à mensagem do usuário ou digitando o ID.",
     usage: "{prefix}ban <@usuário|id>",
