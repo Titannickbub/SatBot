@@ -47,6 +47,19 @@ process.on("SIGTERM", () => {
 
 process.env.TZ = "America/Sao_Paulo";
 
-const core = require("./core");
+const { checkAndUpdate } = require("./functions/autoUpdate");
 
-core.start();
+checkAndUpdate()
+  .then((updated) => {
+    if (updated) {
+      process.exit(0);
+      return;
+    }
+    const core = require("./core");
+    return core.start();
+  })
+  .catch((error) => {
+    console.error("[AUTO-UPDATE] Falha inesperada:", error);
+    const core = require("./core");
+    return core.start();
+  });

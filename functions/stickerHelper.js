@@ -16,7 +16,16 @@ async function createStickerBuffer(inputBuffer, options = {}) {
 
     const mimeType = String(options.mimeType || "").toLowerCase();
     const mediaType = String(options.type || "").toLowerCase();
-    const isAnimated = mediaType === "video" || mediaType === "gif" || mimeType.includes("gif") || mimeType.includes("webp") || Boolean(options.animated);
+    const inputMetadata = await sharp(inputBuffer, {
+        animated: true,
+        limitInputPixels: false,
+        failOn: "none"
+    }).metadata();
+    const isAnimated = mediaType === "video" ||
+        mediaType === "gif" ||
+        mimeType.includes("gif") ||
+        Boolean(options.animated) ||
+        (Number(inputMetadata.pages) || 1) > 1;
 
     const mode = options.mode || "contain"; // "contain", "fill", "cover"
 
@@ -34,9 +43,14 @@ async function createStickerBuffer(inputBuffer, options = {}) {
 
     if (isAnimated) {
         try {
-            webpResult = await sharp(inputBuffer, { animated: true })
+            webpResult = await sharp(inputBuffer, {
+                animated: true,
+                limitInputPixels: false,
+                failOn: "none"
+            })
+                .rotate()
                 .resize(512, 512, resizeOptions)
-                .webp({ effort: 4, loop: 0 })
+                .webp({ effort: 4, loop: 0, quality: 75 })
                 .toBuffer();
         } catch (animErr) {
             console.warn("[STICKER_HELPER] Falha na conversão animada, tentando estática:", animErr.message || animErr);
@@ -45,16 +59,57 @@ async function createStickerBuffer(inputBuffer, options = {}) {
 
     if (!webpResult) {
         // Conversão estática padrão (PNG/JPG/WebP/etc)
-        webpResult = await sharp(inputBuffer)
-            .resize(512, 512, resizeOptions)
+        const normalizedInput = await sharp(inputBuffer, {
+            limitInputPixels: false,
+            failOn: "none"
+        }).rotate().toBuffer();
+        const normalizedMetadata = await sharp(normalizedInput, { failOn: "none" }).metadata();
+        let image = sharp(normalizedInput, {
+            limitInputPixels: false,
+            failOn: "none"
+        });
+        if (mode === "cover") {
+            const width = Number(normalizedMetadata.width);
+            const height = Number(normalizedMetadata.height);
+            if (!width || !height) {
+                throw new Error("Não foi possível identificar as dimensões da imagem.");
+            }
+
+            const side = Math.min(width, height);
+            image = image.extract({
+                left: Math.floor((width - side) / 2),
+                top: Math.floor((height - side) / 2),
+                width: side,
+                height: side
+            });
+        }
+
+        webpResult = await image
+            .resize(512, 512, mode === "cover" ? { fit: "fill" } : resizeOptions)
             .webp({ quality: 80 })
             .toBuffer();
     }
 
-    const packName = options.packName || "Sat Bot";
-    const authorName = options.authorName || "Satela";
+    if (!Buffer.isBuffer(webpResult) || webpResult.length < 16) {
+        throw new Error("A conversão da mídia não gerou uma figurinha válida.");
+    }
 
-    return addExifToWebp(webpResult, packName, authorName);
+    const resultMetadata = await sharp(webpResult, { failOn: "none" }).metadata();
+    if (resultMetadata.format !== "webp" || !resultMetadata.width || !resultMetadata.height) {
+        throw new Error("A conversão não gerou um WebP válido para figurinha.");
+    }
+
+    // O EXIF customizado pode ser aceito pelo sharp, mas causar renderização
+    // vazia em algumas versões do WhatsApp. O envio padrão usa WebP puro.
+    const stickerBuffer = options.addMetadata === true
+        ? addExifToWebp(webpResult, options.packName || "Sat Bot", options.authorName || "Satela")
+        : webpResult;
+    const stickerMetadata = await sharp(stickerBuffer, { failOn: "none" }).metadata();
+    if (stickerMetadata.format !== "webp" || !stickerMetadata.width || !stickerMetadata.height) {
+        throw new Error("A figurinha final ficou inválida após a aplicação dos metadados.");
+    }
+
+    return stickerBuffer;
 }
 
 /**

@@ -12,6 +12,7 @@ const welcomeHelper = require("../functions/welcomeHelper");
 const authFlow = require("../functions/authFlow");
 
 const makeWASocket = baileysPkg.default || baileysPkg.makeWASocket;
+const areJidsSameUser = baileysPkg.areJidsSameUser;
 const useMultiFileAuthState = baileysPkg.useMultiFileAuthState || baileysPkg.useSingleFileAuthState;
 let fetchLatestBaileysVersion = baileysPkg.fetchLatestBaileysVersion;
 const DisconnectReason = baileysPkg.DisconnectReason || baileysPkg.DisconnectReasons;
@@ -330,23 +331,15 @@ async function start(onMessage) {
           quoted,
           delete: async function (messageId, participant = null) {
             try {
-              const isOwnMessage = (messageId === message.messageId);
-
               const key = {
+                ...msg.key,
                 remoteJid: chatId,
-                id: messageId
+                id: messageId,
+                fromMe: Boolean(msg.key.fromMe)
               };
 
-              if (isOwnMessage) {
-                // Deletar a própria mensagem do comando: fromMe=true
-                key.fromMe = true;
-              } else {
-                // Deletar mensagem de outro usuário (moderação)
-                // No Baileys, para deletar msg de outro em grupo, fromMe=false e participant=remetente
-                key.fromMe = false;
-                if (chatType === "group" && participant) {
-                  key.participant = participant;
-                }
+              if (!key.fromMe && chatType === "group") {
+                key.participant = participant || msg.key.participant || userId;
               }
 
               await sock.sendMessage(chatId, { delete: key });
@@ -398,9 +391,18 @@ async function start(onMessage) {
               const image = data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url;
               return await this.replyImg({ image, caption: data.caption || data.text || "" });
             }
-            await sock.sendMessage(chatId, {
+            const options = { quoted: msg };
+            if (Array.isArray(data?.mentions) && data.mentions.length) {
+              options.mentions = data.mentions;
+            }
+            const payload = {
               text: (typeof data === "string" ? data : data?.text) || ""
-            }, { quoted: msg });
+            };
+            if (Array.isArray(data?.mentions) && data.mentions.length) {
+              payload.mentions = data.mentions;
+              payload.contextInfo = { mentionedJid: data.mentions };
+            }
+            await sock.sendMessage(chatId, payload, options);
           },
           react: async function (emoji, add = true) {
             await sock.sendMessage(chatId, {
@@ -456,6 +458,9 @@ async function start(onMessage) {
             }
 
             const messagePayload = { caption };
+            if (Array.isArray(data.mentions) && data.mentions.length) {
+              messagePayload.mentions = data.mentions;
+            }
 
             if (Buffer.isBuffer(video)) {
               messagePayload.video = video;
@@ -493,8 +498,12 @@ async function start(onMessage) {
             const messagePayload = {
               caption,
               mimetype: "audio/mp4",
-              ptt: false
+              ptt: false,
+              fileName: data.filename || "audio.mp3"
             };
+            if (Array.isArray(data.mentions) && data.mentions.length) {
+              messagePayload.mentions = data.mentions;
+            }
 
             if (Buffer.isBuffer(audio)) {
               messagePayload.audio = audio;
@@ -869,10 +878,25 @@ async function checkBotPermission(chatId, action) {
   if (!chatId.endsWith("@g.us")) return true;
   try {
     const metadata = await global.whatsappSock.groupMetadata(chatId);
-    const botId = global.whatsappSock.user?.id?.replace(/:.*/, "") + "@s.whatsapp.net";
-    const botMember = metadata.participants.find(
-      p => p.id === botId || p.id.startsWith(botId.replace("@s.whatsapp.net", ""))
-    );
+    const botIds = [
+      global.whatsappSock.user?.id,
+      global.whatsappSock.user?.lid
+    ].filter(Boolean);
+    const botMember = metadata.participants.find((participant) => {
+      const participantIds = [
+        participant.id,
+        participant.lid,
+        participant.phoneNumber
+      ].filter(Boolean);
+      return participantIds.some((participantId) =>
+        botIds.some((botId) => {
+          if (typeof areJidsSameUser === "function") {
+            return areJidsSameUser(participantId, botId);
+          }
+          return participantId === botId;
+        })
+      );
+    });
     if (!botMember) return false;
     // delete, kick e ban exigem o bot ser admin no WhatsApp
     return !!botMember.admin;
@@ -892,7 +916,19 @@ async function checkUserPermission(chatId, userId) {
   if (!chatId.endsWith("@g.us")) return true; // PV sempre pode
   try {
     const metadata = await global.whatsappSock.groupMetadata(chatId);
-    const member = metadata.participants.find(p => p.id === userId);
+    const member = metadata.participants.find((participant) => {
+      const participantIds = [
+        participant.id,
+        participant.lid,
+        participant.phoneNumber
+      ].filter(Boolean);
+      return participantIds.some((participantId) => {
+        if (typeof areJidsSameUser === "function") {
+          return areJidsSameUser(participantId, userId);
+        }
+        return participantId === userId;
+      });
+    });
     if (!member) return false;
     return !!member.admin; // admin ou superadmin
   } catch {

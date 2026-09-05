@@ -46,7 +46,7 @@ module.exports = {
             } else {
                 await message.react("❌", true).catch(() => {});
                 return await message.reply({
-                    text: `❌ *Falha na validação da nova chave:*\nResposta da API: _${data?.message || "Chave inválida ou expirada."}_\n\n⚠️ A chave de API não foi alterada.`
+                    text: "❌ *Falha na validação da nova chave:* ela é inválida ou está expirada.\n\n⚠️ A chave de API não foi alterada."
                 });
             }
         } catch (err) {
@@ -56,7 +56,7 @@ module.exports = {
             console.error("[SETKEY_ERROR] Erro ao validar nova chave Bronxys:", err.message || err);
 
             return await message.reply({
-                text: `❌ *Erro de conexão:* Não foi possível validar a chave junto ao servidor Bronxys (${err.message || 'Falha na conexão'}). A chave não foi alterada.`
+                text: "❌ Não foi possível validar a chave com o servidor Bronxys. A chave não foi alterada; tente novamente mais tarde."
             });
         }
     }

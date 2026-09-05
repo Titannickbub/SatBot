@@ -22,6 +22,43 @@ function isAutoDownloadEnabledForChat(message) {
         if (!chatId || !chatId.endsWith("@g.us")) {
             return false;
         }
+
+        function getAutoDownloadSettings(message) {
+            if (!message || message.isPrivate) return { enabled: true, deletelink: false };
+            const { platform, chatId, threadId, raw } = message;
+            let data;
+            if (platform === "discord") {
+                const guildId = raw?.guild?.id || message.guildId;
+                const targetId = guildId || chatId;
+                if (!targetId) return { enabled: false, deletelink: false };
+                data = loadSettings("discord", targetId, guildId ? "server" : "group");
+            } else {
+                if (!chatId) return { enabled: false, deletelink: false };
+                data = loadSettings(platform, chatId, "group");
+                if (platform === "telegram" && threadId && Array.isArray(data.topico)) {
+                    const topic = data.topico.find(t => String(t.id) === String(threadId));
+                    if (topic?.settings?.autodownload) return topic.settings.autodownload;
+                }
+            }
+            return data.settings?.autodownload || { enabled: false, deletelink: false };
+        }
+
+        function setAutoDownloadDeleteLink(message, enabled) {
+            if (!message || message.isPrivate) return false;
+            const { platform, chatId, raw } = message;
+            let type = "group";
+            let targetId = chatId;
+            if (platform === "discord") {
+                targetId = raw?.guild?.id || message.guildId || chatId;
+                type = raw?.guild?.id || message.guildId ? "server" : "group";
+            }
+            if (!targetId) return false;
+            const data = loadSettings(platform, targetId, type);
+            data.settings = data.settings || {};
+            data.settings.autodownload = { ...data.settings.autodownload, deletelink: !!enabled };
+            saveSettings(platform, targetId, type, data);
+            return !!enabled;
+        }
         const groupData = loadSettings("whatsapp", chatId, "group");
         return groupData.settings?.autodownload?.enabled === true;
     }
@@ -49,6 +86,34 @@ function isAutoDownloadEnabledForChat(message) {
     }
 
     return false;
+}
+
+function getAutoDownloadSettings(message) {
+    if (!message || message.isPrivate) return { enabled: true, deletelink: false };
+    const { platform, chatId, threadId, raw } = message;
+    const guildId = raw?.guild?.id || message.guildId;
+    const targetId = platform === "discord" ? (guildId || chatId) : chatId;
+    if (!targetId) return { enabled: false, deletelink: false };
+    const data = loadSettings(platform, targetId, platform === "discord" && guildId ? "server" : "group");
+    if (platform === "telegram" && threadId && Array.isArray(data.topico)) {
+        const topic = data.topico.find(t => String(t.id) === String(threadId));
+        if (topic?.settings?.autodownload) return topic.settings.autodownload;
+    }
+    return data.settings?.autodownload || { enabled: false, deletelink: false };
+}
+
+function setAutoDownloadDeleteLink(message, enabled) {
+    if (!message || message.isPrivate) return false;
+    const { platform, chatId, raw } = message;
+    const guildId = raw?.guild?.id || message.guildId;
+    const targetId = platform === "discord" ? (guildId || chatId) : chatId;
+    if (!targetId) return false;
+    const type = platform === "discord" && guildId ? "server" : "group";
+    const data = loadSettings(platform, targetId, type);
+    data.settings = data.settings || {};
+    data.settings.autodownload = { ...data.settings.autodownload, deletelink: !!enabled };
+    saveSettings(platform, targetId, type, data);
+    return !!enabled;
 }
 
 /**
@@ -110,5 +175,7 @@ function setAutoDownloadForGroup(message, enabled) {
 
 module.exports = {
     isAutoDownloadEnabledForChat,
-    setAutoDownloadForGroup
+    setAutoDownloadForGroup,
+    getAutoDownloadSettings,
+    setAutoDownloadDeleteLink
 };

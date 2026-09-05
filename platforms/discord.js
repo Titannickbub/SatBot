@@ -361,7 +361,10 @@ async function start(onMessage) {
 
                 let payload = {};
                 if (Buffer.isBuffer(audio)) {
-                    payload = { content: caption, files: [{ attachment: audio, name: "audio.mp3" }] };
+                    payload = {
+                        content: caption,
+                        files: [{ attachment: audio, name: data.filename || "audio.mp3" }]
+                    };
                 } else if (typeof audio === "string" && /^https?:\/\//i.test(audio)) {
                     payload = { content: `${caption}${caption ? "\n" : ""}${audio}` };
                 } else {
@@ -691,7 +694,8 @@ async function start(onMessage) {
                 if (Buffer.isBuffer(video)) {
                     await msg.reply({
                         content: caption,
-                        files: [{ attachment: video, name: "video.mp4" }]
+                        files: [{ attachment: video, name: "video.mp4" }],
+                        allowedMentions: { users: data.mentions || [] }
                     });
                 } else if (typeof video === "string" && /^https?:\/\//i.test(video)) {
                     await msg.reply(`${caption}${caption ? "\n" : ""}${video}`);
@@ -716,7 +720,8 @@ async function start(onMessage) {
                 if (Buffer.isBuffer(audio)) {
                     await msg.reply({
                         content: caption,
-                        files: [{ attachment: audio, name: "audio.mp3" }]
+                        files: [{ attachment: audio, name: data.filename || "audio.mp3" }],
+                        allowedMentions: { users: data.mentions || [] }
                     });
                 } else if (typeof audio === "string" && /^https?:\/\//i.test(audio)) {
                     await msg.reply(`${caption}${caption ? "\n" : ""}${audio}`);

@@ -42,8 +42,8 @@ module.exports = {
             return message.reply({ text: `✅ Horários atualizados: ${times.join(", ")}` });
         }
 
-        if (cmd === "enable" || cmd === "disable") {
-            const enabled = cmd === "enable";
+        if (["enable", "disable", "ativar", "desativar", "on", "off"].includes(cmd)) {
+            const enabled = ["enable", "ativar", "on"].includes(cmd);
             const cfg = weatherMonitor.saveMonitorConfig({ enabled }, target);
             await weatherMonitor.syncMonitorSchedules(cfg, target);
             return message.reply({ text: enabled ? "✅ Monitor de clima ativado." : "ℹ️ Monitor de clima desativado." });
@@ -71,7 +71,8 @@ module.exports = {
                     return message.reply({ text: `✅ Pré-visualização:\n\n${res.text}` });
                 }
             } catch (err) {
-                return message.reply({ text: `❌ Erro ao executar o teste: ${err.message || err}` });
+                console.error("[CLIMA] Erro ao executar o teste:", err);
+                return message.reply({ text: "❌ Não foi possível executar o teste do monitor de clima. Verifique a configuração e tente novamente." });
             }
         }
 

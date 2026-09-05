@@ -96,7 +96,7 @@ module.exports = {
             }
 
             if (typeof message.delete === "function" && message.messageId) {
-                await message.delete(message.messageId).catch(() => {});
+                await message.delete(message.messageId, message.userId);
             }
 
             const logEntry = {

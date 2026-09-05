@@ -3,7 +3,7 @@ const { resolvePlatformProfile } = require("../functions/profiles");
 module.exports = {
     name: "start",
     aliases: ["iniciar", "inicio"],
-    category: "system",
+    category: null,
     description: "Exibe a mensagem de apresentação do bot e primeiros passos.",
     usage: "{prefix}start",
 

@@ -11,6 +11,8 @@ module.exports = {
     ],
 
     async execute(message) {
+        const configFn = message.functions.config || require("../../functions/config");
+        const botName = typeof configFn.getBotName === "function" ? configFn.getBotName() : "Sat Bot";
         let prompt = (message.getArgText ? message.getArgText(0) : message.args.join(" ")).trim();
 
         if (!prompt && message.quoted?.text) {
@@ -21,7 +23,7 @@ module.exports = {
 
         if (!prompt) {
             return await message.reply({
-                text: `💡 *Inteligência Artificial Satella*\n\nUso: \`${message.prefix}ia <sua pergunta>\` ou responda a uma mensagem com \`${message.prefix}ia\`\nExemplo: \`${message.prefix}ia Escreva um poema sobre a lua\``
+                text: `💡 *Inteligência Artificial ${botName}*\n\nUso: \`${message.prefix}ia <sua pergunta>\` ou responda a uma mensagem com \`${message.prefix}ia\`\nExemplo: \`${message.prefix}ia Escreva um poema sobre a lua\``
             });
         }
 
@@ -29,7 +31,7 @@ module.exports = {
         const owners = message.functions.owners;
         const isOwner = owners && typeof owners.isOwner === "function" ? owners.isOwner(message) : false;
 
-        const thinkingMsg = message.platform === "discord" ? "🧠 **Satella pensando...**" : "🧠 *Satella pensando...*";
+        const thinkingMsg = message.platform === "discord" ? `🧠 **${botName} pensando...**` : `🧠 *${botName} pensando...*`;
 
         await message.reply({
             text: thinkingMsg
@@ -46,8 +48,8 @@ module.exports = {
         } catch (err) {
             console.error("❌[IA] Erro ao processar resposta:", err);
             const errText = message.platform === "discord"
-                ? `❌ **Erro ao obter resposta da IA**: ${err.message}`
-                : `❌ Erro ao obter resposta da IA: ${err.message}`;
+                ? "❌ **Não consegui obter uma resposta da IA agora.** Tente novamente em instantes."
+                : "❌ Não consegui obter uma resposta da IA agora. Tente novamente em instantes.";
             return await message.reply({
                 text: errText
             });

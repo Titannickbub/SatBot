@@ -6,7 +6,7 @@ function getSafeBotName() {
     if (typeof configFn?.getBotName === "function") {
         return configFn.getBotName();
     }
-    return "Satella";
+    return "Sat Bot";
 }
 
 module.exports = {

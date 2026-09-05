@@ -78,7 +78,7 @@ function readAntilink(settingsObj) {
  * do nível mais alto até o mais baixo, respeitando ignoreParent e retornando
  * apenas a config de nível mais alto ativa (sem duplicar punições).
  *
- * @param {object} message  Objeto de mensagem da Satella
+ * @param {object} message  Objeto de mensagem do bot
  * @returns {{ level: string, config: object } | null}  Nível ativo + config, ou null se desativado.
  */
 function resolveAntilinkConfig(message) {

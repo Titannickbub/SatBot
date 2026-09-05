@@ -3,6 +3,7 @@ const path = require("path");
 const { getAntiPVConfig, getAutoDownloadConfig } = require("../functions/config");
 const { isOwner } = require("../functions/owners");
 const bronxys = require("../functions/bronxys");
+const vipHelper = require("../functions/vipHelper");
 
 module.exports = {
     name: "antipv",
@@ -56,6 +57,16 @@ module.exports = {
                 : [];
             if (commandName && commandWhitelist.includes(commandName)) {
                 console.log(`[ANTIPV] 🔓 Liberado (Comando Whitelist: ${commandName}) | user: ${message.userId}`);
+                return true;
+            }
+        }
+
+        // 4. Usuários VIP com bypass de PV habilitado na plataforma
+        const store = (message.functions && message.functions.centralAccounts) || global.centralAccounts;
+        if (store && typeof store.findByPlatform === 'function' && message.userId) {
+            const central = store.findByPlatform(message.platform, message.userId);
+            if (vipHelper.canVipBypassPv(message.platform, central && central.id)) {
+                console.log(`[ANTIPV] 🔓 Liberado (VIP PV Bypass) | user: ${message.userId} | platform: ${message.platform}`);
                 return true;
             }
         }

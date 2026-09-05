@@ -127,7 +127,7 @@ async function generateImage(prompt) {
 async function chatAI(prompt, options = {}) {
     const config = loadConfig();
     const configFn = require("./config");
-    const botName = typeof configFn.getBotName === "function" ? configFn.getBotName() : "Satella";
+    const botName = typeof configFn.getBotName === "function" ? configFn.getBotName() : "Sat Bot";
     const systemPrompt = options.system || `Você é o/a ${botName}, um(a) assistente virtual inteligente, útil, amigável e educado(a). Responda em português de forma clara e objetiva.`;
 
     const platform = String(options.platform || "").toLowerCase();
@@ -245,7 +245,7 @@ async function chatAI(prompt, options = {}) {
 
     // Se houve erro de Rate Limit ou outro erro na API em todas as chaves
     if (rateLimitError) {
-        return `⚠️ ${b("Inteligência Artificial Satella")}\n\nO limite de requisições por minuto do serviço de IA foi atingido temporariamente. Por favor, aguarde alguns segundos e tente novamente!`;
+        return `⚠️ ${b(`Inteligência Artificial ${botName}`)}\n\nO limite de requisições por minuto do serviço de IA foi atingido temporariamente. Por favor, aguarde alguns segundos e tente novamente!`;
     }
 
     if (lastError) {
@@ -258,10 +258,10 @@ async function chatAI(prompt, options = {}) {
 
     // Se NENHUMA chave estiver configurada
     if (!isOwner) {
-        return `💡 ${b("Inteligência Artificial (Satella)")}\n\nO serviço de respostas por Inteligência Artificial não está ativo no momento. Peça ao administrador do bot para configurar uma chave de API.`;
+        return `💡 ${b(`Inteligência Artificial (${botName})`)}\n\nO serviço de respostas por Inteligência Artificial não está ativo no momento. Peça ao administrador do bot para configurar uma chave de API.`;
     }
 
-    return `💡 ${b("Inteligência Artificial (Satella)")}\n\nNenhuma chave de API de IA válida está configurada no momento.\n\nPara ativar respostas de IA gratuitamente:\n1️⃣ Obtenha uma chave grátis no Google AI Studio (https://aistudio.google.com) ou no Groq (https://console.groq.com).\n2️⃣ Configure no bot usando o comando:\n\`!setai gemini SUA_CHAVE_1\` (ou \`!setai gemini 2 SUA_CHAVE_2\` para adicionar chaves de backup!)\n\n*(Dica: Você pode cadastrar até 3 chaves de cada provedor para ter failover automático!)*`;
+    return `💡 ${b(`Inteligência Artificial (${botName})`)}\n\nNenhuma chave de API de IA válida está configurada no momento.\n\nPara ativar respostas de IA gratuitamente:\n1️⃣ Obtenha uma chave grátis no Google AI Studio (https://aistudio.google.com) ou no Groq (https://console.groq.com).\n2️⃣ Configure no bot usando o comando:\n\`!setai gemini SUA_CHAVE_1\` (ou \`!setai gemini 2 SUA_CHAVE_2\` para adicionar chaves de backup!)\n\n*(Dica: Você pode cadastrar até 3 chaves de cada provedor para ter failover automático!)*`;
 }
 
 module.exports = {

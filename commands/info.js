@@ -21,7 +21,7 @@ Este comando utiliza:
     require("../core")
 
 para acessar os comandos
-carregados pela Satella.
+carregados pelo bot.
 
 O caminho acima foi definido
 considerando que este arquivo
@@ -56,7 +56,7 @@ O comando consulta:
 
 para obter todos os comandos
 carregados automaticamente
-pela Satella.
+pelo bot.
 
 Com isso ele consegue exibir:
 
@@ -129,7 +129,7 @@ Exemplo:
 Conteúdo:
 
     Comandos internos
-    da Satella.
+    do bot.
 
 O comando info lerá este
 arquivo automaticamente.
@@ -193,7 +193,7 @@ module.exports = {
         const seen = new Set();
         const categoryCommands = Object.values(commands)
             .filter(cmd => {
-                if (!cmd.category || cmd.category.toLowerCase() !== nome) return false;
+                if (!cmd.category || categoryRoot(cmd.category) !== nome) return false;
                 const signature = `${cmd.name || ''}|${cmd.category || ''}|${cmd.file || ''}`;
                 if (seen.has(signature)) return false;
                 seen.add(signature);
@@ -228,6 +228,13 @@ function sectionText(title, body) {
     return `===================\n${title}\n\n${body}`;
 }
 
+function categoryRoot(category) {
+    return String(category || "")
+        .split("/", 1)[0]
+        .trim()
+        .toLocaleLowerCase();
+}
+
 function infoComandoText(message, command) {
     if (typeof command.info === "function") {
         return command.info(message);
@@ -238,7 +245,7 @@ function infoComandoText(message, command) {
 
     let body =
         `📝 Descrição:\n${command.description || "Esse comando não possui descrição."}\n\n` +
-        `📂 Categoria:\n${command.category || "Raiz"}\n\n` +
+        `📂 Categoria:\n${command.category ? categoryRoot(command.category) : "Raiz"}\n\n` +
         `📁 Arquivo:\n/commands/${command.file}`;
 
     if (command.usage) {
@@ -278,7 +285,7 @@ function infoCategoriaText(message, categoria, categoryCommands) {
         `📝 Descrição:\n${description}\n\n` +
         `📜 Comandos:\n${commandLines}`;
 
-    return sectionText(`📂 ${categoria}`, body);
+    return sectionText(`📂 ${categoryRoot(categoria)}`, body);
 }
 
 // ===================== AJUDA =====================
@@ -301,5 +308,3 @@ ${p}info system
 📌 Use ${p}menu para ver tudo`
     });
 }
-
-

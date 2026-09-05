@@ -47,7 +47,7 @@ module.exports = {
         } catch (err) {
             console.error("❌[IMAGINE] Erro ao gerar imagem:", err);
             return await message.reply({
-                text: `❌ Falha ao gerar a imagem: ${err.message}`
+                text: "❌ Não consegui gerar a imagem agora. Verifique o pedido e tente novamente em instantes."
             });
         }
     }

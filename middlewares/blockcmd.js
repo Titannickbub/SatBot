@@ -39,7 +39,7 @@ module.exports = {
 
                 if (action === "delete") {
                     if (typeof message.delete === "function") {
-                        await message.delete(message.messageId).catch(() => {});
+                        await message.delete(message.messageId, message.userId);
                     }
                 }
 
@@ -89,7 +89,7 @@ module.exports = {
 
         if (action === "delete") {
             if (typeof message.delete === "function") {
-                await message.delete(message.messageId).catch(() => {});
+                await message.delete(message.messageId, message.userId);
             }
         }
 

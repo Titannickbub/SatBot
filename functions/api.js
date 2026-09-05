@@ -42,6 +42,7 @@ async function readLocalFile(filePath) {
 
 async function fetchJson(url, config = {}) {
     const response = await axios.get(url, {
+        timeout: 45000,
         ...config,
         headers: {
             "User-Agent": "Mozilla/5.0",
@@ -55,6 +56,7 @@ async function fetchJson(url, config = {}) {
 
 async function fetchText(url, config = {}) {
     const response = await axios.get(url, {
+        timeout: 45000,
         ...config,
         responseType: "text",
         headers: {
@@ -69,6 +71,7 @@ async function fetchText(url, config = {}) {
 
 async function postJson(url, data, config = {}) {
     const response = await axios.post(url, data, {
+        timeout: 45000,
         ...config,
         headers: {
             "User-Agent": "Mozilla/5.0",
@@ -82,6 +85,7 @@ async function postJson(url, data, config = {}) {
 
 async function postForm(url, formData, config = {}) {
     const response = await axios.post(url, formData, {
+        timeout: 45000,
         ...config,
         headers: {
             ...(formData.getHeaders ? formData.getHeaders() : {}),
@@ -95,6 +99,7 @@ async function postForm(url, formData, config = {}) {
 
 async function fetchBuffer(url, config = {}) {
     const response = await axios.get(url, {
+        timeout: 90000,
         ...config,
         responseType: "arraybuffer",
         headers: {

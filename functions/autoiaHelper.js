@@ -91,8 +91,8 @@ function shouldTriggerAutoIA(message, mode, botName) {
 
     if (mode === "mention") {
         const text = (message.text || "").toLowerCase();
-        const fallbackBotName = typeof configFn?.getBotName === "function" ? configFn.getBotName() : "Satella";
-        const currentBotName = (botName || fallbackBotName || "Satella").toLowerCase().trim();
+        const fallbackBotName = typeof configFn?.getBotName === "function" ? configFn.getBotName() : "Sat Bot";
+        const currentBotName = (botName || fallbackBotName || "Sat Bot").toLowerCase().trim();
 
         // 1. Resposta a uma mensagem do bot (reply/quoted)
         if (message.quoted) {

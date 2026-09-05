@@ -141,6 +141,9 @@ async function start(onMessage) {
                 messageId: String(replyTo.message_id),
                 userId: replyTo.from ? String(replyTo.from.id) : null,
                 username: replyTo.from?.username || null,
+                displayName: replyTo.from
+                    ? ((replyTo.from.first_name || "") + (replyTo.from.last_name ? ` ${replyTo.from.last_name}` : "")).trim() || replyTo.from.username || null
+                    : null,
                 fromMe: replyTo.from ? String(replyTo.from.id) === String(ctx.botInfo.id) : false,
                 isBot: replyTo.from ? !!replyTo.from.is_bot : false,
                 text: replyTo.text || replyTo.caption || "",
@@ -312,7 +315,11 @@ async function start(onMessage) {
 
             reply: async function (data) {
 
-                const options = {};
+                const options = {
+                    reply_parameters: {
+                        message_id: ctx.message.message_id
+                    }
+                };
 
                 if (this.target.threadId) {
 
@@ -321,6 +328,10 @@ async function start(onMessage) {
                             this.target.threadId
                         );
 
+                }
+
+                if (data && typeof data === "object" && data.parse_mode) {
+                    options.parse_mode = data.parse_mode;
                 }
 
                 if (typeof data === "object" && data !== null && (data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url)) {
@@ -361,7 +372,11 @@ async function start(onMessage) {
             },
 
             replyImg: async function (data) {
-                const options = {};
+                const options = {
+                    reply_parameters: {
+                        message_id: ctx.message.message_id
+                    }
+                };
 
                 if (this.target.threadId) {
                     options.message_thread_id = Number(this.target.threadId);
@@ -396,7 +411,11 @@ async function start(onMessage) {
             },
 
             replyVideo: async function (data) {
-                const options = {};
+                const options = {
+                    reply_parameters: {
+                        message_id: ctx.message.message_id
+                    }
+                };
 
                 if (this.target.threadId) {
                     options.message_thread_id = Number(this.target.threadId);
@@ -431,7 +450,11 @@ async function start(onMessage) {
             },
 
             replyAudio: async function (data) {
-                const options = {};
+                const options = {
+                    reply_parameters: {
+                        message_id: ctx.message.message_id
+                    }
+                };
 
                 if (this.target.threadId) {
                     options.message_thread_id = Number(this.target.threadId);
@@ -454,7 +477,10 @@ async function start(onMessage) {
                 let input = audio;
 
                 if (Buffer.isBuffer(audio)) {
-                    input = { source: audio };
+                    input = {
+                        source: audio,
+                        filename: data.filename || "audio.mp3"
+                    };
                 } else if (typeof audio === "string" && !/^https?:\/\//i.test(audio)) {
                     const resolvedPath = path.resolve(process.cwd(), audio);
                     if (fs.existsSync(resolvedPath)) {
@@ -466,7 +492,11 @@ async function start(onMessage) {
             },
 
             replyFile: async function (data) {
-                const options = {};
+                const options = {
+                    reply_parameters: {
+                        message_id: ctx.message.message_id
+                    }
+                };
 
                 if (this.target.threadId) {
                     options.message_thread_id = Number(this.target.threadId);
@@ -501,7 +531,11 @@ async function start(onMessage) {
             },
 
             replySticker: async function (data) {
-                const options = {};
+                const options = {
+                    reply_parameters: {
+                        message_id: ctx.message.message_id
+                    }
+                };
 
                 if (this.target.threadId) {
                     options.message_thread_id = Number(this.target.threadId);
@@ -531,7 +565,11 @@ async function start(onMessage) {
                 await ctx.replyWithSticker(input, options);
             }
         };
-        await onMessage(message);
+        // Não mantenha o ciclo do polling aberto enquanto downloads demorados
+        // são processados. O Telegraf encerra handlers que passam de 90s.
+        Promise.resolve(onMessage(message)).catch(err => {
+            console.error("❌[TELEGRAM] Erro assíncrono ao processar mensagem:", err);
+        });
 
     });
     bot.launch().catch(err => {

@@ -1,6 +1,6 @@
 /**
  * schedulerHelper.js
- * Motor de agendamentos da Satella.
+ * Motor de agendamentos do bot.
  *
  * Fluxo:
  *  startScheduler() → setInterval(30s) → tick()

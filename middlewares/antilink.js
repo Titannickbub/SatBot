@@ -144,7 +144,7 @@ module.exports = {
             }
 
             // 1. Sempre deleta a mensagem com o link
-            await message.delete(message.messageId, message.userId).catch(() => {});
+            await message.delete(message.messageId, message.userId);
 
             if (action === "warn") {
                 const result = await addWarn(message, message.userId, "Antilink");

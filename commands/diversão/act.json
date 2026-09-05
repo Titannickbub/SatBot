@@ -1,0 +1,49 @@
+{
+  "kiss": {
+    "enabled": true,
+    "aliases": [
+      "beijo"
+    ],
+    "messages": [
+      "{user1_mention} deu um beijo em {user2_mention}! 💋",
+      "{user1_mention} deu um beijo doce em {user2_mention}! 💋",
+      "{user1_mention} roubou um beijo de {user2_mention}! 😘"
+    ],
+    "media": []
+  },
+  "hug": {
+    "enabled": true,
+    "aliases": [
+      "abraço",
+      "abraco"
+    ],
+    "messages": [
+      "{user1_mention} abraçou {user2_mention}! 🤗",
+      "{user1_mention} mandou um abraço apertado para {user2_mention}! 🫂"
+    ],
+    "media": []
+  },
+  "slap": {
+    "enabled": true,
+    "aliases": [
+      "tapa"
+    ],
+    "messages": [
+      "{user1_mention} deu um tapinha em {user2_mention}! 👋",
+      "{user1_mention} acertou um tapa em {user2_mention}! 😅"
+    ],
+    "media": []
+  },
+  "highfive": {
+    "enabled": true,
+    "aliases": [
+      "high-five",
+      "cumprimento"
+    ],
+    "messages": [
+      "{user1_mention} bateu na mão de {user2_mention}! 🙌",
+      "{user1_mention} e {user2_mention} fizeram um high five! ✋"
+    ],
+    "media": []
+  }
+}

@@ -8,6 +8,8 @@ module.exports = {
 
     async execute(message) {
         try {
+            const configFn = message.functions.config || require("../../functions/config");
+            const botName = typeof configFn.getBotName === "function" ? configFn.getBotName() : "Sat Bot";
             const config = bronxys.loadConfig();
 
             if (!config.apiKey || config.apiKey === "") {
@@ -27,12 +29,12 @@ module.exports = {
             if (data && data.success) {
                 await message.react("✅", true);
                 await message.reply({
-                    text: `✅ *Chave de API Válida!*\n\n📊 *Pedidos disponíveis:* ${data.requests ?? 0}\n\n🤖 O bot Satella está pronto para realizar downloads.`
+                    text: `✅ *Chave de API Válida!*\n\n📊 *Pedidos disponíveis:* ${data.requests ?? 0}\n\n🤖 O bot ${botName} está pronto para realizar downloads.`
                 });
             } else {
                 await message.react("❌", true);
                 await message.reply({
-                    text: `❌ *Falha na validação:*\nResposta da API: _${data?.message || "Chave inválida ou expirada."}_`
+                    text: "❌ *Falha na validação:* A chave de API é inválida ou está expirada."
                 });
             }
 

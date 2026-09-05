@@ -63,7 +63,7 @@ module.exports = {
         try {
             const notifyText = customMsg || _defaultMsg(platform, action);
             await message.reply({ text: notifyText }).catch(() => {});
-            await message.delete(message.messageId, message.userId).catch(() => {});
+            await message.delete(message.messageId, message.userId);
 
             if (action === "warn") {
                 const result = await addWarn(message, message.userId, "Antipalavras");
