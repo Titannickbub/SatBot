@@ -1,6 +1,12 @@
 const fs = require("fs");
 const path = require("path");
 const { shouldApplyAntiRaid, evaluateAntiRaid, resolveAntiRaidConfig } = require("../functions/antiraidHelper");
+const {
+    isUserWhitelisted,
+    isUserBlacklisted,
+    isRoleWhitelisted,
+    isRoleBlacklisted
+} = require("../functions/antiHelper");
 const { muteMember, banMember, kickMember } = require("../functions/moderationHelper");
 
 const rateMap = new Map();
@@ -57,10 +63,29 @@ module.exports = {
 
         const resolved = resolveAntiRaidConfig(message) || { config: {} };
         const settings = resolved.config || {};
+        const {
+            userWhitelist = [],
+            userBlacklist = [],
+            roleWhitelist = [],
+            roleBlacklist = []
+        } = settings;
+
+        // ── 1. Verificação de Lista Branca (Usuário ou Cargo) ───────────
+        if (isUserWhitelisted(userWhitelist, message.userId)) {
+            console.log(`[ANTIRAID] 🚫 Ignorado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId} | motivo: usuário na lista branca`);
+            return true;
+        }
+        if (isRoleWhitelisted(roleWhitelist, message)) {
+            console.log(`[ANTIRAID] 🚫 Ignorado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId} | motivo: cargo na lista branca`);
+            return true;
+        }
+
+        const isBlacklisted = isUserBlacklisted(userBlacklist, message.userId) || isRoleBlacklisted(roleBlacklist, message);
+
         const burst = trackBurst(message, settings);
         const evaluation = evaluateAntiRaid(message);
         const threshold = Number(settings.maxMessagesPerWindow) || 8;
-        const shouldBlock = evaluation.shouldDelete || burst.burst >= threshold;
+        const shouldBlock = isBlacklisted || evaluation.shouldDelete || burst.burst >= threshold;
 
         if (!shouldBlock) {
             return true;
@@ -92,6 +117,12 @@ module.exports = {
                     await kickMember("discord", message).catch(() => {});
                 } else {
                     await muteMember("discord", message, 10 * 60 * 1000, reason).catch(() => {});
+                }
+            } else if (message.platform === "whatsapp") {
+                if (action === "ban") {
+                    await banMember("whatsapp", message, reason).catch(() => {});
+                } else if (action === "kick") {
+                    await kickMember("whatsapp", message, reason).catch(() => {});
                 }
             }
 

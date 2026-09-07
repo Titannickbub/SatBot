@@ -46,10 +46,11 @@ const {
     saveGoodbyeConfig,
     getDefaultWelcomeConfig,
     getDefaultGoodbyeConfig,
-    uploadMediaToDiscordStorage,
+    downloadAndSaveMediaLocally,
     storeMedia,
     formatWelcomeText
 } = require("../../../functions/welcomeHelper");
+const path = require("path");
 
 module.exports = {
     name: "welcome",
@@ -217,30 +218,35 @@ Regras por plataforma:
         if (subCommand === "media" || subCommand === "midia") {
             let mediaUrlArg = args[1] ? args[1].trim() : null;
 
-            // 1. URL direta via argumento
+            // 1. URL direta via argumento (baixa e armazena localmente)
             if (mediaUrlArg && (mediaUrlArg.startsWith("http://") || mediaUrlArg.startsWith("https://"))) {
-                let mediaType = "photo";
-                const lower = mediaUrlArg.toLowerCase();
-                if (lower.includes(".mp4") || lower.includes("video")) mediaType = "video";
-                else if (lower.includes(".gif")) mediaType = "gif";
+                await message.reply({ text: `⏳ *Baixando mídia do link e salvando permanentemente no disco local...*` });
 
-                const fallbackFileName = mediaUrlArg.split(/[#?]/)[0].split("/").pop() || "welcome_media";
-                saveWelcomeConfig(platform, serverId, chatId, threadId, {
-                    media: { url: mediaUrlArg, type: mediaType, fileName: fallbackFileName }
-                });
+                try {
+                    const saved = await downloadAndSaveMediaLocally(mediaUrlArg, "welcome_media");
 
-                let responseMsg = `✅ *Mídia de Boas-Vindas configurada via URL com sucesso!*\n\n`;
-                responseMsg += `🔗 *URL:* ${mediaUrlArg}\n`;
-                responseMsg += `📁 *Tipo detectado:* ${mediaType.toUpperCase()}\n`;
-                responseMsg += `🎨 *Dica:* Certifique-se de que o modo está em media (\`${message.prefix}welcome mode media\`).`;
-                return message.reply({ text: responseMsg });
+                    saveWelcomeConfig(platform, serverId, chatId, threadId, {
+                        media: { url: saved.url, type: saved.type, fileName: saved.fileName }
+                    });
+
+                    let responseMsg = `✅ *Mídia de Boas-Vindas baixada e salva com sucesso!*\n\n`;
+                    responseMsg += `📁 *Arquivo:* \`${saved.fileName}\`\n`;
+                    responseMsg += `📁 *Tipo:* ${saved.type.toUpperCase()}\n`;
+                    responseMsg += `📊 *Tamanho:* ${(saved.size / (1024 * 1024)).toFixed(2)} MB\n`;
+                    responseMsg += `💾 *Armazenamento:* Disco Local Permanente (não expira).\n\n`;
+                    responseMsg += `🎨 *Dica:* Se necessário, ative o modo com \`${message.prefix}welcome mode media\`.`;
+                    return message.reply({ text: responseMsg });
+                } catch (err) {
+                    console.error("[welcome command] Erro ao baixar mídia da URL:", err);
+                    return message.reply({ text: `❌ Não foi possível baixar a imagem/vídeo a partir do link fornecido. Verifique a URL ou envie o arquivo diretamente.` });
+                }
             }
 
             // 2. Anexo na mensagem atual ou mensagem citada (quoted)
             const targetMedia = message.media || message.quoted?.media;
 
             if (targetMedia && typeof targetMedia.getBuffer === "function") {
-                await message.reply({ text: `⏳ *Baixando mídia e armazenando conforme a configuração de uploads...*` });
+                await message.reply({ text: `⏳ *Armazenando mídia no disco local...*` });
 
                 try {
                     const buffer = await targetMedia.getBuffer();
@@ -272,21 +278,15 @@ Regras por plataforma:
                     saveWelcomeConfig(platform, serverId, chatId, threadId, updateData);
 
                     let successMsg = `✅ *Mídia de Boas-Vindas armazenada com sucesso!*\n\n`;
+                    successMsg += `📁 *Arquivo:* \`${uploaded.fileName}\`\n`;
                     successMsg += `📁 *Tipo de Mídia:* ${uploaded.type.toUpperCase()}\n`;
-                    successMsg += `📊 *Tamanho do Arquivo:* ${(uploaded.size / (1024 * 1024)).toFixed(2)} MB\n`;
-                    if (uploaded.storageProvider === "discord") {
-                        successMsg += `☁️ *Armazenado no Discord CDN.* URL pública gerada e salva.\n\n`;
-                    } else if (uploaded.storageProvider === "telegram") {
-                        successMsg += `☁️ *Armazenado no Telegram.* file\_id salvo para reenvio.\n\n`;
-                    } else {
-                        successMsg += `💾 *Armazenado localmente no disco do bot.*\n\n`;
-                    }
+                    successMsg += `📊 *Tamanho:* ${(uploaded.size / (1024 * 1024)).toFixed(2)} MB\n`;
+                    successMsg += `💾 *Armazenamento:* Disco Local Permanente (não expira).\n\n`;
                     successMsg += `💡 *Dica:* Se necessário, altere o modo para mídia com \`${message.prefix}welcome mode media\`.`;
 
                     return message.reply({ text: successMsg });
                 } catch (err) {
                     console.error("[welcome command] Erro ao processar e salvar mídia:", err);
-                    console.error("[WELCOME] Falha ao processar mídia:", err);
                     return message.reply({ text: "❌ Não foi possível processar essa mídia. Verifique o arquivo e tente novamente." });
                 }
             }
@@ -408,7 +408,12 @@ function _status(message, cfg) {
     let mediaTxt = "Nenhuma mídia vinculada";
     if (cfg.media?.url) {
         const typeLabel = (cfg.media.type || "foto").toUpperCase();
-        mediaTxt = `\n     • Link: ${cfg.media.url}\n     • Tipo: ${typeLabel}`;
+        const isWeb = String(cfg.media.url).startsWith("http://") || String(cfg.media.url).startsWith("https://");
+        if (isWeb) {
+            mediaTxt = `\n     • Link: ${cfg.media.url}\n     • Tipo: ${typeLabel}\n     ⚠️ *Aviso de Mídia Expirável:* Esta mídia foi configurada com um link web antigo que pode expirar. Recomendamos redefinir a mídia enviando a imagem diretamente com \`${message.prefix}welcome media\` para salvá-la permanentemente no bot!`;
+        } else {
+            mediaTxt = `\n     • Arquivo: \`${path.basename(cfg.media.url)}\`\n     • Tipo: ${typeLabel}\n     💾 *Armazenamento:* Disco Local Permanente (não expira)`;
+        }
     }
 
     let platRules = "";

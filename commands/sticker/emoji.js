@@ -20,6 +20,11 @@ module.exports = {
         "remoji", "re"
     ],
     category: "sticker",
+    platformSupport: {
+        discord: "full",
+        telegram: "none",
+        whatsapp: "none"
+    },
     description: "Cria um emoji personalizado no servidor do Discord a partir de imagens, GIFs, vídeos, emojis de outros servidores ou figurinhas do Vencord.",
     usage: "{prefix}emoji <nome> [imagem/emoji/link]",
     examples: [

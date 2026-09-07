@@ -36,10 +36,11 @@ const {
     getGoodbyeConfig,
     saveGoodbyeConfig,
     getDefaultGoodbyeConfig,
-    uploadMediaToDiscordStorage,
+    downloadAndSaveMediaLocally,
     storeMedia,
     formatWelcomeText
 } = require("../../../functions/welcomeHelper");
+const path = require("path");
 
 module.exports = {
     name: "goodbye",
@@ -196,19 +197,33 @@ Regras por plataforma:
         if (subCommand === "media" || subCommand === "midia") {
             let mediaUrlArg = args[1] ? args[1].trim() : null;
 
+            // 1. URL direta via argumento (baixa e armazena localmente)
             if (mediaUrlArg && (mediaUrlArg.startsWith("http://") || mediaUrlArg.startsWith("https://"))) {
-                let mediaType = "photo";
-                const lower = mediaUrlArg.toLowerCase();
-                if (lower.includes(".mp4") || lower.includes("video")) mediaType = "video";
-                else if (lower.includes(".gif")) mediaType = "gif";
+                await message.reply({ text: `⏳ *Baixando mídia do link e salvando permanentemente no disco local...*` });
 
-                saveGoodbyeConfig(platform, serverId, chatId, threadId, { media: { url: mediaUrlArg, type: mediaType } });
-                return message.reply({ text: `✅ *Mídia de Despedida configurada via URL com sucesso!*\n\n🔗 *URL:* ${mediaUrlArg}\n📁 *Tipo:* ${mediaType.toUpperCase()}` });
+                try {
+                    const saved = await downloadAndSaveMediaLocally(mediaUrlArg, "goodbye_media");
+
+                    saveGoodbyeConfig(platform, serverId, chatId, threadId, {
+                        media: { url: saved.url, type: saved.type, fileName: saved.fileName }
+                    });
+
+                    let responseMsg = `✅ *Mídia de Despedida baixada e salva com sucesso!*\n\n`;
+                    responseMsg += `📁 *Arquivo:* \`${saved.fileName}\`\n`;
+                    responseMsg += `📁 *Tipo:* ${saved.type.toUpperCase()}\n`;
+                    responseMsg += `📊 *Tamanho:* ${(saved.size / (1024 * 1024)).toFixed(2)} MB\n`;
+                    responseMsg += `💾 *Armazenamento:* Disco Local Permanente (não expira).\n\n`;
+                    responseMsg += `🎨 *Dica:* Se necessário, ative o modo com \`${message.prefix}goodbye mode media\`.`;
+                    return message.reply({ text: responseMsg });
+                } catch (err) {
+                    console.error("[goodbye command] Erro ao baixar mídia da URL:", err);
+                    return message.reply({ text: `❌ Não foi possível baixar a imagem/vídeo a partir do link fornecido. Verifique a URL ou envie o arquivo diretamente.` });
+                }
             }
 
             const targetMedia = message.media || message.quoted?.media;
             if (targetMedia && typeof targetMedia.getBuffer === "function") {
-                await message.reply({ text: `⏳ *Baixando mídia e armazenando conforme a configuração de uploads...*` });
+                await message.reply({ text: `⏳ *Armazenando mídia no disco local...*` });
 
                 try {
                     const buffer = await targetMedia.getBuffer();
@@ -222,7 +237,7 @@ Regras por plataforma:
                         targetMedia.mimeType || "image/png"
                     );
 
-                    const updateData = { media: { url: uploaded.url, type: uploaded.type } };
+                    const updateData = { media: { url: uploaded.url, type: uploaded.type, fileName: uploaded.fileName } };
 
                     const captionText = (message.getArgText ? message.getArgText(1) : "").trim();
                     if (captionText && !captionText.startsWith("http://") && !captionText.startsWith("https://")) {
@@ -232,15 +247,11 @@ Regras por plataforma:
                     saveGoodbyeConfig(platform, serverId, chatId, threadId, updateData);
 
                     let responseText = `✅ *Mídia de Despedida armazenada com sucesso!*\n\n`;
+                    responseText += `📁 *Arquivo:* \`${uploaded.fileName}\`\n`;
                     responseText += `📁 *Tipo:* ${uploaded.type.toUpperCase()}\n`;
                     responseText += `📊 *Tamanho:* ${(uploaded.size / (1024 * 1024)).toFixed(2)} MB\n`;
-                    if (uploaded.storageProvider === "discord") {
-                        responseText += `☁️ *Armazenado no Discord CDN.* URL pública gerada e salva.`;
-                    } else if (uploaded.storageProvider === "telegram") {
-                        responseText += `☁️ *Armazenado no Telegram.* file\_id salvo para reenvio.`;
-                    } else {
-                        responseText += `💾 *Armazenado localmente no disco do bot.*`;
-                    }
+                    responseText += `💾 *Armazenamento:* Disco Local Permanente (não expira).\n\n`;
+                    responseText += `💡 *Dica:* Se necessário, altere o modo para mídia com \`${message.prefix}goodbye mode media\`.`;
 
                     return message.reply({ text: responseText });
                 } catch (err) {
@@ -368,7 +379,12 @@ function _status(message, cfg) {
     let mediaTxt = "Nenhuma mídia vinculada";
     if (cfg.media?.url) {
         const typeLabel = (cfg.media.type || "foto").toUpperCase();
-        mediaTxt = `\n     • Link: ${cfg.media.url}\n     • Tipo: ${typeLabel}`;
+        const isWeb = String(cfg.media.url).startsWith("http://") || String(cfg.media.url).startsWith("https://");
+        if (isWeb) {
+            mediaTxt = `\n     • Link: ${cfg.media.url}\n     • Tipo: ${typeLabel}\n     ⚠️ *Aviso de Mídia Expirável:* Esta mídia foi configurada com um link web antigo que pode expirar. Recomendamos redefinir a mídia enviando a imagem diretamente com \`${message.prefix}goodbye media\` para salvá-la permanentemente no bot!`;
+        } else {
+            mediaTxt = `\n     • Arquivo: \`${path.basename(cfg.media.url)}\`\n     • Tipo: ${typeLabel}\n     💾 *Armazenamento:* Disco Local Permanente (não expira)`;
+        }
     }
 
     let platRules = "";

@@ -71,7 +71,7 @@ module.exports = {
     name: "vip",
     aliases: ["premium"],
     description: "Gerencia status VIP, permissões e regras exclusivas.",
-    usage: "{prefix}vip [check|help|set|add|rem|reset|date|perm|addcmd|remcmd|listcmd|pv|chat|server|categorie]",
+    usage: "{prefix}vip [subcomando]",
     async execute(message) {
         const args = (message.text || "").trim().split(/\s+/).slice(1);
         const store = (message.functions && message.functions.centralAccounts) || global.centralAccounts;

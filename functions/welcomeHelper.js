@@ -3,12 +3,14 @@ const fs = require("fs");
 const { loadSettings, saveSettings } = require("./groupSettings");
 const config = require("./config");
 
+const axios = require("axios");
+
 const LOCAL_UPLOADS_DIR = path.join(__dirname, "..", "settings", "uploads");
-const WHATSAPP_UPLOAD_DIR = path.join(LOCAL_UPLOADS_DIR, "whatsapp");
+const MEDIA_UPLOAD_DIR = path.join(LOCAL_UPLOADS_DIR, "media");
 
 function ensureUploadDir() {
-    if (!fs.existsSync(WHATSAPP_UPLOAD_DIR)) {
-        fs.mkdirSync(WHATSAPP_UPLOAD_DIR, { recursive: true });
+    if (!fs.existsSync(MEDIA_UPLOAD_DIR)) {
+        fs.mkdirSync(MEDIA_UPLOAD_DIR, { recursive: true });
     }
 }
 
@@ -36,216 +38,66 @@ function normalizeMediaType(mimeType, fileName) {
     return "photo";
 }
 
-async function saveMediaLocally(buffer, fileName = "media") {
+async function saveMediaLocally(buffer, fileName = "media", mimeType = "") {
     ensureUploadDir();
-    const ext = getFileExtension(fileName, "") || ".bin";
+    const ext = getFileExtension(fileName, mimeType) || ".jpg";
     const safeName = `${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}${ext}`;
-    const filePath = path.join(WHATSAPP_UPLOAD_DIR, safeName);
+    const filePath = path.join(MEDIA_UPLOAD_DIR, safeName);
     fs.writeFileSync(filePath, buffer);
     return filePath;
 }
 
-function isTelegramFileId(value) {
-    return typeof value === "string" && /^[A-Za-z0-9_\-:\/.]+$/.test(value) && !/^https?:\/\//i.test(value);
-}
-
 /**
- * Realiza o upload da mídia enviada para o canal de armazenamento do Discord
- * e retorna a URL CDN pública gerada.
+ * Baixa uma mídia a partir de uma URL web e a salva localmente no disco.
+ * @param {string} url URL da mídia
+ * @param {string} [defaultFileName="media"] Nome base do arquivo
+ * @returns {Promise<{url: string, type: string, fileName: string, size: number, storageProvider: string}>}
  */
-async function uploadMediaToDiscordStorage(buffer, fileName = "welcome_media", mimeType = "image/png", channelId = null, deleteAfter = false) {
-    if (!global.discordClient) {
-        throw new Error("Cliente Discord não está conectado/online para armazenar a mídia.");
-    }
-
-    const MAX_SIZE = 25 * 1024 * 1024;
-    if (buffer.length > MAX_SIZE) {
-        const sizeMb = (buffer.length / (1024 * 1024)).toFixed(2);
-        throw new Error(`A mídia excede o tamanho máximo suportado pelo Discord (25MB). Tamanho enviado: ${sizeMb}MB.`);
-    }
-
-    if (!channelId) {
-        throw new Error("Canal do Discord para upload não foi informado.");
-    }
-
-    let channel = global.discordClient.channels.cache.get(channelId);
-    if (!channel) {
-        try {
-            channel = await global.discordClient.channels.fetch(channelId);
-        } catch (err) {
-            console.error("[welcomeHelper] Erro ao buscar canal de armazenamento do Discord:", err);
-            throw new Error(`Não foi possível acessar o canal do Discord (${channelId}) para armazenar a mídia.`);
+async function downloadAndSaveMediaLocally(url, defaultFileName = "media") {
+    const response = await axios.get(url, {
+        responseType: "arraybuffer",
+        timeout: 20000,
+        headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         }
-    }
-
-    if (!channel) {
-        throw new Error(`Canal do Discord (${channelId}) não encontrado.`);
-    }
-
-    let ext = ".png";
-    const lowerMime = (mimeType || "").toLowerCase();
-    if (lowerMime.includes("gif")) ext = ".gif";
-    else if (lowerMime.includes("jpeg") || lowerMime.includes("jpg")) ext = ".jpg";
-    else if (lowerMime.includes("webp")) ext = ".webp";
-    else if (lowerMime.includes("mp4") || lowerMime.includes("video")) ext = ".mp4";
-    else if (fileName && fileName.includes(".")) {
-        ext = path.extname(fileName);
-    }
-
-    const finalName = `welcome_${Date.now()}${ext}`;
-
-    const sentMsg = await channel.send({
-        content: `📁 [WELCOME_MEDIA] Upload realizado em ${new Date().toLocaleString("pt-BR")}`,
-        files: [{
-            attachment: buffer,
-            name: finalName
-        }]
     });
 
-    const attachment = sentMsg.attachments.first();
-    if (!attachment || !attachment.url) {
-        throw new Error("Falha ao recuperar URL do anexo gerado pelo Discord.");
+    const buffer = Buffer.from(response.data);
+    const contentType = response.headers["content-type"] || "";
+    let fileName = defaultFileName;
+    const urlPath = url.split(/[#?]/)[0];
+    const detected = urlPath.split("/").pop();
+    if (detected && /\.[a-z0-9]+$/i.test(detected)) {
+        fileName = detected;
     }
 
-    if (deleteAfter) {
-        try {
-            await sentMsg.delete();
-        } catch (err) {
-            // ignora falha de exclusão para não impedir o processo
-        }
-    }
-
-    let mediaType = "photo";
-    if (ext === ".gif" || lowerMime.includes("gif")) {
-        mediaType = "gif";
-    } else if (ext === ".mp4" || lowerMime.includes("video")) {
-        mediaType = "video";
-    }
+    const localPath = await saveMediaLocally(buffer, fileName, contentType);
+    const mediaType = normalizeMediaType(contentType, fileName);
 
     return {
-        url: attachment.url,
+        url: localPath,
         type: mediaType,
-        fileName: finalName,
-        size: buffer.length
-    };
-}
-
-async function uploadMediaToTelegramStorage(ctx, buffer, fileName = "welcome_media", mimeType = "image/png", targetChatId) {
-    if (!ctx || !ctx.telegram) {
-        throw new Error("Contexto do Telegram não disponível para armazenar a mídia.");
-    }
-
-    const MAX_SIZE = 50 * 1024 * 1024;
-    if (buffer.length > MAX_SIZE) {
-        const sizeMb = (buffer.length / (1024 * 1024)).toFixed(2);
-        throw new Error(`A mídia excede o tamanho máximo suportado pelo Telegram (50MB). Tamanho enviado: ${sizeMb}MB.`);
-    }
-
-    if (!targetChatId) {
-        throw new Error("Chat do Telegram para upload não foi informado.");
-    }
-
-    const mediaType = normalizeMediaType(mimeType, fileName);
-    const extra = { caption: `📁 [UPLOAD_MEDIA] Upload realizado em ${new Date().toLocaleString("pt-BR")}` };
-
-    let sentMsg;
-    if (mediaType === "video") {
-        sentMsg = await ctx.telegram.sendVideo(targetChatId, { source: buffer }, extra);
-    } else if (mediaType === "gif") {
-        sentMsg = await ctx.telegram.sendAnimation(targetChatId, { source: buffer }, extra);
-    } else {
-        sentMsg = await ctx.telegram.sendPhoto(targetChatId, { source: buffer }, extra);
-    }
-
-    let fileId = null;
-    if (mediaType === "video") {
-        fileId = sentMsg.video?.file_id;
-    } else if (mediaType === "gif") {
-        fileId = sentMsg.animation?.file_id;
-    } else {
-        const photos = sentMsg.photo || [];
-        if (photos.length) {
-            fileId = photos[photos.length - 1].file_id;
-        }
-    }
-
-    if (!fileId) {
-        throw new Error("Falha ao recuperar o file_id gerado pelo Telegram.");
-    }
-
-    return {
-        url: fileId,
-        type: mediaType,
-        fileName,
-        size: buffer.length
+        fileName: path.basename(localPath),
+        size: buffer.length,
+        storageProvider: "local"
     };
 }
 
 /**
- * Armazena uma mídia usando o melhor provedor disponível, independente da
- * plataforma do emissor do comando.
- *
- * Hierarquia de prioridade:
- *   1. Canal Discord configurado (discordChannelId) + cliente Discord online
- *   2. Chat Telegram configurado (telegramChatId) + contexto Telegram disponível
- *   3. Fallback: disco local (settings/uploads/whatsapp/)
- *
- * @param {string} platform  Plataforma do emissor (whatsapp|telegram|discord)
- * @param {object} message   Objeto de mensagem normalizado
- * @param {Buffer} buffer    Buffer da mídia
- * @param {string} fileName  Nome sugerido do arquivo
- * @param {string} mimeType  MIME type da mídia
- * @returns {Promise<{url, type, fileName, size, storageProvider}>}
+ * Armazena uma mídia enviada diretamente no disco local permanente do bot.
+ * @param {string} platform Plataforma do emissor
+ * @param {object} message Objeto de mensagem
+ * @param {Buffer} buffer Buffer da mídia
+ * @param {string} fileName Nome sugerido
+ * @param {string} mimeType MIME type da mídia
+ * @returns {Promise<{url: string, type: string, fileName: string, size: number, storageProvider: string}>}
  */
 async function storeMedia(platform, message, buffer, fileName = "welcome_media", mimeType = "image/png") {
-    const uploadConfig = config.getUploadConfig();
-
-    // 1. Tentar Discord
-    if (uploadConfig.discordChannelId && global.discordClient) {
-        try {
-            const result = await uploadMediaToDiscordStorage(
-                buffer,
-                fileName,
-                mimeType,
-                uploadConfig.discordChannelId,
-                false
-            );
-            return { ...result, storageProvider: "discord" };
-        } catch (err) {
-            console.warn(`[storeMedia] Falha no upload para Discord, tentando próxima opção:`, err.message);
-        }
-    }
-
-    // 2. Tentar Telegram
-    if (uploadConfig.telegramChatId) {
-        // Obtém o contexto Telegram: pode vir direto da mensagem (se emissor for Telegram)
-        // ou do bot Telegram global
-        const telegramCtx = message.raw?.telegram
-            ? message.raw
-            : (global.telegramBot ? { telegram: global.telegramBot.telegram } : null);
-
-        if (telegramCtx) {
-            try {
-                const result = await uploadMediaToTelegramStorage(
-                    telegramCtx,
-                    buffer,
-                    fileName,
-                    mimeType,
-                    uploadConfig.telegramChatId
-                );
-                return { ...result, storageProvider: "telegram" };
-            } catch (err) {
-                console.warn(`[storeMedia] Falha no upload para Telegram, usando armazenamento local:`, err.message);
-            }
-        }
-    }
-
-    // 3. Fallback: salvar localmente
-    const localPath = await saveMediaLocally(buffer, fileName);
+    const localPath = await saveMediaLocally(buffer, fileName, mimeType);
     return {
         url: localPath,
         type: normalizeMediaType(mimeType, fileName),
-        fileName,
+        fileName: path.basename(localPath),
         size: buffer.length,
         storageProvider: "local"
     };
@@ -498,24 +350,35 @@ function _saveConfig(platform, serverId, chatId, threadId, newConfig, key) {
 
 async function _sendDiscordMsg(channel, config, text) {
     if (config.mode === "media" && config.media?.url) {
-        const mediaUrl = config.media.url;
-        const fileName = config.media.fileName || (() => {
-            const detected = String(mediaUrl || "").split(/[#?]/)[0].split("/").pop();
-            return detected && /\.[a-z0-9]+$/i.test(detected) ? detected : "welcome_media.jpg";
-        })();
-
-        // Se for caminho local no disco, lê o buffer diretamente
-        const isLocalPath = typeof mediaUrl === "string" &&
+        let mediaUrl = config.media.url;
+        let isLocalPath = typeof mediaUrl === "string" &&
             !mediaUrl.startsWith("http://") &&
             !mediaUrl.startsWith("https://") &&
             fs.existsSync(mediaUrl);
 
-        const attachment = {
-            attachment: isLocalPath ? fs.readFileSync(mediaUrl) : mediaUrl,
-            name: fileName
-        };
+        // Se for URL externa, tenta baixar localmente para armazenamento permanente
+        if (!isLocalPath && typeof mediaUrl === "string" && (mediaUrl.startsWith("http://") || mediaUrl.startsWith("https://"))) {
+            try {
+                const saved = await downloadAndSaveMediaLocally(mediaUrl, config.media.fileName || "welcome_media");
+                config.media.url = saved.url;
+                mediaUrl = saved.url;
+                isLocalPath = true;
+            } catch (err) {
+                console.warn("[welcomeHelper] Mídia Discord expirada ou inacessível:", err.message);
+                return channel.send({
+                    content: `${text}\n\n⚠️ *(Aviso aos administradores: A imagem de boas-vindas/despedida expirou por ter sido definida como link antigo. Reenvie a imagem diretamente no comando para salvá-la permanentemente no bot).*`
+                });
+            }
+        }
 
-        return channel.send({ content: text, files: [attachment] });
+        if (isLocalPath) {
+            const fileName = config.media.fileName || path.basename(mediaUrl) || "welcome_media.jpg";
+            const attachment = {
+                attachment: fs.readFileSync(mediaUrl),
+                name: fileName
+            };
+            return channel.send({ content: text, files: [attachment] });
+        }
     }
     return channel.send({ content: text });
 }
@@ -546,9 +409,30 @@ async function _sendTelegramMsg(ctx, chatId, config, text, threadId) {
     if (config.mode === "media" && config.media?.url) {
         const mediaType = config.media.type || "photo";
         let mediaInput = config.media.url;
-        if (typeof mediaInput === "string" && fs.existsSync(mediaInput)) {
+        let isLocal = typeof mediaInput === "string" && fs.existsSync(mediaInput);
+
+        // Se for URL externa, tenta baixar localmente
+        if (!isLocal && typeof mediaInput === "string" && (mediaInput.startsWith("http://") || mediaInput.startsWith("https://"))) {
+            try {
+                const saved = await downloadAndSaveMediaLocally(mediaInput, config.media.fileName || "welcome_media");
+                config.media.url = saved.url;
+                mediaInput = saved.url;
+                isLocal = true;
+            } catch (err) {
+                console.warn("[welcomeHelper] Mídia Telegram expirada/inacessível:", err.message);
+                return _sendTelegramWithFallback(
+                    ctx.telegram.sendMessage.bind(ctx.telegram),
+                    chatId,
+                    `${text}\n\n⚠️ _(Aviso: A mídia de boas-vindas/despedida expirou. Reconfigure com uma nova imagem/vídeo)._`,
+                    extra
+                );
+            }
+        }
+
+        if (isLocal) {
             mediaInput = { source: fs.createReadStream(mediaInput) };
         }
+
         if (mediaType === "video") {
             await _sendTelegramWithFallback(ctx.telegram.sendVideo.bind(ctx.telegram), chatId, mediaInput, { caption: text, ...extra });
         } else if (mediaType === "gif") {
@@ -564,8 +448,24 @@ async function _sendTelegramMsg(ctx, chatId, config, text, threadId) {
 async function _sendWhatsAppMsg(sock, groupId, config, text, participantJid) {
     if (config.mode === "media" && config.media?.url) {
         const mediaType = config.media.type || "photo";
-        const mediaUrl = config.media.url;
-        const isLocalFile = typeof mediaUrl === "string" && fs.existsSync(mediaUrl);
+        let mediaUrl = config.media.url;
+        let isLocalFile = typeof mediaUrl === "string" && fs.existsSync(mediaUrl);
+
+        if (!isLocalFile && typeof mediaUrl === "string" && (mediaUrl.startsWith("http://") || mediaUrl.startsWith("https://"))) {
+            try {
+                const saved = await downloadAndSaveMediaLocally(mediaUrl, config.media.fileName || "welcome_media");
+                config.media.url = saved.url;
+                mediaUrl = saved.url;
+                isLocalFile = true;
+            } catch (err) {
+                console.warn("[welcomeHelper] Mídia WhatsApp expirada/inacessível:", err.message);
+                return sock.sendMessage(groupId, {
+                    text: `${text}\n\n⚠️ *(Aviso: A mídia de boas-vindas/despedida expirou. Reconfigure enviando a imagem diretamente).*`,
+                    mentions: [participantJid]
+                });
+            }
+        }
+
         const payload = { caption: text, mentions: [participantJid] };
 
         if (mediaType === "video") {
@@ -840,7 +740,7 @@ async function handleWhatsAppMemberLeave(sock, update) {
 }
 
 module.exports = {
-    uploadMediaToDiscordStorage,
+    downloadAndSaveMediaLocally,
     storeMedia,
     formatWelcomeText,
     getDefaultWelcomeConfig,

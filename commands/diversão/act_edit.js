@@ -16,13 +16,24 @@ module.exports = {
     name: "act_edit",
     aliases: ["actedit"],
     category: "diversão",
+    platformSupport: {
+        whatsapp: "full",
+        telegram: "full",
+        discord: "full"
+    },
     description: "Administra as ações interativas. Uso exclusivo de Super Usuários.",
-    usage: "{prefix}act_edit <list|show|new|message|image|alias|remove-message|remove-image|enable|disable|delete> ...",
+    usage: "{prefix}act_edit [subcomando]",
     examples: [
         "{prefix}act_edit list",
         "{prefix}act_edit new kiss",
         "{prefix}act_edit message kiss {user1} beijou {user2}!",
-        "{prefix}act_edit image kiss https://exemplo.com/beijo.gif"
+        "{prefix}act_edit image kiss https://exemplo.com/beijo.gif",
+        "{prefix}act_edit image kiss https://exemplo.com/media gif",
+        "{prefix}act_edit alias kiss beijo",
+        "{prefix}act_edit remove-message kiss 1",
+        "{prefix}act_edit remove-image kiss 1",
+        "{prefix}act_edit enable|disable kiss",
+        "{prefix}act_edit delete kiss"
     ],
     info(message) {
         return help(message);
@@ -56,7 +67,7 @@ module.exports = {
                     return addMessage(message, actions, args[1]);
                 case "image":
                 case "media":
-                    return addMedia(message, actions, args[1], args[2]);
+                    return await addMedia(message, actions, args[1], args[2], args[3]);
                 case "alias":
                     return addAlias(message, actions, args[1], args[2]);
                 case "remove-message":
@@ -73,14 +84,16 @@ module.exports = {
                     return message.reply({ text: help(message) });
             }
         } catch (error) {
-            console.error("[ACT_EDIT] Erro:", error);
             console.error("[ACT_EDIT] Erro ao editar ação:", error);
-            return message.reply({ text: "❌ Não foi possível concluir a edição. Confira os dados e tente novamente." });
+            return message.reply({ text: `❌ ${error.message || "Não foi possível concluir a edição. Confira os dados e tente novamente."}` });
         }
     }
 };
 
 function readActions() {
+    if (!fs.existsSync(ACTIONS_FILE)) {
+        fs.writeFileSync(ACTIONS_FILE, JSON.stringify({}, null, 2), "utf8");
+    }
     const parsed = JSON.parse(fs.readFileSync(ACTIONS_FILE, "utf8"));
     validateActions(parsed);
     return parsed;
@@ -189,8 +202,9 @@ function resolveAction(actions, value) {
 }
 
 function ensureAction(actions, value) {
+    if (!value || !String(value).trim()) throw new Error("Informe o nome da ação. Exemplo: !act_edit show kiss");
     const resolved = resolveAction(actions, value);
-    if (!resolved) throw new Error(`Ação não encontrada: ${value || "(vazio)"}`);
+    if (!resolved) throw new Error(`Ação "${value}" não encontrada. Use !act_edit list para ver as ações cadastradas.`);
     return resolved;
 }
 
@@ -248,12 +262,12 @@ function addMessage(message, actions, value) {
     return persist(message, actions, `Frase adicionada à ação "${key}".`);
 }
 
-async function addMedia(message, actions, value, url) {
+async function addMedia(message, actions, value, url, explicitType) {
     const { key, action } = ensureAction(actions, value);
     if (action.media.length >= MAX_MEDIA) throw new Error(`O limite é de ${MAX_MEDIA} mídias por ação.`);
     let media;
     if (url) {
-        media = createUrlMedia(url);
+        media = createUrlMedia(url, explicitType);
     } else {
         const targetMedia = message.media || message.quoted?.media;
         if (!targetMedia || typeof targetMedia.getBuffer !== "function") {
@@ -266,9 +280,11 @@ async function addMedia(message, actions, value, url) {
         }
         const buffer = await targetMedia.getBuffer();
         if (!buffer || !Buffer.isBuffer(buffer)) throw new Error("Não foi possível baixar a mídia.");
-        const type = mime.includes("gif") || String(targetMedia.fileName || "").toLowerCase().endsWith(".gif")
-            ? "gif"
-            : (sourceType === "video" || mime.startsWith("video/") ? "video" : "photo");
+        const type = explicitType && MEDIA_TYPES.has(String(explicitType).toLowerCase())
+            ? String(explicitType).toLowerCase()
+            : (mime.includes("gif") || String(targetMedia.fileName || "").toLowerCase().endsWith(".gif")
+                ? "gif"
+                : (sourceType === "video" || mime.startsWith("video/") ? "video" : "photo"));
         const stored = await storeMedia(message.platform, message, buffer, targetMedia.fileName || `act_${type}`, targetMedia.mimeType || "image/png");
         media = {
             url: stored.url,
@@ -281,18 +297,21 @@ async function addMedia(message, actions, value, url) {
     return persist(message, actions, `Mídia adicionada à ação "${key}".`);
 }
 
-function createUrlMedia(url) {
+function createUrlMedia(url, explicitType) {
     const value = String(url).trim();
     if (!/^https?:\/\//i.test(value)) {
         const localPath = path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
         if (!fs.existsSync(localPath)) throw new Error("A mídia precisa ser uma URL http(s) ou um arquivo local existente.");
     }
     const lower = value.toLowerCase().split(/[?#]/)[0];
-    const type = /\.(gif)$/i.test(lower)
-        ? "gif"
-        : /\.(mp4|webm|mov|avi)$/i.test(lower)
-            ? "video"
-            : "photo";
+    let type = "photo";
+    if (explicitType && MEDIA_TYPES.has(String(explicitType).toLowerCase())) {
+        type = String(explicitType).toLowerCase();
+    } else if (/\.(gif)$/i.test(lower) || lower.includes(".gif") || lower.includes("tenor.com") || lower.includes("giphy.com")) {
+        type = "gif";
+    } else if (/\.(mp4|webm|mov|avi)$/i.test(lower)) {
+        type = "video";
+    }
     return { url: value, type, fileName: path.basename(lower) || undefined };
 }
 

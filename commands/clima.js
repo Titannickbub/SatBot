@@ -1,5 +1,15 @@
 const weatherMonitor = require("../functions/weatherMonitor");
 
+async function checkAdminPermission(message) {
+    if (message.isPrivate) return true;
+    if (message.sender?.isOwner) return true;
+    const adapter = (message.platforms || []).find(p => p.name === message.platform);
+    if (adapter?.checkUserPermission) {
+        return adapter.checkUserPermission(message.chatId, message.userId);
+    }
+    return !!(message.sender?.isAdmin);
+}
+
 module.exports = {
     name: "clima",
     aliases: ["tempo", "weather"],
@@ -23,6 +33,14 @@ module.exports = {
 
         if (cmd === "help" || cmd === "ajuda") {
             return message.reply({ text: _help(message) });
+        }
+
+        const adminSubcommands = ["set", "times", "enable", "disable", "ativar", "desativar", "on", "off", "run"];
+        if (adminSubcommands.includes(cmd)) {
+            const isAdmin = await checkAdminPermission(message);
+            if (!isAdmin) {
+                return message.reply({ text: "❌ Apenas administradores podem configurar o monitor de clima do grupo." });
+            }
         }
 
         if (cmd === "set") {

@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { cleanJid } = require("../../functions/moderationHelper");
 
 const ACTIONS_FILE = path.join(__dirname, "act.json");
 const ALLOWED_MEDIA_TYPES = new Set(["photo", "gif", "video"]);
@@ -8,6 +9,11 @@ module.exports = {
     name: "act",
     aliases: ["ação", "acao"],
     category: "diversão",
+    platformSupport: {
+        whatsapp: "full",
+        telegram: "full",
+        discord: "full"
+    },
     description: "Executa uma ação interativa configurada para outro usuário.",
     usage: "{prefix}act <ação> [@membro ou mensagem respondida]",
     examples: [
@@ -16,7 +22,7 @@ module.exports = {
         "{prefix}act slap (respondendo a uma mensagem)"
     ],
     info(message) {
-        return `🎭 Use ${message.prefix || "!"}act <ação> [@membro ou mensagem respondida].`;
+        return help(message);
     },
 
     async execute(message) {
@@ -29,12 +35,16 @@ module.exports = {
         }
 
         const actionName = String(message.args?.[0] || "").trim().toLowerCase();
+
+        // Se não informou ação ou pediu ajuda
+        if (!actionName || actionName === "help" || actionName === "ajuda") {
+            return message.reply({ text: help(message, actions) });
+        }
+
         const action = findAction(actions, actionName);
         if (!action || action.enabled === false) {
             return message.reply({
-                text: actionName
-                    ? `❌ Ação "${actionName}" não existe ou está desativada. Use ${message.prefix || "!"}act_edit list para consultar as ações disponíveis.`
-                    : `❌ Informe uma ação. Exemplo: ${message.prefix || "!"}act kiss @membro`
+                text: `❌ Ação *"${actionName}"* não encontrada ou desativada.\n\n${help(message, actions)}`
             });
         }
 
@@ -42,6 +52,7 @@ module.exports = {
         if (!Array.isArray(action.messages) || !action.messages.length) {
             return message.reply({ text: "❌ Esta ação ainda não possui frases configuradas." });
         }
+
         const text = renderMessage(action.messages[Math.floor(Math.random() * action.messages.length)], message, target);
         const replyOptions = {
             text,
@@ -95,38 +106,92 @@ function findAction(actions, name) {
 }
 
 function resolveTarget(message) {
-    const mentioned = message.mentionedJidList?.[0] ||
-        message.mentionedJids?.[0] ||
-        null;
-    const id = mentioned || message.quoted?.userId || message.userId;
-    let name = message.quoted?.displayName || message.quoted?.username || null;
+    let id = null;
+    let name = null;
 
-    if (!name && message.platform === "discord") {
-        const user = message.raw?.mentions?.users?.get?.(String(id));
-        name = user?.globalName || user?.displayName || user?.username || null;
-    }
-    if (!name && message.platform === "telegram" && String(id).startsWith("@")) {
-        name = String(id);
+    // 1. Resposta à mensagem (Quote)
+    if (message.quoted?.userId) {
+        id = cleanJid(String(message.quoted.userId));
+        name = message.quoted.displayName || message.quoted.username || message.quoted.name || null;
     }
 
-    const executorName = message.displayName || message.username || String(message.userId);
-    const targetName = name || (String(id) === String(message.userId)
-        ? executorName
-        : displayFallback(message, id));
+    // 2. Menção no WhatsApp
+    if (!id && message.platform === "whatsapp") {
+        const mentioned = message.mentionedJids?.[0] || message.mentionedJidList?.[0];
+        if (mentioned) {
+            id = cleanJid(String(mentioned));
+        }
+    }
+
+    // 3. Menção no Discord
+    if (!id && message.platform === "discord") {
+        if (message.raw?.mentions?.users?.size > 0) {
+            const user = message.raw.mentions.users.first();
+            id = String(user.id);
+            name = user.globalName || user.displayName || user.username || null;
+        }
+    }
+
+    // 4. Menção no Telegram
+    if (!id && message.platform === "telegram") {
+        const entities = message.raw?.message?.entities;
+        if (Array.isArray(entities)) {
+            const textMention = entities.find(e => e.type === "text_mention" && e.user);
+            if (textMention) {
+                id = String(textMention.user.id);
+                name = textMention.user.first_name || textMention.user.username || null;
+            }
+        }
+    }
+
+    // 5. Argumento explícito (args[1])
+    const rawArg = message.args?.[1]?.trim();
+    if (!id && rawArg) {
+        const discordMatch = rawArg.match(/^<@!?(\d+)>$/);
+        if (discordMatch) {
+            id = discordMatch[1];
+            if (message.raw?.guild) {
+                const member = message.raw.guild.members.cache.get(id);
+                name = member?.displayName || member?.user?.globalName || member?.user?.username || null;
+            }
+        } else if (rawArg.startsWith("@") && message.platform === "telegram") {
+            id = rawArg;
+            name = rawArg;
+        } else if (/^\d+$/.test(rawArg)) {
+            id = message.platform === "whatsapp" ? `${rawArg}@s.whatsapp.net` : rawArg;
+            id = cleanJid(id);
+        } else if (message.platform === "whatsapp" && rawArg.replace(/\D/g, "")) {
+            id = cleanJid(`${rawArg.replace(/\D/g, "")}@s.whatsapp.net`);
+        }
+    }
+
+    const selfId = cleanJid(String(message.userId || ""));
+    const finalId = id || selfId;
+    const isSelf = !id || finalId === selfId;
+
+    const executorName = message.displayName || message.sender?.name || message.sender?.displayName || message.sender?.username || message.username || (message.platform === "whatsapp" ? `@${selfId.split("@")[0].split(":")[0]}` : "Você");
+    const targetName = isSelf ? executorName : (name || displayFallback(message, finalId));
+
     return {
-        id: String(id || message.userId),
+        id: finalId,
         name: targetName,
         executorName,
-        isSelf: String(id || "") === String(message.userId || "")
+        isSelf
     };
 }
 
 function displayFallback(message, id) {
     if (message.platform === "whatsapp") {
-        return `@${String(id).replace(/^@/, "").split("@")[0]}`;
+        const clean = cleanJid(String(id)).replace(/^@/, "").split("@")[0].split(":")[0];
+        return `@${clean}`;
     }
     if (message.platform === "discord") {
-        return `<@${String(id)}>`;
+        const clean = String(id).replace(/\D/g, "");
+        return clean ? `<@${clean}>` : "usuário";
+    }
+    if (message.platform === "telegram") {
+        if (String(id).startsWith("@")) return String(id);
+        return "usuário";
     }
     return "usuário";
 }
@@ -135,7 +200,7 @@ function buildWhatsAppMentions(message, target) {
     if (message.platform !== "whatsapp") return undefined;
     const ids = [message.userId, target.id]
         .filter(Boolean)
-        .map(normalizeWhatsAppJid);
+        .map(id => cleanJid(normalizeWhatsAppJid(id)));
     return [...new Set(ids)];
 }
 
@@ -145,22 +210,28 @@ function normalizeWhatsAppJid(value) {
 }
 
 function renderMessage(template, message, target) {
+    const isTg = message.platform === "telegram";
     const executorMention = formatMention(message, message.userId, target.executorName);
     const targetMention = formatMention(message, target.id, target.name);
+
     const values = {
-        user1: target.executorName,
-        user2: target.isSelf ? target.executorName : target.name,
+        user1: isTg ? escapeHtml(target.executorName) : target.executorName,
+        user2: isTg ? escapeHtml(target.isSelf ? target.executorName : target.name) : (target.isSelf ? target.executorName : target.name),
         user1_mention: executorMention,
         user2_mention: target.isSelf ? executorMention : targetMention,
-        platform: message.platform
+        platform: isTg ? escapeHtml(message.platform) : message.platform
     };
-    if (message.platform === "telegram") {
-        values.user1 = escapeHtml(values.user1);
-        values.user2 = escapeHtml(values.user2);
-        values.platform = escapeHtml(values.platform);
-    }
+
     let rendered = String(template || "");
-    if (message.platform === "telegram") rendered = escapeHtml(rendered);
+    if (isTg) {
+        return rendered.replace(/\{(user1|user2|user1_mention|user2_mention|platform)\}|[^{}]+/gi, (match, key) => {
+            if (key) {
+                return values[key.toLowerCase()] || "";
+            }
+            return escapeHtml(match);
+        });
+    }
+
     return rendered.replace(/\{(user1|user2|user1_mention|user2_mention|platform)\}/gi, (_, key) => {
         return values[key.toLowerCase()] || "";
     });
@@ -168,15 +239,24 @@ function renderMessage(template, message, target) {
 
 function formatMention(message, id, name) {
     if (message.platform === "whatsapp") {
-        return `@${normalizeWhatsAppJid(id).split("@")[0].split(":")[0]}`;
+        const clean = cleanJid(String(id || "")).split("@")[0].split(":")[0];
+        return `@${clean}`;
     }
     if (message.platform === "discord") {
-        return `<@${String(id)}>`;
+        const cleanId = String(id || "").replace(/\D/g, "");
+        return cleanId ? `<@${cleanId}>` : String(name || "usuário");
     }
-    if (/^\d+$/.test(String(id))) {
-        return `<a href="tg://user?id=${encodeURIComponent(String(id))}">${escapeHtml(String(name || "usuário"))}</a>`;
+    if (message.platform === "telegram") {
+        const strId = String(id || "");
+        if (strId.startsWith("@")) {
+            return escapeHtml(strId);
+        }
+        if (/^\d+$/.test(strId)) {
+            return `<a href="tg://user?id=${encodeURIComponent(strId)}">${escapeHtml(String(name || "usuário"))}</a>`;
+        }
+        return escapeHtml(String(name || id || "usuário"));
     }
-    return escapeHtml(String(name || id || "usuário"));
+    return String(name || id || "usuário");
 }
 
 async function sendMedia(message, media, caption, mentions) {
@@ -228,9 +308,15 @@ async function sendMedia(message, media, caption, mentions) {
     }
 
     if (type === "video") {
-        return message.replyVideo({ video: resolveDiscordMedia(media.url), caption });
+        if (typeof message.replyVideo === "function") {
+            return message.replyVideo({ video: resolveDiscordMedia(media.url), caption });
+        }
     }
-    return message.replyImg({ image: resolveDiscordMedia(media.url), caption });
+    if (typeof message.replyImg === "function") {
+        return message.replyImg({ image: resolveDiscordMedia(media.url), caption });
+    }
+
+    return message.reply({ text: caption });
 }
 
 function resolveWhatsAppMedia(value) {
@@ -262,11 +348,43 @@ function escapeHtml(value) {
         .replace(/'/g, "&#39;");
 }
 
+function help(message, actions = null) {
+    const p = message?.prefix || "!";
+    let activeActions = [];
+    if (actions && typeof actions === "object") {
+        activeActions = Object.keys(actions).filter(k => actions[k]?.enabled !== false);
+    }
+    const actionsList = activeActions.length
+        ? activeActions.map(a => `\`${a}\``).join(", ")
+        : "`kiss`, `hug`, `slap`, `highfive`";
+
+    const lines = [
+        "🎭 *AÇÕES INTERATIVAS (ACT)*",
+        "",
+        "Execute uma ação interativa com outro membro ou consigo mesmo.",
+        "",
+        "📋 *COMO USAR:*",
+        `  • \`${p}act <ação> @membro\` — Executa a ação marcando um membro.`,
+        `  • \`${p}act <ação>\` *(respondendo)* — Executa a ação respondendo à mensagem de alguém.`,
+        `  • \`${p}act <ação>\` — Executa a ação sem marcação (sobre si mesmo).`,
+        "",
+        "✨ *AÇÕES DISPONÍVEIS:*",
+        `  ${actionsList}`,
+        "",
+        "📌 *EXEMPLOS:*",
+        `  • \`${p}act kiss @membro\``,
+        `  • \`${p}act hug\``,
+        `  • \`${p}act slap\` *(respondendo a uma mensagem)*`
+    ];
+    return lines.join("\n");
+}
+
 module.exports._internals = {
     readActions,
     findAction,
     resolveTarget,
     renderMessage,
     formatMention,
-    sendMedia
+    sendMedia,
+    help
 };

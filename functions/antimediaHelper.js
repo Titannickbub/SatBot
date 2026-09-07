@@ -99,7 +99,10 @@ function readAntimedia(settingsObj) {
         message: am.message || null,
         ignoreParent: am.ignoreParent === true,
         mediaTypes: Array.isArray(am.mediaTypes) ? normalizeMediaTypes(am.mediaTypes) : normalizeMediaTypes(am.types || am.media || []),
-        userWhitelist: Array.isArray(am.userWhitelist) ? am.userWhitelist : []
+        userWhitelist: Array.isArray(am.userWhitelist) ? am.userWhitelist : [],
+        userBlacklist: Array.isArray(am.userBlacklist) ? am.userBlacklist : [],
+        roleWhitelist: Array.isArray(am.roleWhitelist) ? am.roleWhitelist : [],
+        roleBlacklist: Array.isArray(am.roleBlacklist) ? am.roleBlacklist : []
     };
 }
 
@@ -122,10 +125,25 @@ function resolveAntimediaConfig(message) {
     const mergedUserWhitelist = [
         ...new Set(active.flatMap(({ config }) => config.userWhitelist || []))
     ];
+    const mergedUserBlacklist = [
+        ...new Set(active.flatMap(({ config }) => config.userBlacklist || []))
+    ];
+    const mergedRoleWhitelist = [
+        ...new Set(active.flatMap(({ config }) => config.roleWhitelist || []))
+    ];
+    const mergedRoleBlacklist = [
+        ...new Set(active.flatMap(({ config }) => config.roleBlacklist || []))
+    ];
 
     return {
         level: winner.level,
-        config: { ...winner.config, userWhitelist: mergedUserWhitelist }
+        config: {
+            ...winner.config,
+            userWhitelist: mergedUserWhitelist,
+            userBlacklist: mergedUserBlacklist,
+            roleWhitelist: mergedRoleWhitelist,
+            roleBlacklist: mergedRoleBlacklist
+        }
     };
 }
 

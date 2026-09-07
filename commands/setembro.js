@@ -5,7 +5,7 @@ module.exports = {
     name: "setembro",
     aliases: ["setembronofap", "ranksetembro"],
     description: "Gerencia o ranking e a entrada no desafio de Setembro/NoFap do grupo atual (WhatsApp/Telegram) ou servidor do Discord.",
-    usage: "{prefix}setembro [rank|entrar|reset|sair|help]",
+    usage: "{prefix}setembro [subcomando]",
     async execute(message) {
         const store = (message.functions && message.functions.centralAccounts) || global.centralAccounts;
         const args = (message.text || "").trim().split(/\s+/).slice(1);

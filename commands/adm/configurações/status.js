@@ -12,11 +12,23 @@ Modos disponíveis:
   !status full
     • Exibe a permissão final aplicada ao chat atual, considerando hierarquia.
   !status full all
-    • Exibe todos os nós configurados no servidor/grupo para o recurso selecionado.
+    • Exibe todos os nós configurados no servidor/grupo para todos os recursos.
   !status antilink
     • Exibe o status apenas do antilink.
   !status antipalavras
     • Exibe o status apenas do antipalavras.
+  !status antimedia
+    • Exibe o status apenas do antimedia.
+  !status antiraid
+    • Exibe o status apenas do anti-raid.
+  !status blockcmd
+    • Exibe o status apenas do bloqueio de comandos.
+  !status welcome
+    • Exibe o status do welcome (boas-vindas).
+  !status goodbye
+    • Exibe o status do goodbye (despedida).
+  !status warnconfig
+    • Exibe o status das advertências (warns).
 
 =================================================================
 */
@@ -39,6 +51,16 @@ const {
     readAntimedia
 } = require("../../../functions/antimediaHelper");
 const {
+    resolveAntiRaidConfig,
+    getSetAntiRaid,
+    readAntiRaid
+} = require("../../../functions/antiraidHelper");
+const {
+    resolveBlockcmdConfig,
+    getSetBlockcmd,
+    readBlockcmd
+} = require("../../../functions/blockcmdHelper");
+const {
     getWelcomeConfig,
     getGoodbyeConfig,
     getDefaultWelcomeConfig,
@@ -46,6 +68,13 @@ const {
 } = require("../../../functions/welcomeHelper");
 const { getWarnConfig } = require("../../../functions/warnHelper");
 const { loadSettings } = require("../../../functions/groupSettings");
+const { getAutoIAMode } = require("../../../functions/autoiaHelper");
+const cafeMonitor = require("../../../functions/cafeMonitor");
+const weatherMonitor = require("../../../functions/weatherMonitor");
+const randomWeatherMonitor = require("../../../functions/randomWeatherMonitor");
+const autoAccept = require("../../../functions/autoAccept");
+const { listSchedules, formatTs } = require("../../../functions/schedulerHelper");
+const { formatRoleMention } = require("../../../functions/antiHelper");
 
 const FEATURES = {
     antilink: {
@@ -53,30 +82,44 @@ const FEATURES = {
         resolve: resolveAntilinkConfig,
         getSet: getSetAntilink,
         read: readAntilink,
-        fields: ["enabled", "action", "ignoreParent", "ignoreSameGroup", "ignoreMedia", "whitelist", "userWhitelist"]
+        fields: ["enabled", "action", "ignoreParent", "ignoreSameGroup", "ignoreMedia", "whitelist", "userWhitelist", "userBlacklist", "roleWhitelist", "roleBlacklist"]
     },
     antipalavras: {
         label: "Antipalavras",
         resolve: resolveAntipalavrasConfig,
         getSet: getSetAntipalavras,
         read: readAntipalavras,
-        fields: ["enabled", "action", "ignoreParent", "words", "userWhitelist"]
+        fields: ["enabled", "action", "ignoreParent", "words", "userWhitelist", "userBlacklist", "roleWhitelist", "roleBlacklist"]
     },
     antimedia: {
         label: "Antimedia",
         resolve: resolveAntimediaConfig,
         getSet: getSetAntimedia,
         read: readAntimedia,
-        fields: ["enabled", "action", "ignoreParent", "mediaTypes", "userWhitelist"]
+        fields: ["enabled", "action", "ignoreParent", "mediaTypes", "userWhitelist", "userBlacklist", "roleWhitelist", "roleBlacklist"]
+    },
+    antiraid: {
+        label: "Anti-Raid",
+        resolve: resolveAntiRaidConfig,
+        getSet: getSetAntiRaid,
+        read: readAntiRaid,
+        fields: ["enabled", "action", "maxMessagesPerWindow", "windowSeconds", "repeatedMessageLimit", "inviteLimit", "linkLimit", "mentionLimit", "webhookLimit", "userWhitelist", "userBlacklist", "roleWhitelist", "roleBlacklist"]
+    },
+    blockcmd: {
+        label: "Bloqueio de Comandos (Blockcmd)",
+        resolve: resolveBlockcmdConfig,
+        getSet: getSetBlockcmd,
+        read: readBlockcmd,
+        fields: ["enabled", "action", "ignoreParent", "message", "blockedCommands"]
     }
 };
 
 module.exports = {
     name: "status",
     category: "adm/configurações",
-    description: `Exibe o estado hierárquico das regras de moderação, welcome/goodbye e warns no chat atual.
+    description: `Exibe o estado hierárquico das regras de moderação, welcome/goodbye, warns e recursos no chat atual.
 Use este comando para ver quais configurações estão ativas ✅ ou desativadas ❌, e para entender a permissão final aplicada ao chat.
-Disponível para Antilink, Antipalavras, Welcome, Goodbye e Warnconfig.
+Disponível para Antilink, Antipalavras, Antimedia, Anti-Raid, Blockcmd, Welcome, Goodbye e Warnconfig.
 `,
     usage: "{prefix}status",
     examples: [
@@ -84,11 +127,15 @@ Disponível para Antilink, Antipalavras, Welcome, Goodbye e Warnconfig.
         "{prefix}status full",
         "{prefix}status full all",
         "{prefix}status antilink",
+        "{prefix}status antipalavras",
         "{prefix}status antimedia",
+        "{prefix}status antiraid",
+        "{prefix}status blockcmd",
         "{prefix}status welcome",
         "{prefix}status goodbye",
         "{prefix}status warnconfig",
-        "{prefix}status full welcome"
+        "{prefix}status full welcome",
+        "{prefix}status full antiraid"
     ],
     info(message) {
         return _help(message);
@@ -125,13 +172,13 @@ Disponível para Antilink, Antipalavras, Welcome, Goodbye e Warnconfig.
                 const text = await _fullAll(message);
                 return _sendChunkedReply(message, text);
             }
-            if (["antilink", "antipalavras", "antimedia", "welcome", "goodbye", "warnconfig"].includes(second)) {
+            if ([...Object.keys(FEATURES), "welcome", "goodbye", "warnconfig"].includes(second)) {
                 return message.reply({ text: await _fullFeature(message, second) });
             }
             return message.reply({ text: await _fullCurrent(message) });
         }
 
-        if (["antilink", "antipalavras", "antimedia"].includes(first)) {
+        if (Object.keys(FEATURES).includes(first)) {
             return message.reply({ text: await _featureSummary(message, first) });
         }
 
@@ -176,6 +223,12 @@ ${p}status antipalavras
 ${p}status antimedia
   • Resumo apenas do Antimedia.
 
+${p}status antiraid
+  • Resumo apenas do Anti-Raid.
+
+${p}status blockcmd
+  • Resumo apenas do Bloqueio de Comandos.
+
 ${p}status welcome
   • Resumo do sistema de boas-vindas.
 
@@ -185,8 +238,8 @@ ${p}status goodbye
 ${p}status warnconfig
   • Resumo da configuração de warns deste grupo.
 
-${p}status full welcome
-  • Exibe a configuração final do Welcome para este chat.
+${p}status full <recurso>
+  • Exibe a configuração final do recurso para este chat (ex: ${p}status full antiraid).
 `
     );
 }
@@ -201,7 +254,10 @@ function _summary(message) {
     blocks.push(_welcomeSummaryLines(message).join("\n"));
     blocks.push(_goodbyeSummaryLines(message).join("\n"));
     blocks.push(_warnSummaryLines(message).join("\n"));
-    blocks.push("Use \"status full\" para ver a permissão final considerando a hierarquia.");
+    blocks.push(_chatSettingsSummary(message).join("\n"));
+    blocks.push(_monitorSummary(message).join("\n"));
+    blocks.push(_scheduleSummary(message).join("\n"));
+    blocks.push('Use "status full" para ver a permissão final considerando a hierarquia.');
 
     return blocks.filter(Boolean).join("\n\n");
 }
@@ -213,6 +269,13 @@ async function _featureSummary(message, featureName) {
     lines.push(..._featureSummaryLines(message, featureName));
     lines.push(`\nUse "status full ${featureName}" para ver a permissão final deste recurso.`);
     return lines.join("\n");
+}
+
+function _formatMediaInfo(media) {
+    if (!media) return "❌ não configurada";
+    if (media.path) return `✅ configurada (💾 Local: ${media.type || "mídia"})`;
+    if (media.url) return `✅ configurada (🌐 Web: ${media.type || "mídia"})`;
+    return "❌ não configurada";
 }
 
 function _welcomeSummary(message) {
@@ -239,22 +302,34 @@ function _warnSummary(message) {
 }
 
 function _welcomeSummaryLines(message, config) {
+    if (!config) {
+        const { platform, chatId, threadId, raw } = message;
+        let serverId = null;
+        if (platform === "discord") serverId = raw?.guild ? String(raw.guild.id) : null;
+        config = getWelcomeConfig(platform, serverId, chatId, threadId).config;
+    }
     const status = config?.enabled ? "✅ Ativo" : "❌ Desativado";
     return [
         `🔎 Welcome - ${status}`,
         `  modo: ${config?.mode || "texto"}`,
         `  texto: ${config?.text ? config.text : "(padrão)"}`,
-        `  mídia: ${config?.media?.url ? "✅ configurada" : "❌ não configurada"}`
+        `  mídia: ${_formatMediaInfo(config?.media)}`
     ];
 }
 
 function _goodbyeSummaryLines(message, config) {
+    if (!config) {
+        const { platform, chatId, threadId, raw } = message;
+        let serverId = null;
+        if (platform === "discord") serverId = raw?.guild ? String(raw.guild.id) : null;
+        config = getGoodbyeConfig(platform, serverId, chatId, threadId).config;
+    }
     const status = config?.enabled ? "✅ Ativo" : "❌ Desativado";
     return [
         `🔎 Goodbye - ${status}`,
         `  modo: ${config?.mode || "texto"}`,
         `  texto: ${config?.text ? config.text : "(padrão)"}`,
-        `  mídia: ${config?.media?.url ? "✅ configurada" : "❌ não configurada"}`
+        `  mídia: ${_formatMediaInfo(config?.media)}`
     ];
 }
 
@@ -265,11 +340,89 @@ function _warnSummaryLines(message, config) {
             "  padrão: máx. 3 warns, ação ban"
         ];
     }
+
     return [
-        `🔎 Warnconfig - ✅ Configurado`,
+        "🔎 Warnconfig - ✅ Configurado",
         `  máx. warns: ${config.max}`,
         `  ação: ${config.action}`
     ];
+}
+
+function _chatSettingsSummary(message) {
+    const settings = _getCurrentChatSettings(message);
+    const autoIA = getAutoIAMode(message);
+    const autodownload = settings.autodownload;
+    const nofap = settings.setembroNofap;
+
+    return [
+        "🔎 Outras configurações:",
+        `  Auto-IA: ${autoIA === "off" ? "❌ Desativado" : `✅ Ativo (${autoIA})`}`,
+        `  Auto-download: ${autodownload?.enabled ? `✅ Ativo${autodownload.deletelink ? " (apagar link: Sim)" : ""}` : "❌ Desativado"}`,
+        `  Setembro/NoFap no chat: ${nofap?.enabled ? `✅ Ativo (${Object.keys(nofap.participants || {}).length} participantes)` : "❌ Desativado"}`
+    ];
+}
+
+function _monitorSummary(message) {
+    const target = _monitorTarget(message);
+    const cafe = cafeMonitor.loadMonitorConfig(target);
+    const weather = weatherMonitor.loadMonitorConfig(target);
+    const randomWeather = randomWeatherMonitor.loadMonitorConfig(target);
+    const autoApprove = autoAccept.getConfig(target);
+
+    return [
+        "🔎 Monitores:",
+        `  Café: ${cafe.enabled ? `✅ Ativo (${cafe.mode || "both"}; ${(cafe.sources || []).join(", ")})` : "❌ Desativado"}`,
+        `  Clima: ${weather.enabled ? `✅ Ativo (${weather.city || "cidade não definida"})` : "❌ Desativado"}`,
+        `  Rclima: ${randomWeather.enabled ? `✅ Ativo (${randomWeather.cities.length} cidade(s))` : "❌ Desativado"}`,
+        `  Autoaceitar: ${autoApprove.enabled ? `✅ Ativo (${autoApprove.intervalSeconds}s)` : "❌ Desativado"}`
+    ];
+}
+
+function _scheduleSummary(message) {
+    const schedules = listSchedules(String(message.chatId), message.platform)
+        .filter(schedule => !message.threadId || !schedule.threadId || schedule.threadId === message.threadId);
+
+    if (!schedules.length) {
+        return ["🔎 Agendamentos: ❌ Nenhum configurado neste chat."];
+    }
+
+    return [
+        `🔎 Agendamentos: ${schedules.length} configurado(s)`,
+        ...schedules.map(schedule =>
+            `  ${schedule.enabled ? "✅" : "🔕"} ${schedule.name || schedule.id} — próximo: ${formatTs(schedule.state?.nextFireAt)}`
+        )
+    ];
+}
+
+function _monitorTarget(message) {
+    return {
+        platform: message.platform,
+        chatId: message.chatId,
+        threadId: message.threadId || null
+    };
+}
+
+function _getCurrentChatSettings(message) {
+    if (message.platform === "discord") {
+        const guildId = message.raw?.guild?.id;
+        if (!guildId) return {};
+
+        const serverSettings = loadSettings("discord", String(guildId), "server");
+        const merged = { ...(serverSettings.settings || {}) };
+        const chatId = String(message.chatId || message.raw?.channel?.id || "");
+        const nodes = [
+            ...(serverSettings.chat || []),
+            ...(serverSettings.categoria || []).flatMap(category => category.chat || [])
+        ];
+        const chat = nodes.find(node => String(node.id) === chatId);
+        Object.assign(merged, chat?.settings || {});
+        const topic = chat?.topico?.find(node => String(node.id) === String(message.threadId));
+        Object.assign(merged, topic?.settings || {});
+        return merged;
+    }
+
+    const type = message.platform === "whatsapp" && message.isCommunity ? "community" : "group";
+    return loadSettings(message.platform, String(message.chatId), type).settings || {};
 }
 
 function _featureSummaryLines(message, featureName) {
@@ -304,12 +457,10 @@ function _featureSummaryLines(message, featureName) {
 
 async function _fullCurrent(message) {
     const lines = ["📋 Status completo do chat atual:"];
-    lines.push(..._featureFinalLines(message, "antilink"));
-    lines.push("");
-    lines.push(..._featureFinalLines(message, "antipalavras"));
-    lines.push("");
-    lines.push(..._featureFinalLines(message, "antimedia"));
-    lines.push("");
+    for (const featureName of Object.keys(FEATURES)) {
+        lines.push(..._featureFinalLines(message, featureName));
+        lines.push("");
+    }
     lines.push(..._fullSimpleFeature(message, "welcome"));
     lines.push("");
     lines.push(..._fullSimpleFeature(message, "goodbye"));
@@ -355,8 +506,8 @@ function _fullSimpleFeature(message, featureName) {
             "📋 Welcome - Configuração final deste chat:",
             `✅ ${config.enabled ? "Ativo" : "Desativado"}`,
             `modo: ${config.mode || "texto"}`,
-            `texto: ${config.text}`,
-            `mídia: ${config.media?.url ? "✅ configurada" : "❌ não configurada"}`
+            `texto: ${config.text || "(padrão)"}`,
+            `mídia: ${_formatMediaInfo(config.media)}`
         ];
     }
     if (featureName === "goodbye") {
@@ -368,8 +519,8 @@ function _fullSimpleFeature(message, featureName) {
             "📋 Goodbye - Configuração final deste chat:",
             `✅ ${config.enabled ? "Ativo" : "Desativado"}`,
             `modo: ${config.mode || "texto"}`,
-            `texto: ${config.text}`,
-            `mídia: ${config.media?.url ? "✅ configurada" : "❌ não configurada"}`
+            `texto: ${config.text || "(padrão)"}`,
+            `mídia: ${_formatMediaInfo(config.media)}`
         ];
     }
     if (featureName === "warnconfig") {
@@ -421,25 +572,66 @@ function _allLevelLines(message, featureName) {
 }
 
 function _formatConfigDetails(message, featureName, config) {
-    const feature = FEATURES[featureName];
     const lines = [];
+    const isDiscord = message.platform === "discord";
+    const guild = message.raw?.guild;
+
+    const formatRoles = (roles) => {
+        if (!Array.isArray(roles) || !roles.length) return "(nenhum)";
+        return roles.map(r => formatRoleMention(r, guild)).join(", ");
+    };
+
     if (featureName === "antilink") {
         lines.push(`Ação: ${config.action || "delete"}`);
         lines.push(`Ignorar superior: ${formatBool(config.ignoreParent)}`);
         lines.push(`Ignorar mesmo grupo: ${formatBool(config.ignoreSameGroup)}`);
         lines.push(`Ignorar mídia: ${formatBool(config.ignoreMedia)}`);
-        lines.push(`Whitelist: ${config.whitelist?.length ? config.whitelist.join(", ") : "(nenhuma)"}`);
-        lines.push(`Usuários na whitelist: ${config.userWhitelist?.length ? config.userWhitelist.join(", ") : "(nenhum)"}`);
+        lines.push(`Whitelist de links: ${config.whitelist?.length ? config.whitelist.join(", ") : "(nenhuma)"}`);
+        lines.push(`Whitelist de usuários: ${config.userWhitelist?.length ? config.userWhitelist.join(", ") : "(nenhum)"}`);
+        lines.push(`Blacklist de usuários: ${config.userBlacklist?.length ? config.userBlacklist.join(", ") : "(nenhum)"}`);
+        if (isDiscord) {
+            lines.push(`Whitelist de cargos: ${formatRoles(config.roleWhitelist)}`);
+            lines.push(`Blacklist de cargos: ${formatRoles(config.roleBlacklist)}`);
+        }
     } else if (featureName === "antipalavras") {
         lines.push(`Ação: ${config.action || "delete"}`);
         lines.push(`Ignorar superior: ${formatBool(config.ignoreParent)}`);
         lines.push(`Palavras: ${config.words?.length ? config.words.join(", ") : "(nenhuma)"}`);
-        lines.push(`Usuários na whitelist: ${config.userWhitelist?.length ? config.userWhitelist.join(", ") : "(nenhum)"}`);
+        lines.push(`Whitelist de usuários: ${config.userWhitelist?.length ? config.userWhitelist.join(", ") : "(nenhum)"}`);
+        lines.push(`Blacklist de usuários: ${config.userBlacklist?.length ? config.userBlacklist.join(", ") : "(nenhum)"}`);
+        if (isDiscord) {
+            lines.push(`Whitelist de cargos: ${formatRoles(config.roleWhitelist)}`);
+            lines.push(`Blacklist de cargos: ${formatRoles(config.roleBlacklist)}`);
+        }
     } else if (featureName === "antimedia") {
         lines.push(`Ação: ${config.action || "delete"}`);
         lines.push(`Ignorar superior: ${formatBool(config.ignoreParent)}`);
-        lines.push(`Mídias: ${config.mediaTypes?.length ? config.mediaTypes.join(", ") : "(todas)"}`);
-        lines.push(`Usuários na whitelist: ${config.userWhitelist?.length ? config.userWhitelist.join(", ") : "(nenhum)"}`);
+        lines.push(`Mídias proibidas: ${config.mediaTypes?.length ? config.mediaTypes.join(", ") : "(todas)"}`);
+        lines.push(`Whitelist de usuários: ${config.userWhitelist?.length ? config.userWhitelist.join(", ") : "(nenhum)"}`);
+        lines.push(`Blacklist de usuários: ${config.userBlacklist?.length ? config.userBlacklist.join(", ") : "(nenhum)"}`);
+        if (isDiscord) {
+            lines.push(`Whitelist de cargos: ${formatRoles(config.roleWhitelist)}`);
+            lines.push(`Blacklist de cargos: ${formatRoles(config.roleBlacklist)}`);
+        }
+    } else if (featureName === "antiraid") {
+        lines.push(`Ação: ${config.action || "mute"}`);
+        lines.push(`Limite mensagens: ${config.maxMessagesPerWindow || 8} msgs em ${config.windowSeconds || 12}s`);
+        lines.push(`Limite repetidas: ${config.repeatedMessageLimit || 4}`);
+        lines.push(`Limite menções: ${config.mentionLimit || 6}`);
+        lines.push(`Limite links: ${config.linkLimit || 3}`);
+        lines.push(`Limite convites: ${config.inviteLimit || 2}`);
+        lines.push(`Limite webhooks: ${config.webhookLimit ?? 0}`);
+        lines.push(`Whitelist de usuários: ${config.userWhitelist?.length ? config.userWhitelist.join(", ") : "(nenhum)"}`);
+        lines.push(`Blacklist de usuários: ${config.userBlacklist?.length ? config.userBlacklist.join(", ") : "(nenhum)"}`);
+        if (isDiscord) {
+            lines.push(`Whitelist de cargos: ${formatRoles(config.roleWhitelist)}`);
+            lines.push(`Blacklist de cargos: ${formatRoles(config.roleBlacklist)}`);
+        }
+    } else if (featureName === "blockcmd") {
+        lines.push(`Ação: ${config.action || "reply"}`);
+        lines.push(`Ignorar superior: ${formatBool(config.ignoreParent)}`);
+        lines.push(`Mensagem: ${config.message || "(padrão)"}`);
+        lines.push(`Comandos bloqueados: ${config.blockedCommands?.length ? config.blockedCommands.join(", ") : "(nenhum)"}`);
     }
     return lines;
 }
@@ -464,8 +656,6 @@ async function _fullAll(message) {
 }
 
 function _allNodesOverview(message, featureName) {
-    const feature = FEATURES[featureName];
-    const platform = message.platform;
     const allNodes = _collectAllNodes(message, featureName);
     if (!allNodes.length) {
         return ["  ❌ Não foi possível carregar o histórico de nós para esta plataforma."];
@@ -489,6 +679,12 @@ function _formatBriefConfig(featureName, config) {
     if (featureName === "antimedia") {
         return `action=${config.action || "delete"}, ignoreParent=${formatYesNo(config.ignoreParent)}, mediaTypes=${config.mediaTypes?.length ? config.mediaTypes.join(",") : "all"}`;
     }
+    if (featureName === "antiraid") {
+        return `action=${config.action || "mute"}, window=${config.windowSeconds || 12}s, maxMsgs=${config.maxMessagesPerWindow || 8}`;
+    }
+    if (featureName === "blockcmd") {
+        return `action=${config.action || "reply"}, ignoreParent=${formatYesNo(config.ignoreParent)}, blocked=${config.blockedCommands?.length || 0}`;
+    }
     return "";
 }
 
@@ -497,7 +693,7 @@ function formatYesNo(value) {
 }
 
 function _collectAllNodes(message, featureName) {
-    const { platform, chatId, raw, threadId } = message;
+    const { platform, chatId, raw } = message;
     const feature = FEATURES[featureName];
     const nodes = [];
 
@@ -518,9 +714,9 @@ function _collectAllNodes(message, featureName) {
         }
 
         for (const chat of settings.chat || []) {
-            nodes.push({ level: "chat", levelLabel: getLevelLabel(platform, "chat"), name: chat.name || chat.id, config: feature.read(chat.settings) });
+            nodes.push({ level: "chat", levelLabel: getLevelLabel(platform, "chat"), name: chat.name || chat.id, config: _readFeatureConfig(feature, chat.settings, featureName) });
             for (const topico of chat.topico || []) {
-                nodes.push({ level: "chat", levelLabel: `${getLevelLabel(platform, "chat")} / Tópico`, name: topico.name || topico.id, config: feature.read(topico.settings) });
+                nodes.push({ level: "chat", levelLabel: `${getLevelLabel(platform, "chat")} / Tópico`, name: topico.name || topico.id, config: _readFeatureConfig(feature, topico.settings, featureName) });
             }
         }
     } else if (platform === "whatsapp") {
@@ -548,7 +744,7 @@ function _collectAllNodes(message, featureName) {
 }
 
 function _readFeatureConfig(feature, settings, featureName) {
-    if (typeof feature.read === "function") {
+    if (typeof feature?.read === "function") {
         return feature.read(settings);
     }
 
@@ -560,6 +756,12 @@ function _readFeatureConfig(feature, settings, featureName) {
     }
     if (featureName === "antimedia") {
         return readAntimedia(settings);
+    }
+    if (featureName === "antiraid") {
+        return readAntiRaid(settings);
+    }
+    if (featureName === "blockcmd") {
+        return readBlockcmd(settings);
     }
 
     return {};

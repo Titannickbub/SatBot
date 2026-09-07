@@ -1,5 +1,18 @@
 # Sat Bot — Changelog Versão 1.2
 
+## 📝 Revisão do lançamento
+
+Esta revisão consolida as melhorias entregues na versão 1.2 e corrige a documentação da versão 1.1:
+
+- `!infobot` apresenta aos usuários a versão atual, responsável, contatos e informações da base do bot.
+- `!setbotinfo` permite que Super Usuários configurem essas informações públicas.
+- O `!botstatus` passou a exibir informações globais de execução, plataformas, recursos carregados e configurações.
+- Erros técnicos deixaram de ser enviados diretamente em vários comandos; o usuário recebe orientações simples e os detalhes ficam registrados no console.
+- O processamento de figurinhas foi reforçado para imagens grandes, orientação EXIF e recorte central.
+- O WhatsApp recebe WebP puro por padrão, sem EXIF customizado, reduzindo o risco de stickers vazios em versões incompatíveis do aplicativo.
+
+---
+
 ## 🖼️ Correção das figurinhas com recorte central
 
 - O `!rsticker` / `!rfig` agora faz o recorte quadrado central de forma explícita antes de redimensionar.

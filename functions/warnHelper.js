@@ -140,9 +140,9 @@ async function addWarn(message, userId, reason = "Sem motivo") {
 
         try {
             if (action === "kick") {
-                await kickMember(message.platform, message);
+                await kickMember(message.platform, { ...message, userId: uid });
             } else if (action === "ban") {
-                await banMember(message.platform, message, reason);
+                await banMember(message.platform, { ...message, userId: uid }, reason);
             }
         } catch (err) {
             console.error("[WARN] Erro ao aplicar punição automática:", err);

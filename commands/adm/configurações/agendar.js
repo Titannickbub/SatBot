@@ -37,6 +37,8 @@ const {
     formatTs,
     storeMedia
 } = require("../../../functions/schedulerHelper");
+const { downloadAndSaveMediaLocally } = require("../../../functions/welcomeHelper");
+const path = require("path");
 
 const DAY_NAMES = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
@@ -89,6 +91,16 @@ function fmtStatus(s) {
 }
 
 function scheduleCard(s, prefix) {
+    let mediaInfo = "—";
+    if (s.message?.media?.url) {
+        const isWeb = /^https?:\/\//i.test(s.message.media.url);
+        if (isWeb) {
+            mediaInfo = `${s.message.media.url} (⚠️ Link temporário - redefina a mídia com ${prefix}agendar set ${s.id} media)`;
+        } else {
+            mediaInfo = `\`${path.basename(s.message.media.url)}\` (💾 Local Permanente)`;
+        }
+    }
+
     const lines = [
         `📅 *[${s.id}] ${s.name}*`,
         `  Estado: ${fmtStatus(s)}`,
@@ -96,6 +108,7 @@ function scheduleCard(s, prefix) {
         `  Repetição: ${fmtRepeat(s)}`,
         `  Modo: ${s.message?.mode === "media" ? "🖼 Mídia + Texto" : "📝 Texto"}`,
         `  Texto: "${s.message?.text || "—"}"`,
+        `  Mídia: ${mediaInfo}`,
         `  Próximo disparo: ${formatTs(s.state?.nextFireAt)}`,
         `  Disparos: ${s.state?.firedCount ?? 0}`
     ];
@@ -392,20 +405,32 @@ async function handleSet(message, args) {
     if (field === "media" || field === "midia") {
         const urlArg = rest[0];
 
-        // 1. URL direta
+        // 1. URL direta (baixa e armazena localmente)
         if (urlArg && /^https?:\/\//i.test(urlArg)) {
-            let mediaType = "photo";
-            const lower = urlArg.toLowerCase();
-            if (lower.includes(".mp4") || lower.includes("video")) mediaType = "video";
-            else if (lower.includes(".gif")) mediaType = "gif";
-            editSchedule(id, { message: { media: { url: urlArg, type: mediaType } } });
-            return message.reply({ text: `✅ Mídia configurada via URL.\nTipo: ${mediaType.toUpperCase()}` });
+            await message.reply({ text: `⏳ *Baixando mídia do link e salvando permanentemente no disco local...*` });
+            try {
+                const saved = await downloadAndSaveMediaLocally(urlArg, "schedule_media");
+                editSchedule(id, { message: { media: { url: saved.url, type: saved.type, fileName: saved.fileName } } });
+                return message.reply({
+                    text: [
+                        `✅ *Mídia baixada e armazenada permanentemente no disco local!*`,
+                        `📁 Arquivo: \`${saved.fileName}\``,
+                        `📁 Tipo: ${saved.type.toUpperCase()}`,
+                        `📊 Tamanho: ${(saved.size / (1024 * 1024)).toFixed(2)} MB`,
+                        `💾 Armazenamento: Disco Local Permanente (não expira).`,
+                        `💡 Ative o modo mídia: \`${message.prefix}agendar set ${id} mode media\``
+                    ].join("\n")
+                });
+            } catch (err) {
+                console.error("[AGENDAR] Erro ao baixar mídia da URL:", err);
+                return message.reply({ text: `❌ Não foi possível baixar a imagem/vídeo a partir do link fornecido. Verifique a URL ou envie o arquivo diretamente.` });
+            }
         }
 
         // 2. Anexo ou mensagem citada
         const targetMedia = message.media || message.quoted?.media;
         if (targetMedia && typeof targetMedia.getBuffer === "function") {
-            await message.reply({ text: `⏳ Baixando e armazenando mídia...` });
+            await message.reply({ text: `⏳ *Armazenando mídia no disco local...*` });
             try {
                 const buffer = await targetMedia.getBuffer();
                 if (!buffer) return message.reply({ text: `❌ Não foi possível extrair a mídia.` });
@@ -418,7 +443,7 @@ async function handleSet(message, args) {
                     targetMedia.mimeType || "image/png"
                 );
 
-                const updateObj = { message: { media: { url: uploaded.url, type: uploaded.type } } };
+                const updateObj = { message: { media: { url: uploaded.url, type: uploaded.type, fileName: uploaded.fileName } } };
                 const captionText = (message.getArgText ? message.getArgText(3) : "").trim();
                 if (captionText && !/^https?:\/\//i.test(captionText)) {
                     updateObj.message.text = captionText;
@@ -428,9 +453,11 @@ async function handleSet(message, args) {
 
                 return message.reply({
                     text: [
-                        `✅ Mídia armazenada com sucesso!`,
+                        `✅ *Mídia armazenada com sucesso no disco local!*`,
+                        `📁 Arquivo: \`${uploaded.fileName}\``,
                         `📁 Tipo: ${uploaded.type.toUpperCase()}`,
                         `📊 Tamanho: ${(uploaded.size / (1024 * 1024)).toFixed(2)} MB`,
+                        `💾 Armazenamento: Disco Local Permanente (não expira).`,
                         `💡 Ative o modo mídia: \`${message.prefix}agendar set ${id} mode media\``
                     ].join("\n")
                 });

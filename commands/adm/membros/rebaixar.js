@@ -3,6 +3,11 @@ const { setWhatsAppAdmin } = require("../../../functions/whatsappAdminHelper");
 module.exports = {
     name: "rebaixar",
     category: "adm/membros",
+    platformSupport: {
+        whatsapp: "full",
+        telegram: "none",
+        discord: "none"
+    },
     description: "Rebaixa um administrador para membro no WhatsApp. Pode usar resposta, ID, ID central ou menção.",
     usage: "{prefix}rebaixar <ID|ID central|@menção> ou responda à mensagem",
 

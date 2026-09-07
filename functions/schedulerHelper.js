@@ -196,6 +196,27 @@ async function fireSchedule(schedule) {
         }
     }
 
+    if (schedule.meta?.kind === "random-weather-monitor") {
+        try {
+            const randomWeatherMonitor = require("./randomWeatherMonitor");
+            const config = randomWeatherMonitor.loadMonitorConfig({
+                platform,
+                chatId,
+                threadId: threadId || null
+            });
+            await randomWeatherMonitor.runRandomWeatherReport({
+                config,
+                send: true,
+                target: { platform, chatId, threadId: threadId || null },
+                adapter: global.platformRegistry?.[platform]
+            });
+            return;
+        } catch (error) {
+            console.error("❌[SCHEDULER] Erro ao disparar monitor rclima:", error.message || error);
+            return;
+        }
+    }
+
     if (!msg || !msg.text) return;
 
     // Busca a plataforma no registry global
@@ -209,9 +230,35 @@ async function fireSchedule(schedule) {
 
     try {
         if (msg.mode === "media" && msg.media?.url) {
-            const url  = msg.media.url;
+            let url  = msg.media.url;
             const type = msg.media.type || "photo";
             const caption = msg.text || "";
+            const isLocal = typeof url === "string" && fs.existsSync(url);
+
+            // Se for URL web externa antiga, tenta baixar e salvar localmente
+            if (!isLocal && typeof url === "string" && /^https?:\/\//i.test(url)) {
+                try {
+                    const { downloadAndSaveMediaLocally } = require("./welcomeHelper");
+                    const saved = await downloadAndSaveMediaLocally(url, "schedule_media");
+                    msg.media.url = saved.url;
+                    url = saved.url;
+                    const all = loadSchedules();
+                    const found = all.find(item => item.id === schedule.id);
+                    if (found && found.message?.media) {
+                        found.message.media.url = saved.url;
+                        saveSchedules(all);
+                    }
+                } catch (dlErr) {
+                    console.warn(`[SCHEDULER] Mídia agendada expirada ou inacessível (${url}):`, dlErr.message);
+                    await adapter.sendText(
+                        chatId,
+                        threadId || null,
+                        `${caption}\n\n⚠️ *(Aviso: A mídia deste agendamento expirou por ser link antigo. Reconfigure-a com o comando de agendamento).*`
+                    );
+                    console.log(`⏰[SCHEDULER] Agendamento disparado (modo fallback texto): "${schedule.name}" (${schedule.id})`);
+                    return;
+                }
+            }
 
             if (type === "video") {
                 await adapter.sendVideo(chatId, threadId || null, url, caption);

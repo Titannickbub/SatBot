@@ -9,6 +9,7 @@ const qrcode = require("qrcode-terminal");
 const baileysPkg = require("@whiskeysockets/baileys");
 const groupSettings = require("../functions/groupSettings");
 const welcomeHelper = require("../functions/welcomeHelper");
+const autoAccept = require("../functions/autoAccept");
 const authFlow = require("../functions/authFlow");
 
 const makeWASocket = baileysPkg.default || baileysPkg.makeWASocket;
@@ -51,6 +52,7 @@ async function start(onMessage) {
       console.log('[WHATSAPP] Nenhuma credencial válida foi encontrada na pasta de auth; o login pode pedir QR.');
     }
 
+    authFlow.cleanupWhatsAppAuthFolder(effectiveAuthFolder, { keepRecentPreKeys: 50 });
     const { state, saveCreds } = await useMultiFileAuthState(effectiveAuthFolder);
     console.log('[WHATSAPP] Credenciais carregadas.');
     const store = makeInMemoryStore({});
@@ -113,11 +115,20 @@ async function start(onMessage) {
       }
     });
 
+    sock.ev.on("group.join-request", async (request) => {
+      try {
+        await autoAccept.approveWhatsApp(sock, request);
+      } catch (err) {
+        console.error("[WHATSAPP] Erro ao processar solicitação de entrada:", err);
+      }
+    });
+
     sock.ev.on("connection.update", (update) => {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
-        const authStateInfo = authFlow.inspectWhatsAppAuthState(authFolder);
+        authFlow.cleanupWhatsAppAuthFolder(effectiveAuthFolder, { onQR: true });
+        const authStateInfo = authFlow.inspectWhatsAppAuthState(effectiveAuthFolder);
         if (authStateInfo.hasAnyData && !authStateInfo.likelyValid) {
           console.warn(`[WHATSAPP] QR gerado mesmo com credenciais existentes na pasta de auth (${authStateInfo.reason}). Isso normalmente indica uma sessão inválida ou expirada.`);
         } else if (authStateInfo.hasAnyData) {
@@ -131,7 +142,8 @@ async function start(onMessage) {
       if (connection === "close") {
         const status = lastDisconnect?.error?.output?.statusCode;
         if (status === DisconnectReason.loggedOut) {
-          console.log("[WHATSAPP] Sessão desconectada. Apague o arquivo whatsapp-auth.json e reconecte.");
+          console.log("[WHATSAPP] Sessão desconectada. Limpando credenciais antigas...");
+          authFlow.cleanupWhatsAppAuthFolder(effectiveAuthFolder, { all: true });
         } else {
           console.log("[WHATSAPP] Conexão fechada, reconectando...");
           start(onMessage).catch(console.error);
@@ -140,6 +152,7 @@ async function start(onMessage) {
 
       if (connection === "open") {
         console.log("[WHATSAPP] Conectado com sucesso.");
+        authFlow.cleanupWhatsAppAuthFolder(effectiveAuthFolder, { keepRecentPreKeys: 50 });
         if (global.__pendingAuthBootstrapPlatform === "whatsapp") {
           global.__pendingAuthBootstrapPlatform = null;
           setTimeout(() => process.exit(0), 1000);
@@ -424,6 +437,9 @@ async function start(onMessage) {
             }
 
             const messagePayload = { caption };
+            if (Array.isArray(data.mentions) && data.mentions.length) {
+              messagePayload.mentions = data.mentions;
+            }
 
             if (Buffer.isBuffer(image)) {
               messagePayload.image = image;

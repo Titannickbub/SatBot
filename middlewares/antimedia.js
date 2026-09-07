@@ -1,4 +1,10 @@
 const { detectMediaType, resolveAntimediaConfig, ALL_MEDIA_TYPES } = require("../functions/antimediaHelper");
+const {
+    isUserWhitelisted,
+    isUserBlacklisted,
+    isRoleWhitelisted,
+    isRoleBlacklisted
+} = require("../functions/antiHelper");
 const { isOwner } = require("../functions/owners");
 const { kickMember, banMember } = require("../functions/moderationHelper");
 const { addWarn } = require("../functions/warnHelper");
@@ -21,23 +27,37 @@ module.exports = {
             return true;
         }
 
-        const { action, message: customMsg, mediaTypes = [], userWhitelist = [] } = resolved.config;
-        const blockedTypes = mediaTypes.length ? mediaTypes : ALL_MEDIA_TYPES;
+        const {
+            action,
+            message: customMsg,
+            mediaTypes = [],
+            userWhitelist = [],
+            userBlacklist = [],
+            roleWhitelist = [],
+            roleBlacklist = []
+        } = resolved.config;
 
-        if (!blockedTypes.includes(mediaType)) {
+        const isBlacklisted = isUserBlacklisted(userBlacklist, message.userId) || isRoleBlacklisted(roleBlacklist, message);
+        const isWhitelisted = isUserWhitelisted(userWhitelist, message.userId) || isRoleWhitelisted(roleWhitelist, message);
+
+        // Lista negra é punida mesmo se o tipo específico não estiver filtrado (se for mídia enviada)
+        const blockedTypes = mediaTypes.length ? mediaTypes : ALL_MEDIA_TYPES;
+        if (!isBlacklisted && !blockedTypes.includes(mediaType)) {
             return true;
         }
 
-        if (Array.isArray(userWhitelist) && userWhitelist.includes(String(message.userId))) {
-            console.log(`[ANTIMEDIA] 🚫 Ignorado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId} | motivo: usuário na lista branca`);
+        if (!isBlacklisted && isWhitelisted) {
+            console.log(`[ANTIMEDIA] 🚫 Ignorado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId} | motivo: usuário/cargo na lista branca`);
             return true;
         }
 
         if (
-            message.sender?.isAdmin ||
-            message.sender?.isOwner ||
-            message.sender?.canManageMessages ||
-            isOwner(message)
+            !isBlacklisted && (
+                message.sender?.isAdmin ||
+                message.sender?.isOwner ||
+                message.sender?.canManageMessages ||
+                isOwner(message)
+            )
         ) {
             console.log(`[ANTIMEDIA] 🚫 Ignorado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId} | motivo: usuário imune`);
             return true;

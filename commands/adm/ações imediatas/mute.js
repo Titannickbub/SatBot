@@ -4,6 +4,11 @@ const { isOwner } = require("../../../functions/owners");
 module.exports = {
     name: "mute",
     category: "adm/ações imediatas",
+    platformSupport: {
+        discord: "full",
+        telegram: "full",
+        whatsapp: "none"
+    },
     description: "Silencia um usuário temporariamente. Use respondendo à mensagem do usuário ou digitando o ID.",
     usage: "{prefix}mute <@usuário|id> [tempo_em_minutos]",
     examples: [

@@ -6,7 +6,7 @@ module.exports = {
     aliases: ["downloadlink", "adl"],
     category: "system/configurações",
     description: "Gerencia a funcionalidade de baixar automaticamente mídias de links enviados no chat (YouTube, TikTok, Instagram, Twitter/X, Facebook, Kwai). No PV fica sempre ativo por padrão (respeitando o Anti-PV) e em grupos pode ser ativado ou desativado por administradores.",
-    usage: "{prefix}autodownload <on|off|status>",
+    usage: "{prefix}autodownload [subcomando]",
     examples: [
         "{prefix}autodownload",
         "{prefix}autodownload status",

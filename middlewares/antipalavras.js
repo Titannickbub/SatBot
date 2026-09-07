@@ -1,4 +1,10 @@
 const { containsForbiddenWord, resolveAntipalavrasConfig } = require("../functions/antipalavrasHelper");
+const {
+    isUserWhitelisted,
+    isUserBlacklisted,
+    isRoleWhitelisted,
+    isRoleBlacklisted
+} = require("../functions/antiHelper");
 const { isOwner } = require("../functions/owners");
 const { kickMember, banMember } = require("../functions/moderationHelper");
 const { addWarn } = require("../functions/warnHelper");
@@ -21,22 +27,35 @@ module.exports = {
             return true;
         }
 
-        const { action, message: customMsg, words = [], userWhitelist = [] } = resolved.config;
-        if (!containsForbiddenWord(text, words)) {
+        const {
+            action,
+            message: customMsg,
+            words = [],
+            userWhitelist = [],
+            userBlacklist = [],
+            roleWhitelist = [],
+            roleBlacklist = []
+        } = resolved.config;
+
+        const isBlacklisted = isUserBlacklisted(userBlacklist, message.userId) || isRoleBlacklisted(roleBlacklist, message);
+        const isWhitelisted = isUserWhitelisted(userWhitelist, message.userId) || isRoleWhitelisted(roleWhitelist, message);
+
+        if (!isBlacklisted && !containsForbiddenWord(text, words)) {
             return true;
         }
 
-        // ── Lista branca de usuários ────────────────────────────────
-        if (Array.isArray(userWhitelist) && userWhitelist.includes(String(message.userId))) {
-            console.log(`[ANTIPALAVRAS] 🚫 Ignorado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId} | motivo: usuário na lista branca`);
+        if (!isBlacklisted && isWhitelisted) {
+            console.log(`[ANTIPALAVRAS] 🚫 Ignorado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId} | motivo: usuário/cargo na lista branca`);
             return true;
         }
 
         if (
-            message.sender?.isAdmin ||
-            message.sender?.isOwner ||
-            message.sender?.canManageMessages ||
-            isOwner(message)
+            !isBlacklisted && (
+                message.sender?.isAdmin ||
+                message.sender?.isOwner ||
+                message.sender?.canManageMessages ||
+                isOwner(message)
+            )
         ) {
             console.log(`[ANTIPALAVRAS] 🚫 Ignorado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId} | motivo: usuário imune`);
             return true;

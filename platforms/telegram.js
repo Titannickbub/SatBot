@@ -8,6 +8,7 @@ require("dotenv").config({
 const { Telegraf } = require("telegraf");
 const groupSettings = require("../functions/groupSettings");
 const welcomeHelper = require("../functions/welcomeHelper");
+const autoAccept = require("../functions/autoAccept");
 const authFlow = require("../functions/authFlow");
 
 let bot = null;
@@ -26,6 +27,14 @@ async function start(onMessage) {
 
     bot = new Telegraf(token);
     global.telegramBot = bot;
+
+    bot.on("chat_join_request", async (ctx) => {
+        try {
+            await autoAccept.approveTelegram(ctx);
+        } catch (err) {
+            console.error("❌[TELEGRAM] Erro ao processar solicitação de entrada:", err);
+        }
+    });
 
     bot.on("new_chat_members", async (ctx) => {
         try {

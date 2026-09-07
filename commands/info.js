@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const core = require("../core");
+const { getCommandPlatformIndicator } = require("../functions/commandPlatformSupport");
 
 /*
 ============================================================
@@ -81,6 +82,7 @@ os seguintes campos opcionais:
     description
     usage
     examples
+    platformSupport
 
 Exemplo:
 
@@ -96,7 +98,13 @@ module.exports = {
 
     examples: [
         "{prefix}ping"
-    ]
+    ],
+
+    platformSupport: {
+        whatsapp: "full",
+        telegram: "partial",
+        discord: "none"
+    }
 
 };
 
@@ -113,6 +121,12 @@ funcionando normalmente.
 Caso os campos não existam,
 o comando info exibirá apenas
 as informações disponíveis.
+
+`platformSupport` é opcional e aceita
+os estados `full`, `partial` e `none`
+para whatsapp, telegram e discord.
+Quando não existe, o comando é
+considerado universal.
 
 ============================================================
 
@@ -236,17 +250,20 @@ function categoryRoot(category) {
 }
 
 function infoComandoText(message, command) {
+    const platformStatus = getCommandPlatformIndicator(command, message.platform);
+
     if (typeof command.info === "function") {
-        return command.info(message);
+        return `${command.info(message)}\n\n${platformStatus.icon} Plataforma atual (${message.platform}): ${platformStatus.label}`;
     }
     if (typeof command.getHelp === "function") {
-        return command.getHelp(message);
+        return `${command.getHelp(message)}\n\n${platformStatus.icon} Plataforma atual (${message.platform}): ${platformStatus.label}`;
     }
 
     let body =
         `📝 Descrição:\n${command.description || "Esse comando não possui descrição."}\n\n` +
         `📂 Categoria:\n${command.category ? categoryRoot(command.category) : "Raiz"}\n\n` +
-        `📁 Arquivo:\n/commands/${command.file}`;
+        `📁 Arquivo:\n/commands/${command.file}\n\n` +
+        `${platformStatus.icon} Plataforma atual (${message.platform}): ${platformStatus.label}`;
 
     if (command.usage) {
         body += `\n\n⚙️ Uso:\n${command.usage.replaceAll("{prefix}", message.prefix)}`;
@@ -278,7 +295,10 @@ function infoCategoriaText(message, categoria, categoryCommands) {
     }
 
     const commandLines = categoryCommands
-        .map((cmd) => `🔶 ${formatCommandText(message, cmd)}`)
+        .map((cmd) => {
+            const indicator = getCommandPlatformIndicator(cmd, message.platform);
+            return `${indicator.icon} ${formatCommandText(message, cmd)}`;
+        })
         .join("\n");
 
     const body =

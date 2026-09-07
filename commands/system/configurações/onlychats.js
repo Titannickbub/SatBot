@@ -45,7 +45,7 @@ SUBCOMANDOS:
   allowcmd <add|del|list> <comando>
     • Atalho para gerenciar comandos liberados que funcionam mesmo em chats bloqueados (ex: !onlychats allowcmd add ping).`,
     category: "system/configurações",
-    usage: "{prefix}onlychats <status|list|on|off|mode|msg|add|del|allowcmd>",
+    usage: "{prefix}onlychats [subcomando]",
     examples: [
         "{prefix}onlychats list",
         "{prefix}onlychats on",

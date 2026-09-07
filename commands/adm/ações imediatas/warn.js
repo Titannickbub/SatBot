@@ -1,4 +1,5 @@
 const { addWarn } = require("../../../functions/warnHelper");
+const { parseTargetFromMessage, formatUserMention } = require("../../../functions/moderationHelper");
 const { isOwner } = require("../../../functions/owners");
 
 module.exports = {
@@ -21,23 +22,38 @@ module.exports = {
             return message.reply({ text: "❌ Apenas administradores podem usar este comando." });
         }
 
-        const targetId = message.mentionedJidList?.[0];
+        const { targetId } = parseTargetFromMessage(message);
         if (!targetId) {
-            return message.reply({ text: "❌ Mencione o usuário que deseja advertir." });
+            return message.reply({ text: "❌ Informe o usuário que deseja advertir (mencione, responda à mensagem ou digite o ID)." });
         }
 
-        const reason = message.args.slice(1).join(" ") || "Sem motivo informado";
+        let reason = "Sem motivo informado";
+        if (message.quoted?.userId) {
+            if (message.args.length > 0) {
+                reason = message.args.join(" ");
+            }
+        } else if (message.args.length > 1) {
+            reason = message.args.slice(1).join(" ");
+        }
 
         const result = await addWarn(message, targetId, reason);
         if (!result) {
             return message.reply({ text: "❌ Não foi possível aplicar a advertência (falha ao ler configurações)." });
         }
 
+        const targetMention = formatUserMention(message, targetId);
+
         if (result.punished) {
             const punMsg = result.action === "ban" ? "banido" : "removido";
-            return message.reply({ text: `🚫 Limite de advertências atingido (${result.maxWarns}/${result.maxWarns}). O usuário foi ${punMsg}!` });
+            return message.reply({
+                text: `🚫 Limite de advertências atingido (${result.maxWarns}/${result.maxWarns}). O usuário ${targetMention} foi ${punMsg}!`,
+                mentions: message.platform === "whatsapp" ? [targetId] : []
+            });
         } else {
-            return message.reply({ text: `⚠️ Usuário advertido (${result.currentWarns}/${result.maxWarns}).\nMotivo: ${reason}` });
+            return message.reply({
+                text: `⚠️ Usuário ${targetMention} advertido (${result.currentWarns}/${result.maxWarns}).\nMotivo: ${reason}`,
+                mentions: message.platform === "whatsapp" ? [targetId] : []
+            });
         }
     }
 };

@@ -28,7 +28,10 @@ function readAntipalavras(settingsObj) {
         message: ap.message || null,
         ignoreParent: ap.ignoreParent === true,
         words: Array.isArray(ap.words) ? ap.words.filter(Boolean) : [],
-        userWhitelist: Array.isArray(ap.userWhitelist) ? ap.userWhitelist : []
+        userWhitelist: Array.isArray(ap.userWhitelist) ? ap.userWhitelist : [],
+        userBlacklist: Array.isArray(ap.userBlacklist) ? ap.userBlacklist : [],
+        roleWhitelist: Array.isArray(ap.roleWhitelist) ? ap.roleWhitelist : [],
+        roleBlacklist: Array.isArray(ap.roleBlacklist) ? ap.roleBlacklist : []
     };
 }
 
@@ -50,14 +53,28 @@ function resolveAntipalavrasConfig(message) {
     // Configuração mais específica (nível mais baixo ativo)
     const winner = active[active.length - 1];
 
-    // Combina userWhitelist de TODOS os níveis ativos (union)
     const mergedUserWhitelist = [
         ...new Set(active.flatMap(({ config }) => config.userWhitelist || []))
+    ];
+    const mergedUserBlacklist = [
+        ...new Set(active.flatMap(({ config }) => config.userBlacklist || []))
+    ];
+    const mergedRoleWhitelist = [
+        ...new Set(active.flatMap(({ config }) => config.roleWhitelist || []))
+    ];
+    const mergedRoleBlacklist = [
+        ...new Set(active.flatMap(({ config }) => config.roleBlacklist || []))
     ];
 
     return {
         level: winner.level,
-        config: { ...winner.config, userWhitelist: mergedUserWhitelist }
+        config: {
+            ...winner.config,
+            userWhitelist: mergedUserWhitelist,
+            userBlacklist: mergedUserBlacklist,
+            roleWhitelist: mergedRoleWhitelist,
+            roleBlacklist: mergedRoleBlacklist
+        }
     };
 }
 

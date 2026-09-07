@@ -2,43 +2,125 @@
  * Helper para concentrar as ações de moderação (kick, ban) entre plataformas.
  */
 
+function cleanJid(jid) {
+    if (!jid) return jid;
+    const str = String(jid).trim();
+    if (!str.includes("@")) {
+        const digits = str.replace(/\D/g, "");
+        return digits ? `${digits}@s.whatsapp.net` : str;
+    }
+    const [userPart, serverPart] = str.split("@");
+    const cleanUser = userPart.split(":")[0];
+    return `${cleanUser}@${serverPart}`;
+}
+
+function sameUserId(left, right) {
+    if (!left || !right) return false;
+    const leftValue = String(left).trim();
+    const rightValue = String(right).trim();
+    if (leftValue === rightValue) return true;
+
+    const cleanLeft = leftValue.includes("@")
+        ? leftValue.split("@")[0].split(":")[0] + "@" + leftValue.split("@")[1]
+        : leftValue.split(":")[0];
+    const cleanRight = rightValue.includes("@")
+        ? rightValue.split("@")[0].split(":")[0] + "@" + rightValue.split("@")[1]
+        : rightValue.split(":")[0];
+
+    if (cleanLeft === cleanRight) return true;
+
+    const digitsLeft = leftValue.replace(/\D/g, "");
+    const digitsRight = rightValue.replace(/\D/g, "");
+    if (digitsLeft && digitsRight && digitsLeft === digitsRight) return true;
+
+    return false;
+}
+
 /**
  * Remove (expulsa) um usuário do grupo/servidor.
  * @param {string} platform A plataforma atual ("discord", "whatsapp", "telegram")
  * @param {object} message O objeto de mensagem contendo raw, userId, chatId
+ * @param {string} [reason] Motivo opcional
  */
 async function kickMember(platform, message, reason = "Punição automática") {
     if (platform === "discord") {
         const guild = message.raw?.guild || global.discordClient?.guilds?.cache.get(message.guildId) || null;
         if (!guild) {
             console.warn("[MODERATION] Discord kick sem guild disponível:", { userId: message.userId, chatId: message.chatId });
-            return false;
+            throw new Error("Guild não disponível para expulsão no Discord.");
         }
         try {
             const member = await guild.members.fetch(message.userId).catch(() => null);
             if (!member) {
                 console.warn("[MODERATION] Discord kick falhou: membro não encontrado.", { userId: message.userId, guildId: guild.id });
-                return false;
+                throw new Error("Membro não encontrado no servidor.");
             }
             await guild.members.kick(message.userId, { reason });
             return true;
         } catch (err) {
             console.error("❌[MODERATION] Falha ao kickar usuário do Discord:", err && err.message ? err.message : err);
-            return false;
+            throw err;
         }
     } else if (platform === "telegram") {
         const ctx = message.raw;
-        await ctx.telegram
-            .banChatMember(message.chatId, Number(message.userId))
-            .catch(() => {});
-        // No Telegram kick = banir e desbanir imediatamente
-        await ctx.telegram
-            .unbanChatMember(message.chatId, Number(message.userId))
-            .catch(() => {});
+        if (!ctx?.telegram) throw new Error("Contexto do Telegram não disponível.");
+        try {
+            await ctx.telegram.banChatMember(message.chatId, Number(message.userId));
+            // No Telegram kick = banir e desbanir imediatamente
+            await ctx.telegram.unbanChatMember(message.chatId, Number(message.userId));
+            return true;
+        } catch (err) {
+            console.error("❌[MODERATION] Falha ao kickar usuário do Telegram:", err && err.message ? err.message : err);
+            throw err;
+        }
     } else if (platform === "whatsapp") {
-        await global.whatsappSock
-            .groupParticipantsUpdate(message.chatId, [message.userId], "remove")
-            .catch(() => {});
+        const sock = global.whatsappSock;
+        if (!sock || typeof sock.groupMetadata !== "function" || typeof sock.groupParticipantsUpdate !== "function") {
+            throw new Error("A conexão do WhatsApp não está disponível.");
+        }
+
+        const chatId = message.chatId;
+        if (!chatId.endsWith("@g.us")) {
+            throw new Error("Comando de expulsão só pode ser usado em grupos do WhatsApp.");
+        }
+
+        const metadata = await sock.groupMetadata(chatId);
+        const botIds = [sock.user?.id, sock.user?.lid].filter(Boolean);
+        const botMember = metadata.participants?.find((p) => {
+            const pIds = [p.id, p.lid, p.phoneNumber].filter(Boolean);
+            return pIds.some((pId) => botIds.some((bId) => sameUserId(pId, bId)));
+        });
+
+        if (!botMember || !botMember.admin) {
+            throw new Error("O bot precisa ser administrador do grupo para expulsar membros.");
+        }
+
+        const targetId = message.userId;
+        const target = metadata.participants?.find((p) => {
+            const ids = [p.id, p.lid, p.phoneNumber].filter(Boolean);
+            return ids.some((id) => sameUserId(id, targetId));
+        });
+
+        if (!target) {
+            throw new Error("Usuário não encontrado neste grupo do WhatsApp.");
+        }
+        if (target.admin) {
+            throw new Error("Não é possível expulsar um administrador do grupo.");
+        }
+        if (botIds.some((bId) => sameUserId(target.id, bId))) {
+            throw new Error("Não é possível expulsar o próprio bot.");
+        }
+
+        const participantId = target.id || target.lid || target.phoneNumber;
+        const cleanParticipant = cleanJid(participantId);
+        const result = await sock.groupParticipantsUpdate(chatId, [cleanParticipant], "remove");
+        if (Array.isArray(result) && result[0]) {
+            const status = String(result[0].status || "");
+            if (status && status !== "200" && status !== "207") {
+                throw new Error(`WhatsApp não permitiu a remoção (código ${status}).`);
+            }
+        }
+        return true;
     }
 }
 
@@ -53,25 +135,73 @@ async function banMember(platform, message, reason = "Punição automática") {
         const guild = message.raw?.guild || global.discordClient?.guilds?.cache.get(message.guildId) || null;
         if (!guild) {
             console.warn("[MODERATION] Discord ban sem guild disponível:", { userId: message.userId, chatId: message.chatId });
-            return false;
+            throw new Error("Guild não disponível para banimento no Discord.");
         }
         try {
             await guild.members.ban(message.userId, { reason });
             return true;
         } catch (err) {
             console.error("❌[MODERATION] Falha ao banir usuário do Discord:", err && err.message ? err.message : err);
-            return false;
+            throw err;
         }
     } else if (platform === "telegram") {
         const ctx = message.raw;
-        await ctx.telegram
-            .banChatMember(message.chatId, Number(message.userId))
-            .catch(() => {});
+        if (!ctx?.telegram) throw new Error("Contexto do Telegram não disponível.");
+        try {
+            await ctx.telegram.banChatMember(message.chatId, Number(message.userId));
+            return true;
+        } catch (err) {
+            console.error("❌[MODERATION] Falha ao banir usuário do Telegram:", err && err.message ? err.message : err);
+            throw err;
+        }
     } else if (platform === "whatsapp") {
-        // WhatsApp não tem ban nativo via Baileys — removemos do grupo.
-        await global.whatsappSock
-            .groupParticipantsUpdate(message.chatId, [message.userId], "remove")
-            .catch(() => {});
+        const sock = global.whatsappSock;
+        if (!sock || typeof sock.groupMetadata !== "function" || typeof sock.groupParticipantsUpdate !== "function") {
+            throw new Error("A conexão do WhatsApp não está disponível.");
+        }
+
+        const chatId = message.chatId;
+        if (!chatId.endsWith("@g.us")) {
+            throw new Error("Comando de ban só pode ser usado em grupos do WhatsApp.");
+        }
+
+        const metadata = await sock.groupMetadata(chatId);
+        const botIds = [sock.user?.id, sock.user?.lid].filter(Boolean);
+        const botMember = metadata.participants?.find((p) => {
+            const pIds = [p.id, p.lid, p.phoneNumber].filter(Boolean);
+            return pIds.some((pId) => botIds.some((bId) => sameUserId(pId, bId)));
+        });
+
+        if (!botMember || !botMember.admin) {
+            throw new Error("O bot precisa ser administrador do grupo para banir membros.");
+        }
+
+        const targetId = message.userId;
+        const target = metadata.participants?.find((p) => {
+            const ids = [p.id, p.lid, p.phoneNumber].filter(Boolean);
+            return ids.some((id) => sameUserId(id, targetId));
+        });
+
+        if (!target) {
+            throw new Error("Usuário não encontrado neste grupo do WhatsApp.");
+        }
+        if (target.admin) {
+            throw new Error("Não é possível banir um administrador do grupo.");
+        }
+        if (botIds.some((bId) => sameUserId(target.id, bId))) {
+            throw new Error("Não é possível banir o próprio bot.");
+        }
+
+        const participantId = target.id || target.lid || target.phoneNumber;
+        const cleanParticipant = cleanJid(participantId);
+        const result = await sock.groupParticipantsUpdate(chatId, [cleanParticipant], "remove");
+        if (Array.isArray(result) && result[0]) {
+            const status = String(result[0].status || "");
+            if (status && status !== "200" && status !== "207") {
+                throw new Error(`WhatsApp não permitiu a remoção (código ${status}).`);
+            }
+        }
+        return true;
     }
 }
 
@@ -142,8 +272,15 @@ function parseTargetFromMessage(message) {
     const quoted = message.quoted;
     if (quoted?.userId) {
         return {
-            targetId: String(quoted.userId),
+            targetId: cleanJid(String(quoted.userId)),
             targetMessageId: quoted.messageId ? String(quoted.messageId) : null
+        };
+    }
+
+    if (Array.isArray(message.mentionedJids) && message.mentionedJids.length > 0) {
+        return {
+            targetId: message.platform === "whatsapp" ? cleanJid(String(message.mentionedJids[0])) : String(message.mentionedJids[0]),
+            targetMessageId: null
         };
     }
 
@@ -172,7 +309,7 @@ function parseTargetFromMessage(message) {
         }
     }
 
-    return { targetId: rawArg, targetMessageId: null };
+    return { targetId: cleanJid(rawArg), targetMessageId: null };
 }
 
 function formatUserMention(message, targetId) {
@@ -184,13 +321,15 @@ function formatUserMention(message, targetId) {
         return `[usuário](tg://user?id=${targetId})`;
     }
     if (message.platform === "whatsapp") {
-        const number = targetId.split("@")[0];
-        return `@${number}`;
+        const number = String(targetId).split("@")[0].split(":")[0].replace(/\D/g, "");
+        return number ? `@${number}` : targetId;
     }
     return targetId;
 }
 
 module.exports = {
+    cleanJid,
+    sameUserId,
     kickMember,
     banMember,
     muteMember,

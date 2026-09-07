@@ -49,6 +49,11 @@ Exemplos:
 
 module.exports = {
     category: "system/configurações",
+    platformSupport: {
+        whatsapp: "partial",
+        telegram: "partial",
+        discord: "partial"
+    },
 
     name: "config",
 

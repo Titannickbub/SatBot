@@ -274,7 +274,7 @@ Funções disponíveis:
         }
 
         // ── 5h. userwhitelist ───────────────────────────────────────────
-        if (subCmd === "userwhitelist") {
+        if (subCmd === "userwhitelist" || subCmd === "uw") {
             const actionUw = (args[2] || "").toLowerCase(); // add, remove, list
             const current = getSetAntilink(message, level);
             const userWhitelist = Array.isArray(current?.userWhitelist) ? [...current.userWhitelist] : [];
@@ -283,34 +283,164 @@ Funções disponíveis:
             if (actionUw === "list") {
                 return message.reply({
                     text: userWhitelist.length
-                        ? `👤 Usuários na lista branca em *${lbl}*:\n${userWhitelist.map(u => `- ${u}`).join("\n")}`
+                        ? `👤 Usuários na lista branca em *${lbl}*:\n${userWhitelist.map(u => `- ${formatUserMention(message, u)} (${u})`).join("\n")}`
                         : `🔕 Nenhum usuário na lista branca em *${lbl}*.`
                 });
             }
 
-            const userId = args[3] ? String(args[3]).trim() : null;
-            if (!userId && (actionUw === "add" || actionUw === "remove")) {
-                return message.reply({ text: "❌ Informe o ID do usuário. Ex: !antilink <nivel> userwhitelist add 5511999990000" });
+            const target = resolveTargetUser(message, 3);
+            if (!target && (actionUw === "add" || actionUw === "remove")) {
+                return message.reply({ text: "❌ Informe o usuário respondendo à mensagem, mencionando (@) ou informando o ID/número." });
             }
 
             if (actionUw === "add") {
-                if (userWhitelist.includes(userId)) {
-                    return message.reply({ text: `❌ O usuário *${userId}* já está na lista branca.` });
+                if (userWhitelist.some(u => sameUserId(u, target.id))) {
+                    return message.reply({ text: `❌ O usuário ${target.mention} já está na lista branca.` });
                 }
-                userWhitelist.push(userId);
-                getSetAntilink(message, level, { userWhitelist });
-                return message.reply({ text: `✅ Usuário *${userId}* adicionado à lista branca em *${lbl}*.` });
+                userWhitelist.push(target.id);
+                const userBlacklist = (Array.isArray(current?.userBlacklist) ? [...current.userBlacklist] : []).filter(u => !sameUserId(u, target.id));
+                getSetAntilink(message, level, { userWhitelist, userBlacklist });
+                return message.reply({ text: `✅ Usuário ${target.mention} adicionado à lista branca em *${lbl}*.` });
             } else if (actionUw === "remove") {
-                const idx = userWhitelist.indexOf(userId);
+                const idx = userWhitelist.findIndex(u => sameUserId(u, target.id));
                 if (idx === -1) {
-                    return message.reply({ text: `❌ O usuário *${userId}* não está na lista branca.` });
+                    return message.reply({ text: `❌ O usuário ${target.mention} não está na lista branca.` });
                 }
                 userWhitelist.splice(idx, 1);
                 getSetAntilink(message, level, { userWhitelist });
-                return message.reply({ text: `✅ Usuário *${userId}* removido da lista branca em *${lbl}*.` });
+                return message.reply({ text: `✅ Usuário ${target.mention} removido da lista branca em *${lbl}*.` });
             }
 
-            return message.reply({ text: "❌ Use: !antilink <nivel> userwhitelist add|remove|list [ID]" });
+            return message.reply({ text: `❌ Use: ${message.prefix}antilink <nivel> userwhitelist add|remove|list [usuário|@|ID]` });
+        }
+
+        // ── 5i. userblacklist ───────────────────────────────────────────
+        if (subCmd === "userblacklist" || subCmd === "ub") {
+            const actionUb = (args[2] || "").toLowerCase();
+            const current = getSetAntilink(message, level);
+            const userBlacklist = Array.isArray(current?.userBlacklist) ? [...current.userBlacklist] : [];
+            const lbl = getLevelLabel(platform, level);
+
+            if (actionUb === "list") {
+                return message.reply({
+                    text: userBlacklist.length
+                        ? `🚫 Usuários na lista negra em *${lbl}*:\n${userBlacklist.map(u => `- ${formatUserMention(message, u)} (${u})`).join("\n")}`
+                        : `🔕 Nenhum usuário na lista negra em *${lbl}*.`
+                });
+            }
+
+            const target = resolveTargetUser(message, 3);
+            if (!target && (actionUb === "add" || actionUb === "remove")) {
+                return message.reply({ text: "❌ Informe o usuário respondendo à mensagem, mencionando (@) ou informando o ID/número." });
+            }
+
+            if (actionUb === "add") {
+                if (userBlacklist.some(u => sameUserId(u, target.id))) {
+                    return message.reply({ text: `❌ O usuário ${target.mention} já está na lista negra.` });
+                }
+                userBlacklist.push(target.id);
+                const userWhitelist = (Array.isArray(current?.userWhitelist) ? [...current.userWhitelist] : []).filter(u => !sameUserId(u, target.id));
+                getSetAntilink(message, level, { userWhitelist, userBlacklist });
+                return message.reply({ text: `✅ Usuário ${target.mention} adicionado à lista negra em *${lbl}*.` });
+            } else if (actionUb === "remove") {
+                const idx = userBlacklist.findIndex(u => sameUserId(u, target.id));
+                if (idx === -1) {
+                    return message.reply({ text: `❌ O usuário ${target.mention} não está na lista negra.` });
+                }
+                userBlacklist.splice(idx, 1);
+                getSetAntilink(message, level, { userBlacklist });
+                return message.reply({ text: `✅ Usuário ${target.mention} removido da lista negra em *${lbl}*.` });
+            }
+
+            return message.reply({ text: `❌ Use: ${message.prefix}antilink <nivel> userblacklist add|remove|list [usuário|@|ID]` });
+        }
+
+        // ── 5j. rolewhitelist (Discord) ─────────────────────────────────
+        if (subCmd === "rolewhitelist" || subCmd === "rw") {
+            if (platform !== "discord") {
+                return message.reply({ text: "❌ A lista de cargos é exclusiva para servidores do Discord." });
+            }
+            const actionRw = (args[2] || "").toLowerCase();
+            const current = getSetAntilink(message, level);
+            const roleWhitelist = Array.isArray(current?.roleWhitelist) ? [...current.roleWhitelist] : [];
+            const lbl = getLevelLabel(platform, level);
+
+            if (actionRw === "list") {
+                return message.reply({
+                    text: roleWhitelist.length
+                        ? `🛡️ Cargos na lista branca em *${lbl}*:\n${roleWhitelist.map(r => `- ${formatRoleMention(r, message.raw?.guild)}`).join("\n")}`
+                        : `🔕 Nenhum cargo na lista branca em *${lbl}*.`
+                });
+            }
+
+            const targetRole = resolveTargetRole(message, 3);
+            if (!targetRole || targetRole.error) {
+                return message.reply({ text: targetRole?.error || "❌ Informe o cargo mencionando (@Cargo), digitando o ID ou o nome." });
+            }
+
+            if (actionRw === "add") {
+                if (roleWhitelist.includes(targetRole.id)) {
+                    return message.reply({ text: `❌ O cargo ${formatRoleMention(targetRole.id, message.raw?.guild)} já está na lista branca.` });
+                }
+                roleWhitelist.push(targetRole.id);
+                const roleBlacklist = (Array.isArray(current?.roleBlacklist) ? [...current.roleBlacklist] : []).filter(r => r !== targetRole.id);
+                getSetAntilink(message, level, { roleWhitelist, roleBlacklist });
+                return message.reply({ text: `✅ Cargo ${formatRoleMention(targetRole.id, message.raw?.guild)} adicionado à lista branca em *${lbl}*.` });
+            } else if (actionRw === "remove") {
+                const idx = roleWhitelist.indexOf(targetRole.id);
+                if (idx === -1) {
+                    return message.reply({ text: `❌ O cargo ${formatRoleMention(targetRole.id, message.raw?.guild)} não está na lista branca.` });
+                }
+                roleWhitelist.splice(idx, 1);
+                getSetAntilink(message, level, { roleWhitelist });
+                return message.reply({ text: `✅ Cargo ${formatRoleMention(targetRole.id, message.raw?.guild)} removido da lista branca em *${lbl}*.` });
+            }
+
+            return message.reply({ text: `❌ Use: ${message.prefix}antilink <nivel> rolewhitelist add|remove|list [@Cargo|ID|Nome]` });
+        }
+
+        // ── 5k. roleblacklist (Discord) ─────────────────────────────────
+        if (subCmd === "roleblacklist" || subCmd === "rb") {
+            if (platform !== "discord") {
+                return message.reply({ text: "❌ A lista de cargos é exclusiva para servidores do Discord." });
+            }
+            const actionRb = (args[2] || "").toLowerCase();
+            const current = getSetAntilink(message, level);
+            const roleBlacklist = Array.isArray(current?.roleBlacklist) ? [...current.roleBlacklist] : [];
+            const lbl = getLevelLabel(platform, level);
+
+            if (actionRb === "list") {
+                return message.reply({
+                    text: roleBlacklist.length
+                        ? `🚫 Cargos na lista negra em *${lbl}*:\n${roleBlacklist.map(r => `- ${formatRoleMention(r, message.raw?.guild)}`).join("\n")}`
+                        : `🔕 Nenhum cargo na lista negra em *${lbl}*.`
+                });
+            }
+
+            const targetRole = resolveTargetRole(message, 3);
+            if (!targetRole || targetRole.error) {
+                return message.reply({ text: targetRole?.error || "❌ Informe o cargo mencionando (@Cargo), digitando o ID ou o nome." });
+            }
+
+            if (actionRb === "add") {
+                if (roleBlacklist.includes(targetRole.id)) {
+                    return message.reply({ text: `❌ O cargo ${formatRoleMention(targetRole.id, message.raw?.guild)} já está na lista negra.` });
+                }
+                roleBlacklist.push(targetRole.id);
+                const roleWhitelist = (Array.isArray(current?.roleWhitelist) ? [...current.roleWhitelist] : []).filter(r => r !== targetRole.id);
+                getSetAntilink(message, level, { roleWhitelist, roleBlacklist });
+                return message.reply({ text: `✅ Cargo ${formatRoleMention(targetRole.id, message.raw?.guild)} adicionado à lista negra em *${lbl}*.` });
+            } else if (actionRb === "remove") {
+                const idx = roleBlacklist.indexOf(targetRole.id);
+                if (idx === -1) {
+                    return message.reply({ text: `❌ O cargo ${formatRoleMention(targetRole.id, message.raw?.guild)} não está na lista negra.` });
+                }
+                roleBlacklist.splice(idx, 1);
+                getSetAntilink(message, level, { roleBlacklist });
+                return message.reply({ text: `✅ Cargo ${formatRoleMention(targetRole.id, message.raw?.guild)} removido da lista negra em *${lbl}*.` });
+            }
+
+            return message.reply({ text: `❌ Use: ${message.prefix}antilink <nivel> roleblacklist add|remove|list [@Cargo|ID|Nome]` });
         }
 
         // ── Fallback: ajuda ─────────────────────────────────────────────

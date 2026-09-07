@@ -6,7 +6,7 @@ module.exports = {
     name: "autoupdate",
     category: "system/configurações",
     description: "Ativa ou desativa a atualização automática segura pela versão do GitHub.",
-    usage: "{prefix}autoupdate <on|off|status>",
+    usage: "{prefix}autoupdate [subcomando]",
 
     async execute(message) {
         if (!isOwner(message)) {

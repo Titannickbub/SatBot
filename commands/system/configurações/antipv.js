@@ -28,7 +28,7 @@ Subcomandos:
 
   allowuser <add|remove|list> <userId>
     • Libera usuários específicos para continuar usando o bot em PV.`,
-    usage: "{prefix}antipv <status|on|off|mode|msg|media|allowcmd|allowuser>",
+    usage: "{prefix}antipv [subcomando]",
     examples: [
         "{prefix}antipv status",
         "{prefix}antipv on",

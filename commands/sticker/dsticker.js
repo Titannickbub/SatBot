@@ -20,6 +20,11 @@ module.exports = {
         "rdsticker", "rds", "rdfig", "rdfigurinha"
     ],
     category: "sticker",
+    platformSupport: {
+        discord: "full",
+        telegram: "none",
+        whatsapp: "none"
+    },
     description: "Cria uma figurinha (sticker) personalizada no servidor do Discord a partir de fotos, GIFs, vídeos, emojis de outros servidores ou figurinhas do Vencord.",
     usage: "{prefix}dsticker <nome> [imagem/emoji/link]",
     examples: [

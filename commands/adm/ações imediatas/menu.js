@@ -55,6 +55,7 @@
 */
 
 const core = require("../../../core");
+const { getCommandPlatformIndicator } = require("../../../functions/commandPlatformSupport");
 
 module.exports = {
 
@@ -100,7 +101,7 @@ module.exports = {
 
             let text = "===================\n";
             text += `${title}\n\n`;
-            text += items.map((item) => `${prefix} ${item}`).join("\n");
+            text += items.map((item) => prefix ? `${prefix} ${item}` : item).join("\n");
             text += "\n";
             return text;
         };
@@ -126,7 +127,7 @@ module.exports = {
 
             for (const cmd of uniqueCommands) {
                 if (!cmd.category) {
-                    rootCommands.push(formatCommand(cmd));
+                    rootCommands.push(cmd);
                 } else if (categorizedCommands.includes(cmd)) {
                     categories.add(normalizeCategory(cmd.category).split("/")[0]);
                 }
@@ -137,7 +138,14 @@ module.exports = {
             if (rootCommands.length) {
                 const pages = paginate(rootCommands, 10);
                 pages.forEach((page) => {
-                    text += formatSection("📄 Comandos:", page, "🔶");
+                    text += formatSection(
+                        "📄 Comandos:",
+                        page.map((cmd) => {
+                            const indicator = getCommandPlatformIndicator(cmd, message.platform);
+                            return `${indicator.icon} ${formatCommand(cmd)}`;
+                        }),
+                        ""
+                    );
                     text += "\n";
                 });
             }
@@ -182,12 +190,19 @@ module.exports = {
 
         let text = `${headerText}\n\n`;
         const appendCommandSections = (sectionTitle, commandsToFormat) => {
-            const pages = paginate(commandsToFormat.map(formatCommand), 10);
+            const pages = paginate(commandsToFormat, 10);
             pages.forEach((page, pageIndex) => {
                 const pageTitle = pages.length > 1
                     ? `📂 ${sectionTitle} (${pageIndex + 1}/${pages.length})`
                     : `📂 ${sectionTitle}`;
-                text += formatSection(pageTitle, page);
+                text += formatSection(
+                    pageTitle,
+                    page.map((cmd) => {
+                        const indicator = getCommandPlatformIndicator(cmd, message.platform);
+                        return `${indicator.icon} ${formatCommand(cmd)}`;
+                    }),
+                    ""
+                );
             });
         };
 

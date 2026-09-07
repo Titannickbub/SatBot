@@ -10,6 +10,11 @@ module.exports = {
     ],
     description: "Cria uma figurinha (sticker) no WhatsApp ou Telegram com ajuste de proporção, esticada ou cortada no centro.",
     category: "sticker",
+    platformSupport: {
+        whatsapp: "full",
+        telegram: "full",
+        discord: "none"
+    },
     usage: "{prefix}sticker (normal), {prefix}fsticker (esticar) ou {prefix}rsticker (recortar centro)",
     examples: [
         "{prefix}sticker / {prefix}s / {prefix}fig / {prefix}figurinha (manter proporção)",

@@ -247,6 +247,20 @@ async function start(onMessage) {
             media: null,
             reply: async function (data) {
                 try {
+                    if (data?.embed) {
+                        const embed = new EmbedBuilder(data.embed);
+                        if (!repliedToInteraction) {
+                            repliedToInteraction = true;
+                            if (interaction.deferred || interaction.replied) {
+                                return await interaction.editReply({ embeds: [embed] });
+                            }
+                            return await interaction.reply({ embeds: [embed] });
+                        }
+                        if (interaction.deferred || interaction.replied) {
+                            return await interaction.followUp({ embeds: [embed] });
+                        }
+                        return await interaction.channel.send({ embeds: [embed] });
+                    }
                     if (typeof data === "object" && data !== null && (data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url)) {
                         const image = data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url;
                         return await this.replyImg({ image, caption: data.caption || data.text || "" });
@@ -589,6 +603,9 @@ async function start(onMessage) {
 
             reply: async function (data) {
                 try {
+                    if (data?.embed) {
+                        return await msg.reply({ embeds: [new EmbedBuilder(data.embed)] });
+                    }
                     if (typeof data === "object" && data !== null && (data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url)) {
                         const image = data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url;
                         return await this.replyImg({ image, caption: data.caption || data.text || "" });

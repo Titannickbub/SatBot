@@ -127,26 +127,26 @@ Use config para habilitar o monitor, run para executar uma verificação agora e
         const sub = (message.args[0] || "help").toLowerCase();
         const config = loadMonitorConfig({ platform: message.platform, chatId: message.chatId, threadId: message.threadId || null });
 
+        if (["disable", "desativar", "off", "desligar"].includes(sub)) {
+            const canConfigure = await checkMonitorPermission(message);
+            if (!canConfigure) {
+                return message.reply({ text: "❌ Apenas administradores do chat ou super usuários podem desativar o monitor do café." });
+            }
+
+            const target = {
+                platform: message.platform,
+                chatId: message.chatId,
+                threadId: message.threadId || null
+            };
+            const disabledConfig = saveMonitorConfig({ enabled: false }, target);
+            await syncMonitorSchedules(disabledConfig, target);
+            return message.reply({ text: "ℹ️ Monitor do café desativado neste chat." });
+        }
+
         if (sub === "config") {
             const canConfigure = await checkMonitorPermission(message);
             if (!canConfigure) {
                 return message.reply({ text: "❌ Apenas administradores do chat ou super usuários podem configurar o monitor do café." });
-            }
-
-            if (["disable", "desativar", "off", "desligar"].includes(sub)) {
-                const canConfigure = await checkMonitorPermission(message);
-                if (!canConfigure) {
-                    return message.reply({ text: "❌ Apenas administradores do chat ou super usuários podem desativar o monitor do café." });
-                }
-
-                const target = {
-                    platform: message.platform,
-                    chatId: message.chatId,
-                    threadId: message.threadId || null
-                };
-                const disabledConfig = saveMonitorConfig({ enabled: false }, target);
-                await syncMonitorSchedules(disabledConfig, target);
-                return message.reply({ text: "ℹ️ Monitor do café desativado neste chat." });
             }
 
             const options = parseMonitorConfigArgs(message.args || []);

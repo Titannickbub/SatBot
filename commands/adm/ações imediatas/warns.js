@@ -1,4 +1,5 @@
 const { getUserWarns, getWarnConfig } = require("../../../functions/warnHelper");
+const { parseTargetFromMessage, formatUserMention } = require("../../../functions/moderationHelper");
 
 module.exports = {
     name: "warns",
@@ -9,21 +10,21 @@ module.exports = {
     async execute(message) {
         if (message.isPrivate) return message.reply({ text: "❌ Comando apenas para grupos/servidores." });
 
-        let targetId = message.mentionedJidList?.[0];
-        if (!targetId) {
-            // Se não mencionou ninguém, vê de si mesmo
-            targetId = message.userId;
-        }
+        const { targetId } = parseTargetFromMessage(message);
+        const finalTargetId = targetId || message.userId;
 
         const config = getWarnConfig(message);
         if (!config) {
             return message.reply({ text: "❌ Não foi possível ler as configurações." });
         }
 
-        const warns = getUserWarns(message, targetId);
+        const warns = getUserWarns(message, finalTargetId);
+        const isSelf = finalTargetId === message.userId;
+        const who = isSelf ? "Você" : formatUserMention(message, finalTargetId);
 
-        let who = (targetId === message.userId) ? "Você" : "O usuário";
-
-        return message.reply({ text: `⚠️ ${who} possui *${warns}* advertência(s) de um máximo de *${config.max}*.` });
+        return message.reply({
+            text: `⚠️ ${who} possui *${warns}* advertência(s) de um máximo de *${config.max}*.`,
+            mentions: (message.platform === "whatsapp" && !isSelf) ? [finalTargetId] : []
+        });
     }
 };

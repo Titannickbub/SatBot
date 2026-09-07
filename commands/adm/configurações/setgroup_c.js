@@ -4,6 +4,11 @@ module.exports = {
     name: "setgroup_c",
     aliases: ["setcommunitygroup", "setgroupcommunity", "setgrupo_comunidade"],
     category: "adm/configurações",
+    platformSupport: {
+        whatsapp: "full",
+        telegram: "none",
+        discord: "none"
+    },
     description: "Marca este grupo do WhatsApp como canal de avisos da comunidade e salva o nome de referência no JSON sem alterar o nome real do chat.",
     usage: "{prefix}setgroup_c",
     examples: [

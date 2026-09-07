@@ -4,6 +4,11 @@ const { isOwner } = require("../../../functions/owners");
 module.exports = {
     name: "unmute",
     category: "adm/ações imediatas",
+    platformSupport: {
+        discord: "full",
+        telegram: "full",
+        whatsapp: "none"
+    },
     description: "Desfaz o mute de um usuário em Discord ou Telegram. Use respondendo à mensagem ou digitando o ID.",
     usage: "{prefix}unmute <@usuário|id>",
     examples: [

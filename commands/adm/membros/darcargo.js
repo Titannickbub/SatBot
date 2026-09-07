@@ -3,6 +3,11 @@ const { executeRoleChange } = require("../../../functions/discordRoles");
 module.exports = {
     name: "darcargo",
     category: "adm/membros",
+    platformSupport: {
+        discord: "full",
+        telegram: "none",
+        whatsapp: "none"
+    },
     description: "Atribui um ou mais cargos a um membro no Discord.",
     usage: "{prefix}darcargo @membro @cargo1 @cargo2",
     async execute(message) {

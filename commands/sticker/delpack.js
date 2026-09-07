@@ -5,6 +5,11 @@ module.exports = {
     aliases: ["delfig", "delsticker", "deletarpacote", "limparpacote"],
     description: "Exclui o seu pacote de figurinhas do Telegram ou uma figurinha específica marcada no chat.",
     category: "sticker",
+    platformSupport: {
+        telegram: "full",
+        whatsapp: "none",
+        discord: "none"
+    },
     usage: "{prefix}delpack (excluir pacote completo) ou {prefix}delfig (respondendo a uma figurinha)",
     examples: [
         "{prefix}delpack / {prefix}deletarpacote — Deleta seu pacote inteiro no Telegram",

@@ -1,4 +1,10 @@
 const { hasLink, resolveAntilinkConfig } = require("../functions/antilinkHelper");
+const {
+    isUserWhitelisted,
+    isUserBlacklisted,
+    isRoleWhitelisted,
+    isRoleBlacklisted
+} = require("../functions/antiHelper");
 const { isOwner } = require("../functions/owners");
 const { kickMember, banMember } = require("../functions/moderationHelper");
 const { addWarn } = require("../functions/warnHelper");
@@ -16,34 +22,33 @@ module.exports = {
         if (message.isPrivate) return true;
 
         const text = message.text || "";
+        if (!text) return true;
+
+        // Se a mensagem não contém nenhum link, ignora e permite a passagem
+        if (!hasLink(text)) return true;
+
         const resolved = resolveAntilinkConfig(message);
 
         // ── Log de diagnóstico (sempre, pré-qualquer filtro) ──────────
-        if (hasLink(text)) {
-            const actionLabel = resolved?.config?.enabled ? resolved.config.action : null;
-            const immune = (message.sender?.isAdmin || message.sender?.isOwner || message.sender?.canManageMessages);
-            console.log(
-                `[ANTILINK] 🔗 Link detectado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId}` +
-                (immune
-                    ? ` | ignorado (usuário imune: admin/dono)`
-                    : actionLabel
-                        ? ` | ação configurada: ${actionLabel}`
-                        : ` | ignorado (sem config ativa ou antilink desativado)`)
-            );
-        }
-
-        if (!hasLink(text)) {
-            return true;
-        }
-
-        // Imunidade: admins, donos e superusuários
-        if (
+        const actionLabel = resolved?.config?.enabled ? resolved.config.action : null;
+        const immune = Boolean(
             message.sender?.isAdmin ||
             message.sender?.isOwner ||
             message.sender?.canManageMessages ||
             isOwner(message)
-        ) {
-            console.log(`[ANTILINK] 🚫 Ignorado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId} | motivo: usuário imune`);
+        );
+
+        console.log(
+            `[ANTILINK] 🔗 Link detectado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId}` +
+            (immune
+                ? ` | ignorado (usuário imune: admin/dono)`
+                : actionLabel
+                    ? ` | ação configurada: ${actionLabel}`
+                    : ` | ignorado (sem config ativa ou antilink desativado)`)
+        );
+
+        // Imunidade: admins, donos e superusuários
+        if (immune) {
             return true;
         }
 
@@ -52,31 +57,51 @@ module.exports = {
             return true;
         }
 
-        // ── Lista branca de usuários ────────────────────────────────
-        const { action, message: customMsg, ignoreSameGroup, ignoreMedia, whitelist, userWhitelist } = resolved.config;
-        if (Array.isArray(userWhitelist) && userWhitelist.includes(String(message.userId))) {
+        const {
+            action,
+            message: customMsg,
+            ignoreSameGroup,
+            ignoreMedia,
+            whitelist,
+            userWhitelist = [],
+            userBlacklist = [],
+            roleWhitelist = [],
+            roleBlacklist = []
+        } = resolved.config;
+
+        // ── 1. Verificação de Lista Branca (Usuário ou Cargo) ───────────
+        if (isUserWhitelisted(userWhitelist, message.userId)) {
             console.log(`[ANTILINK] 🚫 Ignorado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId} | motivo: usuário na lista branca`);
             return true;
         }
+        if (isRoleWhitelisted(roleWhitelist, message)) {
+            console.log(`[ANTILINK] 🚫 Ignorado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId} | motivo: cargo na lista branca`);
+            return true;
+        }
 
-        // ── 1. Verificações de Lista Branca (Whitelist) ───────────────
+        const isBlacklisted = isUserBlacklisted(userBlacklist, message.userId) || isRoleBlacklisted(roleBlacklist, message);
+
+        // ── 2. Verificações de Domínios / Mídias Permitidas ────────────
         let isWhitelisted = false;
 
-        // a) Ignorar mídias (downloads)
-        if (ignoreMedia) {
-            const MEDIA_DOMAINS = [
-                "youtube.com", "youtu.be",
-                "tiktok.com", "vm.tiktok.com",
-                "instagram.com",
-                "twitter.com", "x.com",
-                "facebook.com", "fb.watch", "fb.com",
-                "kwai.com", "kw.ai",
-                "pinterest.com", "pin.it",
-                "spotify.com"
-            ];
-            if (MEDIA_DOMAINS.some(domain => text.includes(domain))) {
-                isWhitelisted = true;
-                console.log(`[ANTILINK] 🚫 Ignorado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId} | motivo: link de mídia permitido`);
+        // Se não estiver na lista negra, aplica exceções de mídia/grupo/domínio
+        if (!isBlacklisted) {
+            // a) Ignorar mídias (downloads)
+            if (ignoreMedia) {
+                const MEDIA_DOMAINS = [
+                    "youtube.com", "youtu.be",
+                    "tiktok.com", "vm.tiktok.com",
+                    "instagram.com",
+                    "twitter.com", "x.com",
+                    "facebook.com", "fb.watch", "fb.com",
+                    "kwai.com", "kw.ai",
+                    "pinterest.com", "pin.it",
+                    "spotify.com"
+                ];
+                if (MEDIA_DOMAINS.some(domain => text.includes(domain))) {
+                    isWhitelisted = true;
+                    console.log(`[ANTILINK] 🚫 Ignorado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId} | motivo: link de mídia permitido`);
+                }
             }
         }
 

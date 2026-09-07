@@ -26,6 +26,11 @@ module.exports = {
     name: "clear",
     aliases: ["limpar", "purge", "deletar", "apagar"],
     category: "adm/ações imediatas",
+    platformSupport: {
+        discord: "full",
+        telegram: "partial",
+        whatsapp: "none"
+    },
     description: `Apaga mensagens com controle de quantidade, escopo e exclusões.
 
 Sintaxe:

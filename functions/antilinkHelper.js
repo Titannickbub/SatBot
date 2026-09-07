@@ -4,7 +4,7 @@ const { loadSettings, saveSettings } = require("./groupSettings");
 //  DETECÇÃO DE LINKS
 // ─────────────────────────────────────────────────────────────
 
-const LINK_REGEX = /https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?/i;
+const LINK_REGEX = /https?:\/\/\S+|www\.\S+|chat\.whatsapp\.com\/\S+|wa\.me\/\S+|t\.me\/\S+|discord\.(?:gg|com\/invite)\/\S+|(?:[a-zA-Z0-9-]+\.)+(?:com|net|org|edu|gov|br|io|me|xyz|app|dev|online|site|top|live|info|tv|co|gg|gl|ly|to|ai|is|tech|store|space|pro|fun|club|lat|vip|link|blog|shop|cloud|mobi|biz|fm|cc|ws|eu|uk|us|ca|de|fr|it|es|ru|jp|cn|in|pt)(?:\/\S*)?/i;
 
 /**
  * Retorna true se o texto contiver algum link.
@@ -58,14 +58,17 @@ function getLevelLabel(platform, level) {
 function readAntilink(settingsObj) {
     const al = settingsObj?.antilink || {};
     return {
-        enabled:      al.enabled      === true,
-        action:       al.action       || "delete",
-        message:      al.message      || null,
-        ignoreParent: al.ignoreParent === true,
+        enabled:         al.enabled         === true,
+        action:          al.action          || "delete",
+        message:         al.message         || null,
+        ignoreParent:    al.ignoreParent    === true,
         ignoreSameGroup: al.ignoreSameGroup === true,
-        ignoreMedia:  al.ignoreMedia  === true,
-        whitelist:    Array.isArray(al.whitelist)     ? al.whitelist     : [],
-        userWhitelist: Array.isArray(al.userWhitelist) ? al.userWhitelist : []
+        ignoreMedia:     al.ignoreMedia     === true,
+        whitelist:       Array.isArray(al.whitelist)       ? al.whitelist       : [],
+        userWhitelist:   Array.isArray(al.userWhitelist)   ? al.userWhitelist   : [],
+        userBlacklist:   Array.isArray(al.userBlacklist)   ? al.userBlacklist   : [],
+        roleWhitelist:   Array.isArray(al.roleWhitelist)   ? al.roleWhitelist   : [],
+        roleBlacklist:   Array.isArray(al.roleBlacklist)   ? al.roleBlacklist   : []
     };
 }
 
@@ -103,14 +106,29 @@ function resolveAntilinkConfig(message) {
     // Configuração mais específica (nível mais baixo ativo)
     const winner = active[active.length - 1];
 
-    // Combina userWhitelist de TODOS os níveis ativos (union)
+    // Combina listas de TODOS os níveis ativos (union)
     const mergedUserWhitelist = [
         ...new Set(active.flatMap(({ config }) => config.userWhitelist || []))
+    ];
+    const mergedUserBlacklist = [
+        ...new Set(active.flatMap(({ config }) => config.userBlacklist || []))
+    ];
+    const mergedRoleWhitelist = [
+        ...new Set(active.flatMap(({ config }) => config.roleWhitelist || []))
+    ];
+    const mergedRoleBlacklist = [
+        ...new Set(active.flatMap(({ config }) => config.roleBlacklist || []))
     ];
 
     return {
         level: winner.level,
-        config: { ...winner.config, userWhitelist: mergedUserWhitelist }
+        config: {
+            ...winner.config,
+            userWhitelist: mergedUserWhitelist,
+            userBlacklist: mergedUserBlacklist,
+            roleWhitelist: mergedRoleWhitelist,
+            roleBlacklist: mergedRoleBlacklist
+        }
     };
 }
 

@@ -1,4 +1,5 @@
 const { removeWarns } = require("../../../functions/warnHelper");
+const { parseTargetFromMessage, formatUserMention } = require("../../../functions/moderationHelper");
 const { isOwner } = require("../../../functions/owners");
 
 module.exports = {
@@ -19,19 +20,32 @@ module.exports = {
             return message.reply({ text: "❌ Apenas administradores podem usar este comando." });
         }
 
-        const targetId = message.mentionedJidList?.[0];
+        const { targetId } = parseTargetFromMessage(message);
         if (!targetId) {
-            return message.reply({ text: "❌ Mencione o usuário que deseja perdoar." });
+            return message.reply({ text: "❌ Informe o usuário que deseja perdoar (mencione, responda à mensagem ou digite o ID)." });
         }
 
-        const amount = parseInt(message.args[1]) || 0; // 0 significa todos
+        let amount = 0;
+        if (message.quoted?.userId) {
+            amount = parseInt(message.args[0]) || 0;
+        } else {
+            amount = parseInt(message.args[1]) || 0;
+        }
 
         const success = removeWarns(message, targetId, amount);
+        const targetMention = formatUserMention(message, targetId);
+
         if (success) {
             if (amount > 0) {
-                return message.reply({ text: `✅ Foram removidas ${amount} advertência(s) do usuário.` });
+                return message.reply({
+                    text: `✅ Foram removidas ${amount} advertência(s) de ${targetMention}.`,
+                    mentions: message.platform === "whatsapp" ? [targetId] : []
+                });
             } else {
-                return message.reply({ text: `✅ Todas as advertências do usuário foram removidas.` });
+                return message.reply({
+                    text: `✅ Todas as advertências de ${targetMention} foram removidas.`,
+                    mentions: message.platform === "whatsapp" ? [targetId] : []
+                });
             }
         } else {
             return message.reply({ text: "❌ O usuário não possui advertências ou houve erro ao ler." });

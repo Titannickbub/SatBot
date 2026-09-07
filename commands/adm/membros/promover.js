@@ -3,6 +3,11 @@ const { setWhatsAppAdmin } = require("../../../functions/whatsappAdminHelper");
 module.exports = {
     name: "promover",
     category: "adm/membros",
+    platformSupport: {
+        whatsapp: "full",
+        telegram: "none",
+        discord: "none"
+    },
     description: "Promove um membro a administrador no WhatsApp. Pode usar resposta, ID, ID central ou menção.",
     usage: "{prefix}promover <ID|ID central|@menção> ou responda à mensagem",
 
