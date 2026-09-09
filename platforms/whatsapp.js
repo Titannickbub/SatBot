@@ -31,7 +31,7 @@ const authFolder = path.join(__dirname, "..", "settings", "whatsapp-auth");
 const syncedGroups = new Set();
 
 async function start(onMessage) {
-  console.log('[WHATSAPP] Inicializando adapter...');
+  console.log('🔄[WHATSAPP] Inicializando...');
   try {
     const resolvedAuth = authFlow.ensureWhatsAppAuthFolder(authFolder);
     const effectiveAuthFolder = resolvedAuth.authFolder;
@@ -151,7 +151,8 @@ async function start(onMessage) {
       }
 
       if (connection === "open") {
-        console.log("[WHATSAPP] Conectado com sucesso.");
+        const botId = String(sock.user?.id || "").split("@")[0].split(":")[0];
+        console.log(`🟩[WHATSAPP] Conectado como ${botId || "número não confirmado"}`);
         authFlow.cleanupWhatsAppAuthFolder(effectiveAuthFolder, { keepRecentPreKeys: 50 });
         if (global.__pendingAuthBootstrapPlatform === "whatsapp") {
           global.__pendingAuthBootstrapPlatform = null;
@@ -241,15 +242,62 @@ async function start(onMessage) {
         const botLid = sock.user?.lid ? sock.user.lid.split(":")[0].replace(/[^0-9]/g, "") : "";
         const botJid = sock.user?.id ? sock.user.id.split(":")[0] + "@s.whatsapp.net" : null;
 
+        function isViewOnceMessage(raw) {
+          if (!raw || typeof raw !== "object") return false;
+          return Boolean(
+            raw.viewOnceMessage ||
+            raw.viewOnceMessageV2 ||
+            raw.viewOnceMessageV2Extension ||
+            raw.imageMessage?.viewOnce ||
+            raw.videoMessage?.viewOnce ||
+            raw.audioMessage?.viewOnce
+          );
+        }
+
+        function unwrapMessage(rawMsg) {
+          if (!rawMsg || typeof rawMsg !== "object") return {};
+          let current = rawMsg;
+          let iterations = 0;
+          while (
+            iterations < 10 &&
+            (current.viewOnceMessage?.message ||
+             current.viewOnceMessageV2?.message ||
+             current.viewOnceMessageV2Extension?.message ||
+             current.ephemeralMessage?.message ||
+             current.documentWithCaptionMessage?.message)
+          ) {
+            current = current.viewOnceMessage?.message ||
+              current.viewOnceMessageV2?.message ||
+              current.viewOnceMessageV2Extension?.message ||
+              current.ephemeralMessage?.message ||
+              current.documentWithCaptionMessage?.message;
+            iterations++;
+          }
+          return current;
+        }
+
+        const unwrappedDirect = unwrapMessage(msg.message);
+        const isDirectViewOnce = isViewOnceMessage(msg.message);
+
+        if (unwrappedDirect.conversation) {
+          text = unwrappedDirect.conversation;
+        } else if (unwrappedDirect.extendedTextMessage?.text) {
+          text = unwrappedDirect.extendedTextMessage.text;
+        } else if (unwrappedDirect.imageMessage?.caption) {
+          text = unwrappedDirect.imageMessage.caption;
+        } else if (unwrappedDirect.videoMessage?.caption) {
+          text = unwrappedDirect.videoMessage.caption;
+        }
+
         let quoted = null;
-        const contextInfo = msg.message?.extendedTextMessage?.contextInfo ||
-          msg.message?.imageMessage?.contextInfo ||
-          msg.message?.videoMessage?.contextInfo ||
-          msg.message?.documentMessage?.contextInfo ||
-          msg.message?.audioMessage?.contextInfo ||
-          msg.message?.stickerMessage?.contextInfo ||
-          msg.message?.buttonsResponseMessage?.contextInfo ||
-          msg.message?.listResponseMessage?.contextInfo;
+        const contextInfo = unwrappedDirect.extendedTextMessage?.contextInfo ||
+          unwrappedDirect.imageMessage?.contextInfo ||
+          unwrappedDirect.videoMessage?.contextInfo ||
+          unwrappedDirect.documentMessage?.contextInfo ||
+          unwrappedDirect.audioMessage?.contextInfo ||
+          unwrappedDirect.stickerMessage?.contextInfo ||
+          unwrappedDirect.buttonsResponseMessage?.contextInfo ||
+          unwrappedDirect.listResponseMessage?.contextInfo;
 
         if (contextInfo && contextInfo.stanzaId) {
           const quotedParticipant = contextInfo.participant ? String(contextInfo.participant) : null;
@@ -259,7 +307,10 @@ async function start(onMessage) {
             (botLid && cleanQuotedNum === botLid)
           );
 
-          const qMsg = contextInfo.quotedMessage || {};
+          const rawQMsg = contextInfo.quotedMessage || {};
+          const isQuotedViewOnce = isViewOnceMessage(rawQMsg);
+          const qMsg = unwrapMessage(rawQMsg);
+
           const qImage = qMsg.imageMessage;
           const qVideo = qMsg.videoMessage;
           const qAudio = qMsg.audioMessage;
@@ -288,6 +339,7 @@ async function start(onMessage) {
             qMedia = {
               type: qMediaType,
               mimeType: qMimeType,
+              isViewOnce: isQuotedViewOnce || Boolean(qMediaKey.viewOnce),
               raw: qMediaKey,
               getBuffer: async () => {
                 if (_qCachedBuffer) return _qCachedBuffer;
@@ -305,6 +357,7 @@ async function start(onMessage) {
             fromMe: isQuotedFromMe,
             raw: qMsg,
             media: qMedia,
+            isViewOnce: isQuotedViewOnce,
             text: qMsg.conversation ||
               qMsg.extendedTextMessage?.text ||
               qMsg.imageMessage?.caption ||
@@ -363,11 +416,11 @@ async function start(onMessage) {
             }
           },
           media: (() => {
-            const imageMsg = msg.message.imageMessage;
-            const videoMsg = msg.message.videoMessage;
-            const audioMsg = msg.message.audioMessage;
-            const documentMsg = msg.message.documentMessage;
-            const stickerMsg = msg.message.stickerMessage;
+            const imageMsg = unwrappedDirect.imageMessage;
+            const videoMsg = unwrappedDirect.videoMessage;
+            const audioMsg = unwrappedDirect.audioMessage;
+            const documentMsg = unwrappedDirect.documentMessage;
+            const stickerMsg = unwrappedDirect.stickerMessage;
 
             let mediaKey = null;
             let mediaType = null;
@@ -391,6 +444,8 @@ async function start(onMessage) {
             return {
               type: mediaType,
               mimeType,
+              isViewOnce: isDirectViewOnce || Boolean(mediaKey.viewOnce),
+              raw: mediaKey,
               getBuffer: async () => {
                 if (_cachedBuffer) return _cachedBuffer;
                 const { getFileBuffer } = require("../functions/api");
@@ -476,6 +531,10 @@ async function start(onMessage) {
             const messagePayload = { caption };
             if (Array.isArray(data.mentions) && data.mentions.length) {
               messagePayload.mentions = data.mentions;
+            }
+
+            if (data.gifPlayback) {
+              messagePayload.gifPlayback = true;
             }
 
             if (Buffer.isBuffer(video)) {

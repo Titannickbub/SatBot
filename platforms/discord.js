@@ -32,6 +32,104 @@ function formatUptime(seconds) {
     return parts.join(" ");
 }
 
+function extractDiscordMedia(discordMsg) {
+    if (!discordMsg) return null;
+    const { fetchBuffer } = require("../functions/api");
+
+    // 1. Sticker
+    const sticker = discordMsg.stickers?.first?.();
+    if (sticker) {
+        return {
+            url: sticker.url,
+            fileName: `${sticker.name || "sticker"}.png`,
+            mimeType: "image/png",
+            type: "sticker",
+            getBuffer: async () => fetchBuffer(sticker.url)
+        };
+    }
+
+    // 2. Anexo direto (Attachment)
+    const attachment = discordMsg.attachments?.first?.();
+    if (attachment) {
+        const ct = (attachment.contentType || "").toLowerCase();
+        const fn = (attachment.name || "").toLowerCase();
+        let type = "document";
+        if (ct.startsWith("image/") || /\.(jpeg|jpg|png|webp|gif)$/i.test(fn)) {
+            type = "image";
+        } else if (ct.startsWith("video/") || /\.(mp4|mkv|avi|mov|webm)$/i.test(fn)) {
+            type = "video";
+        } else if (ct.startsWith("audio/") || /\.(mp3|ogg|opus|wav|m4a|aac|flac)$/i.test(fn)) {
+            type = "audio";
+        }
+        return {
+            url: attachment.url,
+            fileName: attachment.name,
+            mimeType: attachment.contentType || (type === "image" ? (fn.endsWith(".gif") ? "image/gif" : "image/png") : ""),
+            type,
+            getBuffer: async () => fetchBuffer(attachment.url)
+        };
+    }
+
+    // 3. Embeds (Tenor, Giphy, imagens/vídeos inseridos via link/embed)
+    if (Array.isArray(discordMsg.embeds) && discordMsg.embeds.length > 0) {
+        for (const embed of discordMsg.embeds) {
+            const mediaUrl = embed.video?.url || embed.video?.proxyURL ||
+                embed.image?.url || embed.image?.proxyURL ||
+                embed.thumbnail?.url || embed.thumbnail?.proxyURL ||
+                (embed.url && /\.(gif|png|jpe?g|webp|mp4)$/i.test(embed.url) ? embed.url : null);
+
+            if (mediaUrl) {
+                const lower = mediaUrl.toLowerCase().split(/[?#]/)[0];
+                const isGif = lower.endsWith(".gif") ||
+                    (embed.provider?.name && /tenor|giphy/i.test(embed.provider.name)) ||
+                    /tenor|giphy/i.test(mediaUrl);
+                const isVideo = !isGif && (!!embed.video || /\.(mp4|webm|mov)$/i.test(lower));
+                const type = isVideo ? "video" : "image";
+                const mimeType = isGif ? "image/gif" : (isVideo ? "video/mp4" : "image/png");
+                const ext = isGif ? ".gif" : (isVideo ? ".mp4" : ".png");
+                const rawName = path.basename(lower) || `media${ext}`;
+                const fileName = rawName.includes(".") ? rawName : `${rawName}${ext}`;
+
+                return {
+                    url: mediaUrl,
+                    fileName,
+                    mimeType,
+                    type,
+                    getBuffer: async () => fetchBuffer(mediaUrl)
+                };
+            }
+        }
+    }
+
+    // 4. URL de mídia presente no texto
+    if (discordMsg.content && typeof discordMsg.content === "string") {
+        const urlMatch = discordMsg.content.match(/https?:\/\/[^\s]+/i);
+        if (urlMatch) {
+            const foundUrl = urlMatch[0];
+            const lower = foundUrl.toLowerCase().split(/[?#]/)[0];
+            if (/\.(gif|png|jpe?g|webp|mp4|webm|mov)$/i.test(lower) || lower.includes("tenor.com") || lower.includes("giphy.com")) {
+                const isGif = lower.endsWith(".gif") || lower.includes("tenor.com") || lower.includes("giphy.com");
+                const isVideo = !isGif && /\.(mp4|webm|mov)$/i.test(lower);
+                const type = isVideo ? "video" : "image";
+                const mimeType = isGif ? "image/gif" : (isVideo ? "video/mp4" : "image/png");
+                const ext = isGif ? ".gif" : (isVideo ? ".mp4" : ".png");
+                const rawName = path.basename(lower) || `media${ext}`;
+                const fileName = rawName.includes(".") ? rawName : `${rawName}${ext}`;
+
+                return {
+                    url: foundUrl,
+                    fileName,
+                    mimeType,
+                    type,
+                    getBuffer: async () => fetchBuffer(foundUrl)
+                };
+            }
+        }
+    }
+
+    return null;
+}
+
 async function start(onMessage) {
     require("dotenv").config({ path: path.join(__dirname, "..", "settings", ".env"), override: true });
 
@@ -176,6 +274,14 @@ async function start(onMessage) {
             await welcomeHelper.handleDiscordMemberJoin(member);
         } catch (err) {
             console.error("❌[DISCORD] Erro ao processar guildMemberAdd para welcome:", err);
+        }
+    });
+
+    client.on("guildMemberRemove", async (member) => {
+        try {
+            await welcomeHelper.handleDiscordMemberLeave(member);
+        } catch (err) {
+            console.error("❌[DISCORD] Erro ao processar guildMemberRemove para goodbye:", err);
         }
     });
 
@@ -327,7 +433,7 @@ async function start(onMessage) {
 
                 let payload = {};
                 if (Buffer.isBuffer(image)) {
-                    payload = { content: caption, files: [{ attachment: image, name: "image.png" }] };
+                    payload = { content: caption, files: [{ attachment: image, name: data.fileName || data.name || "image.png" }] };
                 } else if (typeof image === "string" && /^https?:\/\//i.test(image)) {
                     payload = { embeds: [new EmbedBuilder().setImage(image).setDescription(caption)] };
                 } else {
@@ -467,7 +573,8 @@ async function start(onMessage) {
                         fromMe: String(quotedMsg.author.id) === String(client.user.id),
                         isBot: quotedMsg.author.bot,
                         text: quotedMsg.content,
-                        raw: quotedMsg
+                        raw: quotedMsg,
+                        media: extractDiscordMedia(quotedMsg)
                     };
                 }
             } catch (err) {
@@ -563,43 +670,7 @@ async function start(onMessage) {
                 return false;
             },
 
-            media: (() => {
-                const sticker = msg.stickers?.first?.();
-                if (sticker) {
-                    return {
-                        url: sticker.url,
-                        fileName: `${sticker.name || 'sticker'}.png`,
-                        mimeType: 'image/png',
-                        type: 'sticker',
-                        getBuffer: async () => {
-                            const { fetchBuffer } = require("../functions/api");
-                            return await fetchBuffer(sticker.url);
-                        }
-                    };
-                }
-                const attachment = msg.attachments.first();
-                if (!attachment) return null;
-                const ct = (attachment.contentType || '').toLowerCase();
-                const fn = (attachment.name || '').toLowerCase();
-                let type = 'document';
-                if (ct.startsWith('image/') || /\.(jpeg|jpg|png|webp|gif)$/i.test(fn)) {
-                    type = 'image';
-                } else if (ct.startsWith('video/') || /\.(mp4|mkv|avi|mov|webm)$/i.test(fn)) {
-                    type = 'video';
-                } else if (ct.startsWith('audio/') || /\.(mp3|ogg|opus|wav|m4a|aac|flac)$/i.test(fn)) {
-                    type = 'audio';
-                }
-                return {
-                    url: attachment.url,
-                    fileName: attachment.name,
-                    mimeType: attachment.contentType,
-                    type,
-                    getBuffer: async () => {
-                        const { fetchBuffer } = require("../functions/api");
-                        return await fetchBuffer(attachment.url);
-                    }
-                };
-            })(),
+            media: extractDiscordMedia(msg),
 
             reply: async function (data) {
                 try {
@@ -680,7 +751,7 @@ async function start(onMessage) {
                 if (Buffer.isBuffer(image)) {
                     await msg.reply({
                         content: caption,
-                        files: [{ attachment: image, name: "image.png" }]
+                        files: [{ attachment: image, name: data.fileName || data.name || "image.png" }]
                     });
                 } else if (typeof image === "string" && /^https?:\/\//i.test(image)) {
                     await msg.reply({

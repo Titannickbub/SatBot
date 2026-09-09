@@ -1,11 +1,18 @@
-const nofapHelper = require("../functions/nofapHelper");
-const { ensureParticipant, leaveParticipant, buildRankingText } = require("../functions/nofapGroupHelper");
+const nofapHelper = require("../../functions/nofapHelper");
+const { ensureParticipant, leaveParticipant, buildRankingText } = require("../../functions/nofapGroupHelper");
 
 module.exports = {
+    category: "diversão",
     name: "setembro",
     aliases: ["setembronofap", "ranksetembro"],
     description: "Gerencia o ranking e a entrada no desafio de Setembro/NoFap do grupo atual (WhatsApp/Telegram) ou servidor do Discord.",
     usage: "{prefix}setembro [subcomando]",
+    examples: [
+        "{prefix}setembro rank",
+        "{prefix}setembro entrar",
+        "{prefix}setembro reset",
+        "{prefix}setembro sair"
+    ],
     async execute(message) {
         const store = (message.functions && message.functions.centralAccounts) || global.centralAccounts;
         const args = (message.text || "").trim().split(/\s+/).slice(1);

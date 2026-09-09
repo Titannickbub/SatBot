@@ -1,4 +1,4 @@
-const { isOwner } = require("../functions/owners");
+const { isOwner } = require("../../../functions/owners");
 const {
     getVipConfig,
     addVipCommand,
@@ -7,8 +7,8 @@ const {
     setVipOnlyEnabled,
     addVipOnlyItem,
     removeVipOnlyItem
-} = require("../functions/config");
-const vipHelper = require("../functions/vipHelper");
+} = require("../../../functions/config");
+const vipHelper = require("../../../functions/vipHelper");
 
 function _renderVipCard(message, central, status) {
     const userName = message.username || message.displayName || message.name || 'Usuário';
@@ -70,6 +70,7 @@ function _helpText(message) {
 module.exports = {
     name: "vip",
     aliases: ["premium"],
+    category: "contas/exibir",
     description: "Gerencia status VIP, permissões e regras exclusivas.",
     usage: "{prefix}vip [subcomando]",
     async execute(message) {

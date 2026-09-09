@@ -16,23 +16,23 @@ echo "[BOOT] Ambiente: ${DEV_MODE}"
 echo "[BOOT] Dados: settings/"
 echo "=================================================="
 echo ""
-if [ ! -d "node_modules" ]; then
-    echo "[INFO] Instalando dependências..."
-    echo ""
-    npm install --no-audit --no-fund --no-progress
-    if [ $? -ne 0 ]; then
-        echo "[ERRO] Não foi possível instalar as dependências."
-        exit 1
-    fi
-else
-    echo "[INFO] Dependências já instaladas; instalação ignorada."
-fi
-
 echo ""
 echo "[INFO] Iniciando o bot com loop de auto-recuperação..."
 echo ""
 
 while true; do
+    if [ ! -d "node_modules" ] || ! npm ls --depth=0 >/dev/null 2>&1; then
+        echo "[INFO] Dependências ausentes ou desatualizadas. Instalando..."
+        echo ""
+        npm install --no-audit --no-fund --no-progress
+        if [ $? -ne 0 ]; then
+            echo "[ERRO] Não foi possível instalar as dependências."
+            exit 1
+        fi
+    else
+        echo "[INFO] Dependências verificadas."
+    fi
+
     node index.js
     echo ""
     echo "[WATCHER] O processo do bot terminou. Reiniciando em 2 segundos..."

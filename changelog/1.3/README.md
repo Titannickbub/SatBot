@@ -1,5 +1,13 @@
 # Sat Bot — Changelog Versão 1.3
 
+## 🔄 Verificação de dependências no reinício automático
+
+- Os launchers `start.sh` e `start.bat` agora verificam as dependências a cada
+  ciclo de inicialização, inclusive após um auto-update.
+- Quando `node_modules` está ausente ou inconsistente com o `package.json`, o
+  bot executa `npm install` antes de iniciar, evitando que o reboot automático
+  fique em loop sem conseguir carregar o bot.
+
 ## 🌐 Indicadores de compatibilidade por plataforma
 
 - Comandos podem declarar o campo opcional `platformSupport` com os estados
@@ -174,6 +182,31 @@
    - **Fora das Listas**: Sujeito aos limites de mensagens por janela de tempo (`flood X Y`) e filtros de menções/webhooks.
 ## 🎭 Correções e Melhorias no Sistema de Ações (`!act` e `!act_edit`)
 
+- **Migração de Armazenamento: Base64 → Arquivos Locais (`act_media/`)**:
+  - As mídias das ações eram armazenadas como strings Base64 gigantes dentro do próprio `act.json`, inflando o arquivo e causando lentidão na leitura/escrita.
+  - Migrado para **arquivos físicos na pasta `commands/diversão/act_media/`**, referenciados pelo campo `"file"` no JSON (ex: `"file": "kiss_1788985103184_541.mp4"`).
+  - O `act.json` agora armazena apenas o nome do arquivo, ficando leve e legível. As mídias são carregadas sob demanda com `fs.readFileSync()`.
+  - A pasta `act_media/` acompanha o comando, mantendo a portabilidade sem depender de pastas externas como `settings/uploads/media/`.
+- **🐛 Correção Crítica: GIFs Enviados como Imagem Estática no WhatsApp**:
+  - **Causa raiz**: As mídias salvas pelo `!act_edit` (oriundas de URLs do Tenor/Giphy e anexos de GIF do Discord) são, na realidade, **vídeos MP4** (`ftypmp42`/H.264) e não arquivos GIF clássicos (`GIF89a`). Isso ocorre porque o Tenor, o Giphy e o próprio Discord convertem GIFs animados em vídeos MP4 para otimizar performance e largura de banda.
+  - **O bug**: O campo `"type": "gif"` no `act.json` indicava a intenção de exibição como GIF animado, porém a lógica antiga de envio no WhatsApp tratava mídia com tipo `"gif"` como imagem estática (`payload.image = buffer`), ignorando que o buffer real era um vídeo MP4. O resultado: o WhatsApp recebia um container de vídeo MP4 interpretado como imagem, exibindo apenas o primeiro frame congelado.
+  - **A correção**: A função `sendMedia()` agora usa **detecção por Magic Bytes** (`detectBufferFormat()`) em conjunto com o tipo declarado no JSON. Se o tipo é `"gif"` **ou** os bytes do arquivo indicam MP4 (`ftyp`), a mídia é enviada como `payload.video` com `gifPlayback: true`, garantindo reprodução animada em loop no WhatsApp (estilo GIF nativo do protocolo).
+  - **Por que no Telegram e Discord funcionava**: O Telegram (`sendAnimation`) e o Discord (`replyVideo`) já aceitavam o buffer MP4 diretamente e exibiam como animação sem necessidade de flags especiais. O bug era exclusivo da API do WhatsApp/Baileys, que exige o par `video` + `gifPlayback: true` para reproduzir MP4 como GIF.
+- **Detecção Inteligente de Formato Binário (*Magic Bytes*)**:
+  - Implementada a função `detectBufferFormat()`, que analisa os cabeçalhos binários reais dos buffers para identificar o tipo exato da mídia: `GIF89a/GIF87a`, `Vídeo MP4 (ftyp/H.264)`, `PNG`, `JPEG` e `WebP`.
+  - Essencial para distinguir entre GIFs clássicos (raros) e vídeos MP4 disfarçados de GIF (maioria das fontes modernas).
+- **Novo Subcomando de Inspeção (`!act_edit inspect`)**:
+  - `!act_edit inspect <ação>` (aliases `act_inspect`, `actinspect`): Inspeciona detalhadamente todas as mídias salvas de uma ação, exibindo formato real detectado, MIME type, tamanho em KB, Magic Bytes em hexadecimal e notas de compatibilidade por plataforma.
+  - `!act_edit inspect` (respondendo a uma mensagem/anexo/link): Inspeciona a mídia enviada ou citada antes de salvá-la, auxiliando na verificação de compatibilidade.
+- **Envio de GIFs adaptado por plataforma**:
+  - **WhatsApp (Baileys)**: GIFs clássicos são convertidos para MP4 e enviados com `gifPlayback: true`, mantendo a reprodução em loop como GIF nativo.
+  - **Telegram (Telegraf)**: GIFs são enviados como animações por meio de `sendAnimation`, usando diretamente o buffer GIF ou MP4.
+  - **Discord**: mídias declaradas como GIF que foram armazenadas como MP4 (comum em arquivos vindos do Tenor, Giphy ou anexos do Discord) são convertidas novamente para GIF real antes do envio, evitando que sejam exibidas como vídeos.
+  - Vídeos declarados explicitamente como `video` não sofrem alteração e continuam sendo enviados como vídeos.
+  - Corrigido o fechamento indevido de sessões de criptografia (`libsignal`) no WhatsApp ao responder com mídias em conversas privadas / LIDs.
+- **Extração Aprimorada de Mídias e Quotes no Discord (`extractDiscordMedia`)**:
+  - Corrigido problema onde responder a mensagens no Discord (`quote`/`reference`) não extraía as mídias anexadas ou embeds.
+  - O bot agora reconhece e extrai automaticamente anexos diretos, stickers, embeds animados do Tenor/Giphy (priorizando a stream MP4 de alta performance) e URLs de mídia presentes no texto.
 - **Exibição do guia de uso em erros de sintaxe**:
   - Ao executar `!act` sem argumentos, com `help`/`ajuda` ou informando uma ação inexistente/desativada, o bot agora responde diretamente com o guia completo de como usar o comando, listando todas as ações ativas disponíveis e exemplos práticos, em vez de emitir apenas erro de ação não encontrada.
 - **Resolução de alvo e ações individuais**:
@@ -181,13 +214,14 @@
   - Ao fornecer um alvo, o bot resolve precisamente o destinatário em todas as plataformas (resposta a mensagens, menções `@`, menções `<@id>` no Discord, menções em texto/username no Telegram e IDs/telefones).
 - **Escape e formatação no Telegram**:
   - Corrigido problema na renderização de HTML no Telegram que causava erro de entidades ao misturar textos com caracteres especiais (como `<3`) e menções clicáveis.
+  - Envio de animações via `sendAnimation` com nome de arquivo adequado (`action.mp4`/`action.gif`) para garantir a reprodução automática.
 - **Marcações com legenda no WhatsApp**:
   - Corrigida a ausência de `mentions` no envio de imagens/mídias com legenda no WhatsApp (`replyImg`), permitindo que as marcações `@usuario` funcionem nas mensagens de ação com mídia.
+- **Padronização dos logs de conexão do WhatsApp**:
+  - O log de inicialização do WhatsApp foi alinhado ao padrão visual das demais plataformas.
+  - Ao conectar, o console agora exibe o número do bot, facilitando a identificação da sessão ativa sem alterar o funcionamento do adapter.
 - **Retorno de erros e usabilidade no `!act_edit`**:
   - O comando agora informa a mensagem de erro exata e instruções claras quando um parâmetro está ausente ou inválido (ex: "Informe a ação", "Limite de caracteres excedido", "Ação não encontrada").
-- **Flexibilidade de Mídias e GIFs**:
-  - Melhorada a detecção automática de GIFs em provedores como Tenor e Giphy.
-  - Adicionado suporte opcional ao tipo explícito na adição de mídia (`!act_edit image <ação> <url> [photo|gif|video]`).
 
 ## ⚠️ Correções no Sistema de Advertências (`!warn`, `!warns` e `!unwarn`)
 
@@ -239,3 +273,23 @@
   - Obtém o username público do grupo/canal (`t.me/...`), link de convite existente ou exporta/cria um link de convite direto do chat.
 - **Tratamento de permissões**: Informa mensagens claras caso o bot necessite de privilégios de administrador ou de permissão de criação de convites.
 
+## 🔓 Revelador de Visualização Única (`!revelar`, `!revela`, `!vo`, `!viewonce`, `!quebrar`)
+
+- **Novo comando exclusivo do WhatsApp** (`platformSupport: { whatsapp: "full", telegram: "none", discord: "none" }`).
+- **Quebra e Reenvio Permanente de Mídias de Visualização Única**:
+  - Permite revelar qualquer foto, vídeo ou áudio de visualização única (`viewOnceMessage`, `viewOnceMessageV2`, `viewOnceMessageV2Extension`) marcando ou respondendo à mensagem com `!revelar`, `!revela` ou `!vo`.
+  - Descriptografa e baixa o buffer original dos servidores do WhatsApp via Baileys / AES-256-CBC e o reenvia no chat como uma mídia normal e permanente.
+  - Preserva a legenda original enviada junto com a foto ou vídeo.
+  - Suporte completo para desempacotamento de mensagens temporárias e visualizações únicas aninhadas no `platforms/whatsapp.js`.
+
+## 🗂️ Reorganização de Categorias e Estrutura de Comandos
+
+- **Comando `menu` na Raiz**:
+  - Movido de `commands/adm/ações imediatas/menu.js` para a raiz de comandos (`commands/menu.js`).
+  - O comando agora atua como comando raiz do sistema, sendo listado na seção principal de comandos.
+- **Comandos `setembro` e `nofap` na Categoria de Diversão**:
+  - Movidos para `commands/diversão/setembro.js` e `commands/diversão/nofap.js`.
+  - Ambos agora pertencem explicitamente à categoria `diversão`, sendo listados sob a aba de diversão (`!menu diversão`).
+- **Comando `vip` na Subcategoria de Contas/Exibir**:
+  - Movido para `commands/contas/exibir/vip.js` com a categoria `contas/exibir`.
+  - Agora é agrupado na aba de contas (`!menu contas` ou `!menu contas/exibir`) ao lado do comando `perfil`.

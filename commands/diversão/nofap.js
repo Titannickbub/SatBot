@@ -1,11 +1,17 @@
-const nofapHelper = require("../../../functions/nofapHelper");
+const nofapHelper = require("../../functions/nofapHelper");
 
 module.exports = {
-    category: "contas/atividades",
+    category: "diversão",
     name: "nofap",
     aliases: ["nofapset", "semana"],
     description: "Consulta e controla o desafio NoFap da conta central do usuário.",
     usage: "{prefix}nofap [status|iniciar|reset|sair|help]",
+    examples: [
+        "{prefix}nofap status",
+        "{prefix}nofap iniciar",
+        "{prefix}nofap reset",
+        "{prefix}nofap sair"
+    ],
     async execute(message) {
         const store = (message.functions && message.functions.centralAccounts) || global.centralAccounts;
         const args = (message.text || "").trim().split(/\s+/).slice(1);

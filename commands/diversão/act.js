@@ -1,6 +1,15 @@
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { cleanJid } = require("../../functions/moderationHelper");
+const { fetchBuffer } = require("../../functions/api");
+
+let ffmpegPath;
+try {
+    ffmpegPath = require("@ffmpeg-installer/ffmpeg").path;
+} catch {
+    ffmpegPath = "ffmpeg";
+}
 
 const ACTIONS_FILE = path.join(__dirname, "act.json");
 const ALLOWED_MEDIA_TYPES = new Set(["photo", "gif", "video"]);
@@ -259,84 +268,273 @@ function formatMention(message, id, name) {
     return String(name || id || "usuário");
 }
 
+function detectBufferFormat(buffer) {
+    if (!Buffer.isBuffer(buffer) || buffer.length < 12) {
+        return { ext: "bin", mime: "application/octet-stream", type: "unknown" };
+    }
+    const header3 = buffer.slice(0, 3).toString("ascii");
+    const header6 = buffer.slice(0, 6).toString("ascii");
+    if (header3 === "GIF" || header6.startsWith("GIF8")) {
+        return { ext: "gif", mime: "image/gif", type: "gif", isRealGif: true };
+    }
+    const ftyp = buffer.slice(4, 8).toString("ascii");
+    if (ftyp === "ftyp" || ftyp === "moov" || buffer.slice(4, 12).toString("ascii").includes("mp4")) {
+        return { ext: "mp4", mime: "video/mp4", type: "video", isMp4: true };
+    }
+    if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+        return { ext: "png", mime: "image/png", type: "photo" };
+    }
+    if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+        return { ext: "jpg", mime: "image/jpeg", type: "photo" };
+    }
+    if (buffer.slice(0, 4).toString("ascii") === "RIFF" && buffer.slice(8, 12).toString("ascii") === "WEBP") {
+        return { ext: "webp", mime: "image/webp", type: "photo" };
+    }
+    return { ext: "bin", mime: "application/octet-stream", type: "unknown" };
+}
+
+const MEDIA_DIR = path.join(__dirname, "act_media");
+
+async function resolveMediaBuffer(media) {
+    if (!media) throw new Error("Mídia não especificada.");
+
+    // 1. Arquivo salvo na pasta do comando (act_media/)
+    if (typeof media.file === "string" && media.file.trim()) {
+        const candidatePaths = [
+            path.join(MEDIA_DIR, path.basename(media.file)),
+            path.resolve(__dirname, media.file),
+            path.join(MEDIA_DIR, media.file)
+        ];
+        for (const candidate of candidatePaths) {
+            if (fs.existsSync(candidate)) {
+                return fs.readFileSync(candidate);
+            }
+        }
+    }
+
+    // 2. Buffer direto em base64 no JSON (legado/fallback)
+    if (media.base64 && typeof media.base64 === "string") {
+        return Buffer.from(media.base64, "base64");
+    }
+    if (media.data && typeof media.data === "string") {
+        const b64 = media.data.includes(",") ? media.data.split(",")[1] : media.data;
+        return Buffer.from(b64, "base64");
+    }
+
+    // 3. Data URI no campo url
+    if (typeof media.url === "string" && media.url.startsWith("data:")) {
+        const b64 = media.url.split(",")[1];
+        return Buffer.from(b64, "base64");
+    }
+
+    // 4. URL externa HTTP/HTTPS
+    if (typeof media.url === "string" && /^https?:\/\//i.test(media.url)) {
+        return await fetchBuffer(media.url);
+    }
+
+    // 5. Arquivo local no disco
+    if (typeof media.url === "string") {
+        const candidatePaths = [
+            path.join(MEDIA_DIR, path.basename(media.url)),
+            path.resolve(__dirname, media.url),
+            path.isAbsolute(media.url) ? media.url : path.resolve(process.cwd(), media.url)
+        ];
+        for (const candidate of candidatePaths) {
+            if (fs.existsSync(candidate)) {
+                return fs.readFileSync(candidate);
+            }
+        }
+    }
+
+    throw new Error("Não foi possível carregar o buffer da mídia da ação.");
+}
+
+/**
+ * Converte um buffer GIF clássico (image/gif) para MP4 (H.264) usando ffmpeg.
+ * Necessário porque o WhatsApp não suporta GIFs clássicas — só aceita MP4 com gifPlayback.
+ */
+function convertGifToMp4(gifBuffer) {
+    return new Promise((resolve, reject) => {
+        const { execFile } = require("child_process");
+        const tmpDir = os.tmpdir();
+        const id = `act_gif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const inputPath = path.join(tmpDir, `${id}.gif`);
+        const outputPath = path.join(tmpDir, `${id}.mp4`);
+
+        fs.writeFileSync(inputPath, gifBuffer);
+
+        const args = [
+            "-y",                        // Sobrescreve sem perguntar
+            "-i", inputPath,             // Input GIF
+            "-movflags", "faststart",    // Metadados no início (streaming)
+            "-pix_fmt", "yuv420p",       // Formato de pixel compatível
+            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", // Dimensões pares (requisito H.264)
+            "-loop", "0",                // Loop infinito
+            "-an",                       // Sem áudio
+            outputPath
+        ];
+
+        execFile(ffmpegPath, args, { timeout: 30000 }, (error) => {
+            // Limpa input independente do resultado
+            try { fs.unlinkSync(inputPath); } catch {}
+
+            if (error) {
+                try { fs.unlinkSync(outputPath); } catch {}
+                return reject(new Error(`ffmpeg falhou: ${error.message}`));
+            }
+
+            try {
+                const mp4Buffer = fs.readFileSync(outputPath);
+                fs.unlinkSync(outputPath);
+                if (!mp4Buffer || mp4Buffer.length < 100) {
+                    return reject(new Error("ffmpeg gerou um MP4 vazio ou inválido."));
+                }
+                resolve(mp4Buffer);
+            } catch (readErr) {
+                return reject(new Error(`Erro ao ler MP4 convertido: ${readErr.message}`));
+            }
+        });
+    });
+}
+
+function convertMp4ToGif(mp4Buffer) {
+    return new Promise((resolve, reject) => {
+        const { execFile } = require("child_process");
+        const tmpDir = os.tmpdir();
+        const id = `act_mp4_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const inputPath = path.join(tmpDir, `${id}.mp4`);
+        const outputPath = path.join(tmpDir, `${id}.gif`);
+
+        fs.writeFileSync(inputPath, mp4Buffer);
+
+        const args = [
+            "-y",
+            "-i", inputPath,
+            "-filter_complex",
+            "[0:v]fps=15,scale=trunc(min(480\\,iw)/2)*2:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=256[p];[s1][p]paletteuse=dither=sierra2_4a",
+            "-loop", "0",
+            outputPath
+        ];
+
+        execFile(ffmpegPath, args, { timeout: 30000 }, (error) => {
+            try { fs.unlinkSync(inputPath); } catch {}
+
+            if (error) {
+                try { fs.unlinkSync(outputPath); } catch {}
+                return reject(new Error(`ffmpeg falhou ao gerar GIF: ${error.message}`));
+            }
+
+            try {
+                const gifBuffer = fs.readFileSync(outputPath);
+                fs.unlinkSync(outputPath);
+                if (!gifBuffer || gifBuffer.length < 100) {
+                    return reject(new Error("ffmpeg gerou um GIF vazio ou inválido."));
+                }
+                resolve(gifBuffer);
+            } catch (readErr) {
+                return reject(new Error(`Erro ao ler GIF convertido: ${readErr.message}`));
+            }
+        });
+    });
+}
+
 async function sendMedia(message, media, caption, mentions) {
     const type = String(media.type || "photo").toLowerCase();
-    if (!ALLOWED_MEDIA_TYPES.has(type) || !media.url) {
+    if (!ALLOWED_MEDIA_TYPES.has(type)) {
         throw new Error("Mídia de ação inválida.");
+    }
+
+    let buffer = await resolveMediaBuffer(media);
+    const detected = detectBufferFormat(buffer);
+    let fileName = media.fileName || `action.${detected.ext !== "bin" ? detected.ext : (type === "gif" ? "gif" : "png")}`;
+
+    // Log do formato real da mídia
+    if (type === "gif" || detected.isRealGif || detected.isMp4) {
+        const gifKind = detected.isRealGif ? "GIF clássica (image/gif)" : detected.isMp4 ? "MP4 (video/mp4)" : `outro (${detected.mime})`;
+        console.log(`[ACT] Mídia enviada como GIF → formato real: ${gifKind} | ext: ${detected.ext} | mime: ${detected.mime} | tamanho: ${(buffer.length / 1024).toFixed(1)} KB`);
     }
 
     if (message.platform === "whatsapp") {
         const sock = global.whatsappSock;
         if (!sock) throw new Error("Socket do WhatsApp não está disponível.");
-        const input = resolveWhatsAppMedia(media.url);
+
         const payload = {
             caption,
             mentions: mentions || []
         };
-        if (type === "video" || type === "gif") {
-            payload.video = input;
-            if (type === "gif") payload.gifPlayback = true;
+
+        if (type === "gif" || detected.isRealGif || type === "video" || detected.isMp4) {
+            // WhatsApp não suporta GIF clássica (image/gif) — precisa de MP4
+            if (detected.isRealGif) {
+                console.log("[ACT] Convertendo GIF clássica → MP4 para compatibilidade com WhatsApp...");
+                try {
+                    buffer = await convertGifToMp4(buffer);
+                    console.log(`[ACT] Conversão concluída! Novo tamanho: ${(buffer.length / 1024).toFixed(1)} KB`);
+                } catch (convErr) {
+                    console.error("[ACT] Falha na conversão GIF → MP4:", convErr.message || convErr);
+                    // Tenta enviar mesmo assim como fallback
+                }
+            }
+            payload.video = buffer;
+            payload.gifPlayback = true;
         } else {
-            payload.image = input;
+            // Imagem estática (PNG/JPEG/WebP)
+            payload.image = buffer;
         }
-        return sock.sendMessage(message.chatId, payload, { quoted: message.raw });
+
+        return await sock.sendMessage(message.chatId, payload, { quoted: message.raw });
     }
 
     if (message.platform === "telegram") {
         const ctx = message.raw;
         if (!ctx?.telegram) throw new Error("Contexto do Telegram não está disponível.");
-        let input = resolveTelegramMedia(media.url);
         const extra = {
             caption,
             parse_mode: "HTML"
         };
         if (message.threadId) extra.message_thread_id = Number(message.threadId);
-        const sendFn = type === "video"
-            ? ctx.telegram.sendVideo.bind(ctx.telegram)
-            : type === "gif"
-                ? ctx.telegram.sendAnimation.bind(ctx.telegram)
-                : ctx.telegram.sendPhoto.bind(ctx.telegram);
+
+        const sourceObj = { source: buffer, filename: fileName };
+        let sendFn;
+
+        if (type === "gif" || detected.isRealGif || type === "video" || detected.isMp4) {
+            sendFn = ctx.telegram.sendAnimation.bind(ctx.telegram);
+        } else {
+            sendFn = ctx.telegram.sendPhoto.bind(ctx.telegram);
+        }
+
         try {
-            return await sendFn(message.chatId, input, extra);
+            return await sendFn(message.chatId, sourceObj, extra);
         } catch (error) {
             if (!/can't parse entities|parse entities/i.test(error?.message || error?.description || "")) {
                 throw error;
             }
             delete extra.parse_mode;
-            return sendFn(message.chatId, input, extra);
+            return sendFn(message.chatId, sourceObj, extra);
         }
     }
 
-    if (type === "video") {
-        if (typeof message.replyVideo === "function") {
-            return message.replyVideo({ video: resolveDiscordMedia(media.url), caption });
+    if (message.platform === "discord" && type === "gif") {
+        if (detected.isMp4) {
+            console.log("[ACT] Convertendo MP4 de GIF para GIF real para compatibilidade com Discord...");
+            buffer = await convertMp4ToGif(buffer);
+            fileName = "action.gif";
+        } else if (detected.isRealGif) {
+            fileName = "action.gif";
+        }
+        if (typeof message.replyImg === "function") {
+            return message.replyImg({ image: buffer, caption, fileName });
         }
     }
+
+    if ((type === "video" || detected.isMp4 || type === "gif" || detected.isRealGif) && typeof message.replyVideo === "function") {
+        return message.replyVideo({ video: buffer, caption, fileName });
+    }
     if (typeof message.replyImg === "function") {
-        return message.replyImg({ image: resolveDiscordMedia(media.url), caption });
+        return message.replyImg({ image: buffer, caption, fileName });
     }
 
     return message.reply({ text: caption });
-}
-
-function resolveWhatsAppMedia(value) {
-    if (typeof value !== "string") return value;
-    if (/^https?:\/\//i.test(value)) return { url: value };
-    const resolved = path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
-    return fs.existsSync(resolved) ? fs.readFileSync(resolved) : value;
-}
-
-function resolveDiscordMedia(value) {
-    if (typeof value !== "string") return value;
-    const resolved = path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
-    return fs.existsSync(resolved) ? resolved : value;
-}
-
-function resolveTelegramMedia(value) {
-    if (typeof value !== "string") return value;
-    if (/^https?:\/\//i.test(value)) return value;
-    const resolved = path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
-    return fs.existsSync(resolved) ? { source: fs.createReadStream(resolved) } : value;
 }
 
 function escapeHtml(value) {
@@ -385,6 +583,10 @@ module.exports._internals = {
     resolveTarget,
     renderMessage,
     formatMention,
+    resolveMediaBuffer,
+    detectBufferFormat,
+    convertGifToMp4,
+    convertMp4ToGif,
     sendMedia,
     help
 };

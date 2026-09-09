@@ -2,26 +2,122 @@
   "kiss": {
     "enabled": true,
     "aliases": [
-      "beijo"
+      "beijo",
+      "beijar",
+      "beijinhos"
     ],
     "messages": [
       "{user1_mention} deu um beijo em {user2_mention}! 💋",
       "{user1_mention} deu um beijo doce em {user2_mention}! 💋",
-      "{user1_mention} roubou um beijo de {user2_mention}! 😘"
+      "{user1_mention} roubou um beijo de {user2_mention}! 😘",
+      "{user1_mention} beijou {user2_mention} intensamente! 💋",
+      "{user1_mention} deu um beijo molhado em {user2_mention}! 💦",
+      "{user1_mention} beijou {user2_mention} com paixão! 💋",
+      "{user1_mention} beijou {user2_mention} na boca! 💋",
+      "{user1_mention} beijou {user2_mention} de língua! 💋",
+      "{user1_mention} beijou {user2_mention} várias vezes! 💋",
+      "{user1_mention} beijou {user2_mention} de surpresa! 💋"
     ],
-    "media": []
+    "media": [
+      {
+        "type": "gif",
+        "file": "kiss_1788985103184_541.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "kiss_1788985577141_563.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "kiss_1788985592427_443.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "kiss_1788985608943_825.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "kiss_1788985638944_603.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "kiss_1788985665275_474.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "kiss_1788985684713_547.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "kiss_1788985779667_406.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "kiss_1788985803769_904.mp4"
+      }
+    ]
   },
   "hug": {
     "enabled": true,
     "aliases": [
       "abraço",
-      "abraco"
+      "abraco",
+      "agarrar",
+      "agarrado"
     ],
     "messages": [
       "{user1_mention} abraçou {user2_mention}! 🤗",
-      "{user1_mention} mandou um abraço apertado para {user2_mention}! 🫂"
+      "{user1_mention} mandou um abraço apertado para {user2_mention}! 🫂",
+      "{user1_mention} abraçou {user2_mention} com força! 🫂",
+      "{user1_mention} abraçou {user2_mention} de surpresa! 🫂",
+      "{user1_mention} abraçou {user2_mention} de leve! 🫂",
+      "{user1_mention} apertou {user2_mention} em um abraço apertado! 🫂",
+      "{user1_mention} deu um abraço demorado em {user2_mention}! 🫂",
+      "{user1_mention} abraçou {user2_mention} com todo amor! 🫂",
+      "{user1_mention} abraçou {user2_mention} e não quer soltar! 🫂"
     ],
-    "media": []
+    "media": [
+      {
+        "type": "gif",
+        "file": "hug_1788985860107_707.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "hug_1788985870970_150.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "hug_1788985927462_648.gif"
+      },
+      {
+        "type": "gif",
+        "file": "hug_1788985942048_785.gif"
+      },
+      {
+        "type": "gif",
+        "file": "hug_1788986041670_156.gif"
+      },
+      {
+        "type": "gif",
+        "file": "hug_1788986051055_228.gif"
+      },
+      {
+        "type": "gif",
+        "file": "hug_1788986065551_421.gif"
+      },
+      {
+        "type": "gif",
+        "file": "hug_1788986076995_923.gif"
+      },
+      {
+        "type": "gif",
+        "file": "hug_1788986088944_640.gif"
+      },
+      {
+        "type": "gif",
+        "file": "hug_1788986100302_334.gif"
+      }
+    ]
   },
   "slap": {
     "enabled": true,
@@ -29,21 +125,169 @@
       "tapa"
     ],
     "messages": [
-      "{user1_mention} deu um tapinha em {user2_mention}! 👋",
-      "{user1_mention} acertou um tapa em {user2_mention}! 😅"
+      "{user1_mention} deu um tapa em {user2_mention}! 👋",
+      "{user1_mention} deu uma bofetada em {user2_mention}! 💥",
+      "{user1_mention} deu um tapa na cara de {user2_mention}! 💥",
+      "{user1_mention} deu um tapa na cara de {user2_mention} com força! 💥",
+      "{user1_mention} deu um tapa na cara de {user2_mention} de surpresa! 💥",
+      "{user1_mention} deu um tapa na cara de {user2_mention} de leve! 💥"
     ],
-    "media": []
+    "media": [
+      {
+        "type": "gif",
+        "file": "slap_1788986333486_351.gif"
+      },
+      {
+        "type": "gif",
+        "file": "slap_1788986344067_930.gif"
+      },
+      {
+        "type": "gif",
+        "file": "slap_1788986357709_740.gif"
+      },
+      {
+        "type": "gif",
+        "file": "slap_1788986375688_664.gif"
+      },
+      {
+        "type": "gif",
+        "file": "slap_1788986398004_451.gif"
+      },
+      {
+        "type": "gif",
+        "file": "slap_1788986411861_389.gif"
+      },
+      {
+        "type": "gif",
+        "file": "slap_1788986421227_398.gif"
+      },
+      {
+        "type": "gif",
+        "file": "slap_1788986434722_428.gif"
+      },
+      {
+        "type": "gif",
+        "file": "slap_1788986451268_212.gif"
+      }
+    ]
   },
   "highfive": {
     "enabled": true,
     "aliases": [
-      "high-five",
-      "cumprimento"
+      "tocaqui",
+      "h5"
     ],
     "messages": [
-      "{user1_mention} bateu na mão de {user2_mention}! 🙌",
-      "{user1_mention} e {user2_mention} fizeram um high five! ✋"
+      "{user1_mention} fez um high-five com {user2_mention}! ✋",
+      "{user1_mention} bateu aqui com {user2_mention}! 🙌"
     ],
-    "media": []
+    "media": [
+      {
+        "type": "gif",
+        "file": "highfive_1788986512079_535.gif"
+      },
+      {
+        "type": "gif",
+        "file": "highfive_1788986518388_376.gif"
+      },
+      {
+        "type": "gif",
+        "file": "highfive_1788986527374_934.gif"
+      },
+      {
+        "type": "gif",
+        "file": "highfive_1788986537080_467.gif"
+      },
+      {
+        "type": "gif",
+        "file": "highfive_1788986549386_825.gif"
+      },
+      {
+        "type": "gif",
+        "file": "highfive_1788986567405_113.gif"
+      },
+      {
+        "type": "gif",
+        "file": "highfive_1788986577827_314.gif"
+      },
+      {
+        "type": "gif",
+        "file": "highfive_1788986589293_476.gif"
+      },
+      {
+        "type": "gif",
+        "file": "highfive_1788986608982_563.gif"
+      },
+      {
+        "type": "gif",
+        "file": "highfive_1788986625127_202.gif"
+      }
+    ]
+  },
+  "pat": {
+    "enabled": true,
+    "aliases": [
+      "carinho"
+    ],
+    "messages": [
+      "{user1_mention} fez um carinho em {user2_mention}! 🐾",
+      "{user1_mention} acariciou {user2_mention}! 🐾",
+      "{user1_mention} fez um carinho na cabeça de {user2_mention}! 🐾",
+      "{user1_mention} fez um carinho no rosto de {user2_mention}! 🐾",
+      "{user1_mention} fez um carinho em {user2_mention} e {user2_mention} gostou! 🐾",
+      "{user1_mention} acariciou {user2_mention} e {user2_mention} gostou! 🐾",
+      "{user1_mention} fez um carinho na cabeça de {user2_mention} e {user2_mention} gostou! 🐾",
+      "{user1_mention} fez um carinho no rosto de {user2_mention} e {user2_mention} gostou! 🐾",
+      "{user1_mention} fez um carinho em {user2_mention} e {user2_mention} gostou muito! 🐾",
+      "{user1_mention} acariciou {user2_mention} e {user2_mention} gostou muito! 🐾",
+      "{user1_mention} fez um carinho na cabeça de {user2_mention} e {user2_mention} gostou muito! 🐾",
+      "{user1_mention} fez um carinho no rosto de {user2_mention} e {user2_mention} gostou muito! 🐾",
+      "{user1_mention} fez um carinho em {user2_mention} e {user2_mention} amou! 🐾",
+      "{user1_mention} acariciou {user2_mention} e {user2_mention} amou! 🐾",
+      "{user1_mention} fez um carinho na cabeça de {user2_mention} e {user2_mention} amou! 🐾",
+      "{user1_mention} fez um carinho no rosto de {user2_mention} e {user2_mention} amou! 🐾",
+      "{user1_mention} fez um carinho em {user2_mention} e {user2_mention} amou muito! 🐾",
+      "{user1_mention} acariciou {user2_mention} e {user2_mention} amou muito! 🐾",
+      "{user1_mention} fez um carinho na cabeça de {user2_mention} e {user2_mention} amou muito! 🐾",
+      "{user1_mention} fez um carinho no rosto de {user2_mention} e {user2_mention} amou muito! 🐾"
+    ],
+    "media": [
+      {
+        "type": "gif",
+        "file": "pat_1788988168576_947.gif"
+      },
+      {
+        "type": "gif",
+        "file": "pat_1788988176710_498.gif"
+      },
+      {
+        "type": "gif",
+        "file": "pat_1788988184994_99.gif"
+      },
+      {
+        "type": "gif",
+        "file": "pat_1788988196859_502.gif"
+      },
+      {
+        "type": "gif",
+        "file": "pat_1788988205748_599.gif"
+      },
+      {
+        "type": "gif",
+        "file": "pat_1788988212442_69.gif"
+      },
+      {
+        "type": "gif",
+        "file": "pat_1788988220665_172.gif"
+      },
+      {
+        "type": "gif",
+        "file": "pat_1788988235828_791.gif"
+      },
+      {
+        "type": "gif",
+        "file": "pat_1788988255738_77.gif"
+      }
+    ]
   }
 }

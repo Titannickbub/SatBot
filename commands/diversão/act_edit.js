@@ -1,34 +1,39 @@
 const fs = require("fs");
 const path = require("path");
+const axios = require("axios");
 const { isOwner } = require("../../functions/owners");
-const { storeMedia } = require("../../functions/welcomeHelper");
+const { fetchBuffer } = require("../../functions/api");
 
 const ACTIONS_FILE = path.join(__dirname, "act.json");
-const MAX_FILE_SIZE = 256 * 1024;
+const MEDIA_DIR = path.join(__dirname, "act_media");
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const MAX_ACTIONS = 100;
 const MAX_MESSAGES = 50;
-const MAX_MEDIA = 20;
+const MAX_MEDIA = 30;
 const MAX_MESSAGE_LENGTH = 500;
 const MEDIA_TYPES = new Set(["photo", "gif", "video"]);
 const ACTION_NAME = /^[\p{L}\p{N}][\p{L}\p{N}_-]{0,31}$/u;
 
 module.exports = {
     name: "act_edit",
-    aliases: ["actedit"],
+    aliases: ["actedit", "act_inspect", "actinspect"],
     category: "diversão",
     platformSupport: {
         whatsapp: "full",
         telegram: "full",
         discord: "full"
     },
-    description: "Administra as ações interativas. Uso exclusivo de Super Usuários.",
+    description: "Administra e inspeciona as ações interativas e mídias embutidas. Uso exclusivo de Super Usuários.",
     usage: "{prefix}act_edit [subcomando]",
     examples: [
         "{prefix}act_edit list",
+        "{prefix}act_edit show kiss",
+        "{prefix}act_edit inspect hug",
+        "{prefix}act_edit inspect (respondendo a uma mídia)",
         "{prefix}act_edit new kiss",
         "{prefix}act_edit message kiss {user1} beijou {user2}!",
+        "{prefix}act_edit image kiss (anexe ou responda a um GIF/imagem)",
         "{prefix}act_edit image kiss https://exemplo.com/beijo.gif",
-        "{prefix}act_edit image kiss https://exemplo.com/media gif",
         "{prefix}act_edit alias kiss beijo",
         "{prefix}act_edit remove-message kiss 1",
         "{prefix}act_edit remove-image kiss 1",
@@ -61,6 +66,10 @@ module.exports = {
                     return message.reply({ text: formatList(actions) });
                 case "show":
                     return showAction(message, actions, args[1]);
+                case "inspect":
+                case "info":
+                case "verificar":
+                    return await inspectActionMedia(message, actions, args[1]);
                 case "new":
                     return createAction(message, actions, args[1]);
                 case "message":
@@ -103,7 +112,7 @@ function writeActions(actions) {
     validateActions(actions);
     const serialized = JSON.stringify(actions, null, 2) + "\n";
     if (Buffer.byteLength(serialized, "utf8") > MAX_FILE_SIZE) {
-        throw new Error("O arquivo de ações excede o limite de 256 KB.");
+        throw new Error("O arquivo de ações excede o limite de 50 MB.");
     }
 
     const temporaryPath = `${ACTIONS_FILE}.${process.pid}.${Date.now()}.tmp`;
@@ -122,6 +131,31 @@ function writeActions(actions) {
         try { if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath); } catch (_) { /* limpeza best effort */ }
         throw error;
     }
+}
+
+function detectBufferFormat(buffer) {
+    if (!Buffer.isBuffer(buffer) || buffer.length < 12) {
+        return { ext: "bin", mime: "application/octet-stream", type: "unknown", name: "Desconhecido" };
+    }
+    const header3 = buffer.slice(0, 3).toString("ascii");
+    const header6 = buffer.slice(0, 6).toString("ascii");
+    if (header3 === "GIF" || header6.startsWith("GIF8")) {
+        return { ext: "gif", mime: "image/gif", type: "gif", name: "GIF Clássico (GIF89a/87a)", isRealGif: true };
+    }
+    const ftyp = buffer.slice(4, 8).toString("ascii");
+    if (ftyp === "ftyp" || ftyp === "moov" || buffer.slice(4, 12).toString("ascii").includes("mp4")) {
+        return { ext: "mp4", mime: "video/mp4", type: "video", name: "Vídeo MP4 (H.264/AAC)", isMp4: true };
+    }
+    if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+        return { ext: "png", mime: "image/png", type: "photo", name: "Imagem PNG" };
+    }
+    if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+        return { ext: "jpg", mime: "image/jpeg", type: "photo", name: "Imagem JPEG" };
+    }
+    if (buffer.slice(0, 4).toString("ascii") === "RIFF" && buffer.slice(8, 12).toString("ascii") === "WEBP") {
+        return { ext: "webp", mime: "image/webp", type: "photo", name: "Imagem WebP" };
+    }
+    return { ext: "bin", mime: "application/octet-stream", type: "unknown", name: "Binário Genérico" };
 }
 
 function validateActions(actions) {
@@ -175,16 +209,13 @@ function validateMedia(media) {
     if (!media || typeof media !== "object" || !MEDIA_TYPES.has(String(media.type || "").toLowerCase())) {
         throw new Error("Tipo de mídia inválido. Use photo, gif ou video.");
     }
-    if (typeof media.url !== "string" || !media.url.trim() || media.url.length > 2048) {
-        throw new Error("URL/caminho de mídia inválido.");
-    }
-    if (!/^https?:\/\//i.test(media.url)) {
-        const localPath = path.isAbsolute(media.url) ? media.url : path.resolve(process.cwd(), media.url);
-        const isTelegramFileId = media.storageProvider === "telegram" &&
-            /^[A-Za-z0-9_:/.\\-]+$/.test(media.url);
-        if (!fs.existsSync(localPath) && !isTelegramFileId) {
-            throw new Error(`Arquivo de mídia não encontrado: ${media.url}`);
-        }
+    const hasFile = typeof media.file === "string" && media.file.trim().length > 0;
+    const hasBase64 = typeof media.base64 === "string" && media.base64.trim().length > 0;
+    const hasData = typeof media.data === "string" && media.data.trim().length > 0;
+    const hasUrl = typeof media.url === "string" && media.url.trim().length > 0;
+
+    if (!hasFile && !hasBase64 && !hasData && !hasUrl) {
+        throw new Error("A mídia precisa conter o nome do arquivo local ou uma URL/caminho.");
     }
     if (media.fileName !== undefined && (typeof media.fileName !== "string" || media.fileName.length > 255)) {
         throw new Error("Nome de arquivo de mídia inválido.");
@@ -220,7 +251,8 @@ function formatList(actions) {
         const action = actions[key];
         const state = action.enabled === false ? "🔴 desativada" : "🟢 ativa";
         const aliases = action.aliases.length ? ` (${action.aliases.join(", ")})` : "";
-        return `• ${key}${aliases} — ${state}`;
+        const mediaCount = Array.isArray(action.media) ? action.media.length : 0;
+        return `• ${key}${aliases} — ${state} (${mediaCount} mídias)`;
     }).join("\n");
 }
 
@@ -237,8 +269,124 @@ function showAction(message, actions, value) {
         : ["(nenhuma)"]));
     lines.push("", "Mídias:");
     lines.push(...(action.media.length
-        ? action.media.map((media, index) => `${index + 1}. [${media.type}] ${media.url}`)
+        ? action.media.map((media, index) => {
+            const fileName = media.file || media.fileName || (media.url ? path.basename(media.url) : "mídia");
+            let sizeKb = "";
+            if (media.file) {
+                const filePath = path.join(MEDIA_DIR, path.basename(media.file));
+                if (fs.existsSync(filePath)) {
+                    sizeKb = ` (~${(fs.statSync(filePath).size / 1024).toFixed(1)} KB)`;
+                }
+            } else if (media.base64) {
+                sizeKb = ` (~${Math.round((media.base64.length * 0.75) / 1024)} KB)`;
+            }
+            return `${index + 1}. [${media.type}] ${fileName}${sizeKb}`;
+        })
         : ["(nenhuma)"]));
+    return message.reply({ text: lines.join("\n") });
+}
+
+async function inspectActionMedia(message, actions, value) {
+    // 1. Se informou o nome da ação: inspeciona as mídias salvas da ação
+    if (value && String(value).trim()) {
+        const { key, action } = ensureAction(actions, value);
+        if (!Array.isArray(action.media) || !action.media.length) {
+            return message.reply({ text: `🔍 A ação *"${key}"* não possui mídias cadastradas.` });
+        }
+
+        const lines = [`🔍 *INSPEÇÃO DE MÍDIAS DA AÇÃO "${key.toUpperCase()}"*`, ""];
+        action.media.forEach((media, idx) => {
+            let buffer = null;
+            let fileRelPath = media.file || (media.url ? path.basename(media.url) : "mídia embutida");
+
+            if (media.file) {
+                const candidatePaths = [
+                    path.join(MEDIA_DIR, path.basename(media.file)),
+                    path.resolve(__dirname, media.file)
+                ];
+                for (const p of candidatePaths) {
+                    if (fs.existsSync(p)) {
+                        buffer = fs.readFileSync(p);
+                        fileRelPath = `act_media/${path.basename(p)}`;
+                        break;
+                    }
+                }
+            } else if (media.base64) {
+                buffer = Buffer.from(media.base64, "base64");
+            } else if (media.data) {
+                const b64 = media.data.includes(",") ? media.data.split(",")[1] : media.data;
+                buffer = Buffer.from(b64, "base64");
+            }
+            const detected = buffer ? detectBufferFormat(buffer) : { name: "URL Externa", ext: "url", mime: media.mimeType || "desconhecido" };
+            const sizeKb = buffer ? (buffer.length / 1024).toFixed(1) : "N/A";
+            const headerHex = buffer ? buffer.slice(0, 8).toString("hex") : "N/A";
+
+            lines.push(`*Mídia #${idx + 1}:*`);
+            lines.push(`  • *Arquivo:* \`${fileRelPath}\``);
+            lines.push(`  • *Tipo cadastrado:* \`${media.type}\``);
+            lines.push(`  • *Formato real detectado:* *${detected.name}* (\`.${detected.ext}\`)`);
+            lines.push(`  • *MIME Type:* \`${detected.mime || media.mimeType}\``);
+            lines.push(`  • *Tamanho:* ${sizeKb} KB`);
+            lines.push(`  • *Magic Bytes (HEX):* \`${headerHex}\``);
+            if (detected.isMp4 || detected.ext === "gif" || media.type === "gif") {
+                lines.push(`  • ℹ️ *Nota WhatsApp:* Enviado como GIF em reprodução contínua em loop (\`gifPlayback: true\`) com legenda.`);
+            }
+            lines.push("");
+        });
+        return message.reply({ text: lines.join("\n") });
+    }
+
+    // 2. Se não informou ação mas respondeu/anexou mídia: inspeciona a mídia da mensagem
+    const targetMedia = message.media || message.quoted?.media;
+    let targetUrl = null;
+    if (message.quoted?.text) {
+        const match = message.quoted.text.match(/https?:\/\/[^\s]+/i);
+        if (match) targetUrl = match[0];
+    }
+    if (!targetUrl && message.text) {
+        const textArgs = (message.args || []).slice(1).join(" ");
+        const match = textArgs.match(/https?:\/\/[^\s]+/i);
+        if (match) targetUrl = match[0];
+    }
+
+    let buffer = null;
+    let sourceDesc = "";
+
+    if (targetUrl) {
+        sourceDesc = `URL: ${targetUrl}`;
+        const resp = await axios.get(targetUrl, {
+            responseType: "arraybuffer",
+            timeout: 30000,
+            headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
+        });
+        buffer = Buffer.from(resp.data);
+    } else if (targetMedia && typeof targetMedia.getBuffer === "function") {
+        sourceDesc = `Anexo/Resposta (${targetMedia.fileName || "mídia"})`;
+        buffer = await targetMedia.getBuffer();
+    }
+
+    if (!buffer || !Buffer.isBuffer(buffer)) {
+        return message.reply({
+            text: "🔍 *INSPEÇÃO DE MÍDIA*\n\nUse:\n• `!act_edit inspect <ação>` para inspecionar as mídias salvas de uma ação.\n• `!act_edit inspect` respondendo a uma mensagem com mídia ou link para analisar o arquivo antes de salvar."
+        });
+    }
+
+    const detected = detectBufferFormat(buffer);
+    const sizeKb = (buffer.length / 1024).toFixed(1);
+    const headerHex = buffer.slice(0, 8).toString("hex");
+
+    const lines = [
+        "🔍 *INSPEÇÃO DA MÍDIA ENVIADA/RESPONDIDA*",
+        "",
+        `• *Origem:* ${sourceDesc}`,
+        `• *Formato real detectado:* *${detected.name}* (\`.${detected.ext}\`)`,
+        `• *MIME Type:* \`${detected.mime}\``,
+        `• *Tamanho:* ${sizeKb} KB`,
+        `• *Magic Bytes (HEX):* \`${headerHex}\``,
+        "",
+        `• *Sugestão de uso:* \`!act_edit image <ação>\``
+    ];
+
     return message.reply({ text: lines.join("\n") });
 }
 
@@ -265,54 +413,84 @@ function addMessage(message, actions, value) {
 async function addMedia(message, actions, value, url, explicitType) {
     const { key, action } = ensureAction(actions, value);
     if (action.media.length >= MAX_MEDIA) throw new Error(`O limite é de ${MAX_MEDIA} mídias por ação.`);
-    let media;
-    if (url) {
-        media = createUrlMedia(url, explicitType);
+
+    let buffer;
+    let mimeType = "";
+    let detectedFileName = "";
+
+    let targetUrl = url;
+    if (!targetUrl && message.quoted?.text) {
+        const urlMatch = message.quoted.text.match(/https?:\/\/[^\s]+/i);
+        if (urlMatch) {
+            targetUrl = urlMatch[0];
+        }
+    }
+    if (!targetUrl && message.text) {
+        const textArgs = (message.args || []).slice(2).join(" ");
+        const urlMatch = textArgs.match(/https?:\/\/[^\s]+/i);
+        if (urlMatch) {
+            targetUrl = urlMatch[0];
+        }
+    }
+
+    if (targetUrl && typeof targetUrl === "string" && targetUrl.trim()) {
+        const rawUrl = targetUrl.trim();
+        if (/^https?:\/\//i.test(rawUrl)) {
+            const response = await axios.get(rawUrl, {
+                responseType: "arraybuffer",
+                timeout: 30000,
+                headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
+            });
+            buffer = Buffer.from(response.data);
+            mimeType = String(response.headers["content-type"] || "").toLowerCase();
+            const urlPath = rawUrl.split(/[?#]/)[0];
+            detectedFileName = path.basename(urlPath);
+        } else {
+            const localPath = path.isAbsolute(rawUrl) ? rawUrl : path.resolve(process.cwd(), rawUrl);
+            if (!fs.existsSync(localPath)) throw new Error("Arquivo local ou URL não encontrada.");
+            buffer = fs.readFileSync(localPath);
+            detectedFileName = path.basename(localPath);
+        }
     } else {
         const targetMedia = message.media || message.quoted?.media;
         if (!targetMedia || typeof targetMedia.getBuffer !== "function") {
-            throw new Error("Informe uma URL pública ou anexe/responda a uma imagem, GIF ou vídeo.");
+            throw new Error("Envie uma URL ou anexe/responda a uma imagem, GIF ou vídeo.");
         }
-        const sourceType = String(targetMedia.type || "").toLowerCase();
-        const mime = String(targetMedia.mimeType || "").toLowerCase();
-        if (!["image", "video"].includes(sourceType) && !mime.startsWith("image/") && !mime.startsWith("video/")) {
-            throw new Error("A mídia precisa ser uma imagem, GIF ou vídeo.");
-        }
-        const buffer = await targetMedia.getBuffer();
-        if (!buffer || !Buffer.isBuffer(buffer)) throw new Error("Não foi possível baixar a mídia.");
-        const type = explicitType && MEDIA_TYPES.has(String(explicitType).toLowerCase())
-            ? String(explicitType).toLowerCase()
-            : (mime.includes("gif") || String(targetMedia.fileName || "").toLowerCase().endsWith(".gif")
-                ? "gif"
-                : (sourceType === "video" || mime.startsWith("video/") ? "video" : "photo"));
-        const stored = await storeMedia(message.platform, message, buffer, targetMedia.fileName || `act_${type}`, targetMedia.mimeType || "image/png");
-        media = {
-            url: stored.url,
-            type: type === "photo" ? "photo" : type,
-            fileName: stored.fileName || targetMedia.fileName || undefined,
-            storageProvider: stored.storageProvider || undefined
-        };
+        buffer = await targetMedia.getBuffer();
+        if (!buffer || !Buffer.isBuffer(buffer)) throw new Error("Não foi possível processar o buffer da mídia.");
+        mimeType = String(targetMedia.mimeType || "").toLowerCase();
+        detectedFileName = targetMedia.fileName || "";
     }
-    action.media.push(media);
-    return persist(message, actions, `Mídia adicionada à ação "${key}".`);
-}
 
-function createUrlMedia(url, explicitType) {
-    const value = String(url).trim();
-    if (!/^https?:\/\//i.test(value)) {
-        const localPath = path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
-        if (!fs.existsSync(localPath)) throw new Error("A mídia precisa ser uma URL http(s) ou um arquivo local existente.");
-    }
-    const lower = value.toLowerCase().split(/[?#]/)[0];
+    // Detecção real pelos bytes do arquivo
+    const detectedFormat = detectBufferFormat(buffer);
+    const lowerName = (detectedFileName || "").toLowerCase();
     let type = "photo";
+
     if (explicitType && MEDIA_TYPES.has(String(explicitType).toLowerCase())) {
         type = String(explicitType).toLowerCase();
-    } else if (/\.(gif)$/i.test(lower) || lower.includes(".gif") || lower.includes("tenor.com") || lower.includes("giphy.com")) {
+    } else if (detectedFormat.type === "gif" || detectedFormat.type === "video" || detectedFormat.isMp4 || detectedFormat.isRealGif || mimeType.includes("gif") || mimeType.startsWith("video/") || lowerName.endsWith(".gif") || /\.(mp4|webm|mov|avi)$/i.test(lowerName) || lowerName.includes("tenor") || lowerName.includes("giphy")) {
         type = "gif";
-    } else if (/\.(mp4|webm|mov|avi)$/i.test(lower)) {
-        type = "video";
     }
-    return { url: value, type, fileName: path.basename(lower) || undefined };
+
+    mimeType = detectedFormat.mime || mimeType || (type === "gif" ? "image/gif" : (type === "video" ? "video/mp4" : "image/png"));
+    const ext = `.${detectedFormat.ext !== "bin" ? detectedFormat.ext : (type === "gif" ? "gif" : (type === "video" ? "mp4" : "png"))}`;
+    const safeFileName = `${key}_${Date.now()}_${Math.floor(Math.random() * 1000)}${ext}`;
+
+    if (!fs.existsSync(MEDIA_DIR)) {
+        fs.mkdirSync(MEDIA_DIR, { recursive: true });
+    }
+
+    const targetFilePath = path.join(MEDIA_DIR, safeFileName);
+    fs.writeFileSync(targetFilePath, buffer);
+
+    const mediaObj = {
+        type,
+        file: safeFileName
+    };
+
+    action.media.push(mediaObj);
+    return persist(message, actions, `Mídia salva em "act_media/${safeFileName}" para "${key}". Formato detectado: ${detectedFormat.name} (${(buffer.length / 1024).toFixed(1)} KB).`);
 }
 
 function addAlias(message, actions, value, aliasValue) {
@@ -330,7 +508,18 @@ function addAlias(message, actions, value, aliasValue) {
 function removeItem(message, actions, value, indexValue, field) {
     const { key, action } = ensureAction(actions, value);
     const index = parseIndex(indexValue, action[field].length);
-    action[field].splice(index - 1, 1);
+    const removed = action[field].splice(index - 1, 1)[0];
+
+    if (field === "media" && removed) {
+        const fileToDelete = removed.file || (removed.url && !/^https?:\/\//i.test(removed.url) ? path.basename(removed.url) : null);
+        if (fileToDelete) {
+            const filePath = path.join(MEDIA_DIR, path.basename(fileToDelete));
+            if (fs.existsSync(filePath)) {
+                try { fs.unlinkSync(filePath); } catch (_) {}
+            }
+        }
+    }
+
     return persist(message, actions, `${field === "messages" ? "Frase" : "Mídia"} removida da ação "${key}".`);
 }
 
@@ -341,7 +530,18 @@ function setEnabled(message, actions, value, enabled) {
 }
 
 function deleteAction(message, actions, value) {
-    const { key } = ensureAction(actions, value);
+    const { key, action } = ensureAction(actions, value);
+    if (Array.isArray(action.media)) {
+        action.media.forEach(media => {
+            const fileToDelete = media.file || (media.url && !/^https?:\/\//i.test(media.url) ? path.basename(media.url) : null);
+            if (fileToDelete) {
+                const filePath = path.join(MEDIA_DIR, path.basename(fileToDelete));
+                if (fs.existsSync(filePath)) {
+                    try { fs.unlinkSync(filePath); } catch (_) {}
+                }
+            }
+        });
+    }
     delete actions[key];
     return persist(message, actions, `Ação "${key}" excluída.`);
 }
@@ -371,13 +571,14 @@ function isReservedName(value) {
 function help(message) {
     const prefix = message.prefix || "!";
     return [
-        "🎭 Gerenciador de ações (exclusivo SU)",
+        "🎭 Gerenciador e Inspetor de Ações (exclusivo SU)",
         `${prefix}act_edit list`,
         `${prefix}act_edit show <ação>`,
+        `${prefix}act_edit inspect <ação>  *(inspeciona formato/tamanho das mídias)*`,
+        `${prefix}act_edit inspect *(respondendo a uma mídia para inspecioná-la)*`,
         `${prefix}act_edit new <ação>`,
         `${prefix}act_edit message <ação> <frase>`,
-        `${prefix}act_edit image <ação> <URL>`,
-        `${prefix}act_edit image <ação> (anexo ou resposta)`,
+        `${prefix}act_edit image <ação> [URL ou anexo]`,
         `${prefix}act_edit alias <ação> <alias>`,
         `${prefix}act_edit remove-message <ação> <índice>`,
         `${prefix}act_edit remove-image <ação> <índice>`,
@@ -391,5 +592,5 @@ module.exports._internals = {
     writeActions,
     validateActions,
     resolveAction,
-    createUrlMedia
+    detectBufferFormat
 };

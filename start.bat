@@ -15,23 +15,26 @@ echo [BOOT] Ambiente: %DEV_MODE%
 echo [BOOT] Dados: settings\
 echo ==================================================
 echo.
+echo.
+echo [INFO] Iniciando o bot com loop de auto-recuperacao...
+echo.
+
+:loop
 if not exist "node_modules\" (
-    echo [INFO] Instalando dependencias...
+    set "DEPENDENCIES_OK="
+) else (
+    call npm.cmd ls --depth=0 >nul 2>&1
+    if errorlevel 1 (set "DEPENDENCIES_OK=") else (set "DEPENDENCIES_OK=1")
+)
+if not defined DEPENDENCIES_OK (
+    echo [INFO] Dependencias ausentes ou desatualizadas. Instalando...
     echo.
     call npm.cmd install --no-audit --no-fund --no-progress
     if errorlevel 1 (
         echo [ERRO] Nao foi possivel instalar as dependencias.
         exit /b 1
     )
-) else (
-    echo [INFO] Dependencias ja instaladas; instalacao ignorada.
 )
-
-echo.
-echo [INFO] Iniciando o bot com loop de auto-recuperacao...
-echo.
-
-:loop
 node index.js
 echo.
 echo [WATCHER] O processo do bot terminou. Reiniciando em 2 segundos...

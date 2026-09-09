@@ -1,81 +1,17 @@
-/*
-    O menu pertence à categoria explícita
-    "adm/ações imediatas"; o caminho para o Core
-    acompanha a localização física deste arquivo.
-*/
-
-/*
-    COMO O MENU FUNCIONA
-
-    O menu é gerado automaticamente usando os comandos
-    registrados pelo Core.
-
-    Regras:
-
-    1. Comandos na raiz de commands/
-       aparecem no menu principal.
-
-       Ex:
-       commands/ping.js
-       commands/menu.js
-
-    2. A primeira subpasta define a categoria quando o comando
-       não informa `category` explicitamente.
-
-       Ex:
-       commands/system/ping.js
-
-       Categoria:
-       system
-
-    3. Uma categoria explícita pode usar `/` para criar
-       subcategorias.
-
-       Ex:
-       category: "adm/ações imediatas"
-
-       O comando aparece na seção da subcategoria:
-       !menu adm/ações imediatas
-
-    Exemplos:
-
-       !menu
-
-       Mostra:
-       - comandos da raiz
-       - categorias disponíveis
-
-       !menu adm
-
-       Mostra uma seção para cada subcategoria e, ao final,
-       os comandos antigos diretamente em `adm`.
-
-    As categorias são detectadas automaticamente
-    durante o carregamento dos comandos pelo Core.
-*/
-
-const core = require("../../../core");
-const { getCommandPlatformIndicator } = require("../../../functions/commandPlatformSupport");
+const core = require("../core");
+const { getCommandPlatformIndicator } = require("../functions/commandPlatformSupport");
 
 module.exports = {
-
     name: "menu",
-
     aliases: ["help", "ajuda"],
-
-    description:
-        "Exibe o menu de comandos e permite listar comandos por categoria.",
-
-    usage:
-        "{prefix}menu [categoria]",
-
+    description: "Exibe o menu de comandos e permite listar comandos por categoria.",
+    usage: "{prefix}menu [categoria]",
     examples: [
         "{prefix}menu",
-        "{prefix}menu downloads"
+        "{prefix}menu downloads",
+        "{prefix}menu diversão"
     ],
-
     async execute(message) {
-
         const commands = core.getCommands();
         const category = message.args[0]?.toLowerCase();
         const headerText = `💡 Qualquer dúvida? Use ${message.prefix}info <comando ou categoria> para detalhes.`;
@@ -83,7 +19,7 @@ module.exports = {
         const uniqueCommands = (() => {
             const seen = new Set();
             return Object.values(commands).filter((cmd) => {
-                const signature = `${cmd.name || ''}|${cmd.category || ''}|${cmd.file || ''}`;
+                const signature = `${cmd.name || ""}|${cmd.category || ""}|${cmd.file || ""}`;
                 if (seen.has(signature)) {
                     return false;
                 }
@@ -216,7 +152,5 @@ module.exports = {
         text += "===================";
 
         await message.reply({ text });
-
     }
-
 };
