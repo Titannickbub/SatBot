@@ -4,7 +4,7 @@ module.exports = {
     name: "su-token",
     category: "system/configurações",
     description: "Adiciona tokens de plataformas restantes e reinicia o bot para aplicar a configuração.",
-    usage: "{prefix}su token <discord|telegram|whatsapp> <token>",
+    usage: "{prefix}su token <discord|telegram> <token>",
     examples: [
         "{prefix}su token telegram 123456:ABCDEF",
         "{prefix}su token discord TOKEN"
@@ -29,20 +29,17 @@ module.exports = {
         }
 
         if (!platform || !token) {
-            return message.reply({ text: "❌ Uso: !su token <discord|telegram|whatsapp> <token>" });
+            return message.reply({ text: `❌ Uso: ${message.prefix}su token <discord|telegram> <token>` });
         }
 
-        if (!["discord", "telegram", "whatsapp"].includes(platform)) {
-            return message.reply({ text: "❌ Plataforma inválida. Use discord, telegram ou whatsapp." });
+        if (!["discord", "telegram"].includes(platform)) {
+            return message.reply({
+                text: `❌ Plataforma inválida. Para WhatsApp, use ${message.prefix}su whatsapp qr ou ${message.prefix}su whatsapp codigo <número>.`
+            });
         }
 
-        if (platform === "whatsapp") {
-            authFlow.writePlatformToken(platform, token);
-            await message.reply({ text: "✅ Token de WhatsApp registrado. O QR será exibido no próximo boot." });
-        } else {
-            authFlow.writePlatformToken(platform, token);
-            await message.reply({ text: `✅ Token de ${platform} registrado.` });
-        }
+        authFlow.writePlatformToken(platform, token);
+        await message.reply({ text: `✅ Token de ${platform} registrado.` });
 
         const configFn = message.functions.config || require("../../../functions/config");
         const botName = typeof configFn.getBotName === "function" ? configFn.getBotName() : "Sat Bot";

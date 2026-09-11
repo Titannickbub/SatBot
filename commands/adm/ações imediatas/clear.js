@@ -28,7 +28,7 @@ module.exports = {
     category: "adm/ações imediatas",
     platformSupport: {
         discord: "full",
-        telegram: "partial",
+        telegram: "none",
         whatsapp: "none"
     },
     description: `Apaga mensagens com controle de quantidade, escopo e exclusões.
@@ -144,26 +144,9 @@ async function _execCurrentChannel(message, limit) {
     }
 
     if (message.platform === "telegram") {
-        try {
-            const telegramApi = message.raw?.telegram || global.telegramBot;
-            if (!telegramApi) return message.reply({ text: "❌ Bot do Telegram não disponível." });
-
-            const twoDaysAgo = Math.floor((Date.now() - 2 * 24 * 60 * 60 * 1000) / 1000);
-            const history = await telegramApi.getChatHistory(message.chatId, { limit }).catch(() => []);
-            let deleted = 0;
-            for (const m of history) {
-                const id = m && m.message_id;
-                if (!id) continue;
-                // m.date é Unix timestamp em segundos no Telegram
-                if (m.date && m.date < twoDaysAgo) continue;
-                await telegramApi.deleteMessage(message.chatId, id).catch(() => {});
-                deleted++;
-            }
-            return message.reply({ text: `✅ *${deleted}* mensagem(ns) removida(s) do chat.` });
-        } catch (err) {
-            console.error("[CLEAR] Falha ao limpar mensagens do Telegram:", err);
-            return message.reply({ text: "❌ Não foi possível limpar as mensagens no Telegram. Verifique as permissões e tente novamente." });
-        }
+        return message.reply({
+            text: "❌ Este comando é exclusivo do Discord."
+        });
     }
 
     return message.reply({ text: "❌ Este comando só funciona no Discord e Telegram." });

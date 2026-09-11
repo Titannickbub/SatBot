@@ -200,7 +200,7 @@ module.exports = {
             return mostrarAjuda(message);
         }
 
-        const nome = args[0].toLowerCase();
+        const nome = core.normalizeCommandName(args[0]);
         const commands = core.getCommands();
 
         const command = commands[nome];
@@ -243,10 +243,7 @@ function sectionText(title, body) {
 }
 
 function categoryRoot(category) {
-    return String(category || "")
-        .split("/", 1)[0]
-        .trim()
-        .toLocaleLowerCase();
+    return core.normalizeCommandName(String(category || "").split("/", 1)[0]);
 }
 
 function infoComandoText(message, command) {

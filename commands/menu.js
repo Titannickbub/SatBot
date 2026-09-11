@@ -13,7 +13,8 @@ module.exports = {
     ],
     async execute(message) {
         const commands = core.getCommands();
-        const category = message.args[0]?.toLowerCase();
+        const normalizeCategory = (value) => core.normalizeCommandName(value);
+        const category = normalizeCategory(message.args.join(" "));
         const headerText = `💡 Qualquer dúvida? Use ${message.prefix}info <comando ou categoria> para detalhes.`;
 
         const uniqueCommands = (() => {
@@ -50,9 +51,6 @@ module.exports = {
             return pages;
         };
 
-        const normalizeCategory = (value) => String(value || "")
-            .trim()
-            .toLocaleLowerCase();
         const categorizedCommands = uniqueCommands.filter((cmd) =>
             normalizeCategory(cmd.category)
         );

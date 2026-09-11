@@ -6,6 +6,7 @@ const dotenv = require("dotenv");
 
 const envPath = path.join(__dirname, "..", "settings", ".env");
 const whatsappAuthDir = path.join(__dirname, "..", "settings", "whatsapp-auth");
+const whatsappLoginRequestPath = path.join(__dirname, "..", "settings", "whatsapp-login-request.json");
 
 function ensureEnvFile() {
     if (!fs.existsSync(envPath)) {
@@ -27,6 +28,10 @@ function getEnvValue(key) {
     const values = loadEnvValues();
     const value = values[key] || process.env[key];
     return value ? String(value) : "";
+}
+
+function normalizeWhatsAppPhone(value) {
+    return String(value || "").replace(/\D/g, "");
 }
 
 function setEnvValue(key, value) {
@@ -196,6 +201,20 @@ async function askQuestion(question) {
     }
 }
 
+async function promptForWhatsAppLogin() {
+    console.log("[AUTH] Escolha o método de login do WhatsApp:");
+    console.log("  1. QR Code no terminal");
+    console.log("  2. Código de pareamento por número");
+    const method = await askQuestion("Digite o número do método: ");
+    if (method === "2") {
+        const number = normalizeWhatsAppPhone(
+            await askQuestion("Número com DDI (aceita espaços e símbolos): ")
+        );
+        return number ? { mode: "pairing", number } : null;
+    }
+    return { mode: "qr", number: null };
+}
+
 async function promptForInitialPlatform() {
     const enabledPlatforms = getEnabledPlatforms();
     if (!enabledPlatforms.length) {
@@ -227,6 +246,36 @@ async function promptForPlatformToken(platform) {
     return askQuestion(`${label} token: `);
 }
 
+function requestWhatsAppLogin(mode, number, target) {
+    const request = {
+        mode,
+        number: number ? normalizeWhatsAppPhone(number) : null,
+        target: target ? {
+            platform: target.platform,
+            chatId: String(target.chatId),
+            threadId: target.threadId || null
+        } : null
+    };
+    fs.writeFileSync(whatsappLoginRequestPath, `${JSON.stringify(request, null, 2)}\n`, "utf8");
+    return request;
+}
+
+function consumeWhatsAppLoginRequest() {
+    if (!fs.existsSync(whatsappLoginRequestPath)) return null;
+    try {
+        const request = JSON.parse(fs.readFileSync(whatsappLoginRequestPath, "utf8"));
+        fs.unlinkSync(whatsappLoginRequestPath);
+        return request;
+    } catch (error) {
+        console.error("[AUTH] Falha ao ler solicitação de login do WhatsApp:", error);
+        return null;
+    }
+}
+
+function resetWhatsAppAuth() {
+    return cleanupWhatsAppAuthFolder(whatsappAuthDir, { all: true });
+}
+
 async function handleInitialBootstrap() {
     const loggedPlatforms = getLoggedPlatforms();
     if (loggedPlatforms.length > 0) {
@@ -239,6 +288,8 @@ async function handleInitialBootstrap() {
     }
 
     if (selectedPlatform === "whatsapp") {
+        const login = process.stdin.isTTY ? await promptForWhatsAppLogin() : { mode: "qr", number: null };
+        if (login) global.__whatsappAuthMode = login;
         return { status: "bootstrap", platform: "whatsapp" };
     }
 
@@ -377,6 +428,10 @@ module.exports = {
     handleInitialBootstrap,
     promptForInitialPlatform,
     promptForPlatformToken,
-    getEnvValue
+    promptForWhatsAppLogin,
+    requestWhatsAppLogin,
+    consumeWhatsAppLoginRequest,
+    resetWhatsAppAuth,
+    getEnvValue,
+    normalizeWhatsAppPhone
 };
-

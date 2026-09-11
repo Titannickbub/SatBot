@@ -47,18 +47,67 @@ Na primeira inicialização, escolha Discord, Telegram ou WhatsApp.
 
 - Discord: crie um bot no portal de desenvolvedores e informe o token.
 - Telegram: crie o bot pelo BotFather e informe o token.
-- WhatsApp: escaneie o QR Code exibido no terminal.
+- WhatsApp: no primeiro bootstrap, escolha QR Code no terminal ou código de
+  pareamento por número.
+
+### Login inicial do WhatsApp
+
+Quando o WhatsApp for escolhido como a primeira plataforma no terminal, o bot
+oferece duas opções:
+
+1. **QR Code no terminal**: escaneie o QR com o aplicativo do WhatsApp em
+   `Configurações > Aparelhos conectados > Conectar aparelho`.
+2. **Código de pareamento**: informe o número com DDI. O número aceita formatos
+   copiados normalmente, por exemplo:
+
+   ```text
+   +55 33 9986-5716
+   55 (33) 9986-5716
+   553399865716
+   ```
+
+   Espaços, `+`, parênteses, hífens e outros símbolos são removidos
+   automaticamente antes da solicitação ao WhatsApp.
+
+Se Discord ou Telegram já estiverem autenticado(s), o WhatsApp não inicia um
+QR automaticamente quando não possui sessão. Nesse caso, um Super Usuário deve
+solicitar o método de login por comando.
 
 Para adicionar outra plataforma depois:
 
 ```text
-!su token <discord|telegram|whatsapp> <SEU_TOKEN>
+<prefixo>su token <discord|telegram> <SEU_TOKEN>
 ```
+
+O `<prefixo>` é o prefixo configurado no bot. Se ele for `!`, por exemplo:
+
+```text
+!su token telegram <SEU_TOKEN>
+```
+
+Para solicitar um novo login do WhatsApp como Super Usuário:
+
+```text
+<prefixo>su whatsapp qr
+<prefixo>su whatsapp codigo <número com DDI>
+```
+
+Exemplos usando o prefixo padrão `!`:
+
+```text
+!su whatsapp qr
+!su whatsapp codigo +55 12 1234-1234
+```
+
+No modo QR, o QR é enviado como imagem no chat onde o comando foi executado.
+No modo de código, o código de pareamento é exibido no terminal e enviado no
+mesmo chat. O bot reinicia para iniciar a nova sessão e remove as credenciais
+anteriores do WhatsApp antes do login.
 
 Se um código de superusuário for exibido no primeiro boot, envie:
 
 ```text
-!su code <CODIGO>
+<prefixo>su code <CODIGO>
 ```
 
 Plataformas podem ser desativadas com:

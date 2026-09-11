@@ -257,6 +257,10 @@ module.exports = {
             return await suTokenCommand.execute(message);
         }
 
+        if (sub === "whatsapp") {
+            return await requestWhatsAppLogin(message, args.slice(1));
+        }
+
         if (sub === "nofap") {
             return await correctNofapDate(message, args.slice(1));
         }
@@ -397,6 +401,10 @@ ${p}su add plataforma id
 
 ${p}su del plataforma id
 
+${p}su whatsapp qr
+
+${p}su whatsapp codigo <número>
+
 ${p}su onlychats [opção]
 
 ${p}su nofap <ID|@menção> <dd/mm/yyyy [hh:mm]>
@@ -405,6 +413,27 @@ ${p}su restart`
 
     });
 
+}
+
+async function requestWhatsAppLogin(message, args) {
+    const mode = String(args[0] || "").toLowerCase();
+    const authFlow = require("../../../functions/authFlow");
+    const number = authFlow.normalizeWhatsAppPhone(args.slice(1).join(""));
+    if (!["qr", "codigo"].includes(mode) ||
+        (mode === "codigo" && (!number || number.length < 10 || number.length > 15))) {
+        return message.reply({
+            text: `❌ Uso:\n${message.prefix}su whatsapp qr\n${message.prefix}su whatsapp codigo <número com DDI>`
+        });
+    }
+
+    authFlow.requestWhatsAppLogin(mode === "qr" ? "qr" : "pairing", number, message);
+    authFlow.resetWhatsAppAuth();
+    await message.reply({
+        text: mode === "qr"
+            ? "✅ Login por QR solicitado. Reiniciando; o QR será enviado aqui como imagem."
+            : "✅ Login por número solicitado. Reiniciando; o código será enviado aqui."
+    });
+    setTimeout(() => process.exit(0), 1000);
 }
 
 async function correctNofapDate(message, args) {

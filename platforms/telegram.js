@@ -885,6 +885,7 @@ async function checkBotPermission(chatId, action) {
         if (me.status !== "administrator") return false;
         if (action === "delete" || action === "warn") return !!me.can_delete_messages;
         if (action === "kick" || action === "ban") return !!me.can_restrict_members;
+        if (action === "promote") return !!me.can_promote_members;
         return false;
     } catch {
         return false;

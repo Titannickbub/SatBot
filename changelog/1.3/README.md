@@ -1,5 +1,80 @@
 # Sat Bot — Changelog Versão 1.3
 
+## 🔐 Login do WhatsApp por QR Code ou código de pareamento
+
+- No primeiro bootstrap pelo terminal, o WhatsApp agora permite escolher entre
+  QR Code no terminal e código de pareamento por número.
+- O comando `!su token whatsapp` foi removido; WhatsApp não usa token.
+- Super Usuários podem solicitar um novo login com:
+  - `!su whatsapp qr`, enviando o QR como imagem no chat do comando;
+  - `!su whatsapp codigo <número com DDI>`, enviando o código de pareamento.
+- A solicitação reinicia a sessão do WhatsApp de forma controlada e remove as
+  credenciais anteriores antes de iniciar o novo método.
+- Quando outras plataformas já estão autenticadas, o WhatsApp não inicia QR
+  automaticamente sem uma sessão; ele aguarda `!su whatsapp qr` ou
+  `!su whatsapp codigo <número>`.
+- As mensagens de uso desses comandos agora usam o prefixo configurado, em vez
+  de assumir que o prefixo é `!`.
+- O número do login por código aceita formatos copiados normalmente, com `+`,
+  espaços, parênteses e hífens; esses caracteres são removidos antes da
+  solicitação ao WhatsApp.
+- Corrigido o envio do código de pareamento para o chat de solicitação; o
+  registro de plataformas é um objeto indexado, não uma lista.
+- O QR Code não é mais enviado quando o método escolhido é o código de
+  pareamento.
+- O QR intermediário emitido pelo Baileys durante o login por número também
+  não é mais exibido no terminal; nesse modo, somente o código de pareamento é
+  apresentado e enviado ao chat solicitado.
+
+## 👮 Níveis de administração no Telegram
+
+- Adicionados os comandos `!tpromote` e `!trebaixar`, exclusivos do Telegram.
+- O `!tpromote` agora exibe uma ajuda detalhada com sintaxe, níveis,
+  requisitos e exemplos quando executado sem argumentos; o `!info tpromote`
+  apresenta uma síntese genérica do comando.
+- `!tpromote staff`, `!tpromote mod`, `!tpromote gerente` e `!tpromote adm`
+  aplicam conjuntos diferentes de permissões administrativas.
+- `staff` pode gerenciar mensagens e restringir/mutar membros.
+- `mod` também pode banir/restringir membros, criar links de convite, alterar
+  informações/tags administrativas e gerenciar chats de vídeo.
+- `gerente` recebe as permissões administrativas gerais, mas não pode adicionar
+  outros administradores nem usar modo anônimo.
+- `adm` recebe todas as permissões disponíveis, exceto o modo anônimo.
+- `!trebaixar` remove todas as permissões administrativas e retorna o usuário ao
+  estado de membro comum.
+- Os comandos aceitam o ID numérico do usuário ou resposta à mensagem dele,
+  exigindo que o executor e o bot tenham permissão para promover membros.
+
+## 🧹 Correção do `!clear` no Telegram
+
+- Corrigada a tentativa de usar `telegramApi.getChatHistory`, método que não
+  existe na Bot API do Telegram.
+- O `!clear` agora informa diretamente que é exclusivo do Discord quando usado
+  no Telegram, sem apresentar uma falha técnica ou confundir o usuário com
+  mensagens de permissão.
+
+## 📡 Atualização da versão do WhatsApp Web
+
+- A versão da conexão WhatsApp Web agora é obtida do catálogo de versões do
+  WPPConnect, usando o formato compatível com o Baileys.
+- Se a consulta externa falhar ou não retornar uma versão válida, o bot usa a
+  versão fixa de fallback para não impedir a inicialização da conexão.
+
+## ⚡ Recepção do WhatsApp sem bloqueio por metadados
+
+- A consulta de metadados de grupos no recebimento de mensagens agora possui
+  cache e timeout de 10 segundos.
+- Se o WhatsApp Web demorar para responder no computador local, a mensagem
+  continua sendo entregue ao núcleo em vez de ficar bloqueada por minutos.
+
+## 🔤 Comandos e menus sem acentuação obrigatória
+
+- Comandos e aliases agora são registrados e localizados sem diferenciar
+  acentos ou maiúsculas/minúsculas.
+- Categorias do `!menu` e do `!info` também usam essa normalização, permitindo
+  acessar, por exemplo, `!menu utilitarios` mesmo quando a categoria é
+  cadastrada como `utilitários`.
+
 ## 🔄 Verificação de dependências no reinício automático
 
 - Os launchers `start.sh` e `start.bat` agora verificam as dependências a cada
@@ -7,6 +82,18 @@
 - Quando `node_modules` está ausente ou inconsistente com o `package.json`, o
   bot executa `npm install` antes de iniciar, evitando que o reboot automático
   fique em loop sem conseguir carregar o bot.
+
+## 🛠️ Correção do comando `config`
+
+- **Falha corrigida**: os comandos `!config plataforma <nome> <on|off>` e
+  `!config prefix <símbolo>` podiam alterar a configuração, mas falhavam ao
+  montar a mensagem de confirmação com `ReferenceError: configFn is not
+  defined`.
+- **Causa**: as funções `alterarPlataforma` e `alterarPrefixo` usavam
+  `configFn.getBotName()` sem declarar a variável no escopo da função.
+- **Solução**: adicionada a referência local `const configFn =
+  message.functions.config` nas duas funções, permitindo concluir a operação e
+  enviar corretamente a confirmação ao usuário.
 
 ## 🌐 Indicadores de compatibilidade por plataforma
 
@@ -293,3 +380,16 @@
 - **Comando `vip` na Subcategoria de Contas/Exibir**:
   - Movido para `commands/contas/exibir/vip.js` com a categoria `contas/exibir`.
   - Agora é agrupado na aba de contas (`!menu contas` ou `!menu contas/exibir`) ao lado do comando `perfil`.
+
+## 🛠️ Correção do comando `!darcargo`
+
+- **Falha corrigida**: o comando `!darcargo <@membro> <@cargo>` falhava ao
+  executar e registrava `TypeError: Cannot read properties of undefined
+  (reading 'targetSelf')`.
+- **Causa**: o comando chamava `executeRoleChange(message)` sem informar o
+  objeto opcional de configurações, enquanto a função tentava desestruturar
+  diretamente esse argumento.
+- **Solução**: o parâmetro de configurações de `executeRoleChange` passou a
+  usar um objeto padrão vazio (`{}`), mantendo `targetSelf: false` e
+  `remove: false` como valores padrão e permitindo a execução normal do
+  `!darcargo`.

@@ -6,6 +6,7 @@ require("dotenv").config({
 });
 
 const qrcode = require("qrcode-terminal");
+const QRCode = require("qrcode");
 const baileysPkg = require("@whiskeysockets/baileys");
 const groupSettings = require("../functions/groupSettings");
 const welcomeHelper = require("../functions/welcomeHelper");
@@ -15,13 +16,8 @@ const authFlow = require("../functions/authFlow");
 const makeWASocket = baileysPkg.default || baileysPkg.makeWASocket;
 const areJidsSameUser = baileysPkg.areJidsSameUser;
 const useMultiFileAuthState = baileysPkg.useMultiFileAuthState || baileysPkg.useSingleFileAuthState;
-let fetchLatestBaileysVersion = baileysPkg.fetchLatestBaileysVersion;
 const DisconnectReason = baileysPkg.DisconnectReason || baileysPkg.DisconnectReasons;
 let makeInMemoryStore = baileysPkg.makeInMemoryStore;
-
-if (typeof fetchLatestBaileysVersion !== 'function') {
-  fetchLatestBaileysVersion = async () => ({ version: [4, 0, 0] });
-}
 
 if (typeof makeInMemoryStore !== 'function') {
   makeInMemoryStore = () => ({ bind: () => { } });
@@ -29,10 +25,65 @@ if (typeof makeInMemoryStore !== 'function') {
 
 const authFolder = path.join(__dirname, "..", "settings", "whatsapp-auth");
 const syncedGroups = new Set();
+const groupMetadataCache = new Map();
+const FALLBACK_WA_VERSION = [2, 3000, 1044006379];
+
+function getLoginTargetAdapter(target) {
+  if (!target || !global.platformRegistry) return null;
+  return global.platformRegistry[target.platform] || null;
+}
+
+async function getWAVersionFromWPP() {
+  try {
+    const axios = require("axios");
+    const response = await axios.get("https://wppconnect.io/pt-BR/whatsapp-versions/", {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9"
+      },
+      timeout: 10000
+    });
+
+    const match = String(response.data || "").match(/2\.3000\.(\d+)/);
+    if (!match?.[1]) {
+      console.warn("[VERSION] Não foi possível extrair a versão do WPPConnect.");
+      return null;
+    }
+
+    async function getGroupMetadataWithTimeout(sock, chatId, timeoutMs = 10000) {
+      const cached = groupMetadataCache.get(chatId);
+      if (cached) return cached;
+
+      const metadataPromise = sock.groupMetadata(chatId)
+        .then((metadata) => {
+          groupMetadataCache.set(chatId, metadata);
+          return metadata;
+        });
+
+      return Promise.race([
+        metadataPromise,
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error(`timeout após ${timeoutMs}ms`)), timeoutMs);
+        })
+      ]);
+    }
+
+    const version = [2, 3000, Number(match[1])];
+    console.log(`[VERSION] Versão WA Web obtida do WPPConnect: ${JSON.stringify(version)}`);
+    return version;
+  } catch (error) {
+    console.warn(`[VERSION] Erro ao buscar versão do WPPConnect: ${error.message}`);
+    return null;
+  }
+}
 
 async function start(onMessage) {
   console.log('🔄[WHATSAPP] Inicializando...');
   try {
+    const requestedLogin = authFlow.consumeWhatsAppLoginRequest();
+    const login = requestedLogin || global.__whatsappAuthMode || null;
+    global.__whatsappAuthMode = null;
     const resolvedAuth = authFlow.ensureWhatsAppAuthFolder(authFolder);
     const effectiveAuthFolder = resolvedAuth.authFolder;
     const authStateInfo = authFlow.inspectWhatsAppAuthState(effectiveAuthFolder);
@@ -49,7 +100,12 @@ async function start(onMessage) {
         console.warn(`[WHATSAPP] Credenciais encontradas, mas parecem inválidas ou incompletas (${authStateInfo.reason}).`);
       }
     } else {
-      console.log('[WHATSAPP] Nenhuma credencial válida foi encontrada na pasta de auth; o login pode pedir QR.');
+      const isInitialBootstrap = global.__pendingAuthBootstrapPlatform === "whatsapp";
+      if (!login && !isInitialBootstrap) {
+        console.log('[WHATSAPP] Nenhuma sessão encontrada. Login aguardando !su whatsapp qr ou !su whatsapp codigo <número>.');
+        return;
+      }
+      console.log('[WHATSAPP] Nenhuma credencial válida foi encontrada; aguardando o método de login selecionado.');
     }
 
     authFlow.cleanupWhatsAppAuthFolder(effectiveAuthFolder, { keepRecentPreKeys: 50 });
@@ -57,8 +113,8 @@ async function start(onMessage) {
     console.log('[WHATSAPP] Credenciais carregadas.');
     const store = makeInMemoryStore({});
 
-    console.log('[WHATSAPP] Definindo versão do WhatsApp Web [2, 3000, 1044006379]...');
-    const version = [2, 3000, 1044006379];
+    const version = await getWAVersionFromWPP() || FALLBACK_WA_VERSION;
+    console.log(`[WHATSAPP] Definindo versão do WhatsApp Web ${JSON.stringify(version)}...`);
 
     const nullLogger = {
       level: "silent",
@@ -78,6 +134,25 @@ async function start(onMessage) {
       logger: nullLogger
     });
 
+    let pairingRequested = false;
+    if (login?.mode === "pairing" && login.number && typeof sock.requestPairingCode === "function") {
+      setTimeout(async () => {
+        try {
+          const code = await sock.requestPairingCode(login.number);
+          pairingRequested = true;
+          console.log(`[WHATSAPP] Código de pareamento: ${code}`);
+          if (login.target) {
+            const adapter = getLoginTargetAdapter(login.target);
+            if (adapter?.sendText) {
+              await adapter.sendText(login.target.chatId, login.target.threadId, `🔐 Código de pareamento do WhatsApp: ${code}`);
+            }
+          }
+        } catch (error) {
+          console.error("[WHATSAPP] Falha ao solicitar código de pareamento:", error);
+        }
+      }, 3000);
+    }
+
     global.whatsappSock = sock;
     store.bind(sock.ev);
 
@@ -87,8 +162,10 @@ async function start(onMessage) {
       for (const update of updates) {
         if (update.id) {
           syncedGroups.delete(update.id);
+          groupMetadataCache.delete(update.id);
           try {
             const metadata = await sock.groupMetadata(update.id);
+            groupMetadataCache.set(update.id, metadata);
             const communityId = metadata.linkedParent || null;
             groupSettings.syncWhatsAppHierarchy(
               String(update.id),
@@ -123,7 +200,7 @@ async function start(onMessage) {
       }
     });
 
-    sock.ev.on("connection.update", (update) => {
+    sock.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
@@ -134,9 +211,27 @@ async function start(onMessage) {
         } else if (authStateInfo.hasAnyData) {
           console.warn(`[WHATSAPP] QR gerado mesmo com credenciais existentes na pasta de auth. A sessão pode estar inválida ou ter sido descartada.`);
         } else {
-          console.log("[WHATSAPP] QR code gerado. Escaneie com o app do WhatsApp:");
+          console.log("[WHATSAPP] QR code gerado.");
         }
-        qrcode.generate(qr, { small: true });
+
+        if (login?.mode === "pairing") {
+          console.log("[WHATSAPP] QR intermediário omitido; aguardando o código de pareamento.");
+        } else {
+          console.log("[WHATSAPP] Escaneie o QR code com o app do WhatsApp:");
+          qrcode.generate(qr, { small: true });
+        }
+
+        if (login?.mode === "qr" && login.target) {
+          try {
+            const image = await QRCode.toBuffer(qr, { type: "png", width: 480, margin: 2 });
+            const adapter = getLoginTargetAdapter(login.target);
+            if (adapter?.sendImg) {
+              await adapter.sendImg(login.target.chatId, login.target.threadId, image, "📱 Escaneie este QR Code no WhatsApp.");
+            }
+          } catch (error) {
+            console.error("[WHATSAPP] Falha ao enviar QR Code como imagem:", error);
+          }
+        }
       }
 
       if (connection === "close") {
@@ -216,7 +311,7 @@ async function start(onMessage) {
           canManageMessages = true;
         } else {
           try {
-            const metadata = await sock.groupMetadata(chatId);
+            const metadata = await getGroupMetadataWithTimeout(sock, chatId);
             const participant = metadata.participants.find(p => p.id === userId);
             if (participant) {
               isAdmin = !!participant.admin;

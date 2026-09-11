@@ -671,6 +671,7 @@ async function alterarPrefixo(
     prefix
 ) {
 
+    const configFn = message.functions.config;
 
     if (!prefix) {
 
@@ -739,6 +740,8 @@ async function alterarPlataforma(
     platform,
     value
 ) {
+
+    const configFn = message.functions.config;
 
     if (
         !platform ||

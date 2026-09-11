@@ -47,6 +47,8 @@ process.on("SIGTERM", () => {
 
 process.env.TZ = "America/Sao_Paulo";
 
+require("./functions/webServer").start();
+
 const { checkAndUpdate } = require("./functions/autoUpdate");
 
 checkAndUpdate()

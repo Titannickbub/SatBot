@@ -18,6 +18,14 @@ const platformRegistry = {};
 const functions = {};
 const middlewares = [];
 
+function normalizeCommandName(value) {
+    return String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLocaleLowerCase()
+        .trim();
+}
+
 function migrateLegacyDataFiles() {
     const settingsDir = path.join(__dirname, "settings");
     const migrations = [
@@ -273,7 +281,7 @@ function loadCommands() {
                     : null
             );
 
-        const commandKey = command.name.toLowerCase();
+        const commandKey = normalizeCommandName(command.name);
         const commandEntry = {
             ...command,
             category,
@@ -284,7 +292,7 @@ function loadCommands() {
         if (Array.isArray(command.aliases)) {
             for (const alias of command.aliases) {
                 if (!alias || typeof alias !== 'string') continue;
-                const aliasKey = alias.toLowerCase();
+                const aliasKey = normalizeCommandName(alias);
                 if (commands[aliasKey] && commands[aliasKey] !== commandEntry) {
                     console.warn(`${_ts()} ❌[CORE] Alias de comando já em uso: ${aliasKey}`);
                     continue;
@@ -455,9 +463,7 @@ const parts = text
     .trim()
     .split(/\s+/);
 
-const commandName = parts[0]
-    .replace(message.prefix, "")
-    .toLowerCase();
+const commandName = normalizeCommandName(parts[0].slice(message.prefix.length));
     
     message.command = commandName;
 
@@ -698,6 +704,7 @@ module.exports = {
     status,
 
     getCommands,
+    normalizeCommandName,
     getFunctions,
     handleMessage
 

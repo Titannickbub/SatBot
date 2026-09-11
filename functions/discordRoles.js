@@ -55,7 +55,7 @@ function validateRoles(message, roles, botMember) {
     return null;
 }
 
-async function executeRoleChange(message, { targetSelf = false, remove = false }) {
+async function executeRoleChange(message, { targetSelf = false, remove = false } = {}) {
     const guild = getGuild(message);
     if (!guild) {
         return { error: "❌ Este comando é exclusivo para servidores do Discord." };

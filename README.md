@@ -18,6 +18,9 @@ IA, downloads e suporte a Windows, Linux, macOS e Termux.
 - [Funcionalidades](./docs/funcionalidades.md)
 - [Desenvolvimento e segurança](./docs/desenvolvimento.md)
 
+O fluxo de login e pareamento do WhatsApp está documentado em
+[Instalação e configuração](./docs/instalacao.md#autenticação).
+
 ## Atalho rápido
 
 ```bash
