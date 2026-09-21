@@ -1,0 +1,26 @@
+const economyAdmin = require("../../functions/economyAdmin");
+const webLinks = require("../../functions/webLinks");
+
+module.exports = {
+    name: "gerarlink_rankxp",
+    aliases: ["gerarlink-rankxp", "linkrankxp"],
+    category: "contas",
+    description: "Gera o link do ranking geral de XP do grupo ou servidor.",
+    usage: "{prefix}gerarlink_rankxp",
+
+    async execute(message) {
+        if (!economyAdmin.isAdmin(message)) {
+            return message.reply({ text: "❌ Apenas administradores podem gerar links dos rankings." });
+        }
+        if (!webLinks.getBaseUrl()) {
+            return message.reply({ text: "❌ O painel web ainda não está configurado. Peça a um super usuário para usar set_dominio." });
+        }
+
+        const link = webLinks.ranking(message, "xp");
+        if (!link) {
+            return message.reply({ text: "❌ Este comando só pode ser usado dentro de um grupo ou servidor." });
+        }
+
+        return message.reply({ text: `🔗 Ranking geral de XP:\n${link}` });
+    }
+};

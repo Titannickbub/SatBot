@@ -538,6 +538,16 @@ message.core = {
         return;
     }
 
+    const commandCategory = String(command.category || "").toLowerCase();
+    if ((commandCategory === "economia" || commandCategory.endsWith("/economia"))
+        && typeof functions.economy?.isEnabled === "function"
+        && !functions.economy.isEnabled(message)) {
+        await message.reply({
+            text: `❌ A economia está desativada neste grupo/servidor.\nUm administrador deve usar ${message.prefix}economia ativar para liberá-la.`
+        });
+        return;
+    }
+
     for (const middleware of middlewares) {
         if (middleware.runOn === "command") {
             try {

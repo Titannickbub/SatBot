@@ -1,0 +1,145 @@
+{
+    "gay": {
+        "enabled": true,
+        "media": [
+            {
+                "type": "photo",
+                "file": "gay.gif",
+                "fileName": "gay.gif",
+                "updatedAt": "2026-09-14T23:01:34.752Z"
+            }
+        ]
+    },
+    "lesbica": {
+        "enabled": true,
+        "media": [
+            {
+                "type": "photo",
+                "file": "lesbica.gif",
+                "fileName": "lesbica.gif",
+                "updatedAt": "2026-09-14T23:06:50.212Z"
+            }
+        ]
+    },
+    "bonito": {
+        "enabled": true,
+        "media": [
+            {
+                "type": "photo",
+                "file": "bonito.gif",
+                "fileName": "bonito.gif",
+                "updatedAt": "2026-09-14T23:09:46.676Z"
+            }
+        ]
+    },
+    "feio": {
+        "enabled": true,
+        "media": [
+            {
+                "type": "photo",
+                "file": "feio.gif",
+                "fileName": "feio.gif",
+                "updatedAt": "2026-09-14T23:11:59.582Z"
+            }
+        ]
+    },
+    "casal": {
+        "enabled": true,
+        "media": [
+            {
+                "type": "photo",
+                "file": "casal.gif",
+                "fileName": "casal.gif",
+                "updatedAt": "2026-09-14T23:13:21.080Z"
+            }
+        ]
+    },
+    "golpe": {
+        "enabled": true,
+        "media": [
+            {
+                "type": "photo",
+                "file": "golpe.gif",
+                "fileName": "golpe.gif",
+                "updatedAt": "2026-09-14T23:15:49.651Z"
+            }
+        ]
+    },
+    "gostoso": {
+        "enabled": true,
+        "media": [
+            {
+                "type": "photo",
+                "file": "gostoso.jpg",
+                "fileName": "gostoso.jpg",
+                "updatedAt": "2026-09-15T00:15:29.124Z"
+            }
+        ]
+    },
+    "triste": {
+        "enabled": true,
+        "media": [
+            {
+                "type": "photo",
+                "file": "triste.gif",
+                "fileName": "triste.gif",
+                "updatedAt": "2026-09-15T00:16:38.193Z"
+            }
+        ]
+    },
+    "doido": {
+        "enabled": true,
+        "media": [
+            {
+                "type": "photo",
+                "file": "doido.gif",
+                "fileName": "doido.gif",
+                "updatedAt": "2026-09-15T00:17:50.515Z"
+            }
+        ]
+    },
+    "otaku": {
+        "enabled": true,
+        "media": [
+            {
+                "type": "photo",
+                "file": "otaku.gif",
+                "fileName": "otaku.gif",
+                "updatedAt": "2026-09-15T00:18:18.222Z"
+            }
+        ]
+    },
+    "gado": {
+        "enabled": true,
+        "media": [
+            {
+                "type": "photo",
+                "file": "gado.gif",
+                "fileName": "gado.gif",
+                "updatedAt": "2026-09-21T22:23:33.920Z"
+            }
+        ]
+    },
+    "corno": {
+        "enabled": true,
+        "media": [
+            {
+                "type": "photo",
+                "file": "corno.gif",
+                "fileName": "corno.gif",
+                "updatedAt": "2026-09-21T22:24:06.575Z"
+            }
+        ]
+    },
+    "burro": {
+        "enabled": true,
+        "media": [
+            {
+                "type": "photo",
+                "file": "burro.gif",
+                "fileName": "burro.gif",
+                "updatedAt": "2026-09-21T22:25:01.330Z"
+            }
+        ]
+    }
+}

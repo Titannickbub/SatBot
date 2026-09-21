@@ -24,12 +24,12 @@ module.exports = {
         discord: "full"
     },
     description: "Executa uma ação interativa configurada para outro usuário.",
-    usage: "{prefix}act <ação> [@membro ou mensagem respondida]",
-    examples: [
-        "{prefix}act kiss @membro",
+    usage: [
+        "{prefix}act kiss",
         "{prefix}act hug",
-        "{prefix}act slap (respondendo a uma mensagem)"
-    ],
+        "{prefix}act slap",
+        "{prefix}act highfive"
+    ].join("\n"),
     info(message) {
         return help(message);
     },
@@ -514,16 +514,12 @@ async function sendMedia(message, media, caption, mentions) {
         }
     }
 
-    if (message.platform === "discord" && type === "gif") {
-        if (detected.isMp4) {
-            console.log("[ACT] Convertendo MP4 de GIF para GIF real para compatibilidade com Discord...");
-            buffer = await convertMp4ToGif(buffer);
-            fileName = "action.gif";
-        } else if (detected.isRealGif) {
-            fileName = "action.gif";
-        }
+    if (message.platform === "discord") {
         if (typeof message.replyImg === "function") {
             return message.replyImg({ image: buffer, caption, fileName });
+        }
+        if (typeof message.replyVideo === "function") {
+            return message.replyVideo({ video: buffer, caption, fileName });
         }
     }
 
@@ -553,8 +549,10 @@ function help(message, actions = null) {
         activeActions = Object.keys(actions).filter(k => actions[k]?.enabled !== false);
     }
     const actionsList = activeActions.length
-        ? activeActions.map(a => `\`${a}\``).join(", ")
-        : "`kiss`, `hug`, `slap`, `highfive`";
+        ? activeActions.map(a => `  • \`${p}act ${a}\``).join("\n")
+        : ["kiss", "hug", "slap", "highfive"]
+            .map(a => `  • \`${p}act ${a}\``)
+            .join("\n");
 
     const lines = [
         "🎭 *AÇÕES INTERATIVAS (ACT)*",
@@ -567,12 +565,7 @@ function help(message, actions = null) {
         `  • \`${p}act <ação>\` — Executa a ação sem marcação (sobre si mesmo).`,
         "",
         "✨ *AÇÕES DISPONÍVEIS:*",
-        `  ${actionsList}`,
-        "",
-        "📌 *EXEMPLOS:*",
-        `  • \`${p}act kiss @membro\``,
-        `  • \`${p}act hug\``,
-        `  • \`${p}act slap\` *(respondendo a uma mensagem)*`
+        actionsList
     ];
     return lines.join("\n");
 }

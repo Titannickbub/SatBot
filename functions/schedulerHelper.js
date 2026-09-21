@@ -268,7 +268,10 @@ async function fireSchedule(schedule) {
                 await adapter.sendImg(chatId, threadId || null, url, caption);
             }
         } else {
-            await adapter.sendText(chatId, threadId || null, msg.text);
+            const mentions = schedule.meta?.kind === "reminder"
+                ? schedule.meta.mentions
+                : undefined;
+            await adapter.sendText(chatId, threadId || null, msg.text, mentions);
         }
 
         console.log(`⏰[SCHEDULER] Agendamento disparado: "${schedule.name}" (${schedule.id})`);
@@ -309,7 +312,9 @@ async function tick() {
             schedule.state.firedCount  = (schedule.state.firedCount || 0) + 1;
             changed = true;
 
-            if (schedule.repeat?.mode === "once") {
+            if (schedule.meta?.kind === "reminder") {
+                schedules.splice(schedules.indexOf(schedule), 1);
+            } else if (schedule.repeat?.mode === "once") {
                 schedule.state.done       = true;
                 schedule.state.nextFireAt = null;
             } else {

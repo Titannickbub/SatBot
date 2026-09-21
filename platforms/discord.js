@@ -433,7 +433,11 @@ async function start(onMessage) {
 
                 let payload = {};
                 if (Buffer.isBuffer(image)) {
-                    payload = { content: caption, files: [{ attachment: image, name: data.fileName || data.name || "image.png" }] };
+                    const fileName = data.fileName || data.name || "image.png";
+                    payload = {
+                        embeds: [new EmbedBuilder().setImage(`attachment://${fileName}`).setDescription(caption)],
+                        files: [{ attachment: image, name: fileName }]
+                    };
                 } else if (typeof image === "string" && /^https?:\/\//i.test(image)) {
                     payload = { embeds: [new EmbedBuilder().setImage(image).setDescription(caption)] };
                 } else {
@@ -749,9 +753,14 @@ async function start(onMessage) {
                 }
 
                 if (Buffer.isBuffer(image)) {
+                    const fileName = data.fileName || data.name || "image.png";
                     await msg.reply({
-                        content: caption,
-                        files: [{ attachment: image, name: data.fileName || data.name || "image.png" }]
+                        embeds: [
+                            new EmbedBuilder()
+                                .setImage(`attachment://${fileName}`)
+                                .setDescription(caption)
+                        ],
+                        files: [{ attachment: image, name: fileName }]
                     });
                 } else if (typeof image === "string" && /^https?:\/\//i.test(image)) {
                     await msg.reply({

@@ -2,8 +2,9 @@ const fs = require("fs");
 const path = require("path");
 const { resolvePlatformProfile } = require("../../../functions/profiles");
 const { fetchBuffer } = require("../../../functions/api");
-const vipHelper = require("../../../functions/vipHelper");
 const nofapHelper = require("../../../functions/nofapHelper");
+const economy = require("../../../functions/economy");
+const xp = require("../../../functions/xp");
 
 module.exports = {
     name: "perfil",
@@ -14,52 +15,39 @@ module.exports = {
 
     async execute(message) {
         const platform = message.platform;
-        const username = message.username ? `@${message.username}` : null;
-
         const store = (message.functions && message.functions.centralAccounts) || global.centralAccounts;
         const central = store?.findByPlatform(platform, message.userId);
-        const vipStatus = central ? vipHelper.getVipStatus(central.id) : { active: false, permanent: false, remainingText: '❌ Não', display: '❌ Não' };
-        const vipLabel = vipStatus.permanent ? '👑 Permanente' : vipStatus.active ? `⏳ ${vipStatus.remainingText}` : '❌ Não';
         const nofapStatus = central ? nofapHelper.getNofapStatus(central.id) : { active: false, currentDays: 0, recordDays: 0, totalResets: 0, title: '🌱 Iniciante' };
+        const scope = economy.getScope(message);
+        const balance = scope ? economy.getBalance(message) : null;
+        const xpData = scope ? xp.load(message) : null;
+        const xpUser = xpData?.users?.[String(message.userId)] || { xp: 0 };
+        const xpLevel = xp.levelForXp(xpUser.xp);
+        const xpPosition = xpData?.enabled ? xp.position(message, message.userId) : null;
+        const currentName = message.displayName || message.username || message.userId;
 
         const profile = await resolvePlatformProfile(platform, message.userId, { raw: message.raw, username: message.username });
         const imageUrl = profile?.avatarUrl || null;
         const fallbackImage = path.join(__dirname, "..", "..", "semfoto.jpg");
 
-        const centralInfo = central
-            ? [
-                `🔗 Conta Central`,
-                `━━━━━━━━━━━━━━━━━━━━━━`,
-                `👑 Nome da conta central: ${central.name || "—"}`,
-                `🆔 ID central: ${central.id}`,
-                `⚡ Última atividade: ${_formatRelativeTime(central.lastActivityAt)}`,
-                `⌛ Após 2 dias: ${_formatTwoDayTime(central.lastActivityAt)}`,
-                `🌐 Plataformas vinculadas: ${central.platformAccounts?.length || 0}`,
-                ...((central.platformAccounts || []).map(p => `   • ${_platformLabel(p.platform)}: ${p.username || p.displayName || p.platformId}`)),
-                `🗓️ Criada em: ${_formatDateTime(central.createdAt)}`
-            ].join("\n")
-            : [
-                `🔗 Conta Central`,
-                `━━━━━━━━━━━━━━━━━━━━━━`,
-                `⚠️ Nenhuma conta central vinculada a este usuário neste momento.`
-            ].join("\n");
-
         const lines = [
-            `👤 Conta Atual`,
+            `👤 Conta atual`,
             `━━━━━━━━━━━━━━━━━━━━━━`,
-            `📱 Plataforma: ${_platformLabel(platform)}`,
+            `👤 Nome: ${currentName}`,
             `🆔 ID: ${message.userId}`,
-            username ? `💬 Usuário: ${username}` : null,
-            `⭐ VIP: ${vipLabel}`,
+            scope ? `💷 Satcoins (${scope.type === "servidor" ? "servidor" : "grupo"}): ${economy.formatMoney(balance)}` : null,
+            ...(scope
+                ? xpData?.enabled
+                    ? [
+                        `⭐ XP: ${xpUser.xp}`,
+                        `🎚️ Nível: ${xpLevel.level}`,
+                        `🏆 ${xpPosition ? `Posição: #${xpPosition}` : "Posição: ainda não classificado"}`
+                    ]
+                    : [`⭐ XP: desativado neste ${scope.type === "servidor" ? "servidor" : "grupo"}`]
+                : []),
             `🔥 NoFap: ${nofapStatus.active ? `${nofapStatus.currentDays} dias • ${nofapStatus.title}` : '🚫 Inativo'}`,
             "",
-            centralInfo,
-            "",
-            `⚙️ Comandos do setor de contas`,
-            `━━━━━━━━━━━━━━━━━━━━━━`,
-            `• ${message.prefix}nomecentral <nome> - alterar o nome da conta central`,
-            `• ${message.prefix}gerar_unir - gerar código para unir outra conta`,
-            `• ${message.prefix}unir <codigo> - unir sua conta com outra conta`
+            `🌐 Para ver sua conta global, use ${message.prefix}conta.`
         ].filter(Boolean);
 
         const caption = lines.join("\n");
@@ -133,15 +121,6 @@ function _formatRelativeTime(dateString) {
     if (minutes < 60) return `${minutes} minutos atrás`;
     if (hours < 24) return `${hours} horas atrás`;
     return `${days} dias atrás`;
-}
-
-function _formatTwoDayTime(dateString) {
-    if (!dateString) return "—";
-    const date = new Date(dateString);
-    if (Number.isNaN(date.getTime())) return dateString;
-    const diff = Date.now() - date.getTime();
-    const days = Math.floor(diff / (24 * 3600 * 1000));
-    return days < 2 ? _formatRelativeTime(dateString) : _formatDateTime(dateString);
 }
 
 function _formatDateTime(dateString) {

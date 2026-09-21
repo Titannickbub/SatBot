@@ -16,6 +16,7 @@ IA, downloads e suporte a Windows, Linux, macOS e Termux.
 - [Instalação e configuração](./docs/instalacao.md)
 - [Plataformas e downloads](./docs/plataformas.md)
 - [Funcionalidades](./docs/funcionalidades.md)
+- [Economia do sistema de RP](./docs/economia-rp.md)
 - [Desenvolvimento e segurança](./docs/desenvolvimento.md)
 
 O fluxo de login e pareamento do WhatsApp está documentado em
@@ -33,6 +34,7 @@ No Windows, também é possível usar `start.bat`. Em sistemas Unix, use
 
 ## Changelogs
 
+- [Versão 1.3](./changelog/1.3/README.md)
 - [Versão 1.2](./changelog/1.2/README.md)
 - [Versão 1.1](./changelog/1.1/README.md)
 - [Versão 1.0](./changelog/1.0/README.md)

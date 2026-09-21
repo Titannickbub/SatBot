@@ -289,5 +289,34 @@
         "file": "pat_1788988255738_77.gif"
       }
     ]
+  },
+  "breakdance": {
+    "enabled": true,
+    "aliases": [],
+    "messages": [
+      "{user1_mention} lançou um Break dance 🤸🏻‍♀️"
+    ],
+    "media": [
+      {
+        "type": "gif",
+        "file": "breakdance_1789346545867_944.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "breakdance_1789347063357_770.gif"
+      },
+      {
+        "type": "gif",
+        "file": "breakdance_1789347093643_50.gif"
+      },
+      {
+        "type": "gif",
+        "file": "breakdance_1789347118614_785.gif"
+      },
+      {
+        "type": "gif",
+        "file": "breakdance_1789347137641_327.gif"
+      }
+    ]
   }
 }

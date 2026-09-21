@@ -272,7 +272,9 @@ function parseTargetFromMessage(message) {
     const quoted = message.quoted;
     if (quoted?.userId) {
         return {
-            targetId: cleanJid(String(quoted.userId)),
+            targetId: message.platform === "whatsapp"
+                ? cleanJid(String(quoted.userId))
+                : String(quoted.userId),
             targetMessageId: quoted.messageId ? String(quoted.messageId) : null
         };
     }
@@ -309,7 +311,10 @@ function parseTargetFromMessage(message) {
         }
     }
 
-    return { targetId: cleanJid(rawArg), targetMessageId: null };
+    return {
+        targetId: message.platform === "whatsapp" ? cleanJid(rawArg) : rawArg,
+        targetMessageId: null
+    };
 }
 
 function formatUserMention(message, targetId) {

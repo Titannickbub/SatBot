@@ -14,6 +14,7 @@ let cache = null;
 const DEFAULT_CONFIG = {
     prefix: "!",
     botName: "Sat Bot",
+    webDomain: null,
     autoUpdate: false,
     platforms: {},
     uploads: {
@@ -81,6 +82,12 @@ function normalizeConfig(data) {
         normalized.botName = DEFAULT_CONFIG.botName;
     } else {
         normalized.botName = normalized.botName.trim();
+    }
+
+    if (normalized.webDomain !== null && typeof normalized.webDomain !== "string") {
+        normalized.webDomain = null;
+    } else if (typeof normalized.webDomain === "string") {
+        normalized.webDomain = normalized.webDomain.trim() || null;
     }
 
     return normalized;
@@ -153,6 +160,17 @@ function getConfig() {
 
     return load();
 
+}
+
+function getWebDomain() {
+    return load().webDomain;
+}
+
+function setWebDomain(domain) {
+    const data = load();
+    data.webDomain = domain === null ? null : String(domain).trim() || null;
+    save(data);
+    return data.webDomain;
 }
 
 function getPrefix() {
@@ -1023,6 +1041,8 @@ function setGlobalBlockcmd(newConfig) {
 
 module.exports = {
     getConfig,
+    getWebDomain,
+    setWebDomain,
     getPrefix,
     setPrefix,
     getAutoUpdateEnabled,

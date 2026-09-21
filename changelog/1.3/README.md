@@ -1,5 +1,168 @@
 # Sat Bot — Changelog Versão 1.3
 
+## 🌐 Configuração do painel web
+
+- Adicionado o comando exclusivo de super usuário `!set_dominio
+  <domínio:porta>`.
+- O domínio e a porta são validados e persistidos em `settings/config.json`.
+- O painel web fica desligado por padrão e só inicia quando um domínio válido
+  tiver sido configurado.
+- A alteração passa a valer no próximo início do bot.
+- Adicionados `!gerarlink_perfil`, `!gerarlink_rankxp` e
+  `!gerarlink_rankcoins` para compartilhar os links do perfil e dos rankings.
+- Os links de ranking ficam restritos a administradores.
+- Adicionados `!img_perfil`, `!img_rankxp` e `!img_rankcoins`, que geram
+  banners PNG diretamente pelo bot usando SVG e Sharp.
+- Os comandos normais `!rankxp` e `!rank` agora também enviam os rankings como
+  imagem, sem depender dos comandos `!img_*`.
+- `!rankxp melhores|piores` exibe os 5 maiores ou os 5 menores rankings de XP,
+  enquanto `!rank rico|pobre` exibe os 5 mais ricos ou os 5 mais pobres em
+  satcoins.
+
+## 🛡️ Correção do `!ban` no Discord ao responder mensagens
+
+### Falha identificada
+
+Ao executar o `!ban` respondendo a uma mensagem no Discord, o ID do usuário
+podia ser tratado como um JID do WhatsApp e enviado à API do Discord com o
+sufixo `@s.whatsapp.net`. Isso fazia o Discord rejeitar o banimento com o erro
+`Invalid Form Body`, pois o campo `user_id` precisa receber um Snowflake
+numérico válido.
+
+### Solução aplicada
+
+- A resolução de usuários citados agora preserva o ID original no Discord e no
+  Telegram.
+- A normalização para JID continua sendo aplicada somente aos alvos do
+  WhatsApp.
+- IDs informados diretamente também respeitam a plataforma atual, evitando que
+  um identificador Discord seja convertido incorretamente.
+
+## 💰 Economia do sistema de RP
+
+### ⚙️ Ativação da economia
+
+- A economia agora começa desativada por padrão em cada grupo ou servidor.
+- Administradores podem usar `!economia ativar`, `!economia desativar` e
+  `!economia status`.
+- Todos os comandos de economia ficam bloqueados enquanto o sistema estiver
+  desativado.
+- Desativar a economia preserva os saldos e o progresso já registrados.
+
+### ⭐ Sistema inicial de XP
+
+- Adicionado o sistema de XP local por servidor ou grupo, desativado por
+  padrão.
+- Cada mensagem válida concede `1 XP`, com progressão por nível baseada em
+  `100 × nível atual`.
+- Adicionados `!rankxp` para ranking e `!xp` para perfil com posição, nível,
+  XP e progresso restante. O `!rankxp` aceita `melhores` ou `piores` para
+  exibir os cinco maiores ou menores usuários em XP.
+- Administradores podem usar `!xpconfig ativar|desativar`, `mutar`,
+  `desmutar` e `status`.
+- Discord permite escolher um canal com `!xpconfig canal`; Telegram permite
+  escolher o tópico atual com `!xpconfig topico`; WhatsApp oferece somente
+  silenciamento. Uma nova configuração substitui o destino anterior.
+- Com economia e XP ativos, trabalho, pesca e mineração concedem XP adicional
+  conforme o resultado: `+5` normal, `+2` ruim e `+10` em evento bônus.
+- Roubos concedem `+5` em roubo parcial, `+10` em roubo total e `+2` em
+  falhas processadas, multas, indenizações ou bloqueios por escudo. Limites e
+  tentativas inválidas não concedem XP adicional.
+- As respostas dessas atividades agora mostram o XP adicional recebido.
+- Adicionados os comandos administrativos `!darxp`, `!remxp` e `!setxp` para
+  adicionar, remover ou definir XP. O alvo precisa já possuir um registro de
+  XP no grupo/servidor; os comandos não criam progresso automaticamente.
+- Level-ups agora concedem satcoins quando economia e XP estão ativos, usando
+  a fórmula `15,00💷 × nível alcançado` (nível 2: `30,00💷`, nível 3:
+  `45,00💷`). Ajustes administrativos de XP não ativam essa recompensa.
+
+- Adicionados os comandos de economia local por servidor ou grupo, com saldo em `satcoins` e suporte por plataforma:
+  - `!carteira` / `!saldo`
+  - `!resgatar` / `!daily` / `!diario`
+  - `!trabalhar`
+  - `!pescar`
+  - `!minerar`
+  - `!cassino [valor]`
+  - `!rank [rico|pobre|help]`, com os rankings enviados em imagem.
+  - `!perfil` para ver o saldo local associado à conta atual.
+- O sistema respeita o escopo da comunidade, mantendo economias independentes por servidor ou grupo e permitindo resgates diários, trabalho, pesca, mineração e apostas sem misturar saldos entre chats.
+- A documentação de referência foi centralizada em `docs/economia-rp.md`.
+
+### 💸 Transferência entre usuários
+
+- Adicionado `!transferir <valor> <id|@usuário>` (com aliases `!transfer`,
+  `!enviar` e `!pagar`) para movimentar satcoins dentro do mesmo grupo ou
+  servidor.
+- O destinatário pode ser informado por ID, menção nativa ou respondendo à
+  mensagem dele nas plataformas suportadas.
+- O valor mínimo é `10,00💷` e o remetente pode realizar no máximo três
+  transferências por dia.
+- A resposta apresenta uma síntese adequada ao WhatsApp, Telegram e Discord;
+  no Discord, o resultado usa embed.
+- Valores inválidos, saldo insuficiente, limite diário, tentativa de enviar
+  para si mesmo e destinatários sem carteira recebem mensagens amigáveis.
+
+### 🛒 Loja de resets da economia
+
+- Adicionados os comandos `!loja` e `!comprar <número|nome>`.
+- A loja oferece resets para trabalho, pesca, mineração, cassino,
+  transferência e um reset geral.
+- Cada reset só pode ser comprado quando o limite correspondente chegar ao
+  fim e é ativado imediatamente após a compra.
+- O reset geral exige que trabalho, pesca e mineração estejam esgotados; ele
+  também reinicia cassino e transferência.
+- Preços iniciais: trabalho `100,00💷`, pesca `80,00💷`, mineração
+  `90,00💷`, cassino `50,00💷`, transferência `100,00💷` e todos
+  `420,00💷`.
+
+### 📊 Lucro diário
+
+- Adicionado o comando `!lucro` (aliases `!ganhos`, `!lucrodiario` e
+  `!media`) para exibir o resultado líquido por atividade e o total do dia.
+- O cálculo registra ganhos e perdas de resgate, trabalho, pesca, mineração,
+  cassino e transferências enviadas/recebidas.
+- O contador é reiniciado automaticamente na virada da data local.
+- Compras de resets e escudos agora são registradas como gastos na loja e
+  subtraídas do lucro diário total.
+
+### 🦹 Sistema de roubos
+
+- Adicionado o comando `!roubar <id|@usuário>` (aliases `!roubo` e
+  `!assaltar`) para tentativas de roubo dentro do mesmo grupo ou servidor.
+- Cada usuário tem três tentativas por dia e não pode tentar roubar a mesma
+  vítima duas vezes no mesmo dia.
+- Vítimas com menos de `20,00💷` não têm saldo roubável; a tentativa é
+  consumida e uma mensagem aleatória informa o azar.
+- As chances normais são distribuídas entre roubo parcial, falha neutra,
+  multa do ladrão, roubo total e indenização à vítima. Para vítimas com mais
+  de `2.000,00💷`, as chances especiais passam a ser 35% de roubo parcial,
+  25% de falha neutra, 15% de perda do ladrão, 10% de roubo total e 15% de
+  indenização.
+- Adicionado o reset de roubo na loja por `200,00💷`; o reset geral passou a
+  custar `620,00💷` e também reinicia as tentativas de roubo.
+
+### 🛡️ Escudo anti-roubo
+
+- Adicionado o produto `escudo` na loja por `200,00💷`.
+- A compra exige saldo mínimo de `500,00💷` e concede cinco cargas de
+  proteção contra roubos e outros efeitos negativos do sistema.
+- O escudo pertence ao grupo/servidor em que foi comprado, continua ativo
+  mesmo se o saldo cair abaixo de `500,00💷` e não pode ser comprado novamente
+  enquanto ainda tiver cargas.
+- Cada tentativa bloqueada consome uma carga e também consome uma tentativa
+  diária do ladrão. O `resetar todos` não ativa, restaura ou recarrega escudos.
+
+### 👮 Administração de satcoins
+
+- Adicionados os comandos administrativos `!darsatcoin`,
+  `!remsatcoin` e `!setsatcoin`.
+- Os comandos aceitam ID, menção ou resposta à mensagem do usuário e atuam
+  somente no grupo/servidor atual.
+- Administradores podem adicionar, remover ou definir o saldo com valores de
+  até duas casas decimais. O alvo precisa já possuir uma carteira de economia;
+  nenhum comando cria contas automaticamente.
+- Ajustes administrativos não são contabilizados como lucro diário.
+
 ## 🔐 Login do WhatsApp por QR Code ou código de pareamento
 
 - No primeiro bootstrap pelo terminal, o WhatsApp agora permite escolher entre

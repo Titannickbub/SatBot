@@ -28,6 +28,24 @@ const syncedGroups = new Set();
 const groupMetadataCache = new Map();
 const FALLBACK_WA_VERSION = [2, 3000, 1044006379];
 
+async function getGroupMetadataWithTimeout(sock, chatId, timeoutMs = 10000) {
+  const cached = groupMetadataCache.get(chatId);
+  if (cached) return cached;
+
+  const metadataPromise = sock.groupMetadata(chatId)
+    .then((metadata) => {
+      groupMetadataCache.set(chatId, metadata);
+      return metadata;
+    });
+
+  return Promise.race([
+    metadataPromise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`timeout após ${timeoutMs}ms`)), timeoutMs);
+    })
+  ]);
+}
+
 function getLoginTargetAdapter(target) {
   if (!target || !global.platformRegistry) return null;
   return global.platformRegistry[target.platform] || null;
@@ -49,24 +67,6 @@ async function getWAVersionFromWPP() {
     if (!match?.[1]) {
       console.warn("[VERSION] Não foi possível extrair a versão do WPPConnect.");
       return null;
-    }
-
-    async function getGroupMetadataWithTimeout(sock, chatId, timeoutMs = 10000) {
-      const cached = groupMetadataCache.get(chatId);
-      if (cached) return cached;
-
-      const metadataPromise = sock.groupMetadata(chatId)
-        .then((metadata) => {
-          groupMetadataCache.set(chatId, metadata);
-          return metadata;
-        });
-
-      return Promise.race([
-        metadataPromise,
-        new Promise((_, reject) => {
-          setTimeout(() => reject(new Error(`timeout após ${timeoutMs}ms`)), timeoutMs);
-        })
-      ]);
     }
 
     const version = [2, 3000, Number(match[1])];
@@ -772,7 +772,8 @@ async function start(onMessage) {
 async function sendText(
   chatId,
   threadId,
-  text
+  text,
+  mentions = undefined
 ) {
 
   if (!global.whatsappSock) {
@@ -783,12 +784,12 @@ async function sendText(
 
   }
 
-  const result = await global.whatsappSock.sendMessage(
-    chatId,
-    {
-      text
-    }
-  );
+  const payload = { text };
+  if (Array.isArray(mentions) && mentions.length) {
+    payload.mentions = mentions;
+  }
+
+  const result = await global.whatsappSock.sendMessage(chatId, payload);
 
   return String(result.key.id);
 
