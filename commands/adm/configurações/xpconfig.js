@@ -1,15 +1,16 @@
 const xp = require("../../../functions/xp");
+const { isOwner } = require("../../../functions/owners");
 
 module.exports = {
     name: "xpconfig",
     aliases: ["configxp", "configurarxp"],
-    category: "adm/configurações",
+    category: "adm/RP",
     description: "Ativa e configura o sistema de XP.",
     usage: "{prefix}xpconfig <ativar|desativar|mutar|canal|topico|status>",
 
     async execute(message) {
         if (!xp.load(message)) return message.reply({ text: "❌ O XP só funciona em grupos ou servidores." });
-        if (!message.sender?.isAdmin && !message.sender?.isOwner) {
+        if (!message.sender?.isAdmin && !message.sender?.isOwner && !isOwner(message)) {
             return message.reply({ text: "❌ Apenas administradores podem configurar o XP." });
         }
 

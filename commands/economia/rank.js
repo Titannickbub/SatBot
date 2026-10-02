@@ -3,7 +3,7 @@ const { renderRanking } = require("../../functions/imageBanner");
 
 module.exports = {
     name: "rank",
-    category: "economia",
+    category: "adm/RP",
     description: "Envia uma imagem dos cinco mais ricos ou mostra os cinco mais pobres do grupo/servidor.",
     usage: "{prefix}rank [rico|pobre|help]",
 

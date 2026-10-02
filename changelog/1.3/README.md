@@ -1,5 +1,37 @@
 # Sat Bot — Changelog Versão 1.3
 
+## 💵 Cotações do dólar e da bolsa
+
+- Adicionados os comandos `!dolar` (com alias `!usd`), que exibe compra,
+  venda e variação do dólar comercial.
+- Adicionado o comando `!bolsa`, com os índices Ibovespa, S&P 500 e Nasdaq,
+  incluindo pontuação e variação.
+- O `!bolsa` também exibe o contrato futuro **Coffee C** do café arábica,
+  negociado na ICE Futures U.S. / NYBOT, em centavos de dólar por libra-peso.
+- As cotações usam APIs externas públicas (AwesomeAPI e Yahoo Finance) e
+  informam quando o serviço está indisponível ou instável.
+
+## 📈 Monitor configurável da bolsa
+
+- Adicionado o comando administrativo `!monitorbolsa`.
+- O monitor permite configurar ativos, horários diários, ativação,
+  desativação, status e execução imediata.
+- Os ativos podem ser selecionados por alias: `ibovespa`, `sp500`, `nasdaq`
+  e `cafe`/`kc`.
+- As cotações são enviadas automaticamente por plataforma, grupo, servidor ou
+  tópico, seguindo o mesmo scheduler do monitor de clima.
+
+## 🎵 Correção dos downloads do YouTube
+
+- O `!play` agora consulta a API do YouTube para obter os metadados da música
+  tanto em buscas por nome quanto em links diretos.
+- O autodownload automático de links do YouTube também consulta a API para
+  carregar título, duração, canal e thumbnail da mídia.
+- Áudios enviados pelo `!play` e pelo autodownload passam a usar o título da
+  música como nome do arquivo, em vez do nome genérico `audio.mp3`.
+- A thumbnail do YouTube é enviada como prévia no fluxo de autodownload quando
+  a plataforma disponibiliza esse recurso.
+
 ## 🌐 Configuração do painel web
 
 - Adicionado o comando exclusivo de super usuário `!set_dominio
@@ -18,6 +50,33 @@
 - `!rankxp melhores|piores` exibe os 5 maiores ou os 5 menores rankings de XP,
   enquanto `!rank rico|pobre` exibe os 5 mais ricos ou os 5 mais pobres em
   satcoins.
+
+### 📊 Atividade do grupo/servidor
+
+- Adicionado o sistema de atividade, desativado por padrão em cada grupo ou
+  servidor.
+- Administradores podem usar `!atividade ativar`, `!atividade desativar` e
+  `!atividade status`.
+- Enquanto estiver ativo, o bot registra mensagens, comandos, figurinhas e
+  arquivos por usuário.
+- Adicionado `!rankativos`, que mostra os cinco usuários com mais atividade e
+  o detalhamento de cada tipo registrado.
+- Os comandos de configuração e reset da atividade são restritos a
+  administradores: `!resetatividade <id|@usuário>` zera um usuário e
+  `!resetatividadetodos` zera o ranking inteiro do grupo/servidor.
+- O comando `!perfil` agora exibe o total de atividades registradas pelo
+  usuário no grupo ou servidor atual.
+- Adicionada a página web `rankatividade` e o comando administrativo
+  `!gerarlink_rankativos` para compartilhar o ranking dos cinco usuários mais
+  ativos.
+- A página web de perfil agora exibe o total, a posição e o detalhamento da
+  atividade do usuário no grupo ou servidor atual.
+- O `!rankativos` também exibe um contador diário separado para cada usuário,
+  sem alterar os totais históricos do perfil ou da página web.
+- O `!rankativos` passou a ser enviado como imagem resumida. O comando
+  `!rankinfo atividade|xp|rico <id|@usuário>` consulta os detalhes de um
+  usuário por ID, menção ou resposta à mensagem, com aliases
+  `!consultarank`, `!rankusuario` e `!inforank`.
 
 ## 🛡️ Correção do `!ban` no Discord ao responder mensagens
 
@@ -556,3 +615,25 @@ numérico válido.
   usar um objeto padrão vazio (`{}`), mantendo `targetSelf: false` e
   `remove: false` como valores padrão e permitindo a execução normal do
   `!darcargo`.
+
+## 🧰 Correções recentes
+
+- **Indicadores de saldo nos comandos de economia**:
+  - `!pescar`, `!trabalhar`, `!minerar` e `!resgatar` agora usam emojis para
+    distinguir satcoins ganhos, perdidos ou não resgatados.
+  - Resultados sem alteração de saldo também são identificados claramente.
+- **Variações na ação de mordida**:
+  - As mensagens de `!morder` agora têm emojis variados e novas respostas
+    engraçadas, mantendo as menções de quem morde e de quem recebe a mordida.
+- **Bypass de superusuário nos comandos administrativos**:
+  - Adicionado suporte ao superusuário global nos comandos administrativos
+    que antes verificavam apenas se o usuário era administrador do grupo.
+  - As verificações compartilhadas de XP e economia também reconhecem o
+    superusuário.
+- **Espaço opcional após o prefixo**:
+  - Comandos agora funcionam mesmo quando há espaços entre o prefixo e o nome,
+    como `!menu` e `! menu`.
+- **Prefixos com vários caracteres**:
+  - A configuração aceita prefixos como `sat!`, sem espaços, em vez de limitar
+    o prefixo a um único caractere.
+  - Com `sat!` configurado, `sat!menu` e `sat! menu` executam o comando.

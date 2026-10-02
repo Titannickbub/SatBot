@@ -57,12 +57,8 @@ module.exports = {
 
             if (shouldSearch) {
                 try {
-                    const results = await bronxys.searchYouTube(input);
-                    if (results && Array.isArray(results) && results.length > 0) {
-                        const firstResult = results[0];
-                        targetUrl = firstResult.url;
-                        videoInfo = firstResult;
-                    }
+                    videoInfo = await bronxys.getYouTubeMetadata(input);
+                    targetUrl = videoInfo.url;
                 } catch (searchErr) {
                     console.error("[PLAY_SEARCH_WARNING] Falha ao obter detalhes:", searchErr.message);
                 }

@@ -26,6 +26,7 @@ const {
     getSetAntimedia,
     normalizeMediaTypes
 } = require("../../../functions/antimediaHelper");
+const { isOwner } = require("../../../functions/owners");
 const {
     resolveTargetUser,
     resolveTargetRole,
@@ -55,7 +56,7 @@ Funções disponíveis:
 • remove <mídia>: Remove tipos de mídia da lista proibida.
 • list: Mostra as mídias proibidas no nível.
 • ignoreparent <on|off>: Define se o nível atual ignora configurações de níveis superiores.`,
-    usage: "{prefix}antimedia]",
+    usage: "{prefix}antimedia",
     examples: [
         "{prefix}antimedia status",
         "{prefix}antimedia chat on",
@@ -72,9 +73,9 @@ Funções disponíveis:
         }
 
         const adapter = (message.platforms || []).find(p => p.name === message.platform);
-        const userOk = adapter?.checkUserPermission
+        const userOk = isOwner(message) || (adapter?.checkUserPermission
             ? await adapter.checkUserPermission(message.chatId, message.userId)
-            : message.sender?.isAdmin;
+            : message.sender?.isAdmin);
 
         if (!userOk) {
             return message.reply({ text: "❌ Apenas administradores podem configurar o antimedia." });

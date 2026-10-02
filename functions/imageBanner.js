@@ -84,6 +84,7 @@ async function renderRanking(message, type, order = "rich") {
     if (ranking.error) return ranking;
 
     const isXp = type === "xp";
+    const isActivity = type === "activity";
     const isPoor = order === "poor";
     const rows = Array.from({ length: 5 }, (_, index) => {
         const entry = ranking.entries[index];
@@ -93,6 +94,8 @@ async function renderRanking(message, type, order = "rich") {
         const metric = entry
             ? isXp
                 ? `${entry.xp} XP • nível ${entry.level}`
+                : isActivity
+                    ? `${entry.total} atividades • hoje ${entry.dailyTotal || 0}`
                 : formatMoney(entry.balance)
             : "—";
         return [
@@ -110,11 +113,11 @@ async function renderRanking(message, type, order = "rich") {
         buffer: await sharp(Buffer.from(baseSvg(
             1200,
             650,
-            `${isPoor ? "Piores" : "Melhores"} ranking de ${isXp ? "XP" : "Satcoins"}`,
+            `${isPoor ? "Piores" : "Melhores"} ranking de ${isXp ? "XP" : isActivity ? "atividade" : "Satcoins"}`,
             `${isPoor ? "5 menores" : "5 maiores"} do grupo/servidor`,
             body
         ))).png().toBuffer(),
-        caption: `🏆 ${isPoor ? "5 piores" : "5 melhores"} — ${isXp ? "Ranking de XP" : "Ranking de satcoins"}\n🏠 ${ranking.groupName}`
+        caption: `🏆 ${isPoor ? "5 piores" : "5 melhores"} — ${isXp ? "Ranking de XP" : isActivity ? "Ranking de atividade" : "Ranking de satcoins"}\n🏠 ${ranking.groupName}`
     };
 }
 

@@ -37,6 +37,7 @@ const {
     formatTs,
     storeMedia
 } = require("../../../functions/schedulerHelper");
+const { isOwner } = require("../../../functions/owners");
 const { downloadAndSaveMediaLocally } = require("../../../functions/welcomeHelper");
 const path = require("path");
 
@@ -47,7 +48,7 @@ const DAY_NAMES = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 // ─────────────────────────────────────────────────────────────
 
 async function checkPermission(message) {
-    if (message.sender?.isOwner) return true;
+    if (message.sender?.isOwner || isOwner(message)) return true;
     const adapter = (message.platforms || []).find(p => p.name === message.platform);
     if (adapter?.checkUserPermission) {
         return adapter.checkUserPermission(message.chatId, message.userId);

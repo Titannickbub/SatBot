@@ -4,7 +4,7 @@ const admin = require("../../../functions/xpAdmin");
 module.exports = {
     name: "darxp",
     aliases: ["addxp"],
-    category: "adm/xp",
+    category: "adm/RP",
     description: "Adiciona XP ao perfil de um usuário.",
     usage: "{prefix}darxp <quantidade> <id|@usuário>",
 

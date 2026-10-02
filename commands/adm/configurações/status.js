@@ -72,6 +72,7 @@ const { getAutoIAMode } = require("../../../functions/autoiaHelper");
 const cafeMonitor = require("../../../functions/cafeMonitor");
 const weatherMonitor = require("../../../functions/weatherMonitor");
 const randomWeatherMonitor = require("../../../functions/randomWeatherMonitor");
+const stockMonitor = require("../../../functions/stockMonitor");
 const autoAccept = require("../../../functions/autoAccept");
 const { listSchedules, formatTs } = require("../../../functions/schedulerHelper");
 const { formatRoleMention } = require("../../../functions/antiHelper");
@@ -114,6 +115,8 @@ const FEATURES = {
     }
 };
 
+const { isOwner } = require("../../../functions/owners");
+
 module.exports = {
     name: "status",
     category: "adm/configurações",
@@ -147,9 +150,9 @@ Disponível para Antilink, Antipalavras, Antimedia, Anti-Raid, Blockcmd, Welcome
         }
 
         const adapter = (message.platforms || []).find(p => p.name === message.platform);
-        const userOk = adapter?.checkUserPermission
+        const userOk = isOwner(message) || (adapter?.checkUserPermission
             ? await adapter.checkUserPermission(message.chatId, message.userId)
-            : message.sender?.isAdmin;
+            : message.sender?.isAdmin);
 
         if (!userOk) {
             return message.reply({ text: "❌ Apenas administradores podem usar este comando." });
@@ -367,6 +370,7 @@ function _monitorSummary(message) {
     const cafe = cafeMonitor.loadMonitorConfig(target);
     const weather = weatherMonitor.loadMonitorConfig(target);
     const randomWeather = randomWeatherMonitor.loadMonitorConfig(target);
+    const stock = stockMonitor.loadMonitorConfig(target);
     const autoApprove = autoAccept.getConfig(target);
 
     return [
@@ -374,6 +378,7 @@ function _monitorSummary(message) {
         `  Café: ${cafe.enabled ? `✅ Ativo (${cafe.mode || "both"}; ${(cafe.sources || []).join(", ")})` : "❌ Desativado"}`,
         `  Clima: ${weather.enabled ? `✅ Ativo (${weather.city || "cidade não definida"})` : "❌ Desativado"}`,
         `  Rclima: ${randomWeather.enabled ? `✅ Ativo (${randomWeather.cities.length} cidade(s))` : "❌ Desativado"}`,
+        `  Bolsa: ${stock.enabled ? `✅ Ativo (${Array.isArray(stock.symbols) ? stock.symbols.length : 0} ativo(s))` : "❌ Desativado"}`,
         `  Autoaceitar: ${autoApprove.enabled ? `✅ Ativo (${autoApprove.intervalSeconds}s)` : "❌ Desativado"}`
     ];
 }

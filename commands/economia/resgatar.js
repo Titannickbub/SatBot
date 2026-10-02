@@ -16,6 +16,9 @@ module.exports = {
         const name = message.displayName || message.username || message.userId;
         const gained = economy.formatMoney(result.amount);
         const balance = economy.formatMoney(result.balance);
+        const rewardLabel = result.claimed
+            ? `💰 Saldo ganho: ${gained}`
+            : `⏳ Nenhum satcoin resgatado`;
         const status = result.claimed
             ? "✅ Recompensa diária resgatada!"
             : "⏳ Você já resgatou sua recompensa diária neste grupo/servidor.";
@@ -28,7 +31,7 @@ module.exports = {
                     description: [
                         `**Nome:** ${name}`,
                         `**ID:** \`${message.userId}\``,
-                        `**Saldo ganho:** ${gained}`,
+                        rewardLabel,
                         `**Saldo atual:** ${balance}`,
                         `\n${status}`,
                         !result.claimed ? "Tente novamente após a próxima virada do dia." : null
@@ -51,7 +54,7 @@ module.exports = {
                     "━━━━━━━━━━━━━━━━━━━━━━",
                     `<b>Nome:</b> ${escapeHtml(name)}`,
                     `<b>ID:</b> <code>${escapeHtml(message.userId)}</code>`,
-                    `<b>Saldo ganho:</b> ${gained}`,
+                    rewardLabel,
                     `<b>Saldo atual:</b> ${balance}`,
                     `\n${escapeHtml(status)}`,
                     !result.claimed ? "Tente novamente após a próxima virada do dia." : null
@@ -67,7 +70,7 @@ module.exports = {
                 "━━━━━━━━━━━━━━━━━━━━━━",
                 `*Nome:* ${escapeMarkdown(name)}`,
                 `*ID:* \`${escapeMarkdown(message.userId)}\``,
-                `*Saldo ganho:* ${gained}`,
+                rewardLabel,
                 `*Saldo atual:* ${balance}`,
                 `\n_${escapeMarkdown(status)}_`,
                 !result.claimed ? "Tente novamente após a próxima virada do dia." : null

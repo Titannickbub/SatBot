@@ -76,6 +76,8 @@ function normalizeConfig(data) {
 
     if (typeof normalized.prefix !== "string" || !normalized.prefix.trim()) {
         normalized.prefix = DEFAULT_CONFIG.prefix;
+    } else {
+        normalized.prefix = normalized.prefix.trim();
     }
 
     if (typeof normalized.botName !== "string" || !normalized.botName.trim()) {
@@ -184,7 +186,7 @@ function setPrefix(prefix) {
     const data = load();
 
     data.prefix =
-        String(prefix);
+        String(prefix).trim();
 
     save(data);
 

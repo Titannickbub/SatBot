@@ -22,6 +22,8 @@ Observações:
 =================================================================
 */
 
+const { isOwner } = require("../../../functions/owners");
+
 module.exports = {
     name: "clear",
     aliases: ["limpar", "purge", "deletar", "apagar"],
@@ -59,7 +61,7 @@ Sintaxe:
         }
 
         const sender = message.sender || {};
-        if (!sender.isAdmin && !sender.isOwner && !sender.canManageMessages) {
+        if (!sender.isAdmin && !sender.isOwner && !sender.canManageMessages && !isOwner(message)) {
             return message.reply({ text: "❌ Apenas administradores podem usar este comando." });
         }
 

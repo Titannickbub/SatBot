@@ -318,5 +318,66 @@
         "file": "breakdance_1789347137641_327.gif"
       }
     ]
+  },
+  "morder": {
+    "enabled": true,
+    "aliases": [
+      "mordida",
+      "bite"
+    ],
+    "messages": [
+      "{user1_mention} deu uma mordida em {user2_mention} 😬🦷",
+      "{user1_mention} deu uma mordida na perna de {user2_mention} 😋",
+      "{user1_mention} deu uma mordida no braço de {user2_mention} 🦷",
+      "{user1_mention} deu uma mordida na mão de {user2_mention} 🤭",
+      "{user1_mention} deu uma mordida na orelha de {user2_mention} 🧛",
+      "{user1_mention} deu uma mordida no ombro de {user2_mention} 😈",
+      "{user1_mention} deu uma mordida no pescoço de {user2_mention} 🧛‍♂️",
+      "{user1_mention} deu uma mordida na barriga de {user2_mention} 🍴",
+      "{user1_mention} deu uma mordida no rosto de {user2_mention} 😳",
+      "{user1_mention} deu uma mordida na cabeça de {user2_mention} 🦖",
+      "{user1_mention} tentou dar uma mordida em {user2_mention}, mas errou e mordeu o ar 😬💨",
+      "{user1_mention} deu uma mordidinha em {user2_mention} e fingiu que não foi nada 🤏😇",
+      "{user1_mention} mordeu {user2_mention} como se fosse o último biscoito do pacote 🍪😋",
+      "{user1_mention} ativou o modo jacaré e foi pra cima de {user2_mention} 🐊",
+      "{user1_mention} deu uma mordida em {user2_mention} e agora está esperando um lanche de volta 🍕👀",
+      "{user1_mention} confundiu {user2_mention} com um pão de queijo quentinho 🧀😳",
+      "{user1_mention} deu uma mordida tão de leve em {user2_mention} que pareceu um beijo com dentes 😘🦷",
+      "{user1_mention} atacou {user2_mention} com suas presas de vampiro de mentira 🧛‍♀️🦇",
+      "{user1_mention} mordeu {user2_mention} e saiu correndo antes de levar uma bronca 🏃💨",
+      "{user1_mention} deu uma mordida em {user2_mention} por motivos que nem a ciência explica 🤔🦷",
+      "{user1_mention} tentou uma mordida dramática em {user2_mention}, digna de novela mexicana 🎭😱",
+      "{user1_mention} deu uma mordida em {user2_mention} e perguntou: \"tem mais?\" 😋"
+    ],
+    "media": [
+      {
+        "type": "gif",
+        "file": "morder_1790689852955_448.gif"
+      },
+      {
+        "type": "gif",
+        "file": "morder_1790689895342_324.gif"
+      },
+      {
+        "type": "gif",
+        "file": "morder_1790689896499_178.gif"
+      },
+      {
+        "type": "gif",
+        "file": "morder_1790689920707_103.gif"
+      },
+      {
+        "type": "gif",
+        "file": "morder_1790689936161_119.gif"
+      },
+      {
+        "type": "gif",
+        "file": "morder_1790689968928_276.gif"
+      },
+      {
+        "type": "gif",
+        "file": "morder_1790690007986_39.gif"
+      }
+    ]
   }
 }

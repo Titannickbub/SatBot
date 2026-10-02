@@ -1,3 +1,5 @@
+const { isOwner } = require("../../../functions/owners");
+
 module.exports = {
     name: "autoia",
     aliases: ["setautoia", "iaauto", "iaautomatica"],
@@ -22,7 +24,8 @@ module.exports = {
             message.sender?.isAdmin ||
             message.sender?.isOwner ||
             message.sender?.canManageMessages ||
-            (message.functions?.owners && message.functions.owners.isOwner(message));
+            (message.functions?.owners && message.functions.owners.isOwner(message)) ||
+            isOwner(message);
 
         const autoiaHelper = message.functions.autoiaHelper || require("../../../functions/autoiaHelper");
         const configFn = message.functions.config || require("../../../functions/config");

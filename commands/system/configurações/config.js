@@ -25,12 +25,14 @@ Mostra as configurações atuais.
 {prefix}config prefix simbolo
 
 Altera o prefixo.
+O prefixo pode ter mais de um caractere, mas não pode conter espaços.
 
 Exemplos:
 
 {prefix}config prefix !
 {prefix}config prefix #
 {prefix}config prefix $
+{prefix}config prefix sat!
 
 ============================================================
 
@@ -64,7 +66,7 @@ Subcomandos:
     • Exibe o prefixo atual, o estado de cada plataforma, uploads e anti-pv.
 
   prefix <símbolo>
-    • Define um novo prefixo de comando. Deve ser exatamente 1 caractere.
+    • Define um novo prefixo de comando, com um ou mais caracteres e sem espaços.
 
   botname <nome>
     • Define um nome personalizado para o bot (salvo em settings/config.json e preservado em atualizações).
@@ -673,7 +675,8 @@ async function alterarPrefixo(
 
     const configFn = message.functions.config;
 
-    if (!prefix) {
+    const normalizedPrefix = String(prefix || "").trim();
+    if (!normalizedPrefix) {
 
         return await message.reply({
 
@@ -684,14 +687,12 @@ async function alterarPrefixo(
 
     }
 
-    if (
-        prefix.length !== 1
-    ) {
+    if (/\s/.test(normalizedPrefix)) {
 
         return await message.reply({
 
             text:
-                "❌ O prefixo deve possuir apenas 1 caractere."
+                "❌ O prefixo não pode conter espaços."
 
         });
 
@@ -700,7 +701,7 @@ async function alterarPrefixo(
     message.functions
         .config
         .setPrefix(
-            prefix
+            normalizedPrefix
         );
 
     await message.reply({
@@ -708,7 +709,7 @@ async function alterarPrefixo(
         text:
             `✅ Prefixo alterado para:
 
-${prefix}
+${normalizedPrefix}
 
 ⚠️ Reinicie ${typeof configFn.getBotName === "function" ? configFn.getBotName() : "Sat Bot"}.`
 

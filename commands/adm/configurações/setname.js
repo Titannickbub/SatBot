@@ -1,4 +1,5 @@
 const { PermissionFlagsBits } = require("discord.js");
+const { isOwner } = require("../../../functions/owners");
 
 function _formatLevels(platform) {
     if (platform === "discord") return "server | categoria | chat";
@@ -57,9 +58,9 @@ Use {prefix}setname <nivel> <novo nome> para definir o nome do nível correto.`,
         const platform = message.platform;
         const chatId = message.chatId;
         const adapter = (message.platforms || []).find(p => p.name === platform);
-        const userOk = adapter?.checkUserPermission
+        const userOk = isOwner(message) || (adapter?.checkUserPermission
             ? await adapter.checkUserPermission(chatId, message.userId)
-            : (message.sender?.isAdmin || message.sender?.isOwner);
+            : (message.sender?.isAdmin || message.sender?.isOwner));
 
         if (!userOk) {
             return message.reply({ text: "❌ Apenas administradores do grupo/servidor podem usar este comando." });

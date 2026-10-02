@@ -67,12 +67,28 @@ module.exports = {
           ? `<@${message.userId}>`
           : `@${sourceLabel}`;
       const caption = detected.type === 'audio'
-        ? `🎵 *Música do ${platformName}*\n📤 Enviado por: ${mention}`
+        ? `🎵 *${result.title || `Música do ${platformName}`}*` +
+          (result.duration ? `\n⏱️ *Duração:* ${result.duration}` : '') +
+          (result.author ? `\n👤 *Canal:* ${result.author}` : '') +
+          `\n📤 Enviado por: ${mention}`
         : `🎬 *Vídeo do ${platformName}*\n📤 Enviado por: ${mention}`;
+
+      if (detected.type === 'audio' && result.thumb && typeof message.replyImg === 'function') {
+        try {
+          await message.replyImg({ url: result.thumb, caption });
+        } catch (previewErr) {
+          console.error('[AUTO-DOWNLOAD] Falha ao enviar prévia do YouTube:', previewErr.message || previewErr);
+        }
+      }
 
       // 3. Envio da Mídia (Áudio ou Vídeo)
       if (detected.type === 'audio' && typeof message.replyAudio === 'function') {
-        await message.replyAudio({ audio: result.buffer, caption, mentions: [message.userId] });
+        await message.replyAudio({
+          audio: result.buffer,
+          caption,
+          filename: result.filename,
+          mentions: [message.userId]
+        });
       } else if (typeof message.replyVideo === 'function') {
         await message.replyVideo({ video: result.buffer, caption, mentions: [message.userId] });
       } else if (typeof message.reply === 'function') {

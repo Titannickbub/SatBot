@@ -4,8 +4,8 @@ const { isOwner } = require("../../../functions/owners");
 module.exports = {
     name: "autodownload",
     aliases: ["downloadlink", "adl"],
-    category: "system/configurações",
-    description: "Gerencia a funcionalidade de baixar automaticamente mídias de links enviados no chat (YouTube, TikTok, Instagram, Twitter/X, Facebook, Kwai). No PV fica sempre ativo por padrão (respeitando o Anti-PV) e em grupos pode ser ativado ou desativado por administradores.",
+    category: "adm/configurações",
+    description: "Gerencia o download automático de mídias por chat (YouTube, TikTok, Instagram, Twitter/X, Facebook, Kwai). No PV fica sempre ativo; em grupos, administradores podem ativar ou desativar.",
     usage: "{prefix}autodownload [subcomando]",
     examples: [
         "{prefix}autodownload",
@@ -20,46 +20,19 @@ module.exports = {
         const isPrivate = !!message.isPrivate;
         const p = message.prefix || "!";
 
-        if (isPrivate) {
-            if (action === "status") {
-                const text = `🎬 *Sistema de Auto Download (PV)*
-
-📌 *Estado no PV:* ✅ *Sempre Ativo* (Respeita o Anti-PV)
-📌 *Em Grupos:* ⚙️ Inativo por padrão (Ativável por grupo)
-
-ℹ️ *Como Usar no PV:*
-Basta enviar qualquer link de mídia suportado diretamente neste chat privado para o bot realizar o download automaticamente.
-
-📖 *Comandos Disponíveis:*
-• *${p}autodownload* ou *${p}autodownload status* → Exibe este painel e guia de uso.
-• *${p}autodownload on/off* → Utilizado dentro dos grupos para ativar ou desativar o recurso.
-
-🌐 *Plataformas e Conteúdos Suportados:*
-• 🎵 *YouTube* (Música em MP3)
-• 🎬 *TikTok* (Vídeos)
-• 🎬 *Instagram* (Reels e Vídeos)
-• 🎬 *X / Twitter* (Vídeos)
-• 🎬 *Facebook* (Vídeos)
-• 🎬 *Kwai* (Vídeos)`;
-
-                return await message.reply({ text });
-            }
-
-            if (action === "on" || action === "off") {
-                return await message.reply({
-                    text: `ℹ️ No PV o *AutoDownload* já fica sempre ativo por padrão (respeitando o Anti-PV).\n\nPara configurar em grupos, use *${p}autodownload <on|off>* diretamente dentro do grupo desejado.`
-                });
-            }
-
-            return await message.reply({
-                text: `❌ *Ação inválida!*\n\n💡 *Como usar:* Use *${p}autodownload* ou *${p}autodownload status* para ver o guia.`
-            });
-        }
-
-        // --- Nível de Grupo ---
-        const isGroupAdmin = message.sender?.isAdmin || message.sender?.isOwner || isOwner(message);
+        const isAuthorized = isPrivate ||
+            message.sender?.isAdmin ||
+            message.sender?.isOwner ||
+            isOwner(message);
         const isEnabled = isAutoDownloadEnabledForChat(message);
         const settings = getAutoDownloadSettings(message);
+        const chatLabel = isPrivate ? "PV" : "grupo/chat";
+
+        if (isPrivate && (action === "on" || action === "off")) {
+            return message.reply({
+                text: "ℹ️ O AutoDownload fica sempre ativo no PV. A configuração para ativar ou desativar está disponível em cada grupo."
+            });
+        }
 
         if (action === "deletelink") {
             const value = message.args[1]?.toLowerCase();
@@ -69,31 +42,38 @@ Basta enviar qualquer link de mídia suportado diretamente neste chat privado pa
             if (value === "status") {
                 return message.reply({ text: `🔗 Exclusão do link original: ${settings.deletelink ? "✅ *ATIVADA*" : "❌ *DESATIVADA*"}` });
             }
-            if (!isGroupAdmin) {
-                return message.reply({ text: "❌ Apenas administradores do grupo podem alterar esta opção." });
+            if (!isAuthorized) {
+                return message.reply({ text: "❌ Apenas administradores podem alterar esta opção no grupo." });
             }
-            setAutoDownloadDeleteLink(message, value === "on");
-            return message.reply({ text: `✅ Exclusão do link original ${value === "on" ? "ativada" : "desativada"} neste grupo.` });
+            try {
+                setAutoDownloadDeleteLink(message, value === "on");
+            } catch (err) {
+                return message.reply({ text: `❌ Não foi possível salvar a configuração: ${err.message}` });
+            }
+            return message.reply({ text: `✅ Exclusão do link original ${value === "on" ? "ativada" : "desativada"} neste chat.` });
         }
 
         if (action === "status") {
             const statusBadge = isEnabled ? "✅ *ATIVADO*" : "❌ *DESATIVADO* (Padrão)";
             const usageInfo = isEnabled
-                ? "Envie qualquer link de mídia suportado no grupo para o bot realizar o download automaticamente."
-                : `O AutoDownload está desativado neste grupo. Administradores podem ativá-lo com *${p}autodownload on*.`;
+                ? `Envie um link de mídia suportado neste chat para o bot realizar o download automaticamente.${isPrivate ? " No PV, esse recurso fica sempre ativo." : ""}`
+                : `O AutoDownload está desativado neste chat. ${isPrivate ? "Use" : "Um administrador pode usar"} *${p}autodownload on* para ativá-lo.`;
+            const toggleCommands = isPrivate
+                ? ""
+                : `• *${p}autodownload on* → Ativa o download automático neste chat.
+• *${p}autodownload off* → Desativa o download automático neste chat.
+`;
 
-            const text = `🎬 *Sistema de Auto Download (Grupo)*
+            const text = `🎬 *Sistema de Auto Download (${chatLabel})*
 
-📌 *Estado neste Grupo:* ${statusBadge}
+📌 *Estado neste chat:* ${statusBadge}
 🔗 *Excluir link original:* ${settings.deletelink ? "✅ *ATIVADO*" : "❌ *DESATIVADO*"}
 
 ℹ️ *Como Usar:*
 ${usageInfo}
 
-📖 *Comandos de Gerenciamento (Apenas Admins):*
-• *${p}autodownload on* → Ativa o download automático neste grupo.
-• *${p}autodownload off* → Desativa o download automático neste grupo.
-• *${p}autodownload status* → Exibe este painel de status e guia de uso.
+📖 *Comandos de Gerenciamento${isPrivate ? "" : " (Apenas Admins)"}:*
+${toggleCommands}• *${p}autodownload status* → Exibe este painel de status e guia de uso.
 • *${p}autodownload deletelink on/off* → Exclui o link original após enviar a mídia, evitando poluição no chat.
 
 🌐 *Plataformas e Conteúdos Suportados:*
@@ -108,36 +88,44 @@ ${usageInfo}
         }
 
         if (action === "on") {
-            if (!isGroupAdmin) {
+            if (!isAuthorized) {
                 return await message.reply({
-                    text: "❌ Apenas administradores do grupo podem ativar o AutoDownload."
+                    text: "❌ Apenas administradores podem ativar o AutoDownload neste grupo."
                 });
             }
 
             if (isEnabled) {
-                return await message.reply({ text: "✅ O AutoDownload já está ativado neste grupo." });
+                return await message.reply({ text: "✅ O AutoDownload já está ativado neste chat." });
             }
 
-            setAutoDownloadForGroup(message, true);
+            try {
+                setAutoDownloadForGroup(message, true);
+            } catch (err) {
+                return message.reply({ text: `❌ Não foi possível salvar a configuração: ${err.message}` });
+            }
             return await message.reply({
-                text: `✅ *AutoDownload ativado com sucesso neste grupo!*\n\nAgora, quando alguém enviar um link de mídia suportado (YouTube, TikTok, Instagram, Twitter, Facebook, Kwai), o bot baixará automaticamente.`
+                text: `✅ *AutoDownload ativado com sucesso neste chat!*\n\nAgora, quando alguém enviar um link de mídia suportado (YouTube, TikTok, Instagram, Twitter, Facebook, Kwai), o bot baixará automaticamente.`
             });
         }
 
         if (action === "off") {
-            if (!isGroupAdmin) {
+            if (!isAuthorized) {
                 return await message.reply({
-                    text: "❌ Apenas administradores do grupo podem desativar o AutoDownload."
+                    text: "❌ Apenas administradores podem desativar o AutoDownload neste grupo."
                 });
             }
 
             if (!isEnabled) {
-                return await message.reply({ text: "❌ O AutoDownload já está desativado neste grupo." });
+                return await message.reply({ text: "❌ O AutoDownload já está desativado neste chat." });
             }
 
-            setAutoDownloadForGroup(message, false);
+            try {
+                setAutoDownloadForGroup(message, false);
+            } catch (err) {
+                return message.reply({ text: `❌ Não foi possível salvar a configuração: ${err.message}` });
+            }
             return await message.reply({
-                text: `📵 *AutoDownload desativado com sucesso neste grupo!*`
+                text: `📵 *AutoDownload desativado com sucesso neste chat!*`
             });
         }
 

@@ -1,4 +1,5 @@
 const { setWhatsAppCommunityAnnouncementGroup } = require("../../../functions/groupSettings");
+const { isOwner } = require("../../../functions/owners");
 
 module.exports = {
     name: "setgroup_c",
@@ -25,9 +26,9 @@ module.exports = {
         }
 
         const adapter = (message.platforms || []).find(p => p.name === message.platform);
-        const userOk = adapter?.checkUserPermission
+        const userOk = isOwner(message) || (adapter?.checkUserPermission
             ? await adapter.checkUserPermission(message.chatId, message.userId)
-            : (message.sender?.isAdmin || message.sender?.isOwner);
+            : (message.sender?.isAdmin || message.sender?.isOwner));
 
         if (!userOk) {
             return message.reply({ text: "❌ Apenas administradores podem usar este comando." });

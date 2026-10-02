@@ -1,4 +1,208 @@
 const sharp = require("sharp");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
+
+const execFileAsync = promisify(execFile);
+const WHATSAPP_STATIC_STICKER_LIMIT = 100 * 1024;
+const WHATSAPP_ANIMATED_STICKER_LIMIT = 500 * 1024;
+const WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT = 10;
+const TELEGRAM_VIDEO_STICKER_LIMIT = 256 * 1024;
+const TELEGRAM_VIDEO_STICKER_DURATION_LIMIT = 3;
+
+function createStickerError(message, code) {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+}
+
+function getFfmpegPath() {
+    try {
+        return require("@ffmpeg-installer/ffmpeg").path;
+    } catch {
+        return "ffmpeg";
+    }
+}
+
+function getResizeFilter(mode) {
+    if (mode === "fill") {
+        return "scale=512:512";
+    }
+    if (mode === "cover") {
+        return "scale=512:512:force_original_aspect_ratio=increase,crop=512:512";
+    }
+    return "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000";
+}
+
+async function convertAnimatedToWebp(inputBuffer, mode, maxSizeBytes) {
+    const tempId = `sticker_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const tempDir = os.tmpdir();
+    const inputPath = path.join(tempDir, `${tempId}.media`);
+    const outputPath = path.join(tempDir, `${tempId}.webp`);
+    const attempts = [
+        { fps: 15, quality: 70 },
+        { fps: 12, quality: 60 },
+        { fps: 10, quality: 50 },
+        { fps: 8, quality: 40 }
+    ];
+
+    try {
+        fs.writeFileSync(inputPath, inputBuffer);
+
+        for (const attempt of attempts) {
+            try {
+                await execFileAsync(getFfmpegPath(), [
+                    "-y",
+                    "-i", inputPath,
+                    "-an",
+                    "-vf", `fps=${attempt.fps},${getResizeFilter(mode)}`,
+                    "-c:v", "libwebp",
+                    "-loop", "0",
+                    "-lossless", "0",
+                    "-preset", "icon",
+                    "-quality", String(attempt.quality),
+                    outputPath
+                ], { timeout: 90000, windowsHide: true });
+            } catch (error) {
+                throw new Error(`FFmpeg não conseguiu converter o GIF/vídeo em figurinha: ${error.message}`);
+            }
+
+            const result = fs.readFileSync(outputPath);
+            if (result.length <= maxSizeBytes) {
+                return result;
+            }
+        }
+    } finally {
+        for (const filePath of [inputPath, outputPath]) {
+            try {
+                fs.unlinkSync(filePath);
+            } catch (error) {
+                if (error.code !== "ENOENT") {
+                    console.warn(`[STICKER_HELPER] Não foi possível remover arquivo temporário ${filePath}:`, error.message);
+                }
+            }
+        }
+    }
+
+    throw createStickerError(
+        `A figurinha animada excede o limite de ${Math.round(maxSizeBytes / 1024)} KB do WhatsApp mesmo após a compressão.`,
+        "STICKER_SIZE_LIMIT"
+    );
+}
+
+async function createTelegramVideoStickerBuffer(inputBuffer, mode) {
+    const tempId = `telegram_sticker_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const tempDir = os.tmpdir();
+    const inputPath = path.join(tempDir, `${tempId}.media`);
+    const outputPath = path.join(tempDir, `${tempId}.webm`);
+    const attempts = [
+        { fps: 30, crf: 35 },
+        { fps: 24, crf: 40 },
+        { fps: 20, crf: 45 },
+        { fps: 15, crf: 50 }
+    ];
+
+    try {
+        fs.writeFileSync(inputPath, inputBuffer);
+
+        for (const attempt of attempts) {
+            try {
+                await execFileAsync(getFfmpegPath(), [
+                    "-y",
+                    "-i", inputPath,
+                    "-t", String(TELEGRAM_VIDEO_STICKER_DURATION_LIMIT),
+                    "-an",
+                    "-vf", `fps=${attempt.fps},${getResizeFilter(mode)}`,
+                    "-c:v", "libvpx-vp9",
+                    "-pix_fmt", "yuva420p",
+                    "-auto-alt-ref", "0",
+                    "-deadline", "good",
+                    "-cpu-used", "5",
+                    "-b:v", "0",
+                    "-crf", String(attempt.crf),
+                    "-f", "webm",
+                    outputPath
+                ], { timeout: 90000, windowsHide: true });
+            } catch (error) {
+                throw new Error(`FFmpeg não conseguiu converter a mídia em figurinha de vídeo do Telegram: ${error.message}`);
+            }
+
+            const result = fs.readFileSync(outputPath);
+            if (result.length <= TELEGRAM_VIDEO_STICKER_LIMIT) {
+                return result;
+            }
+        }
+    } finally {
+        for (const filePath of [inputPath, outputPath]) {
+            try {
+                fs.unlinkSync(filePath);
+            } catch (error) {
+                if (error.code !== "ENOENT") {
+                    console.warn(`[STICKER_HELPER] Não foi possível remover arquivo temporário ${filePath}:`, error.message);
+                }
+            }
+        }
+    }
+
+    throw new Error("A figurinha de vídeo do Telegram excede o limite de 256 KB mesmo após a compressão.");
+}
+
+function getAnimationDurationSeconds(metadata) {
+    const delays = Array.isArray(metadata.delay)
+        ? metadata.delay
+        : Number.isFinite(metadata.delay) ? [metadata.delay] : [];
+    return delays.reduce((total, delay) => total + delay, 0) / 1000;
+}
+
+async function createStaticWebp(inputBuffer, mode, maxSizeBytes) {
+    const normalizedInput = await sharp(inputBuffer, {
+        limitInputPixels: false,
+        failOn: "none"
+    }).rotate().toBuffer();
+    const normalizedMetadata = await sharp(normalizedInput, { failOn: "none" }).metadata();
+    let image = sharp(normalizedInput, {
+        limitInputPixels: false,
+        failOn: "none"
+    });
+
+    if (mode === "cover") {
+        const width = Number(normalizedMetadata.width);
+        const height = Number(normalizedMetadata.height);
+        if (!width || !height) {
+            throw new Error("Não foi possível identificar as dimensões da imagem.");
+        }
+
+        const side = Math.min(width, height);
+        image = image.extract({
+            left: Math.floor((width - side) / 2),
+            top: Math.floor((height - side) / 2),
+            width: side,
+            height: side
+        });
+    }
+
+    const resizeOptions = mode === "cover"
+        ? { fit: "fill" }
+        : {
+            fit: mode,
+            background: mode === "contain" ? { r: 0, g: 0, b: 0, alpha: 0 } : undefined
+        };
+
+    for (const quality of [80, 65, 50, 35, 20]) {
+        const result = await image.clone()
+            .resize(512, 512, resizeOptions)
+            .webp({ quality })
+            .toBuffer();
+        if (result.length <= maxSizeBytes) return result;
+    }
+
+    throw createStickerError(
+        `A figurinha estática excede o limite de ${Math.round(maxSizeBytes / 1024)} KB do WhatsApp mesmo após a compressão.`,
+        "STICKER_SIZE_LIMIT"
+    );
+}
 
 /**
  * Converte um Buffer de mídia (imagem, GIF, sticker) em um Buffer de figurinha WebP (512x512) com metadados EXIF.
@@ -16,79 +220,51 @@ async function createStickerBuffer(inputBuffer, options = {}) {
 
     const mimeType = String(options.mimeType || "").toLowerCase();
     const mediaType = String(options.type || "").toLowerCase();
-    const inputMetadata = await sharp(inputBuffer, {
-        animated: true,
-        limitInputPixels: false,
-        failOn: "none"
-    }).metadata();
-    const isAnimated = mediaType === "video" ||
-        mediaType === "gif" ||
-        mimeType.includes("gif") ||
-        Boolean(options.animated) ||
-        (Number(inputMetadata.pages) || 1) > 1;
-
     const mode = options.mode || "contain"; // "contain", "fill", "cover"
+    const whatsappLimits = options.platform === "whatsapp";
+    const durationSeconds = Number(options.durationSeconds);
 
-    const resizeOptions = {
-        fit: mode
-    };
-
-    if (mode === "contain") {
-        resizeOptions.background = { r: 0, g: 0, b: 0, alpha: 0 };
-    } else if (mode === "cover") {
-        resizeOptions.position = "center";
+    if (whatsappLimits &&
+        Number.isFinite(durationSeconds) &&
+        durationSeconds > WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT) {
+        throw createStickerError(
+            `GIFs e vídeos para figurinhas do WhatsApp podem ter no máximo ${WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT} segundos.`,
+            "STICKER_DURATION_LIMIT"
+        );
     }
 
-    let webpResult;
+    const isVideo = mediaType === "video" || mimeType.startsWith("video/");
+    const isGif = mediaType === "gif" || mimeType.includes("gif");
+    let inputMetadata = null;
+    if (!isVideo) {
+        inputMetadata = await sharp(inputBuffer, {
+            animated: true,
+            limitInputPixels: false,
+            failOn: "none"
+        }).metadata();
+    }
 
-    if (isAnimated) {
-        try {
-            webpResult = await sharp(inputBuffer, {
-                animated: true,
-                limitInputPixels: false,
-                failOn: "none"
-            })
-                .rotate()
-                .resize(512, 512, resizeOptions)
-                .webp({ effort: 4, loop: 0, quality: 75 })
-                .toBuffer();
-        } catch (animErr) {
-            console.warn("[STICKER_HELPER] Falha na conversão animada, tentando estática:", animErr.message || animErr);
+    const isAnimated = isVideo ||
+        isGif ||
+        Boolean(options.animated) ||
+        (Number(inputMetadata?.pages) || 1) > 1;
+    const maxSizeBytes = whatsappLimits
+        ? (isAnimated ? WHATSAPP_ANIMATED_STICKER_LIMIT : WHATSAPP_STATIC_STICKER_LIMIT)
+        : Infinity;
+
+    if (whatsappLimits && isGif && inputMetadata) {
+        const duration = getAnimationDurationSeconds(inputMetadata);
+        if (duration > WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT) {
+            throw createStickerError(
+                `GIFs e vídeos para figurinhas do WhatsApp podem ter no máximo ${WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT} segundos.`,
+                "STICKER_DURATION_LIMIT"
+            );
         }
     }
 
-    if (!webpResult) {
-        // Conversão estática padrão (PNG/JPG/WebP/etc)
-        const normalizedInput = await sharp(inputBuffer, {
-            limitInputPixels: false,
-            failOn: "none"
-        }).rotate().toBuffer();
-        const normalizedMetadata = await sharp(normalizedInput, { failOn: "none" }).metadata();
-        let image = sharp(normalizedInput, {
-            limitInputPixels: false,
-            failOn: "none"
-        });
-        if (mode === "cover") {
-            const width = Number(normalizedMetadata.width);
-            const height = Number(normalizedMetadata.height);
-            if (!width || !height) {
-                throw new Error("Não foi possível identificar as dimensões da imagem.");
-            }
-
-            const side = Math.min(width, height);
-            image = image.extract({
-                left: Math.floor((width - side) / 2),
-                top: Math.floor((height - side) / 2),
-                width: side,
-                height: side
-            });
-        }
-
-        webpResult = await image
-            .resize(512, 512, mode === "cover" ? { fit: "fill" } : resizeOptions)
-            .webp({ quality: 80 })
-            .toBuffer();
-    }
+    let webpResult = isAnimated
+        ? await convertAnimatedToWebp(inputBuffer, mode, maxSizeBytes)
+        : await createStaticWebp(inputBuffer, mode, maxSizeBytes);
 
     if (!Buffer.isBuffer(webpResult) || webpResult.length < 16) {
         throw new Error("A conversão da mídia não gerou uma figurinha válida.");
@@ -97,6 +273,14 @@ async function createStickerBuffer(inputBuffer, options = {}) {
     const resultMetadata = await sharp(webpResult, { failOn: "none" }).metadata();
     if (resultMetadata.format !== "webp" || !resultMetadata.width || !resultMetadata.height) {
         throw new Error("A conversão não gerou um WebP válido para figurinha.");
+    }
+    if (whatsappLimits && isAnimated && getAnimationDurationSeconds(
+        await sharp(webpResult, { animated: true, failOn: "none" }).metadata()
+    ) > WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT) {
+        throw createStickerError(
+            `GIFs e vídeos para figurinhas do WhatsApp podem ter no máximo ${WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT} segundos.`,
+            "STICKER_DURATION_LIMIT"
+        );
     }
 
     // O EXIF customizado pode ser aceito pelo sharp, mas causar renderização
@@ -108,8 +292,46 @@ async function createStickerBuffer(inputBuffer, options = {}) {
     if (stickerMetadata.format !== "webp" || !stickerMetadata.width || !stickerMetadata.height) {
         throw new Error("A figurinha final ficou inválida após a aplicação dos metadados.");
     }
+    if (whatsappLimits && stickerBuffer.length > maxSizeBytes) {
+        throw createStickerError(
+            `A figurinha excede o limite de ${Math.round(maxSizeBytes / 1024)} KB do WhatsApp.`,
+            "STICKER_SIZE_LIMIT"
+        );
+    }
 
     return stickerBuffer;
+}
+
+async function createTelegramSticker(inputBuffer, options = {}) {
+    if (!Buffer.isBuffer(inputBuffer) || inputBuffer.length === 0) {
+        throw new Error("Buffer de imagem/vídeo inválido ou vazio.");
+    }
+
+    const mimeType = String(options.mimeType || "").toLowerCase();
+    const mediaType = String(options.type || "").toLowerCase();
+    const isVideo = mediaType === "video" || mimeType.startsWith("video/");
+    const isGif = mediaType === "gif" || mimeType.includes("gif");
+    const inputMetadata = isVideo ? null : await sharp(inputBuffer, {
+        animated: true,
+        limitInputPixels: false,
+        failOn: "none"
+    }).metadata();
+    const isAnimated = isVideo ||
+        isGif ||
+        Boolean(options.animated) ||
+        (Number(inputMetadata?.pages) || 1) > 1;
+
+    if (isAnimated) {
+        return {
+            buffer: await createTelegramVideoStickerBuffer(inputBuffer, options.mode || "contain"),
+            format: "video"
+        };
+    }
+
+    return {
+        buffer: await createStickerBuffer(inputBuffer, { ...options, platform: "telegram" }),
+        format: "static"
+    };
 }
 
 /**
@@ -187,5 +409,6 @@ function addExifToWebp(buffer, packName = "Sat Bot", authorName = "Satela") {
 
 module.exports = {
     createStickerBuffer,
+    createTelegramSticker,
     addExifToWebp
 };

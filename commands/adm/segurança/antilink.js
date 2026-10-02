@@ -27,6 +27,7 @@ const {
     getAvailableLevels,
     getSetAntilink
 } = require("../../../functions/antilinkHelper");
+const { isOwner } = require("../../../functions/owners");
 
 // Ações válidas e suas descrições legíveis
 const ACTIONS = {
@@ -77,9 +78,9 @@ Funções disponíveis:
 
         // ── 2. Permissão do USUÁRIO ─────────────────────────────────────
         const adapter = (message.platforms || []).find(p => p.name === message.platform);
-        const userOk  = adapter?.checkUserPermission
+        const userOk  = isOwner(message) || (adapter?.checkUserPermission
             ? await adapter.checkUserPermission(message.chatId, message.userId)
-            : message.sender?.isAdmin;
+            : message.sender?.isAdmin);
 
         if (!userOk) {
             return message.reply({ text: "❌ Apenas administradores podem configurar o antilink." });

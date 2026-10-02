@@ -5,6 +5,7 @@ const { fetchBuffer } = require("../../../functions/api");
 const nofapHelper = require("../../../functions/nofapHelper");
 const economy = require("../../../functions/economy");
 const xp = require("../../../functions/xp");
+const activity = require("../../../functions/activity");
 
 module.exports = {
     name: "perfil",
@@ -24,6 +25,9 @@ module.exports = {
         const xpUser = xpData?.users?.[String(message.userId)] || { xp: 0 };
         const xpLevel = xp.levelForXp(xpUser.xp);
         const xpPosition = xpData?.enabled ? xp.position(message, message.userId) : null;
+        const activityData = scope ? activity.load(message) : null;
+        const activityUser = activityData?.users?.[String(message.userId)];
+        const activityCount = Number(activityUser?.total) || 0;
         const currentName = message.displayName || message.username || message.userId;
 
         const profile = await resolvePlatformProfile(platform, message.userId, { raw: message.raw, username: message.username });
@@ -36,6 +40,7 @@ module.exports = {
             `👤 Nome: ${currentName}`,
             `🆔 ID: ${message.userId}`,
             scope ? `💷 Satcoins (${scope.type === "servidor" ? "servidor" : "grupo"}): ${economy.formatMoney(balance)}` : null,
+            scope ? `📊 Atividade: ${activityCount}` : null,
             ...(scope
                 ? xpData?.enabled
                     ? [

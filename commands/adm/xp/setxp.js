@@ -4,7 +4,7 @@ const admin = require("../../../functions/xpAdmin");
 module.exports = {
     name: "setxp",
     aliases: ["definirxp"],
-    category: "adm/xp",
+    category: "adm/RP",
     description: "Define o XP do perfil de um usuário.",
     usage: "{prefix}setxp <quantidade> <id|@usuário>",
 

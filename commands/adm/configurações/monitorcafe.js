@@ -1,4 +1,5 @@
 const { runCafeMonitor, saveMonitorConfig, loadMonitorConfig, syncMonitorSchedules, normalizeSourceName } = require("../../../functions/cafeMonitor");
+const { isOwner } = require("../../../functions/owners");
 
 function parseMonitorConfigArgs(args = []) {
     const rawMode = (args[1] || "both").toLowerCase();
@@ -42,7 +43,7 @@ function parseMonitorConfigArgs(args = []) {
 }
 
 async function checkMonitorPermission(message) {
-    if (message.sender?.isOwner) return true;
+    if (message.sender?.isOwner || isOwner(message)) return true;
     const adapter = (message.platforms || []).find(p => p.name === message.platform);
     if (adapter?.checkUserPermission) {
         return adapter.checkUserPermission(message.chatId, message.userId);

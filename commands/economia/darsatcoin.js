@@ -4,7 +4,7 @@ const admin = require("../../functions/economyAdmin");
 module.exports = {
     name: "darsatcoin",
     aliases: ["darsatcoins", "addsatcoin"],
-    category: "adm/economia",
+    category: "adm/RP",
     description: "Adiciona satcoins ao saldo de um usuário.",
     usage: "{prefix}darsatcoin <valor> <id|@usuário>",
 

@@ -5,7 +5,7 @@ require("dotenv").config({
     path: path.join(__dirname, "..", "settings", ".env")
 });
 
-const { Telegraf } = require("telegraf");
+const { Telegraf, Input } = require("telegraf");
 const groupSettings = require("../functions/groupSettings");
 const welcomeHelper = require("../functions/welcomeHelper");
 const autoAccept = require("../functions/autoAccept");
@@ -561,7 +561,8 @@ async function start(onMessage) {
                     if (typeof raw === "string") {
                         input = raw;
                     } else if (Buffer.isBuffer(raw)) {
-                        input = { source: raw };
+                        const filename = data.format === "video" ? "sticker.webm" : "sticker.webp";
+                        input = Input.fromBuffer(raw, filename);
                     }
                 }
 

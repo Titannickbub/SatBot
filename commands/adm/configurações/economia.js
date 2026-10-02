@@ -1,9 +1,10 @@
 const economy = require("../../../functions/economy");
+const { isOwner } = require("../../../functions/owners");
 
 module.exports = {
     name: "economia",
     aliases: ["configeconomia", "economy"],
-    category: "adm/configurações",
+    category: "adm/RP",
     description: "Ativa ou desativa a economia do grupo ou servidor.",
     usage: "{prefix}economia <ativar|desativar|status>",
 
@@ -11,7 +12,7 @@ module.exports = {
         if (!economy.getScope(message)) {
             return message.reply({ text: "❌ A economia só pode ser configurada em grupos ou servidores." });
         }
-        if (!message.sender?.isAdmin && !message.sender?.isOwner) {
+        if (!message.sender?.isAdmin && !message.sender?.isOwner && !isOwner(message)) {
             return message.reply({ text: "❌ Apenas administradores podem configurar a economia." });
         }
 

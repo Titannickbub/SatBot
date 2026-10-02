@@ -25,6 +25,7 @@ const {
     getSetAntipalavras,
     normalizeWords
 } = require("../../../functions/antipalavrasHelper");
+const { isOwner } = require("../../../functions/owners");
 const {
     resolveTargetUser,
     resolveTargetRole,
@@ -71,9 +72,9 @@ Funções disponíveis:
         }
 
         const adapter = (message.platforms || []).find(p => p.name === message.platform);
-        const userOk  = adapter?.checkUserPermission
+        const userOk  = isOwner(message) || (adapter?.checkUserPermission
             ? await adapter.checkUserPermission(message.chatId, message.userId)
-            : message.sender?.isAdmin;
+            : message.sender?.isAdmin);
 
         if (!userOk) {
             return message.reply({ text: "❌ Apenas administradores podem configurar o antipalavras." });

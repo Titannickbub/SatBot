@@ -3,7 +3,7 @@ const xp = require("../functions/xp");
 module.exports = {
     name: "xp",
     aliases: ["meuxp", "perfilxp"],
-    category: "xp",
+    category: "contas",
     description: "Mostra seu nível, XP e posição no ranking.",
     usage: "{prefix}xp",
 

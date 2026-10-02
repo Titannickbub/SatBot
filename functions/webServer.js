@@ -5,6 +5,7 @@ const centralAccounts = require("./centralAccounts");
 const nofapHelper = require("./nofapHelper");
 const groupSettings = require("./groupSettings");
 const config = require("./config");
+const activity = require("./activity");
 
 const DEFAULT_PORT = 32013;
 
@@ -66,22 +67,27 @@ async function readProfile(url) {
   const account = economy.getAccountByUser(message, userId);
   const xpData = xp.load(message);
   const xpUser = xp.getUserById(message, userId);
+  const activityResult = activity.ranking(message);
+  const activityUser = activityResult?.users?.find(user => String(user.userId) === String(userId)) || null;
   const central = centralAccounts.findByPlatform(platform, userId);
   const nofap = central
     ? nofapHelper.getNofapStatus(central.id)
     : { active: false, currentDays: 0, recordDays: 0, totalResets: 0, title: "🌱 Iniciante" };
 
-  if (!scope || (!account && !xpUser)) {
+  if (!scope || (!account && !xpUser && !activityUser)) {
     return { error: "Não encontrei um usuário ou grupo com esses identificadores." };
   }
 
   const xpValue = Number(xpUser?.xp) || 0;
+  const activityPosition = activityUser
+    ? activityResult.users.findIndex(user => String(user.userId) === String(userId)) + 1
+    : null;
   return {
     platform,
     groupId,
     groupName,
     userId,
-    name: account?.displayName || account?.username || xpUser?.displayName || xpUser?.username || central?.name || "Usuário",
+    name: account?.displayName || account?.username || xpUser?.displayName || xpUser?.username || activityUser?.displayName || activityUser?.username || central?.name || "Usuário",
     economy: {
       exists: Boolean(account),
       balance: Number(account?.balance) || 0,
@@ -92,6 +98,15 @@ async function readProfile(url) {
       value: xpValue,
       level: xp.levelForXp(xpValue).level,
       position: xpUser ? xp.position(message, userId) : null
+    },
+    activity: {
+      enabled: Boolean(activityResult?.enabled),
+      total: Number(activityUser?.total) || 0,
+      messages: Number(activityUser?.messages) || 0,
+      commands: Number(activityUser?.commands) || 0,
+      stickers: Number(activityUser?.stickers) || 0,
+      files: Number(activityUser?.files) || 0,
+      position: activityPosition
     },
     nofap
   };
@@ -117,6 +132,7 @@ function renderProfile(profile) {
 
   const economyPosition = profile.economy.position ? `#${profile.economy.position}` : "Não classificado";
   const xpPosition = profile.xp.position ? `#${profile.xp.position}` : "Não classificado";
+  const activityPosition = profile.activity.position ? `#${profile.activity.position}` : "Não classificado";
   const nofapText = profile.nofap.active
     ? `${profile.nofap.currentDays} dias • ${profile.nofap.title}`
     : "Inativo";
@@ -132,6 +148,7 @@ function renderProfile(profile) {
     <section class="grid">
       <article><div class="label">SATCOINS</div><div class="value money">${formatMoney(profile.economy.balance)}</div><div class="meta">Posição no dinheiro: ${economyPosition}</div></article>
       <article><div class="label">XP</div><div class="value">${profile.xp.value}</div><div class="meta">Posição no XP: ${xpPosition}</div></article>
+      <article><div class="label">ATIVIDADE</div><div class="value">${profile.activity.total}</div><div class="meta">Posição na atividade: ${activityPosition}<br>💬 ${profile.activity.messages} • ⚙️ ${profile.activity.commands} • 🎨 ${profile.activity.stickers} • 📎 ${profile.activity.files}</div></article>
       <article><div class="label">NÍVEL XP</div><div class="value">${profile.xp.level}</div><div class="meta">Ranking de experiência</div></article>
       <article><div class="label">NOFAP</div><div class="value small">${escapeHtml(nofapText)}</div><div class="meta">Recorde: ${profile.nofap.recordDays || 0} dias • Resets: ${profile.nofap.totalResets || 0}</div></article>
     </section>
@@ -141,6 +158,7 @@ function renderProfile(profile) {
 }
 
 async function readRanking(url, type, order = "rich") {
+  if (type === "activity") return readActivityRanking(url);
   const platform = String(url.searchParams.get("plataforma") || url.searchParams.get("platform") || "discord").toLowerCase();
   const groupId = url.searchParams.get("grupo") || url.searchParams.get("group");
   if (!["discord", "telegram", "whatsapp"].includes(platform) || !groupId) {
@@ -187,16 +205,55 @@ async function readRanking(url, type, order = "rich") {
   };
 }
 
+async function readActivityRanking(url) {
+  const platform = String(url.searchParams.get("plataforma") || url.searchParams.get("platform") || "discord").toLowerCase();
+  const groupId = url.searchParams.get("grupo") || url.searchParams.get("group");
+  if (!["discord", "telegram", "whatsapp"].includes(platform) || !groupId) {
+    return { error: "Informe o ID do grupo/servidor e uma plataforma válida." };
+  }
+
+  const message = profileMessage(platform, groupId, "");
+  const scope = economy.getScope(message);
+  if (!scope) return { error: "Não encontrei um grupo ou servidor com esse identificador." };
+
+  const groupName = await getGroupName(platform, groupId, scope);
+  const result = activity.ranking(message);
+  if (!result?.enabled) {
+    return { error: "O sistema de atividade está desativado neste grupo/servidor." };
+  }
+
+  return {
+    type: "activity",
+    platform,
+    groupId,
+    groupName,
+    entries: result.users.slice(0, 5).map((user, index) => ({
+      position: index + 1,
+      name: user.displayName || user.username || user.userId,
+      userId: user.userId,
+      total: user.total,
+      dailyTotal: user.dailyTotal,
+      messages: user.messages,
+      commands: user.commands,
+      stickers: user.stickers,
+      files: user.files
+    }))
+  };
+}
+
 function renderRanking(ranking) {
   if (ranking.error) {
     return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ranking não encontrado</title><style>${styles()}</style></head><body><main class="card error"><div class="brand">SATBOT</div><h1>Ranking indisponível</h1><p>${escapeHtml(ranking.error)}</p></main></body></html>`;
   }
 
   const isXp = ranking.type === "xp";
-  const title = isXp ? "Ranking XP" : "Ranking de riqueza";
+  const isActivity = ranking.type === "activity";
+  const title = isXp ? "Ranking XP" : isActivity ? "Ranking de atividade" : "Ranking de riqueza";
   const rows = ranking.entries.length
     ? ranking.entries.map(entry => isXp
       ? renderRankingEntry(ranking, entry, `<b>${entry.xp} XP</b><em>Nível ${entry.level}</em>`)
+      : isActivity
+        ? renderRankingEntry(ranking, entry, `<b>${entry.total} atividades</b><em>💬 ${entry.messages} • ⚙️ ${entry.commands} • 🎨 ${entry.stickers} • 📎 ${entry.files}</em>`)
       : renderRankingEntry(ranking, entry, `<b class="money">${formatMoney(entry.balance)}</b>`)
     ).join("")
     : `<p class="muted">Ainda não há usuários neste ranking.</p>`;
@@ -259,6 +316,19 @@ function start() {
       return;
     }
 
+    if (requestUrl.pathname === "/rankatividade" || requestUrl.pathname === "/rankativos") {
+      response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      response.end(renderRanking(await readActivityRanking(requestUrl)));
+      return;
+    }
+
+    if (requestUrl.pathname === "/api/rankatividade" || requestUrl.pathname === "/api/rankativos") {
+      const ranking = await readActivityRanking(requestUrl);
+      response.writeHead(ranking.error ? 404 : 200, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify(ranking));
+      return;
+    }
+
     if (requestUrl.pathname === "/" || requestUrl.pathname === "/index.html") {
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       response.end("<!doctype html><html lang=\"pt-BR\"><meta charset=\"utf-8\"><title>SatBot</title><body><h1>SatBot</h1><p>Use <code>/perfil?grupo=ID&usuario=ID&plataforma=discord</code> para abrir um perfil.</p></body></html>");
@@ -274,4 +344,4 @@ function start() {
   return server;
 }
 
-module.exports = { start, readProfile, renderProfile, readRanking, renderRanking };
+module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking };

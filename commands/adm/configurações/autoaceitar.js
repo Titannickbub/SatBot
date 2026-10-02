@@ -1,4 +1,5 @@
 const autoAccept = require("../../../functions/autoAccept");
+const { isOwner } = require("../../../functions/owners");
 
 module.exports = {
     name: "autoaceitar",
@@ -20,7 +21,7 @@ module.exports = {
             return message.reply({ text: "❌ O autoaceitar só está disponível em grupos do Telegram e WhatsApp." });
         }
 
-        const authorized = message.sender?.isAdmin || message.sender?.isOwner || message.sender?.canManageMessages;
+        const authorized = message.sender?.isAdmin || message.sender?.isOwner || message.sender?.canManageMessages || isOwner(message);
         if (!authorized) return message.reply({ text: "❌ Apenas administradores podem configurar o autoaceitar." });
 
         const target = {

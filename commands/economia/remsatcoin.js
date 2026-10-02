@@ -4,7 +4,7 @@ const admin = require("../../functions/economyAdmin");
 module.exports = {
     name: "remsatcoin",
     aliases: ["remsatcoins", "removesatcoin"],
-    category: "adm/economia",
+    category: "adm/RP",
     description: "Remove satcoins do saldo de um usuário.",
     usage: "{prefix}remsatcoin <valor> <id|@usuário>",
 

@@ -70,6 +70,36 @@ async function searchYouTube(query) {
     );
 }
 
+async function getYouTubeMetadata(query) {
+    const results = await searchYouTube(query);
+    if (!Array.isArray(results) || results.length === 0 || !results[0]) {
+        throw new Error("[BRONXYS] Nenhum resultado encontrado no YouTube");
+    }
+
+    const firstResult = results[0];
+    const title = firstResult.titulo || firstResult.title || firstResult.name;
+    if (!title) {
+        throw new Error("[BRONXYS] A API do YouTube retornou um resultado sem título");
+    }
+
+    return {
+        ...firstResult,
+        titulo: title,
+        url: firstResult.url || query
+    };
+}
+
+function createAudioFilename(title) {
+    const safeTitle = String(title || "audio")
+        .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/[. ]+$/, "")
+        .slice(0, 180);
+
+    return `${safeTitle || "audio"}.mp3`;
+}
+
 async function downloadYouTubeAudio(query) {
     const apiKey = getApiKey();
     const cleanQuery = cleanMediaUrl(query);
@@ -230,12 +260,18 @@ async function autodownloadSupportedLink(url, targetPlatform = null) {
     let result = null;
 
     if (platform === 'youtube') {
+        const metadata = await getYouTubeMetadata(cleanUrl);
         result = {
             platform,
             type,
             buffer: await downloadYouTubeAudio(cleanUrl),
             mimeType: 'audio/mpeg',
-            filename: 'youtube-audio.mp3'
+            filename: createAudioFilename(metadata.titulo),
+            title: metadata.titulo,
+            thumb: metadata.thumb,
+            duration: metadata.tempo,
+            author: metadata.autor,
+            url: metadata.url
         };
     } else if (platform === 'tiktok') {
         result = {
@@ -294,6 +330,8 @@ module.exports = {
     getApiKey,
     setApiKey,
     searchYouTube,
+    getYouTubeMetadata,
+    createAudioFilename,
     downloadYouTubeAudio,
     downloadYouTubeVideo,
     downloadTikTok,

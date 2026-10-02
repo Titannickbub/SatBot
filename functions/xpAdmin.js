@@ -1,7 +1,8 @@
 const xp = require("./xp");
+const { isOwner } = require("./owners");
 
 function isAdmin(message) {
-    return Boolean(message.sender?.isAdmin || message.sender?.isOwner);
+    return Boolean(message.sender?.isAdmin || message.sender?.isOwner || isOwner(message));
 }
 
 function parseXp(value) {

@@ -405,9 +405,14 @@ console.log(
         return;
     }
 
-    const text = message.text || "";
     message.prefix =
         config.prefix || "!";
+    const prefix = message.prefix;
+    const originalText = message.text || "";
+    const text = originalText.startsWith(prefix)
+        ? `${prefix}${originalText.slice(prefix.length).trimStart()}`
+        : originalText;
+    message.text = text;
     
     message.functions =
     functions;

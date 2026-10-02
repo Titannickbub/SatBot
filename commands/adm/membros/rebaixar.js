@@ -1,4 +1,5 @@
 const { setWhatsAppAdmin } = require("../../../functions/whatsappAdminHelper");
+const { isOwner } = require("../../../functions/owners");
 
 module.exports = {
     name: "rebaixar",
@@ -16,9 +17,9 @@ module.exports = {
             return message.reply({ text: "❌ Este comando é exclusivo do WhatsApp." });
         }
         const adapter = (message.platforms || []).find((platform) => platform.name === "whatsapp");
-        const userOk = adapter?.checkUserPermission
+        const userOk = isOwner(message) || (adapter?.checkUserPermission
             ? await adapter.checkUserPermission(message.chatId, message.userId)
-            : message.sender?.isAdmin;
+            : message.sender?.isAdmin);
         if (!userOk) {
             return message.reply({ text: "❌ Apenas administradores do grupo podem usar este comando." });
         }

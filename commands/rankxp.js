@@ -4,7 +4,7 @@ const { renderRanking } = require("../functions/imageBanner");
 module.exports = {
     name: "rankxp",
     aliases: ["rankingxp", "ranking-xp"],
-    category: "xp",
+    category: "adm/RP",
     description: "Envia uma imagem do ranking de XP do grupo ou servidor.",
     usage: "{prefix}rankxp [melhores|piores]",
 

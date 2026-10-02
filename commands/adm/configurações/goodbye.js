@@ -40,6 +40,7 @@ const {
     storeMedia,
     formatWelcomeText
 } = require("../../../functions/welcomeHelper");
+const { isOwner } = require("../../../functions/owners");
 const path = require("path");
 
 module.exports = {
@@ -90,9 +91,9 @@ Regras por plataforma:
 
         // ── 3. Permissão do USUÁRIO ─────────────────────────────────────
         const adapter = (message.platforms || []).find(p => p.name === message.platform);
-        const userOk = adapter?.checkUserPermission
+        const userOk = isOwner(message) || (adapter?.checkUserPermission
             ? await adapter.checkUserPermission(message.chatId, message.userId)
-            : (message.sender?.isAdmin || message.sender?.isOwner);
+            : (message.sender?.isAdmin || message.sender?.isOwner));
 
         if (!userOk) {
             return message.reply({ text: "❌ Apenas administradores do grupo/servidor podem configurar o sistema de despedida." });

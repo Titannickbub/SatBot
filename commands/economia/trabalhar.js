@@ -74,7 +74,11 @@ module.exports = {
 async function replyResult(message, result) {
     const amount = economy.formatMoney(result.amount);
     const balance = economy.formatMoney(result.balance);
-    const amountLabel = result.amount < 0 ? `Saldo perdido: ${amount}` : `Saldo ganho: ${amount}`;
+    const amountLabel = result.amount < 0
+        ? `💸 Saldo perdido: ${economy.formatMoney(Math.abs(result.amount))}`
+        : result.amount === 0
+            ? `➖ Sem ganho ou perda: ${amount}`
+            : `💰 Saldo ganho: ${amount}`;
     const details = [
         amountLabel,
         `Saldo atual: ${balance}`,
@@ -112,7 +116,7 @@ async function replyResult(message, result) {
                 "━━━━━━━━━━━━━━━━━━━━━━",
                 `<b>Nome:</b> ${escapeHtml(result.name)}`,
                 `<b>ID:</b> <code>${escapeHtml(message.userId)}</code>`,
-                `<b>Saldo ganho:</b> ${escapeHtml(amountLabel)}`,
+                escapeHtml(amountLabel),
                 `<b>Saldo atual:</b> ${balance}`,
                 `<b>Trabalhos restantes hoje:</b> ${result.remaining}`,
                 result.job ? `<b>Atividade:</b> ${escapeHtml(result.job)}` : null,
@@ -131,7 +135,7 @@ async function replyResult(message, result) {
             "━━━━━━━━━━━━━━━━━━━━━━",
             `*Nome:* ${escapeMarkdown(result.name)}`,
             `*ID:* \`${escapeMarkdown(message.userId)}\``,
-            `*Saldo ganho:* ${escapeMarkdown(amountLabel)}`,
+            escapeMarkdown(amountLabel),
             `*Saldo atual:* ${balance}`,
             `*Trabalhos restantes hoje:* ${result.remaining}`,
             result.job ? `*Atividade:* ${escapeMarkdown(result.job)}` : null,

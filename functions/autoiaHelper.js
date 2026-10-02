@@ -1,5 +1,6 @@
 const { loadSettings, saveSettings } = require("./groupSettings");
 const configFn = require("./config");
+const { getDiscordChatFeatureSetting, setDiscordChatFeatureSetting } = require("./discordChatSettings");
 
 /**
  * Normaliza a string do modo Auto-IA
@@ -43,6 +44,11 @@ function getAutoIAMode(message) {
     if (message.isPrivate) return "off";
 
     const platform = message.platform;
+    if (platform === "discord") {
+        const modeSetting = getDiscordChatFeatureSetting(message, "autoIA", ["autoia"]);
+        return normalizeMode(String(modeSetting?.mode || modeSetting || "off")) || "off";
+    }
+
     const chatId = message.guildId || message.chatId || message.groupId;
     const type = getChatType(message);
 
@@ -63,6 +69,15 @@ function setAutoIAMode(message, targetMode) {
     }
 
     const platform = message.platform;
+    if (platform === "discord") {
+        setDiscordChatFeatureSetting(message, "autoIA", {
+            mode: normalized,
+            updatedAt: Date.now(),
+            updatedBy: message.userId || null
+        });
+        return normalized;
+    }
+
     const chatId = message.guildId || message.chatId || message.groupId;
     const type = getChatType(message);
 

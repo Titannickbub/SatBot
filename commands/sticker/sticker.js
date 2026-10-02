@@ -1,4 +1,4 @@
-const { createStickerBuffer } = require("../../functions/stickerHelper");
+const { createStickerBuffer, createTelegramSticker } = require("../../functions/stickerHelper");
 const telegramStickerHelper = require("../../functions/telegramStickerHelper");
 
 module.exports = {
@@ -33,12 +33,16 @@ module.exports = {
         const mediaObj = message.media || (message.quoted && message.quoted.media);
 
         if (!mediaObj || typeof mediaObj.getBuffer !== "function") {
+            const whatsappLimits = message.platform === "whatsapp"
+                ? "\n\n📏 *Limites do WhatsApp:* imagem até 100 KB; figurinha animada até 500 KB (0,5 MB) e GIF/vídeo de até 10 segundos. Os limites de KB/MB são da figurinha gerada, não do arquivo enviado."
+                : "";
             return message.reply({
                 text: "⚠️ Envie a foto/vídeo com o comando *" + (message.prefix || "!") + "sticker* na legenda, ou responda/marque uma imagem/vídeo com o comando!\n\n" +
                       "📌 *Modos disponíveis:*\n" +
                       "• `!sticker` / `!s` / `!fig` / `!figurinha` — Proporção original\n" +
                       "• `!f` / `!fsticker` / `!ffig` / `!ffigurinha` — Esticar total\n" +
-                      "• `!r` / `!rsticker` / `!rfig` / `!rfigurinha` — Cortar quadrado no centro"
+                      "• `!r` / `!rsticker` / `!rfig` / `!rfigurinha` — Cortar quadrado no centro" +
+                      whatsappLimits
             });
         }
 
@@ -63,13 +67,26 @@ module.exports = {
                 ? configFn.getStickerConfig()
                 : { packName: "Sat Bot", authorName: "Satela" };
 
-            const stickerBuffer = await createStickerBuffer(buffer, {
-                mimeType: mediaObj.mimeType,
-                type: mediaObj.type,
-                mode,
-                packName: stickerConfig.packName,
-                authorName: stickerConfig.authorName
-            });
+            const telegramSticker = message.platform === "telegram"
+                ? await createTelegramSticker(buffer, {
+                    mimeType: mediaObj.mimeType,
+                    type: mediaObj.type,
+                    mode,
+                    packName: stickerConfig.packName,
+                    authorName: stickerConfig.authorName
+                })
+                : null;
+            const stickerBuffer = telegramSticker
+                ? telegramSticker.buffer
+                : await createStickerBuffer(buffer, {
+                    mimeType: mediaObj.mimeType,
+                    type: mediaObj.type,
+                    platform: message.platform,
+                    durationSeconds: mediaObj.raw?.seconds,
+                    mode,
+                    packName: stickerConfig.packName,
+                    authorName: stickerConfig.authorName
+                });
 
             // LÓGICA DO TELEGRAM (Pacotes Pessoais + Envio Direto do Sticker do Pacote)
             if (message.platform === "telegram") {
@@ -97,7 +114,8 @@ module.exports = {
                                 telegramAccount.platformId,
                                 packName,
                                 packTitle,
-                                stickerBuffer
+                                stickerBuffer,
+                                telegramSticker.format
                             );
 
                             if (packResult && packResult.packName) {
@@ -112,9 +130,14 @@ module.exports = {
                 // Envia a figurinha que já pertence ao pacote (se adicionada ao pacote com sucesso)
                 const stickerToSend = packResult?.fileId || stickerBuffer;
                 if (typeof message.replySticker === "function") {
-                    await message.replySticker(stickerToSend);
+                    await message.replySticker(typeof stickerToSend === "string"
+                        ? stickerToSend
+                        : { sticker: stickerToSend, format: telegramSticker.format });
                 } else if (typeof message.reply === "function") {
-                    await message.reply({ sticker: stickerToSend });
+                    await message.reply({
+                        sticker: stickerToSend,
+                        format: telegramSticker.format
+                    });
                 }
 
                 await message.react("✅").catch(() => {});
@@ -140,7 +163,20 @@ module.exports = {
         } catch (err) {
             console.error("[COMANDO STICKER] Erro ao converter figurinha:", err.message || err);
             await message.react("❌").catch(() => {});
-            return message.reply({ text: "❌ Falha ao criar a figurinha. Certifique-se de enviar uma imagem, GIF ou vídeo válido." });
+            if (err.code === "STICKER_DURATION_LIMIT") {
+                return message.reply({ text: "❌ No WhatsApp, GIFs/vídeos para figurinhas podem ter no máximo 10 segundos." });
+            }
+            if (err.code === "STICKER_SIZE_LIMIT") {
+                const limit = mediaObj.type === "video" || mediaObj.type === "gif" ||
+                    String(mediaObj.mimeType || "").toLowerCase().includes("gif")
+                    ? "500 KB (0,5 MB) para figurinhas animadas"
+                    : "100 KB para figurinhas estáticas";
+                return message.reply({ text: `❌ A figurinha gerada excedeu o limite do WhatsApp de ${limit}. Tente uma mídia mais simples ou curta.` });
+            }
+            const whatsappLimits = message.platform === "whatsapp"
+                ? " No WhatsApp: GIFs/vídeos até 10 segundos; figurinha final até 500 KB (0,5 MB) se animada ou 100 KB se estática."
+                : "";
+            return message.reply({ text: `❌ Falha ao criar a figurinha. Envie uma imagem, GIF ou vídeo válido.${whatsappLimits}` });
         }
     }
 };

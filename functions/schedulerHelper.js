@@ -194,6 +194,36 @@ async function fireSchedule(schedule) {
             console.error("❌[SCHEDULER] Erro ao disparar monitor do clima:", error.message || error);
             return;
         }
+
+    }
+
+    if (schedule.meta?.kind === "stock-monitor") {
+        try {
+            const stockMonitor = require("./stockMonitor");
+            const config = stockMonitor.loadMonitorConfig({
+                platform,
+                chatId,
+                threadId: threadId || null
+            });
+
+            await stockMonitor.runStockReport({
+                config,
+                send: true,
+                target: {
+                    platform,
+                    chatId,
+                    threadId: threadId || null
+                },
+                adapter: global.platformRegistry?.[platform]
+            });
+            return;
+        } catch (error) {
+            console.error(
+                "❌[SCHEDULER] Erro ao disparar monitor da bolsa:",
+                error.message || error
+            );
+            return;
+        }
     }
 
     if (schedule.meta?.kind === "random-weather-monitor") {

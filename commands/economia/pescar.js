@@ -74,10 +74,10 @@ async function replyResult(message, result) {
     const amount = economy.formatMoney(result.amount);
     const balance = economy.formatMoney(result.balance);
     const amountLabel = result.amount < 0
-        ? `Saldo perdido: ${amount}`
+        ? `💸 Saldo perdido: ${economy.formatMoney(Math.abs(result.amount))}`
         : result.amount === 0
-            ? "Resultado: nenhum satcoin"
-            : `Saldo ganho: ${amount}`;
+            ? "➖ Sem ganho ou perda: nenhum satcoin"
+            : `💰 Saldo ganho: ${amount}`;
     const typeLabels = {
         normal: "Peixe comum",
         rare: "Peixe raro",

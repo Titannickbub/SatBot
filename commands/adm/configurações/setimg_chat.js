@@ -1,4 +1,5 @@
 const { fetchBuffer } = require("../../../functions/api");
+const { isOwner } = require("../../../functions/owners");
 const { PermissionFlagsBits } = require("discord.js");
 
 module.exports = {
@@ -23,9 +24,9 @@ Use enviando uma imagem com o comando, respondendo uma imagem ou informando uma 
         }
 
         const adapter = (message.platforms || []).find(p => p.name === message.platform);
-        const userOk = adapter?.checkUserPermission
+        const userOk = isOwner(message) || (adapter?.checkUserPermission
             ? await adapter.checkUserPermission(message.chatId, message.userId)
-            : (message.sender?.isAdmin || message.sender?.isOwner);
+            : (message.sender?.isAdmin || message.sender?.isOwner));
 
         if (!userOk) {
             return message.reply({ text: "❌ Apenas administradores do grupo/servidor podem usar este comando." });

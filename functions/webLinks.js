@@ -35,7 +35,12 @@ function profile(message) {
 function ranking(message, type) {
     const scope = getScopeParams(message);
     if (!scope) return null;
-    return buildUrl(type === "xp" ? "/rankxp" : "/rankrico", scope);
+    const pathname = type === "xp"
+        ? "/rankxp"
+        : type === "activity"
+            ? "/rankatividade"
+            : "/rankrico";
+    return buildUrl(pathname, scope);
 }
 
 module.exports = {

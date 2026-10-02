@@ -4,7 +4,7 @@ const admin = require("../../../functions/xpAdmin");
 module.exports = {
     name: "remxp",
     aliases: ["removexp"],
-    category: "adm/xp",
+    category: "adm/RP",
     description: "Remove XP do perfil de um usuário.",
     usage: "{prefix}remxp <quantidade> <id|@usuário>",
 

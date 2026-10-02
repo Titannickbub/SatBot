@@ -13,9 +13,10 @@ Apenas administradores podem alterar configurações e horários.
 */
 
 const randomWeatherMonitor = require("../../../functions/randomWeatherMonitor");
+const { isOwner } = require("../../../functions/owners");
 
 async function checkAdminPermission(message) {
-    if (message.sender?.isOwner) return true;
+    if (message.sender?.isOwner || isOwner(message)) return true;
     const adapter = (message.platforms || []).find(p => p.name === message.platform);
     if (adapter?.checkUserPermission) {
         return adapter.checkUserPermission(message.chatId, message.userId);

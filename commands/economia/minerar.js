@@ -77,8 +77,10 @@ async function replyResult(message, result) {
     const amount = economy.formatMoney(result.amount);
     const balance = economy.formatMoney(result.balance);
     const amountLabel = result.amount < 0
-        ? `Saldo perdido: ${economy.formatMoney(Math.abs(result.amount))}`
-        : `Saldo ganho: ${amount}`;
+        ? `💸 Saldo perdido: ${economy.formatMoney(Math.abs(result.amount))}`
+        : result.amount === 0
+            ? `➖ Sem ganho ou perda: ${amount}`
+            : `💰 Saldo ganho: ${amount}`;
     const details = [
         `Resultado: ${TYPE_LABELS[result.type] || "Nenhum"}`,
         result.mineral ? `Encontrado: ${result.mineral}` : null,
