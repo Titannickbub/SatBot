@@ -60,7 +60,7 @@ function runUpdater() {
     const script = process.platform === "win32" ? "update.bat" : "update.sh";
     const scriptPath = path.join(rootDir, script);
     if (!fs.existsSync(scriptPath)) throw new Error(`${script} não encontrado`);
-    const command = process.platform === "win32" ? scriptPath : "bash";
+    const command = process.platform === "win32" ? scriptPath : "sh";
     const args = process.platform === "win32" ? [] : [scriptPath];
     const result = spawnSync(command, args, { cwd: rootDir, stdio: "inherit" });
     if (result.error) throw result.error;

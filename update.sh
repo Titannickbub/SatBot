@@ -1,9 +1,9 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
 REPO_URL="https://github.com/Titannickbub/SatBot.git"
 BRANCH="main"
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 TMP_DIR="$(mktemp -d)"
 BACKUP_DIR="$TMP_DIR/backup"
 REPO_DIR="$TMP_DIR/repo"
