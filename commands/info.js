@@ -249,13 +249,6 @@ function categoryRoot(category) {
 function infoComandoText(message, command) {
     const platformStatus = getCommandPlatformIndicator(command, message.platform);
 
-    if (typeof command.info === "function") {
-        return `${command.info(message)}\n\n${platformStatus.icon} Plataforma atual (${message.platform}): ${platformStatus.label}`;
-    }
-    if (typeof command.getHelp === "function") {
-        return `${command.getHelp(message)}\n\n${platformStatus.icon} Plataforma atual (${message.platform}): ${platformStatus.label}`;
-    }
-
     let body =
         `📝 Descrição:\n${command.description || "Esse comando não possui descrição."}\n\n` +
         `📂 Categoria:\n${command.category ? categoryRoot(command.category) : "Raiz"}\n\n` +
@@ -271,6 +264,15 @@ function infoComandoText(message, command) {
         body += command.examples
             .map((ex) => `🔶 ${ex.replaceAll("{prefix}", message.prefix)}`)
             .join("\n");
+    }
+
+    const customHelp = typeof command.info === "function"
+        ? command.info(message)
+        : typeof command.getHelp === "function"
+            ? command.getHelp(message)
+            : null;
+    if (customHelp) {
+        body += `\n\n📚 Ajuda detalhada:\n${customHelp}`;
     }
 
     return sectionText(`📄 ${command.name}`, body);

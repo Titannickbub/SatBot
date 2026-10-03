@@ -4,7 +4,7 @@ module.exports = {
     category: "diversão",
     name: "nofap",
     aliases: ["nofapset", "semana"],
-    description: "Consulta e controla o desafio NoFap da conta central do usuário.",
+    description: "Acompanha sua sequência pessoal no desafio NoFap, salva na conta central e compartilhada entre plataformas. Use `status`, `iniciar`, `reset` ou `sair` para consultar ou controlar sua participação.",
     usage: "{prefix}nofap [status|iniciar|reset|sair|help]",
     examples: [
         "{prefix}nofap status",

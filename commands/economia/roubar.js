@@ -82,7 +82,7 @@ module.exports = {
     name: "roubar",
     aliases: ["roubo", "assaltar"],
     category: "economia",
-    description: "Tenta roubar satcoins de outro usuário do grupo ou servidor.",
+    description: "Tenta roubar satcoins de outro membro da economia atual. Informe o ID ou a menção da vítima, ou responda a uma mensagem dela; o resultado pode gerar ganho ou prejuízo.",
     usage: "{prefix}roubar <id|@usuário> ou respondendo a uma mensagem",
 
     async execute(message) {

@@ -5,7 +5,7 @@ module.exports = {
     name: "darxp",
     aliases: ["addxp"],
     category: "adm/RP",
-    description: "Adiciona XP ao perfil de um usuário.",
+    description: "Acrescenta a quantidade de XP informada ao perfil do usuário indicado. Use para conceder XP manualmente; informe a quantidade e depois o ID ou a menção.",
     usage: "{prefix}darxp <quantidade> <id|@usuário>",
 
     async execute(message) {

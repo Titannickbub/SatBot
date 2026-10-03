@@ -28,7 +28,7 @@ module.exports = {
     name: "rclima",
     category: "adm/configurações",
     aliases: ["randomclima", "climarandom"],
-    description: "Configura o monitor de clima aleatório para envio diário no chat atual.",
+    description: "Agenda previsões diárias de uma cidade sorteada entre as cadastradas para o chat atual. Use `add`/`remove` para editar a lista de cidades, `times` para definir horários e `enable`, `disable`, `status` ou `run` para controlar e consultar o monitor.",
     usage: "{prefix}rclima <subcomando>",
     examples: [
         "{prefix}rclima add Salvador",

@@ -6,7 +6,7 @@ module.exports = {
     aliases: ["autoaprovar", "autoapprove"],
     category: "adm/configurações",
     platformSupport: { whatsapp: "full", telegram: "full", discord: "none" },
-    description: "Aprova automaticamente solicitações de entrada no Telegram e WhatsApp.",
+    description: "Configura a aprovação automática de pedidos para entrar em grupos do Telegram e WhatsApp. Permite ativar/desativar, consultar status, definir intervalo e horários e bloquear pedidos por nome ou símbolo.",
     usage: "{prefix}autoaceitar [subcomando]",
     examples: [
         "{prefix}autoaceitar on",

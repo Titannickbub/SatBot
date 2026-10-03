@@ -8,7 +8,7 @@ module.exports = {
         telegram: "full",
         discord: "none"
     },
-    description: "Promove um membro no Telegram com o nível staff, mod, gerente ou adm.",
+    description: "Promove um membro do grupo do Telegram a administrador e define seu nível de acesso (`staff`, `mod`, `gerente` ou `adm`). Indique o nível e o ID da pessoa, ou responda à mensagem dela.",
     usage: "{prefix}tpromote <staff|mod|gerente|adm> <ID> ou responda à mensagem",
     examples: [
         "{prefix}tpromote staff 123456789",

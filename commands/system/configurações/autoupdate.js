@@ -5,7 +5,7 @@ const config = require("../../../functions/config");
 module.exports = {
     name: "autoupdate",
     category: "system/configurações",
-    description: "Ativa ou desativa a atualização automática segura pela versão do GitHub.",
+    description: "Consulta ou controla as atualizações automáticas do bot a partir das versões do GitHub. Use `status` para conferir a configuração, `on` para ativar ou `off` para desativar; atualizações e reinicialização ocorrem conforme o ciclo do bot.",
     usage: "{prefix}autoupdate [subcomando]",
 
     async execute(message) {

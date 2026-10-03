@@ -4,7 +4,7 @@ const { renderRanking } = require("../../functions/imageBanner");
 module.exports = {
     name: "rank",
     category: "adm/RP",
-    description: "Envia uma imagem dos cinco mais ricos ou mostra os cinco mais pobres do grupo/servidor.",
+    description: "Consulta o ranking de satcoins da economia atual: sem opção ou com `rico`, envia uma imagem dos cinco maiores saldos; com `pobre`, lista os cinco menores.",
     usage: "{prefix}rank [rico|pobre|help]",
 
     async execute(message) {

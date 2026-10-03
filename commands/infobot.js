@@ -5,7 +5,7 @@ module.exports = {
     name: "infobot",
     aliases: ["sobre", "about", "dono", "info_bot", "botinfo", "bot_info", "bot-info"],
     category: null,
-    description: "Exibe informações públicas sobre o bot, seu responsável e a base utilizada.",
+    description: "Mostra a apresentação pública do bot, incluindo versão, responsável, contatos e informações sobre a base do projeto.",
     usage: "{prefix}infobot",
 
     async execute(message) {

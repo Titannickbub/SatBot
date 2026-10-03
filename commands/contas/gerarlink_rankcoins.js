@@ -5,7 +5,7 @@ module.exports = {
     name: "gerarlink_rankcoins",
     aliases: ["gerarlink-rankcoins", "gerarlink_rankrico", "linkrankcoins", "linkrankrico"],
     category: "contas",
-    description: "Gera o link do ranking geral de satcoins do grupo ou servidor.",
+    description: "Gera um link web para consultar o ranking de saldos de satcoins do grupo ou servidor atual.",
     usage: "{prefix}gerarlink_rankcoins",
 
     async execute(message) {

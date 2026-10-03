@@ -8,7 +8,7 @@ module.exports = {
     name: "bolsa",
     aliases: ["indices", "índices"],
     category: "cotações",
-    description: "Exibe os principais índices da bolsa de valores.",
+    description: "Consulta índices do mercado financeiro, como Ibovespa, S&P 500 e Nasdaq, com valores e variações mais recentes disponíveis.",
     usage: "{prefix}bolsa",
     examples: ["{prefix}bolsa"],
 

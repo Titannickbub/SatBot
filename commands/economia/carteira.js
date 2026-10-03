@@ -4,7 +4,7 @@ module.exports = {
     name: "carteira",
     aliases: ["saldo", "wallet"],
     category: "economia",
-    description: "Mostra o saldo local de satcoins.",
+    description: "Consulta seu saldo de satcoins na economia do grupo ou servidor atual. Os saldos são separados por comunidade.",
     usage: "{prefix}carteira",
 
     async execute(message) {

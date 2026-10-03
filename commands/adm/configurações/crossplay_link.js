@@ -1,7 +1,7 @@
 module.exports = {
   category: 'adm/configurações',
   name: 'crossplay_link',
-  description: 'Gera um código para vincular um grupo/chat entre plataformas',
+  description: 'Inicia o vínculo de crossplay para o chat ou grupo atual e gera um código temporário. Use esse código com `crossplay_claim` no chat correspondente da outra plataforma.',
   usage: '{prefix}crossplay_link',
   async execute(message) {
     if (message.isPrivate) return message.reply({ text: '❌ Este comando só funciona em grupos/chats de grupo.' });

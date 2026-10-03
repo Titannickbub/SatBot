@@ -4,7 +4,10 @@ const economy = require("./economy");
 function getBaseUrl() {
     const domain = config.getWebDomain();
     if (!domain) return null;
-    return `https://${domain}`;
+    const protocol = typeof config.getWebProtocol === "function"
+        ? config.getWebProtocol()
+        : "http";
+    return `${protocol}://${domain}`;
 }
 
 function getScopeParams(message) {

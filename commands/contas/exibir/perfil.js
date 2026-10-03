@@ -11,7 +11,7 @@ module.exports = {
     name: "perfil",
     aliases: ["profile", "minhaconta"],
     category: "contas/exibir",
-    description: "Mostra a conta atual e a conta central vinculada.",
+    description: "Exibe o perfil da plataforma atual e informa qual conta central está vinculada, quando houver uma.",
     usage: "{prefix}perfil",
 
     async execute(message) {

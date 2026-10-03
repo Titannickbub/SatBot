@@ -5,7 +5,7 @@ module.exports = {
     name: "darsatcoin",
     aliases: ["darsatcoins", "addsatcoin"],
     category: "adm/RP",
-    description: "Adiciona satcoins ao saldo de um usuário.",
+    description: "Adiciona satcoins ao saldo de outro usuário na economia deste grupo ou servidor. Informe o valor e depois a menção ou o ID do destinatário.",
     usage: "{prefix}darsatcoin <valor> <id|@usuário>",
 
     async execute(message) {

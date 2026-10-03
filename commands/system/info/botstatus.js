@@ -41,7 +41,7 @@ function countItems(value) {
 module.exports = {
     name: "botstatus",
     category: "system/info",
-    description: "Exibe todas as informações globais e o estado atual do bot.",
+    description: "Mostra o estado operacional do bot, incluindo plataformas conectadas, tempo de execução, recursos carregados e configurações globais relevantes.",
     usage: "{prefix}botstatus",
 
     async execute(message) {

@@ -23,7 +23,7 @@ module.exports = {
         telegram: "full",
         discord: "full"
     },
-    description: "Executa uma ação interativa configurada para outro usuário.",
+    description: "Executa uma ação interativa, como beijo, abraço ou cumprimento, direcionada a outro membro. Informe o nome da ação e mencione a pessoa ou responda à mensagem dela; use `help` para listar ações disponíveis.",
     usage: [
         "{prefix}act kiss",
         "{prefix}act hug",

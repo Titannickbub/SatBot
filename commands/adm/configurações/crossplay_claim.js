@@ -1,7 +1,7 @@
 module.exports = {
   category: 'adm/configurações',
   name: 'crossplay_claim',
-  description: 'Vincula um chat/grupo ao código de crossplay gerado em outra plataforma',
+  description: 'Conclui o vínculo de crossplay neste chat ou grupo usando o código gerado no outro chat. Depois de vincular, as mensagens podem ser encaminhadas entre as plataformas.',
   usage: '{prefix}crossplay_claim <codigo>',
   async execute(message) {
     if (message.isPrivate) return message.reply({ text: '❌ Este comando só funciona em grupos/chats de grupo.' });

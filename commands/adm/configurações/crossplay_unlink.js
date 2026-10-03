@@ -1,7 +1,7 @@
 module.exports = {
   category: 'adm/configurações',
   name: 'crossplay_unlink',
-  description: 'Desvincula/desativa o crossplay deste chat/grupo',
+  description: 'Desconecta o chat ou grupo atual do crossplay e interrompe o encaminhamento de mensagens entre as plataformas vinculadas.',
   usage: '{prefix}crossplay_unlink',
   async execute(message) {
     if (message.isPrivate) {

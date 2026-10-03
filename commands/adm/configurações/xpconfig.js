@@ -5,7 +5,7 @@ module.exports = {
     name: "xpconfig",
     aliases: ["configxp", "configurarxp"],
     category: "adm/RP",
-    description: "Ativa e configura o sistema de XP.",
+    description: "Controla o ganho de XP do grupo ou servidor. Use `ativar`/`desativar` para ligar ou pausar, `mutar` para impedir avisos de nível, e `canal`, `topico` ou `status` para configurar e consultar onde o sistema atua.",
     usage: "{prefix}xpconfig <ativar|desativar|mutar|canal|topico|status>",
 
     async execute(message) {

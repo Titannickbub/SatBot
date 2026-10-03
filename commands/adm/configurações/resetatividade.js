@@ -24,7 +24,7 @@ module.exports = {
     name: "resetatividade",
     aliases: ["zeraratividade", "resetaratividade"],
     category: "adm/RP",
-    description: "Zera a atividade registrada de um usuário.",
+    description: "Apaga o histórico de atividade de um usuário neste grupo ou servidor. Informe o ID ou mencione a pessoa cujo contador deseja zerar.",
     usage: "{prefix}resetatividade <id|@usuário>",
 
     async execute(message) {

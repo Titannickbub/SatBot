@@ -4,7 +4,7 @@ const { isOwner } = require("../../functions/owners");
 module.exports = {
     name: "setkey",
     aliases: ["setbronxyskey", "setkeybronxys", "bronxyskey"],
-    description: "Altera e valida a chave de API da Bronxys através da verificação do servidor",
+    description: "Valida uma nova chave da API Bronxys consultando o servidor e, se ela funcionar, salva a chave para os comandos que usam esse serviço. Disponível apenas para Super Usuários.",
     category: "bronxys",
     usage: "{prefix}setkey <nova_chave>",
     examples: [

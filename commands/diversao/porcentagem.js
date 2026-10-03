@@ -4,7 +4,7 @@ module.exports = {
     name: "porcentagem",
     aliases: ["porcent", "%", "pct"],
     category: "diversão",
-    description: "Calcula uma porcentagem aleatória para um usuário e um argumento.",
+    description: "Sorteia uma porcentagem de 0 a 100 para uma pergunta ou característica, como \"gay\" ou \"bonito\". Informe o assunto e, opcionalmente, mencione a pessoa ou responda à mensagem dela; sem alvo, o resultado é sobre você.",
     usage: "{prefix}porcentagem <argumento> [@membro ou mensagem respondida]",
 
     async execute(message) {

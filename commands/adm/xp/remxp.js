@@ -5,7 +5,7 @@ module.exports = {
     name: "remxp",
     aliases: ["removexp"],
     category: "adm/RP",
-    description: "Remove XP do perfil de um usuário.",
+    description: "Subtrai a quantidade de XP informada do perfil do usuário indicado. Informe a quantidade e depois o ID ou a menção da pessoa.",
     usage: "{prefix}remxp <quantidade> <id|@usuário>",
 
     async execute(message) {

@@ -5,7 +5,7 @@ module.exports = {
     name: "setxp",
     aliases: ["definirxp"],
     category: "adm/RP",
-    description: "Define o XP do perfil de um usuário.",
+    description: "Substitui o XP atual do perfil pelo valor informado, sem somar ao total existente. Informe a nova quantidade e depois o ID ou a menção da pessoa.",
     usage: "{prefix}setxp <quantidade> <id|@usuário>",
 
     async execute(message) {

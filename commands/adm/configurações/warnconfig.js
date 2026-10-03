@@ -4,7 +4,7 @@ const { isOwner } = require("../../../functions/owners");
 module.exports = {
     name: "warnconfig",
     category: "adm/configurações",
-    description: "Configura o limite de advertências e a ação (kick/ban).",
+    description: "Define quantas advertências um membro pode acumular antes de uma punição automática e escolhe se, ao atingir o limite, ele será expulso (`kick`) ou banido (`ban`).",
     usage: "{prefix}warnconfig <max> <kick|ban>",
 
     async execute(message) {

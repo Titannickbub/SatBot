@@ -32,7 +32,7 @@ module.exports = {
     name: "rankinfo",
     aliases: ["consultarank", "rankusuario", "inforank"],
     category: "adm/RP",
-    description: "Consulta os detalhes de um usuário nos rankings.",
+    description: "Consulta a posição e os dados de uma pessoa em um ranking. Informe `atividade`, `xp` ou `rico` e depois mencione o membro, responda à mensagem dele ou passe seu ID.",
     usage: "{prefix}rankinfo <atividade|xp|rico> <id|@usuário>",
 
     async execute(message) {

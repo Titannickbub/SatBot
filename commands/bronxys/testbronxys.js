@@ -2,7 +2,7 @@ const bronxys = require("../../functions/bronxys");
 
 module.exports = {
     name: "testbronxys",
-    description: "Testa a validade e o saldo de pedidos da API Bronxys",
+    description: "Testa a chave Bronxys atualmente configurada e consulta o saldo de pedidos disponível na API. Use para verificar se o serviço está acessível antes de baixar mídias.",
     usage: "{prefix}testbronxys",
     examples: ["{prefix}testbronxys"],
 

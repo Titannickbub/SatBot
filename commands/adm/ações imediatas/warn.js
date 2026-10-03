@@ -5,7 +5,7 @@ const { isOwner } = require("../../../functions/owners");
 module.exports = {
     name: "warn",
     category: "adm/ações imediatas",
-    description: "Aplica uma advertência a um usuário.",
+    description: "Registra uma advertência para o usuário indicado, com motivo opcional, no sistema de moderação do grupo ou servidor.",
     usage: "{prefix}warn @user [motivo]",
 
     async execute(message) {

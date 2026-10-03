@@ -1,7 +1,7 @@
 module.exports = {
   category: 'adm/configurações',
   name: 'crossplay_pref',
-  description: 'Define quais mídias serão recebidas e quais ignoradas para este chat vinculado',
+  description: 'Configura a filtragem de mídias recebidas pelo crossplay deste chat: use `receber` para permitir um tipo ou `ignorar` para bloqueá-lo; sem argumentos, consulte as preferências atuais.',
   usage: '{prefix}crossplay_pref <receber|ignorar> <tipo>',
   async execute(message) {
     if (message.isPrivate) return message.reply({ text: '❌ Este comando só funciona em grupos/chats de grupo.' });

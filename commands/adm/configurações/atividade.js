@@ -5,7 +5,7 @@ module.exports = {
     name: "atividade",
     aliases: ["atividadeconfig", "configatividade"],
     category: "adm/RP",
-    description: "Ativa, desativa ou mostra o status do sistema de atividade (administradores).",
+    description: "Controla o registro de atividade do grupo ou servidor: use `ativar` para começar a contabilizar mensagens, `desativar` para pausar ou `status` para conferir a configuração.",
     usage: "{prefix}atividade <ativar|desativar|status>",
 
     async execute(message) {

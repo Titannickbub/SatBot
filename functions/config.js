@@ -15,6 +15,7 @@ const DEFAULT_CONFIG = {
     prefix: "!",
     botName: "Sat Bot",
     webDomain: null,
+    webProtocol: "http",
     autoUpdate: false,
     platforms: {},
     uploads: {
@@ -92,6 +93,8 @@ function normalizeConfig(data) {
         normalized.webDomain = normalized.webDomain.trim() || null;
     }
 
+    normalized.webProtocol = normalized.webProtocol === "https" ? "https" : "http";
+
     return normalized;
 }
 
@@ -168,11 +171,22 @@ function getWebDomain() {
     return load().webDomain;
 }
 
+function getWebProtocol() {
+    return load().webProtocol;
+}
+
 function setWebDomain(domain) {
     const data = load();
     data.webDomain = domain === null ? null : String(domain).trim() || null;
     save(data);
     return data.webDomain;
+}
+
+function setWebProtocol(protocol) {
+    const data = load();
+    data.webProtocol = String(protocol).toLowerCase() === "https" ? "https" : "http";
+    save(data);
+    return data.webProtocol;
 }
 
 function getPrefix() {
@@ -1044,7 +1058,9 @@ function setGlobalBlockcmd(newConfig) {
 module.exports = {
     getConfig,
     getWebDomain,
+    getWebProtocol,
     setWebDomain,
+    setWebProtocol,
     getPrefix,
     setPrefix,
     getAutoUpdateEnabled,

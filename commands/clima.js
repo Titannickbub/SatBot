@@ -3,7 +3,7 @@ const weatherMonitor = require("../functions/weatherMonitor");
 module.exports = {
     name: "clima",
     aliases: ["tempo", "weather"],
-    description: "Consulta a previsão do tempo atual para uma cidade.",
+    description: "Consulta as condições e a previsão do tempo para a cidade informada. Escreva o nome da cidade após o comando; cidades com espaços podem ser informadas normalmente.",
     usage: "{prefix}clima <cidade>",
     examples: ["{prefix}clima Salvador", "{prefix}clima São Paulo"],
 

@@ -5,7 +5,7 @@ module.exports = {
     name: "gerarlink_rankativos",
     aliases: ["gerarlink-rankativos", "linkrankativos", "gerarlink_atividade"],
     category: "contas",
-    description: "Gera o link do ranking de atividade do grupo ou servidor.",
+    description: "Gera um link web para consultar o ranking de atividade dos membros do grupo ou servidor atual.",
     usage: "{prefix}gerarlink_rankativos",
 
     async execute(message) {

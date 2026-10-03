@@ -942,6 +942,7 @@ function resolveStoreItem(selection) {
 
     return STORE_ITEMS.find(item =>
         item.key === normalized ||
+        item.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "") === normalized ||
         item.aliases.some(alias => alias.normalize("NFD").replace(/[\u0300-\u036f]/g, "") === normalized)
     ) || null;
 }

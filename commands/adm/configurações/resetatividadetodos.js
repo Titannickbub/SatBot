@@ -5,7 +5,7 @@ module.exports = {
     name: "resetatividadetodos",
     aliases: ["zeraratividadetodos", "resetatividadegrupo"],
     category: "adm/RP",
-    description: "Zera toda a atividade do grupo ou servidor.",
+    description: "Apaga os contadores de atividade de todos os membros do grupo ou servidor atual. A ação não pode ser desfeita.",
     usage: "{prefix}resetatividadetodos",
 
     async execute(message) {

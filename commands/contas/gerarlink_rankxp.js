@@ -5,7 +5,7 @@ module.exports = {
     name: "gerarlink_rankxp",
     aliases: ["gerarlink-rankxp", "linkrankxp"],
     category: "contas",
-    description: "Gera o link do ranking geral de XP do grupo ou servidor.",
+    description: "Gera um link web para consultar o ranking de XP dos membros do grupo ou servidor atual.",
     usage: "{prefix}gerarlink_rankxp",
 
     async execute(message) {

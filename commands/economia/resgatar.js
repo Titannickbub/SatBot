@@ -4,7 +4,7 @@ module.exports = {
     name: "resgatar",
     aliases: ["daily", "diario", "diária"],
     category: "economia",
-    description: "Resgata a recompensa diária de satcoins.",
+    description: "Resgata uma vez por dia a recompensa diária de satcoins na economia do grupo ou servidor atual. Use novamente após a virada do dia para receber a próxima recompensa.",
     usage: "{prefix}resgatar",
 
     async execute(message) {
@@ -30,7 +30,6 @@ module.exports = {
                     title: "🎁 Resgate diário",
                     description: [
                         `**Nome:** ${name}`,
-                        `**ID:** \`${message.userId}\``,
                         rewardLabel,
                         `**Saldo atual:** ${balance}`,
                         `\n${status}`,
@@ -53,7 +52,6 @@ module.exports = {
                     "<b>🎁 RESGATE DIÁRIO</b>",
                     "━━━━━━━━━━━━━━━━━━━━━━",
                     `<b>Nome:</b> ${escapeHtml(name)}`,
-                    `<b>ID:</b> <code>${escapeHtml(message.userId)}</code>`,
                     rewardLabel,
                     `<b>Saldo atual:</b> ${balance}`,
                     `\n${escapeHtml(status)}`,
@@ -69,7 +67,6 @@ module.exports = {
                 "*🎁 RESGATE DIÁRIO*",
                 "━━━━━━━━━━━━━━━━━━━━━━",
                 `*Nome:* ${escapeMarkdown(name)}`,
-                `*ID:* \`${escapeMarkdown(message.userId)}\``,
                 rewardLabel,
                 `*Saldo atual:* ${balance}`,
                 `\n_${escapeMarkdown(status)}_`,

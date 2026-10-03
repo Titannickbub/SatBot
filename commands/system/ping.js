@@ -3,7 +3,7 @@ module.exports = {
     name: "ping",
 
     description:
-        "Verifica a latência do bot.",
+        "Mede o tempo de resposta do bot e da API da plataforma e mostra há quanto tempo o processo está em execução.",
 
     usage:
         "{prefix}ping",

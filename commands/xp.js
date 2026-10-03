@@ -4,7 +4,7 @@ module.exports = {
     name: "xp",
     aliases: ["meuxp", "perfilxp"],
     category: "contas",
-    description: "Mostra seu nível, XP e posição no ranking.",
+    description: "Consulta seu nível, XP atual, progresso até o próximo nível e posição no ranking do grupo ou servidor.",
     usage: "{prefix}xp",
 
     async execute(message) {

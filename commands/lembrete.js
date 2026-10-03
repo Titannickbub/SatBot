@@ -119,5 +119,12 @@ module.exports = {
     name: "lembrete",
     aliases: ["reminder"],
     category: "utilitários",
+    description: "Cria até três lembretes pessoais, enviados uma vez após um intervalo (como 2h ou 30m) ou em um horário do dia (HH:MM). Em grupos, somente administradores podem criar lembretes.",
+    usage: "{prefix}lembrete <intervalo|HH:MM> <texto>",
+    examples: [
+        "{prefix}lembrete 2h dar bump no server",
+        "{prefix}lembrete 30m verificar o forno",
+        "{prefix}lembrete 12:00 fazer o sorteio"
+    ],
     execute
 };

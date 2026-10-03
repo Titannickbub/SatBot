@@ -5,7 +5,7 @@ module.exports = {
     name: "rankxp",
     aliases: ["rankingxp", "ranking-xp"],
     category: "adm/RP",
-    description: "Envia uma imagem do ranking de XP do grupo ou servidor.",
+    description: "Gera uma imagem com os membros ordenados pelo XP no grupo ou servidor. Use `melhores` para os maiores valores ou `piores` para os menores.",
     usage: "{prefix}rankxp [melhores|piores]",
 
     async execute(message) {

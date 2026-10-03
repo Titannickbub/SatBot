@@ -5,7 +5,7 @@ const { isOwner } = require("../../../functions/owners");
 module.exports = {
     name: "unwarn",
     category: "adm/ações imediatas",
-    description: "Remove as advertências de um usuário.",
+    description: "Remove uma ou mais advertências do usuário indicado, permitindo corrigir punições registradas por engano. Informe o usuário e, opcionalmente, quantas advertências remover.",
     usage: "{prefix}unwarn @user [quantidade (opcional)]",
 
     async execute(message) {

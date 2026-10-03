@@ -4,7 +4,7 @@ module.exports = {
     name: "img_perfil",
     aliases: ["img-perfil", "perfilimg"],
     category: "contas",
-    description: "Gera uma imagem do seu perfil no grupo ou servidor.",
+    description: "Cria e envia uma imagem com os dados do seu perfil, nível e progresso de XP no grupo ou servidor atual.",
     usage: "{prefix}img_perfil",
 
     async execute(message) {

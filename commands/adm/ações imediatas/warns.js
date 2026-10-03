@@ -4,7 +4,7 @@ const { parseTargetFromMessage, formatUserMention } = require("../../../function
 module.exports = {
     name: "warns",
     category: "adm/ações imediatas",
-    description: "Verifica a quantidade de advertências de um usuário.",
+    description: "Consulta quantas advertências um usuário possui no grupo ou servidor. Informe uma menção para consultar outra pessoa ou omita-a para ver suas próprias advertências.",
     usage: "{prefix}warns [@user]",
 
     async execute(message) {

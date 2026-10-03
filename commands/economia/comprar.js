@@ -4,7 +4,7 @@ module.exports = {
     name: "comprar",
     aliases: ["buy"],
     category: "economia",
-    description: "Compra um reset disponível na loja.",
+    description: "Compra um reset ou item da loja de economia usando satcoins. Consulte `loja` para ver preços e posições; informe o número ou nome do item. Resets só podem ser comprados após esgotar as tentativas correspondentes.",
     usage: "{prefix}comprar <número|nome>",
 
     async execute(message) {
@@ -12,7 +12,7 @@ module.exports = {
             return message.reply({ text: "❌ A loja só funciona em grupos ou servidores." });
         }
 
-        const result = economy.buyStoreItem(message, message.args?.[0]);
+        const result = economy.buyStoreItem(message, message.args?.join(" "));
         if (!result.purchased) {
             return message.reply({ text: getErrorMessage(result.reason, message, result.item) });
         }

@@ -8,7 +8,7 @@ module.exports = {
     name: "dolar",
     aliases: ["dólar", "usd"],
     category: "cotações",
-    description: "Exibe a cotação atual do dólar comercial em reais.",
+    description: "Consulta a cotação de compra e venda do dólar comercial em reais e sua variação, usando os dados mais recentes disponíveis.",
     usage: "{prefix}dolar",
     examples: ["{prefix}dolar"],
 

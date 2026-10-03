@@ -8,7 +8,7 @@ module.exports = {
         telegram: "none",
         whatsapp: "none"
     },
-    description: "Remove um ou mais cargos de um membro no Discord.",
+    description: "Remove no Discord os cargos indicados dos membros mencionados. Informe primeiro os membros e depois os cargos a retirar.",
     usage: "{prefix}removecargo @membro @cargo1 @cargo2",
     async execute(message) {
         const result = await executeRoleChange(message, { remove: true });

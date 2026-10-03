@@ -13,7 +13,7 @@ async function checkAdminPermission(message) {
 module.exports = {
     name: "monitorclima",
     category: "adm/configurações",
-    description: "Configura os envios automáticos de previsão do tempo para este chat.",
+    description: "Agenda previsões do tempo neste chat. Use `set` para escolher a cidade, `times` para definir horários, `enable`/`disable` para controlar os envios, `status` para consultar ou `run` para enviar uma previsão agora.",
     usage: "{prefix}monitorclima <set|times|enable|disable|status|run>",
     examples: [
         "{prefix}monitorclima set São Paulo",

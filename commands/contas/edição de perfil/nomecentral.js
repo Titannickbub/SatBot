@@ -2,7 +2,7 @@ module.exports = {
     name: "nomecentral",
     aliases: ["centralnome"],
     category: "contas/edição de perfil",
-    description: "Altera o nome da conta central vinculada ao usuário.",
+    description: "Altera o nome público da sua conta central, compartilhado entre as plataformas vinculadas. Informe o novo nome após o comando.",
     usage: "{prefix}nomecentral <novo nome>",
 
     async execute(message) {

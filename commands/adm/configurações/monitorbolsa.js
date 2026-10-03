@@ -45,7 +45,7 @@ module.exports = {
     name: "monitorbolsa",
     aliases: ["bolsamonitor", "monitor bolsa"],
     category: "adm/configurações",
-    description: "Configura o monitor automático dos índices da bolsa e do café.",
+    description: "Configura o envio automático de cotações de Ibovespa, S&P 500, Nasdaq e café neste chat. Use `set` para escolher ativos, `times` para definir horários, `on`/`off` para controlar o envio, `status` para consultar ou `run` para enviar agora.",
     usage: "{prefix}monitorbolsa <set|times|on|off|status|run|help>",
 
     async execute(message) {

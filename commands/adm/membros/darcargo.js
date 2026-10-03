@@ -8,7 +8,7 @@ module.exports = {
         telegram: "none",
         whatsapp: "none"
     },
-    description: "Atribui um ou mais cargos a um membro no Discord.",
+    description: "Atribui no Discord um ou mais cargos aos membros mencionados. Inclua primeiro as menções dos membros e depois as menções dos cargos que deseja conceder.",
     usage: "{prefix}darcargo @membro @cargo1 @cargo2",
     async execute(message) {
         const result = await executeRoleChange(message);

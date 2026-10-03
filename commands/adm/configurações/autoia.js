@@ -4,7 +4,7 @@ module.exports = {
     name: "autoia",
     aliases: ["setautoia", "iaauto", "iaautomatica"],
     category: "adm/configurações",
-    description: "Configura a resposta automática da Inteligência Artificial em grupos.",
+    description: "Define quando a IA responde automaticamente no grupo: `off` desativa, `all` permite responder às mensagens e `mention` limita a resposta a mensagens que mencionem o bot.",
     usage: "{prefix}autoia <off | all | mention>",
     examples: [
         "{prefix}autoia status",

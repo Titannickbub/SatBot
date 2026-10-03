@@ -10,6 +10,8 @@ const {
 const { muteMember, banMember, kickMember } = require("../functions/moderationHelper");
 
 const rateMap = new Map();
+const repeatedMessageMap = new Map();
+const linkActivityMap = new Map();
 const raidLogFile = path.join(__dirname, "..", "settings", "antiraid.log");
 
 function appendRaidLog(entry) {
@@ -22,16 +24,30 @@ function appendRaidLog(entry) {
     }
 }
 
-function getRateKey(message) {
+function getRateKey(message, resolved) {
     if (!message) return null;
     const platform = message.platform || "unknown";
-    const chatId = message.chatId || message.guildId || message.serverId || "unknown";
+    let scopeId = message.chatId || message.guildId || message.serverId || "unknown";
+
+    if (platform === "discord") {
+        const channel = message.raw?.channel;
+        if (resolved?.level === "server") {
+            scopeId = message.raw?.guild?.id || message.guildId || message.serverId || scopeId;
+        } else if (resolved?.level === "categoria") {
+            scopeId = channel?.parentId || scopeId;
+        } else if (channel?.isThread?.()) {
+            scopeId = channel.parentId || scopeId;
+        }
+    } else if (platform === "telegram" && resolved?.level === "chat" && message.threadId) {
+        scopeId = `${scopeId}:${message.threadId}`;
+    }
+
     const userId = message.userId || "unknown";
-    return `${platform}:${chatId}:${userId}`;
+    return `${platform}:${scopeId}:${userId}`;
 }
 
-function trackBurst(message, settings) {
-    const key = getRateKey(message);
+function trackBurst(message, settings, resolved) {
+    const key = getRateKey(message, resolved);
     if (!key) return { burst: 0, reset: false };
     const now = Date.now();
     const windowMs = ((settings && settings.windowSeconds) || 12) * 1000;
@@ -40,6 +56,47 @@ function trackBurst(message, settings) {
     valid.push(now);
     rateMap.set(key, valid);
     return { burst: valid.length };
+}
+
+function trackRepeatedMessage(message, settings, resolved) {
+    const key = getRateKey(message, resolved);
+    const normalizedText = String(message?.text || "").trim().replace(/\s+/g, " ").toLowerCase();
+    if (!key || !normalizedText) return { count: 0 };
+
+    const now = Date.now();
+    const windowMs = ((settings && settings.windowSeconds) || 12) * 1000;
+    const previous = repeatedMessageMap.get(key);
+    const count = previous &&
+        previous.text === normalizedText &&
+        now - previous.timestamp <= windowMs
+        ? previous.count + 1
+        : 1;
+
+    repeatedMessageMap.set(key, { text: normalizedText, count, timestamp: now });
+    return { count };
+}
+
+function trackLinkActivity(message, settings, resolved) {
+    const key = getRateKey(message, resolved);
+    if (!key) return { links: 0, invites: 0 };
+
+    const text = String(message?.text || "");
+    const links = text.match(/(?:https?:\/\/|www\.)[^\s<>()]+/gi) || [];
+    const invites = text.match(/(?:discord\.gg|discord(?:app)?\.com\/invite|t\.me|wa\.me|chat\.whatsapp\.com)\/?[^\s<>()]*/gi) || [];
+    const now = Date.now();
+    const windowMs = ((settings && settings.windowSeconds) || 12) * 1000;
+    const previous = linkActivityMap.get(key) || [];
+    const recent = previous.filter(entry => now - entry.timestamp <= windowMs);
+
+    if (links.length || invites.length) {
+        recent.push({ timestamp: now, links: links.length, invites: invites.length });
+    }
+
+    linkActivityMap.set(key, recent);
+    return {
+        links: recent.reduce((total, entry) => total + entry.links, 0),
+        invites: recent.reduce((total, entry) => total + entry.invites, 0)
+    };
 }
 
 module.exports = {
@@ -82,47 +139,65 @@ module.exports = {
 
         const isBlacklisted = isUserBlacklisted(userBlacklist, message.userId) || isRoleBlacklisted(roleBlacklist, message);
 
-        const burst = trackBurst(message, settings);
+        const burst = trackBurst(message, settings, resolved);
+        const repeated = trackRepeatedMessage(message, settings, resolved);
+        const linkActivity = trackLinkActivity(message, settings, resolved);
         const evaluation = evaluateAntiRaid(message);
         const threshold = Number(settings.maxMessagesPerWindow) || 8;
-        const shouldBlock = isBlacklisted || evaluation.shouldDelete || burst.burst >= threshold;
+        const repeatedLimit = Number(settings.repeatedMessageLimit) || 4;
+        const linkLimit = Number(settings.linkLimit) || 3;
+        const inviteLimit = Number(settings.inviteLimit) || 2;
+        const shouldBlock = isBlacklisted ||
+            evaluation.shouldDelete ||
+            repeated.count >= repeatedLimit ||
+            linkActivity.links >= linkLimit ||
+            linkActivity.invites >= inviteLimit ||
+            burst.burst >= threshold;
 
         if (!shouldBlock) {
             return true;
         }
 
+        let action = (evaluation.action && evaluation.action !== "none") ? evaluation.action : (settings.action || "mute");
+        if (message.platform === "whatsapp" && (action === "mute" || action === "remove")) {
+            action = "kick";
+        }
+
         console.log(
             `[ANTIRAID] 🚨 Risco detectado | ${message.platform} | user: ${message.userId} | chat: ${message.chatId}` +
             ` | burst: ${burst.burst}/${threshold}` +
+            ` | repetidas: ${repeated.count}/${repeatedLimit}` +
+            ` | links: ${linkActivity.links}/${linkLimit}` +
+            ` | convites: ${linkActivity.invites}/${inviteLimit}` +
+            ` | mídia: ${message.media?.type || "não"}` +
             ` | risk: ${evaluation.risk || 0}` +
-            ` | ação: ${evaluation.action || settings.action || "mute"}`
+            ` | ação: ${action}`
         );
 
         try {
-            const action = (evaluation.action && evaluation.action !== "none") ? evaluation.action : (settings.action || "mute");
             const reason = `Anti-raid: risco detectado (${action})`;
 
             if (message.platform === "telegram") {
                 if (action === "ban") {
-                    await banMember("telegram", message, reason).catch(() => {});
+                    await banMember("telegram", message, reason);
                 } else if (action === "kick") {
-                    await kickMember("telegram", message).catch(() => {});
+                    await kickMember("telegram", message, reason);
                 } else {
-                    await muteMember("telegram", message, 10 * 60 * 1000, reason).catch(() => {});
+                    await muteMember("telegram", message, 10 * 60 * 1000, reason);
                 }
             } else if (message.platform === "discord") {
                 if (action === "ban") {
-                    await banMember("discord", message, reason).catch(() => {});
+                    await banMember("discord", message, reason);
                 } else if (action === "kick") {
-                    await kickMember("discord", message).catch(() => {});
+                    await kickMember("discord", message, reason);
                 } else {
-                    await muteMember("discord", message, 10 * 60 * 1000, reason).catch(() => {});
+                    await muteMember("discord", message, 10 * 60 * 1000, reason);
                 }
             } else if (message.platform === "whatsapp") {
                 if (action === "ban") {
-                    await banMember("whatsapp", message, reason).catch(() => {});
+                    await banMember("whatsapp", message, reason);
                 } else if (action === "kick") {
-                    await kickMember("whatsapp", message, reason).catch(() => {});
+                    await kickMember("whatsapp", message, reason);
                 }
             }
 
@@ -136,6 +211,9 @@ module.exports = {
                 userId: message.userId,
                 action,
                 burst: burst.burst,
+                repeated: repeated.count,
+                links: linkActivity.links,
+                invites: linkActivity.invites,
                 risk: evaluation.risk || 0,
                 reason,
                 text: String(message.text || "").slice(0, 180)
@@ -145,13 +223,21 @@ module.exports = {
 
             const channel = message.channel || message.raw?.channel || null;
             if (channel && typeof channel.send === "function") {
-                await channel.send({
-                    content: `🚨 Anti-raid ativado no ${message.platform}. Usuário em risco detectado. Ação aplicada: *${action}*.`
-                }).catch(() => {});
+                try {
+                    await channel.send({
+                        content: `🚨 Anti-raid ativado no ${message.platform}. Usuário em risco detectado. Ação aplicada: *${action}*.`
+                    });
+                } catch (err) {
+                    console.warn("⚠️[ANTI-RAID] Ação aplicada, mas não foi possível enviar o aviso:", err && err.message ? err.message : err);
+                }
             } else if (typeof message.reply === "function") {
-                await message.reply({
-                    text: `🚨 Anti-raid ativado no ${message.platform}. Usuário em risco detectado. Ação aplicada: *${action}*.`
-                }).catch(() => {});
+                try {
+                    await message.reply({
+                        text: `🚨 Anti-raid ativado no ${message.platform}. Usuário em risco detectado. Ação aplicada: *${action}*.`
+                    });
+                } catch (err) {
+                    console.warn("⚠️[ANTI-RAID] Ação aplicada, mas não foi possível enviar o aviso:", err && err.message ? err.message : err);
+                }
             }
 
             return false;

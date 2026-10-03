@@ -158,7 +158,7 @@ module.exports = {
     name: "su",
 
     description:
-        "Gerencia os super usuários do bot.",
+        "Administra os Super Usuários com acesso global ao bot. Use `list` para consultar, `add`/`del` para incluir ou remover alguém e `code` para registrar o primeiro dono durante a configuração inicial.",
 
     usage:
     "{prefix}su <list/function> <plataforma> [data]",

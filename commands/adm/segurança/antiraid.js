@@ -29,7 +29,7 @@ module.exports = {
     name: "antiraid",
     aliases: ["raidguard", "anti_raid", "guardraid"],
     category: "adm/segurança",
-    description: "Protege o grupo ou servidor contra flood, spam, mensagens repetidas, links, menções e webhooks suspeitos. O anti-raid é aplicado apenas no contexto atual do chat/servidor e respeita as regras locais do ambiente. Ele permite ativar/desativar a proteção, mudar a ação aplicada, ajustar limites de flood e gerenciar listas brancas e negras de usuários e cargos.",
+    description: "Proteção anti-raid contra flood de mensagens e imagens, repetição de conteúdo, excesso de links/convites e riscos de menções/webhooks dentro de uma janela configurável. No Discord, a contagem de servidor soma mensagens do mesmo membro entre canais; no Telegram, vale para o grupo e seus tópicos; no WhatsApp, vale para o grupo. Permite configurar quantidade e duração com flood, limites de links e convites com links, ação de moderação e listas de exceção.",
     usage: "{prefix}antiraid [subcomando]",
     examples: [
         "{prefix}antiraid status",
@@ -38,6 +38,7 @@ module.exports = {
         "{prefix}antiraid action mute",
         "{prefix}antiraid action ban",
         "{prefix}antiraid flood 8 12",
+        "{prefix}antiraid links 3 2",
         "{prefix}antiraid userwhitelist add @usuario",
         "{prefix}antiraid userblacklist add @usuario",
         "{prefix}antiraid rolewhitelist add @Cargo",
@@ -91,6 +92,9 @@ module.exports = {
                 `• Ativo: ${currentCfg.enabled ? "✅ Sim" : "❌ Não"}`,
                 `• Ação: ${currentCfg.action || "mute"}`,
                 `• Limite: ${currentCfg.maxMessagesPerWindow || 8} msgs em ${currentCfg.windowSeconds || 12}s`,
+                `• Mensagens repetidas: ${currentCfg.repeatedMessageLimit || 4} em ${currentCfg.windowSeconds || 12}s`,
+                `• Links: ${currentCfg.linkLimit || 3} em ${currentCfg.windowSeconds || 12}s`,
+                `• Convites: ${currentCfg.inviteLimit || 2} em ${currentCfg.windowSeconds || 12}s`,
                 `• Nível: ${resolved?.level || defaultLevel}`,
                 `• Usuários na lista branca: ${uwCount}`,
                 `• Usuários na lista negra: ${ubCount}`
@@ -106,6 +110,7 @@ module.exports = {
             lines.push(`• ${message.prefix}antiraid on | off`);
             lines.push(`• ${message.prefix}antiraid action mute | kick | ban`);
             lines.push(`• ${message.prefix}antiraid flood <limite> <segundos>`);
+            lines.push(`• ${message.prefix}antiraid links <limite-links> <limite-convites>`);
             lines.push(`• ${message.prefix}antiraid userwhitelist add|remove|list [usuário|@|ID]`);
             lines.push(`• ${message.prefix}antiraid userblacklist add|remove|list [usuário|@|ID]`);
             if (message.platform === "discord") {
@@ -196,6 +201,37 @@ module.exports = {
                 roleBlacklist: currentCfg.roleBlacklist || []
             });
             return message.reply({ text: `✅ Flood do anti-raid ajustado para *${limit} mensagens em ${seconds} segundos*.` });
+        }
+
+        if (first === "links") {
+            const linkLimit = Number(args[1]);
+            const inviteLimit = Number(args[2]);
+            if (!Number.isInteger(linkLimit) || linkLimit <= 0 || !Number.isInteger(inviteLimit) || inviteLimit <= 0) {
+                return message.reply({ text: `❌ Uso correto: \`${message.prefix}antiraid links 3 2\` (3 links e 2 convites na janela configurada).` });
+            }
+            getSetAntiRaid(message, defaultLevel, {
+                enabled: currentCfg.enabled === true,
+                action: currentCfg.action || "mute",
+                maxMessagesPerWindow: currentCfg.maxMessagesPerWindow || 8,
+                windowSeconds: currentCfg.windowSeconds || 12,
+                repeatedMessageLimit: currentCfg.repeatedMessageLimit || 4,
+                inviteLimit,
+                linkLimit,
+                mentionLimit: currentCfg.mentionLimit || 6,
+                webhookLimit: currentCfg.webhookLimit || 0,
+                groupId: currentCfg.groupId || null,
+                applyToTopics: currentCfg.applyToTopics !== false,
+                serverOnly: currentCfg.serverOnly !== false,
+                communityBypass: currentCfg.communityBypass !== false,
+                groupOnly: currentCfg.groupOnly !== false,
+                userWhitelist: currentCfg.userWhitelist || [],
+                userBlacklist: currentCfg.userBlacklist || [],
+                roleWhitelist: currentCfg.roleWhitelist || [],
+                roleBlacklist: currentCfg.roleBlacklist || []
+            });
+            return message.reply({
+                text: `✅ Limites ajustados: *${linkLimit} links* e *${inviteLimit} convites* em ${currentCfg.windowSeconds || 12}s.`
+            });
         }
 
         // ── userwhitelist ───────────────────────────────────────────────
@@ -410,7 +446,15 @@ function _help(message) {
     const lines = [];
     lines.push(header);
     lines.push('');
-    lines.push('Protege seu grupo/servidor contra ataques automatizados e comportamento malicioso (flood, spam, links, menções e webhooks suspeitos).');
+    lines.push('Protege contra flood de mensagens/imagens, repetição de conteúdo, excesso de links/convites e riscos de menções/webhooks. Os contadores usam a janela configurada e são separados por membro.');
+    lines.push('');
+    lines.push('🌐 ESCOPO POR PLATAFORMA:');
+    lines.push('  • Discord: no nível servidor, soma mensagens do mesmo membro em todos os canais e threads do servidor.');
+    lines.push('  • Telegram: conta no grupo; mensagens nos tópicos pertencentes ao grupo entram na mesma proteção.');
+    lines.push('  • WhatsApp: conta mensagens no grupo; ações mute/remove usam remoção do membro, pois a plataforma não oferece mute individual.');
+    lines.push('  • Imagens e outros anexos contam como mensagens para o limite de flood. Links e convites no texto têm contadores próprios.');
+    lines.push('  • Menções em excesso e mensagens identificadas como webhook também são avaliadas pelos limites anti-raid configurados.');
+    lines.push('  • Administradores, donos e usuários/cargos na lista branca são ignorados. A proteção não verifica arquivos em busca de vírus.');
     lines.push('');
     lines.push('📋 COMANDOS DISPONÍVEIS:');
     lines.push('  `' + p + 'antiraid status`');
@@ -423,7 +467,11 @@ function _help(message) {
     lines.push('    ↳ Define a ação tomada contra contas que violam limites. Ações disponíveis: ' + actions + '.');
     lines.push('');
     lines.push('  `' + p + 'antiraid flood <limite> <segundos>`');
-    lines.push('    ↳ Ajusta o limite de mensagens (ex: `'+p+'antiraid flood 8 12` = 8 mensagens em 12s).');
+    lines.push('    ↳ Define o limite de mensagens na janela e a duração usada também para repetição, links e convites (ex: `'+p+'antiraid flood 8 12` = 8 mensagens em 12s).');
+    lines.push('');
+    lines.push('  `' + p + 'antiraid links <limite-links> <limite-convites>`');
+    lines.push('    ↳ Define quantos links e convites um membro pode enviar durante a janela `flood` (ex: `'+p+'antiraid links 3 2`).');
+    lines.push('    ↳ No Discord com escopo servidor, os limites continuam contando entre canais. O bloqueio ocorre quando um limite é atingido.');
     lines.push('');
     lines.push('  `' + p + 'antiraid userwhitelist <add|remove|list> [usuário|@|ID]`');
     lines.push('    ↳ Isenta usuários específicos da proteção anti-raid.');
@@ -441,7 +489,9 @@ function _help(message) {
     }
     lines.push('⚙️ DICAS E REGRAS:');
     lines.push('  • No Discord, aplique por servidor para proteger todos os canais (server scope).');
-    lines.push('  • No WhatsApp, o anti-raid funciona em grupos (chat scope).');
+    lines.push('  • No Telegram, o padrão é o grupo, incluindo mensagens nos tópicos; no WhatsApp, o escopo é o grupo.');
+    lines.push('  • Se a proteção estiver configurada em um canal/categoria específico, a contagem respeita esse escopo local.');
+    lines.push('  • O status mostra os limites ativos. `flood` define a janela compartilhada; `links` altera apenas as quantidades de links e convites.');
     lines.push('  • Para adicionar usuários, você pode citar/responder uma mensagem, usar menção @ ou passar o ID/número.');
     lines.push('');
     lines.push('📌 EXEMPLOS:');

@@ -17,7 +17,7 @@ module.exports = {
     name: "lucro",
     aliases: ["ganhos", "lucrodiario", "lucro-diario", "media"],
     category: "economia",
-    description: "Mostra o lucro líquido de hoje por atividade e o total.",
+    description: "Consulta seu lucro ou prejuízo líquido de hoje na economia do grupo ou servidor, discriminado por atividade e acompanhado do total.",
     usage: "{prefix}lucro",
 
     async execute(message) {

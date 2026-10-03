@@ -46,7 +46,7 @@ module.exports = {
     name: "minerar",
     aliases: ["mineracao", "mineração", "mine"],
     category: "economia",
-    description: "Explora uma mina e recebe um resultado aleatório até duas vezes por dia.",
+    description: "Faz uma mineração na economia do grupo ou servidor: você pode encontrar minérios, ganhar satcoins ou sofrer um prejuízo. Cada pessoa tem até duas tentativas por dia.",
     usage: "{prefix}minerar",
 
     async execute(message) {
@@ -62,6 +62,7 @@ module.exports = {
             : null;
         return replyResult(message, {
             name,
+            mined: result.mined,
             status: result.mined ? result.event : "⏳ Você já minerou duas vezes hoje.",
             amount: result.mined ? result.amount : 0,
             balance: result.balance,
@@ -74,10 +75,32 @@ module.exports = {
 };
 
 async function replyResult(message, result) {
+    if (message.platform !== "discord" && !result.mined) {
+        const now = new Date();
+        const resetAt = new Date(now);
+        resetAt.setHours(24, 0, 0, 0);
+        const secondsRemaining = Math.max(0, Math.ceil((resetAt.getTime() - now.getTime()) / 1000));
+        const hours = Math.floor(secondsRemaining / 3600);
+        const minutes = Math.floor((secondsRemaining % 3600) / 60);
+        const seconds = secondsRemaining % 60;
+        const notice = `⏳ Você já usou suas minerações de hoje. Resete a mineração na loja ou aguarde a próxima virada do dia em ${hours}h ${minutes}m ${seconds}s.`;
+
+        if (message.platform === "telegram") {
+            return message.reply({
+                text: `<b>⛏️ MINERAÇÃO</b>\n━━━━━━━━━━━━━━━━━━━━━━\n${notice}`,
+                parse_mode: "HTML"
+            });
+        }
+
+        return message.reply({
+            text: `*⛏️ MINERAÇÃO*\n━━━━━━━━━━━━━━━━━━━━━━\n${notice}`
+        });
+    }
+
     const amount = economy.formatMoney(result.amount);
     const balance = economy.formatMoney(result.balance);
     const amountLabel = result.amount < 0
-        ? `💸 Saldo perdido: ${economy.formatMoney(Math.abs(result.amount))}`
+        ? `❌ Saldo perdido: ${economy.formatMoney(Math.abs(result.amount))}`
         : result.amount === 0
             ? `➖ Sem ganho ou perda: ${amount}`
             : `💰 Saldo ganho: ${amount}`;
@@ -117,10 +140,17 @@ async function replyResult(message, result) {
             text: [
                 "<b>⛏️ MINERAÇÃO</b>",
                 "━━━━━━━━━━━━━━━━━━━━━━",
-                `<b>Nome:</b> ${escapeHtml(result.name)}`,
-                `<b>ID:</b> <code>${escapeHtml(message.userId)}</code>`,
-                ...details.map(line => line ? escapeHtml(line) : "")
-            ].join("\n"),
+                `🏷️Nome: <b>${escapeHtml(result.name)}</b>`,
+                result.mineral ? `🔍Encontrado: ${escapeHtml(result.mineral)}` : null,
+                result.amount < 0
+                    ? `❌ Saldo perdido: ${economy.formatMoney(Math.abs(result.amount))}`
+                    : `💰 Saldo ganho: ${amount}`,
+                `🏦Saldo atual: ${balance}`,
+                `⛏️Minerações restantes hoje: ${result.remaining}`,
+                `✳️XP da atividade: +${result.activityXp || 0}`,
+                "",
+                escapeHtml(result.status)
+            ].filter(line => line !== null).join("\n"),
             parse_mode: "HTML"
         });
     }
@@ -130,9 +160,16 @@ async function replyResult(message, result) {
         text: [
             "*⛏️ MINERAÇÃO*",
             "━━━━━━━━━━━━━━━━━━━━━━",
-            `*Nome:* ${escapeMarkdown(result.name)}`,
-            `*ID:* \`${escapeMarkdown(message.userId)}\``,
-            ...details.map(line => line ? escapeMarkdown(line) : "")
-        ].join("\n")
+            `🏷️Nome: *${escapeMarkdown(result.name)}*`,
+            result.mineral ? `🔍Encontrado: ${result.mineral}` : null,
+            result.amount < 0
+                ? `❌ Saldo perdido: ${economy.formatMoney(Math.abs(result.amount))}`
+                : `💰 Saldo ganho: ${amount}`,
+            `🏦Saldo atual: ${balance}`,
+            `⛏️Minerações restantes hoje: ${result.remaining}`,
+            `✳️XP da atividade: +${result.activityXp || 0}`,
+            "",
+            result.status
+        ].filter(line => line !== null).join("\n")
     });
 }

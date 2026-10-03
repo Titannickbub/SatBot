@@ -4,7 +4,7 @@ module.exports = {
     name: "transferir",
     aliases: ["transfer", "enviar", "pagar"],
     category: "economia",
-    description: "Transfere satcoins para outro usuário do grupo ou servidor.",
+    description: "Transfere satcoins do seu saldo para outro membro da economia atual. Informe o valor e o destinatário por ID ou menção, ou responda à mensagem dele.",
     usage: "{prefix}transferir <valor> <id|@usuário> ou respondendo a uma mensagem",
 
     async execute(message) {

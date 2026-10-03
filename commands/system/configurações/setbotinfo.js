@@ -19,7 +19,7 @@ module.exports = {
     name: "setbotinfo",
     aliases: ["configinfobot"],
     category: "system/configurações",
-    description: "Configura as informações públicas exibidas pelo comando infobot.",
+    description: "Altera os dados exibidos por `infobot`. Informe o campo e o novo valor; os campos incluem descrição, responsável/dono, contatos, base, desenvolvedor, repositório e licença. Para vários contatos, separe-os com `|`.",
     usage: "{prefix}setbotinfo <campo> <valor>",
     examples: [
         "{prefix}setbotinfo dono Nome do responsável",

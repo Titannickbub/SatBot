@@ -4,7 +4,7 @@ module.exports = {
     name: "conta",
     aliases: ["contaglobal", "global"],
     category: "contas/exibir",
-    description: "Mostra os dados da conta global e suas plataformas vinculadas.",
+    description: "Exibe os dados da sua conta central e lista as contas de WhatsApp, Telegram ou Discord vinculadas a ela.",
     usage: "{prefix}conta",
 
     async execute(message) {

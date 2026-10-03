@@ -5,7 +5,7 @@ module.exports = {
     name: "economia",
     aliases: ["configeconomia", "economy"],
     category: "adm/RP",
-    description: "Ativa ou desativa a economia do grupo ou servidor.",
+    description: "Liga, desliga ou consulta o estado da economia local do grupo ou servidor. Quando desativada, os comandos de saldo e atividades econômicas deixam de funcionar nesse contexto.",
     usage: "{prefix}economia <ativar|desativar|status>",
 
     async execute(message) {

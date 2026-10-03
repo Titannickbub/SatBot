@@ -71,7 +71,7 @@ module.exports = {
     name: "vip",
     aliases: ["premium"],
     category: "contas/exibir",
-    description: "Gerencia status VIP, permissões e regras exclusivas.",
+    description: "Consulta e administra o acesso VIP da conta central, incluindo status, permissões e regras exclusivas. Use os subcomandos de `vip` para consultar ou alterar os benefícios disponíveis.",
     usage: "{prefix}vip [subcomando]",
     async execute(message) {
         const args = (message.text || "").trim().split(/\s+/).slice(1);

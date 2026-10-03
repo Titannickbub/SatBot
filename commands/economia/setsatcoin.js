@@ -5,7 +5,7 @@ module.exports = {
     name: "setsatcoin",
     aliases: ["setsatcoins", "setcoins"],
     category: "adm/RP",
-    description: "Define o saldo de satcoins de um usuário.",
+    description: "Substitui o saldo atual de satcoins de outro usuário pelo valor informado na economia deste grupo ou servidor. Informe o valor e depois a menção ou o ID.",
     usage: "{prefix}setsatcoin <valor> <id|@usuário>",
 
     async execute(message) {

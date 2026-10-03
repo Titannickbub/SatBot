@@ -8,7 +8,7 @@ module.exports = {
         telegram: "full",
         discord: "none"
     },
-    description: "Rebaixa um administrador do Telegram para membro.",
+    description: "Remove as permissões administrativas de um membro no grupo do Telegram e o rebaixa para membro. Indique o ID ou responda à mensagem da pessoa.",
     usage: "{prefix}trebaixar <ID> ou responda à mensagem",
     async execute(message) {
         const result = await executeTelegramDemotion(message);

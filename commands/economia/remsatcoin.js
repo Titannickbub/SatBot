@@ -5,7 +5,7 @@ module.exports = {
     name: "remsatcoin",
     aliases: ["remsatcoins", "removesatcoin"],
     category: "adm/RP",
-    description: "Remove satcoins do saldo de um usuário.",
+    description: "Remove satcoins do saldo de outro usuário na economia deste grupo ou servidor. Informe o valor e depois a menção ou o ID da pessoa.",
     usage: "{prefix}remsatcoin <valor> <id|@usuário>",
 
     async execute(message) {

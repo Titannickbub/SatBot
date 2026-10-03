@@ -1,8 +1,8 @@
 module.exports = {
     name: "d",
-    description: "Deleta a mensagem marcada/citada",
+    description: "Apaga a mensagem à qual você respondeu. Responda à mensagem que deseja remover e envie o comando; não é preciso informar o ID do autor.",
     category: "adm/ações imediatas",
-    usage: "{prefix}d  <@usuário|id>",
+    usage: "{prefix}d (respondendo à mensagem)",
     async execute(message) {
         // Verifica se o usuário tem permissão para gerenciar mensagens
         if (!message.sender || !message.sender.canManageMessages) {
