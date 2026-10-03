@@ -30,7 +30,7 @@ module.exports = {
 
         const central = store.findByPlatform("telegram", message.userId);
         if (!central) {
-            return message.reply({ text: "⚠️ Você precisa de uma Conta Central vinculada para gerenciar pacotes. Use `!perfil` para verificar." });
+            return message.reply({ text: "⚠️ Você precisa de uma Conta Central vinculada para gerenciar pacotes. Use `!perfil_text` para verificar." });
         }
 
         const packName = store.getTelegramStickerPack(central.id);

@@ -4,7 +4,7 @@ const webLinks = require("../../functions/webLinks");
 module.exports = {
     name: "gerarlink_rankativos",
     aliases: ["gerarlink-rankativos", "linkrankativos", "gerarlink_atividade"],
-    category: "contas",
+    category: "adm/RP",
     description: "Gera um link web para consultar o ranking de atividade dos membros do grupo ou servidor atual.",
     usage: "{prefix}gerarlink_rankativos",
 

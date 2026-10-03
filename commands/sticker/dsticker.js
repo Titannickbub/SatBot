@@ -253,7 +253,7 @@ module.exports = {
                 file: processedBuffer,
                 name: finalStickerName,
                 tags: "📌",
-                description: "Criado via Satela"
+                description: `Criado via ${require("../../functions/config").getBotName()}`
             });
 
             await message.react("✅").catch(() => {});

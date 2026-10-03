@@ -4,6 +4,7 @@ const os = require("os");
 const path = require("path");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
+const config = require("./config");
 
 const execFileAsync = promisify(execFile);
 const WHATSAPP_STATIC_STICKER_LIMIT = 100 * 1024;
@@ -210,7 +211,7 @@ async function createStaticWebp(inputBuffer, mode, maxSizeBytes) {
  * @param {Object} options 
  * @param {string} [options.mode="contain"] - "contain" (proporção), "fill" (esticar), "cover" (cortar centro)
  * @param {string} [options.packName="Sat Bot"] - Nome do pacote de figurinhas
- * @param {string} [options.authorName="Satela"] - Nome do autor das figurinhas
+ * @param {string} [options.authorName] - Nome configurado do bot ou autor personalizado
  * @returns {Promise<Buffer>}
  */
 async function createStickerBuffer(inputBuffer, options = {}) {
@@ -286,7 +287,7 @@ async function createStickerBuffer(inputBuffer, options = {}) {
     // O EXIF customizado pode ser aceito pelo sharp, mas causar renderização
     // vazia em algumas versões do WhatsApp. O envio padrão usa WebP puro.
     const stickerBuffer = options.addMetadata === true
-        ? addExifToWebp(webpResult, options.packName || "Sat Bot", options.authorName || "Satela")
+        ? addExifToWebp(webpResult, options.packName || config.getBotName(), options.authorName || config.getBotName())
         : webpResult;
     const stickerMetadata = await sharp(stickerBuffer, { failOn: "none" }).metadata();
     if (stickerMetadata.format !== "webp" || !stickerMetadata.width || !stickerMetadata.height) {
@@ -341,13 +342,13 @@ async function createTelegramSticker(inputBuffer, options = {}) {
  * @param {string} authorName 
  * @returns {Buffer}
  */
-function addExifToWebp(buffer, packName = "Sat Bot", authorName = "Satela") {
+function addExifToWebp(buffer, packName = config.getBotName(), authorName = config.getBotName()) {
     if (!Buffer.isBuffer(buffer) || buffer.length < 12) return buffer;
 
     const json = JSON.stringify({
         "sticker-pack-id": "com.satela.bot",
         "sticker-pack-name": String(packName || "Sat Bot"),
-        "sticker-pack-publisher": String(authorName || "Satela"),
+        "sticker-pack-publisher": String(authorName || config.getBotName()),
         "emojis": ["📌"]
     });
 

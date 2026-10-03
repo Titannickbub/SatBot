@@ -29,9 +29,17 @@ module.exports = {
             });
         })();
 
-        const formatCommand = (cmd) => cmd.usage
-            ? cmd.usage.replace(/\{prefix\}/g, message.prefix)
-            : `${message.prefix}${cmd.name}`;
+        const formatCommand = (cmd) => {
+            const indicator = getCommandPlatformIndicator(cmd, message.platform);
+            const usage = cmd.usage
+                ? cmd.usage.replace(/\{prefix\}/g, message.prefix)
+                : `${message.prefix}${cmd.name}`;
+            return usage
+                .split("\n")
+                .map(line => line.trim())
+                .filter(Boolean)
+                .map(line => `${indicator.icon} ${line}`);
+        };
 
         const formatSection = (title, items, prefix = "🔶") => {
             if (!items.length) return "";
@@ -74,10 +82,7 @@ module.exports = {
                 pages.forEach((page) => {
                     text += formatSection(
                         "📄 Comandos:",
-                        page.map((cmd) => {
-                            const indicator = getCommandPlatformIndicator(cmd, message.platform);
-                            return `${indicator.icon} ${formatCommand(cmd)}`;
-                        }),
+                        page.flatMap(formatCommand),
                         ""
                     );
                     text += "\n";
@@ -131,10 +136,7 @@ module.exports = {
                     : `📂 ${sectionTitle}`;
                 text += formatSection(
                     pageTitle,
-                    page.map((cmd) => {
-                        const indicator = getCommandPlatformIndicator(cmd, message.platform);
-                        return `${indicator.icon} ${formatCommand(cmd)}`;
-                    }),
+                    page.flatMap(formatCommand),
                     ""
                 );
             });

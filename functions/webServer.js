@@ -6,6 +6,7 @@ const nofapHelper = require("./nofapHelper");
 const groupSettings = require("./groupSettings");
 const config = require("./config");
 const activity = require("./activity");
+const { sameUserId } = require("./moderationHelper");
 
 const DEFAULT_PORT = 32013;
 
@@ -27,6 +28,28 @@ function profileMessage(platform, groupId, userId) {
     userId,
     raw
   };
+}
+
+async function getDiscordAvatar(groupId, userId) {
+  const client = global.discordClient;
+  if (!client) return null;
+
+  const guild = client.guilds.cache.get(String(groupId));
+  const member = guild?.members.cache.get(String(userId));
+  let user = member?.user || client.users.cache.get(String(userId));
+  if (!user && typeof client.users.fetch === "function") {
+    try {
+      user = await client.users.fetch(String(userId));
+    } catch (error) {
+      console.warn(`[WEB] Não foi possível buscar o avatar do usuário Discord ${userId}:`, error.message || error);
+    }
+  }
+
+  const avatarOptions = { size: 128, forceStatic: true };
+
+  return member?.displayAvatarURL(avatarOptions)
+    || user?.displayAvatarURL(avatarOptions)
+    || null;
 }
 
 async function getGroupName(platform, groupId, scope) {
@@ -87,6 +110,7 @@ async function readProfile(url) {
     groupId,
     groupName,
     userId,
+    avatarUrl: platform === "discord" ? await getDiscordAvatar(groupId, userId) : null,
     name: account?.displayName || account?.username || xpUser?.displayName || xpUser?.username || activityUser?.displayName || activityUser?.username || central?.name || "Usuário",
     economy: {
       exists: Boolean(account),
@@ -126,8 +150,9 @@ function formatMoney(cents) {
 }
 
 function renderProfile(profile) {
+  const botName = config.getBotName();
   if (profile.error) {
-    return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Perfil não encontrado</title><style>${styles()}</style></head><body><main class="card error"><div class="brand">SATBOT</div><h1>Perfil não encontrado</h1><p>${escapeHtml(profile.error)}</p><p class="hint">Use /perfil?grupo=ID&usuario=ID&plataforma=discord</p></main></body></html>`;
+    return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Perfil não encontrado - ${escapeHtml(botName)}</title><style>${styles()}</style></head><body><main class="card error"><div class="brand">${escapeHtml(botName)}</div><h1>Perfil não encontrado</h1><p>${escapeHtml(profile.error)}</p><p class="hint">Use /perfil?grupo=ID&usuario=ID&plataforma=discord</p></main></body></html>`;
   }
 
   const economyPosition = profile.economy.position ? `#${profile.economy.position}` : "Não classificado";
@@ -136,14 +161,17 @@ function renderProfile(profile) {
   const nofapText = profile.nofap.active
     ? `${profile.nofap.currentDays} dias • ${profile.nofap.title}`
     : "Inativo";
+  const avatarContent = profile.platform === "discord" && profile.avatarUrl
+    ? `<img src="${escapeHtml(profile.avatarUrl)}" alt="" onerror="this.remove()">`
+    : "";
 
   return `<!doctype html>
 <html lang="pt-BR">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Perfil de ${escapeHtml(profile.name)} - SatBot</title><style>${styles()}</style></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Perfil de ${escapeHtml(profile.name)} - ${escapeHtml(botName)}</title><style>${styles()}</style></head>
 <body>
   <main class="card">
-    <div class="brand">SATBOT <span>PERFIL</span></div>
-    <header><div class="avatar">${escapeHtml(profile.name.charAt(0).toUpperCase())}</div><div><h1>${escapeHtml(profile.name)}</h1><p class="muted">ID: ${escapeHtml(profile.userId)}</p></div></header>
+    <div class="brand">${escapeHtml(botName)} <span>PERFIL</span></div>
+    <header><div class="avatar">${escapeHtml(profile.name.charAt(0).toUpperCase())}${avatarContent}</div><div><h1>${escapeHtml(profile.name)}</h1><p class="muted">ID: ${escapeHtml(profile.userId)}</p></div></header>
     <div class="scope">Plataforma: ${escapeHtml(profile.platform)} <span>•</span> ${escapeHtml(profile.groupName)} <span>•</span> ID: ${escapeHtml(profile.groupId)}</div>
     <section class="grid">
       <article><div class="label">SATCOINS</div><div class="value money">${formatMoney(profile.economy.balance)}</div><div class="meta">Posição no dinheiro: ${economyPosition}</div></article>
@@ -152,7 +180,7 @@ function renderProfile(profile) {
       <article><div class="label">NÍVEL XP</div><div class="value">${profile.xp.level}</div><div class="meta">Ranking de experiência</div></article>
       <article><div class="label">NOFAP</div><div class="value small">${escapeHtml(nofapText)}</div><div class="meta">Recorde: ${profile.nofap.recordDays || 0} dias • Resets: ${profile.nofap.totalResets || 0}</div></article>
     </section>
-    <footer>Perfil local do grupo/servidor • SatBot</footer>
+    <footer>Perfil local do grupo/servidor • ${escapeHtml(botName)}</footer>
   </main>
 </body></html>`;
 }
@@ -205,7 +233,7 @@ async function readRanking(url, type, order = "rich") {
   };
 }
 
-async function readActivityRanking(url) {
+async function readActivityRanking(url, includeAll = false) {
   const platform = String(url.searchParams.get("plataforma") || url.searchParams.get("platform") || "discord").toLowerCase();
   const groupId = url.searchParams.get("grupo") || url.searchParams.get("group");
   if (!["discord", "telegram", "whatsapp"].includes(platform) || !groupId) {
@@ -222,12 +250,53 @@ async function readActivityRanking(url) {
     return { error: "O sistema de atividade está desativado neste grupo/servidor." };
   }
 
+  let users = result.users;
+  if (includeAll && platform === "whatsapp") {
+    const sock = global.whatsappSock;
+    if (!sock || typeof sock.groupMetadata !== "function") {
+      return { error: "O suporte ao WhatsApp não está disponível para carregar os membros deste grupo." };
+    }
+
+    let metadata;
+    try {
+      metadata = await sock.groupMetadata(String(groupId));
+    } catch (error) {
+      console.error("[WEB] Falha ao buscar membros do grupo WhatsApp para o ranking:", error);
+      return { error: "Não foi possível carregar os membros deste grupo do WhatsApp." };
+    }
+
+    if (!Array.isArray(metadata?.participants)) {
+      return { error: "A lista de membros deste grupo do WhatsApp está indisponível." };
+    }
+
+    users = metadata.participants.map((participant, index) => {
+      const identifiers = [participant.id, participant.lid, participant.phoneNumber].filter(Boolean);
+      const recordedUser = result.users.find(user =>
+        identifiers.some(identifier => sameUserId(identifier, user.userId))
+      );
+      const userId = String(participant.id || participant.lid || participant.phoneNumber || `membro-${index + 1}`);
+      return {
+        ...(recordedUser || {}),
+        userId,
+        displayName: participant.name || participant.notify || recordedUser?.displayName || null,
+        username: recordedUser?.username || null,
+        total: recordedUser?.total || 0,
+        dailyTotal: recordedUser?.dailyTotal || 0,
+        messages: recordedUser?.messages || 0,
+        commands: recordedUser?.commands || 0,
+        stickers: recordedUser?.stickers || 0,
+        files: recordedUser?.files || 0,
+        profileAvailable: Boolean(recordedUser)
+      };
+    });
+  }
+
   return {
     type: "activity",
     platform,
     groupId,
     groupName,
-    entries: result.users.slice(0, 5).map((user, index) => ({
+    entries: (includeAll ? users : users.slice(0, 5)).map((user, index) => ({
       position: index + 1,
       name: user.displayName || user.username || user.userId,
       userId: user.userId,
@@ -236,19 +305,22 @@ async function readActivityRanking(url) {
       messages: user.messages,
       commands: user.commands,
       stickers: user.stickers,
-      files: user.files
-    }))
+      files: user.files,
+      profileAvailable: user.profileAvailable !== false
+    })).sort((a, b) => b.total - a.total || String(a.name).localeCompare(String(b.name)))
+      .map((entry, index) => ({ ...entry, position: index + 1 }))
   };
 }
 
 function renderRanking(ranking) {
+  const botName = config.getBotName();
   if (ranking.error) {
-    return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ranking não encontrado</title><style>${styles()}</style></head><body><main class="card error"><div class="brand">SATBOT</div><h1>Ranking indisponível</h1><p>${escapeHtml(ranking.error)}</p></main></body></html>`;
+    return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ranking não encontrado - ${escapeHtml(botName)}</title><style>${styles()}</style></head><body><main class="card error"><div class="brand">${escapeHtml(botName)}</div><h1>Ranking indisponível</h1><p>${escapeHtml(ranking.error)}</p></main></body></html>`;
   }
 
   const isXp = ranking.type === "xp";
   const isActivity = ranking.type === "activity";
-  const title = isXp ? "Ranking XP" : isActivity ? "Ranking de atividade" : "Ranking de riqueza";
+  const title = isXp ? "Ranking XP" : isActivity ? (ranking.includeAll ? "Ranking de atividade — todos" : "Ranking de atividade") : "Ranking de riqueza";
   const rows = ranking.entries.length
     ? ranking.entries.map(entry => isXp
       ? renderRankingEntry(ranking, entry, `<b>${entry.xp} XP</b><em>Nível ${entry.level}</em>`)
@@ -258,16 +330,19 @@ function renderRanking(ranking) {
     ).join("")
     : `<p class="muted">Ainda não há usuários neste ranking.</p>`;
 
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title} - SatBot</title><style>${styles()} .ranking{margin-top:22px;display:grid;gap:10px}.rank-row{display:grid;grid-template-columns:60px 1fr auto auto;align-items:center;gap:14px;padding:17px 18px;border:1px solid #334566;border-radius:14px;background:#202a40;color:inherit;text-decoration:none;transition:transform .15s ease,border-color .15s ease,background .15s ease}.rank-row:hover,.rank-row:focus-visible{transform:translateY(-2px);border-color:#7ea7ff;background:#273653;outline:none}.rank-row strong{font-size:22px;color:#8eaaff}.rank-row span{font-weight:700}.rank-row small{display:block;color:#8998b3;font-weight:400;font-size:11px;margin-top:4px}.rank-row b{white-space:nowrap}.rank-row em{font-style:normal;color:#b8c3d9;font-size:13px}@media(max-width:600px){.rank-row{grid-template-columns:42px 1fr auto}.rank-row em{grid-column:2}.rank-row b{font-size:13px}}</style></head><body><main class="card"><div class="brand">SATBOT <span>RANKING</span></div><header><div><h1>${title}</h1><p class="muted">${escapeHtml(ranking.groupName)}</p></div></header><div class="scope">Plataforma: ${escapeHtml(ranking.platform)} <span>•</span> ID: ${escapeHtml(ranking.groupId)}</div><section class="ranking">${rows}</section><footer>Ranking local do grupo/servidor • SatBot</footer></main></body></html>`;
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)} - ${escapeHtml(botName)}</title><style>${styles()} .ranking{margin-top:22px;display:grid;gap:10px}.rank-row{display:grid;grid-template-columns:60px 1fr auto auto;align-items:center;gap:14px;padding:17px 18px;border:1px solid #334566;border-radius:14px;background:#202a40;color:inherit;text-decoration:none;transition:transform .15s ease,border-color .15s ease,background .15s ease}.rank-row:hover,.rank-row:focus-visible{transform:translateY(-2px);border-color:#7ea7ff;background:#273653;outline:none}.rank-row strong{font-size:22px;color:#8eaaff}.rank-row span{font-weight:700}.rank-row small{display:block;color:#8998b3;font-weight:400;font-size:11px;margin-top:4px}.rank-row b{white-space:nowrap}.rank-row em{font-style:normal;color:#b8c3d9;font-size:13px}@media(max-width:600px){.rank-row{grid-template-columns:42px 1fr auto}.rank-row em{grid-column:2}.rank-row b{font-size:13px}}</style></head><body><main class="card"><div class="brand">${escapeHtml(botName)} <span>RANKING</span></div><header><div><h1>${escapeHtml(title)}</h1><p class="muted">${escapeHtml(ranking.groupName)}</p></div></header><div class="scope">Plataforma: ${escapeHtml(ranking.platform)} <span>•</span> ID: ${escapeHtml(ranking.groupId)}</div><section class="ranking">${rows}</section><footer>Ranking local do grupo/servidor • ${escapeHtml(botName)}</footer></main></body></html>`;
 }
 
 function renderRankingEntry(ranking, entry, metrics) {
   const profileUrl = `/perfil?grupo=${encodeURIComponent(ranking.groupId)}&plataforma=${encodeURIComponent(ranking.platform)}&usuario=${encodeURIComponent(entry.userId)}`;
-  return `<a class="rank-row" href="${profileUrl}" aria-label="Abrir perfil de ${escapeHtml(entry.name)}"><strong>#${entry.position}</strong><span>${escapeHtml(entry.name)}<small>ID: ${escapeHtml(entry.userId)}</small></span>${metrics}</a>`;
+  const row = `<strong>#${entry.position}</strong><span>${escapeHtml(entry.name)}<small>ID: ${escapeHtml(entry.userId)}</small></span>${metrics}`;
+  return entry.profileAvailable === false
+    ? `<div class="rank-row">${row}</div>`
+    : `<a class="rank-row" href="${profileUrl}" aria-label="Abrir perfil de ${escapeHtml(entry.name)}">${row}</a>`;
 }
 
 function styles() {
-  return `:root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}.card{width:min(860px,100%);padding:34px;border:1px solid #334366;border-radius:24px;background:linear-gradient(145deg,#1c2438ee,#111521f2);box-shadow:0 24px 80px #0008}.brand{letter-spacing:.18em;color:#7ea7ff;font-weight:800}.brand span{color:#9da8bd;font-weight:500;font-size:.75em}header{display:flex;align-items:center;gap:18px;margin:34px 0 18px}.avatar{width:72px;height:72px;border-radius:20px;display:grid;place-items:center;background:linear-gradient(135deg,#6d5dfc,#3aa8ff);font-size:32px;font-weight:800}h1{margin:0;font-size:clamp(28px,5vw,46px)}p{margin:8px 0}.muted,.hint{color:#9da8bd}.scope{padding:13px 16px;border-radius:12px;background:#0e1422;color:#b7c5e7;font-size:14px}.scope span{color:#536486;margin:0 8px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}.grid article{padding:22px;border-radius:16px;background:#202a40;border:1px solid #334566}.label{color:#9da8bd;font-size:12px;letter-spacing:.12em;font-weight:700}.value{font-size:32px;font-weight:800;margin:12px 0 8px}.value.small{font-size:22px}.money{color:#8ff0bf}.meta{color:#b8c3d9;font-size:14px}footer{margin-top:26px;color:#71809d;font-size:13px}.error{text-align:center}.error h1{margin-top:28px}@media(max-width:600px){.card{padding:24px}.grid{grid-template-columns:1fr}header{margin-top:26px}}`;
+  return `:root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}.card{width:min(860px,100%);padding:34px;border:1px solid #334366;border-radius:24px;background:linear-gradient(145deg,#1c2438ee,#111521f2);box-shadow:0 24px 80px #0008}.brand{letter-spacing:.18em;color:#7ea7ff;font-weight:800}.brand span{color:#9da8bd;font-weight:500;font-size:.75em}header{display:flex;align-items:center;gap:18px;margin:34px 0 18px}.avatar{position:relative;overflow:hidden;flex:none;width:72px;height:72px;border-radius:20px;display:grid;place-items:center;background:linear-gradient(135deg,#6d5dfc,#3aa8ff);font-size:32px;font-weight:800}.avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}h1{margin:0;font-size:clamp(28px,5vw,46px)}p{margin:8px 0}.muted,.hint{color:#9da8bd}.scope{padding:13px 16px;border-radius:12px;background:#0e1422;color:#b7c5e7;font-size:14px}.scope span{color:#536486;margin:0 8px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}.grid article{padding:22px;border-radius:16px;background:#202a40;border:1px solid #334566}.label{color:#9da8bd;font-size:12px;letter-spacing:.12em;font-weight:700}.value{font-size:32px;font-weight:800;margin:12px 0 8px}.value.small{font-size:22px}.money{color:#8ff0bf}.meta{color:#b8c3d9;font-size:14px}footer{margin-top:26px;color:#71809d;font-size:13px}.error{text-align:center}.error h1{margin-top:28px}@media(max-width:600px){.card{padding:24px}.grid{grid-template-columns:1fr}header{margin-top:26px}}`;
 }
 
 function start() {
@@ -322,6 +397,13 @@ function start() {
       return;
     }
 
+    if (requestUrl.pathname === "/rankatividade-all") {
+      const ranking = await readActivityRanking(requestUrl, true);
+      response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      response.end(renderRanking({ ...ranking, includeAll: true }));
+      return;
+    }
+
     if (requestUrl.pathname === "/api/rankatividade" || requestUrl.pathname === "/api/rankativos") {
       const ranking = await readActivityRanking(requestUrl);
       response.writeHead(ranking.error ? 404 : 200, { "Content-Type": "application/json; charset=utf-8" });
@@ -329,9 +411,17 @@ function start() {
       return;
     }
 
+    if (requestUrl.pathname === "/api/rankatividade-all") {
+      const ranking = await readActivityRanking(requestUrl, true);
+      response.writeHead(ranking.error ? 404 : 200, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify(ranking));
+      return;
+    }
+
     if (requestUrl.pathname === "/" || requestUrl.pathname === "/index.html") {
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      response.end("<!doctype html><html lang=\"pt-BR\"><meta charset=\"utf-8\"><title>SatBot</title><body><h1>SatBot</h1><p>Use <code>/perfil?grupo=ID&usuario=ID&plataforma=discord</code> para abrir um perfil.</p></body></html>");
+      const botName = escapeHtml(config.getBotName());
+      response.end(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>${botName}</title><body><h1>${botName}</h1><p>Use <code>/perfil?grupo=ID&usuario=ID&plataforma=discord</code> para abrir um perfil.</p></body></html>`);
       return;
     }
 

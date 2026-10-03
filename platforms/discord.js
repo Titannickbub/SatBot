@@ -188,7 +188,7 @@ async function start(onMessage) {
             const slashCommandsArray = [
                 {
                     name: "start",
-                    description: "Apresentação da Satela e primeiros passos."
+                    description: `Apresentação de ${require("../functions/config").getBotName()} e primeiros passos.`
                 }
             ];
 

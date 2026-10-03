@@ -1,4 +1,5 @@
 const { Input } = require("telegraf");
+const config = require("./config");
 
 function generatePackName(centralId, botUsername) {
     const cleanCentralId = String(centralId || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 10).toLowerCase();
@@ -58,7 +59,7 @@ async function createOrAddStickerToPack(bot, telegramUserId, packName, packTitle
             await bot.telegram.callApi("createNewStickerSet", {
                 user_id: userIdNum,
                 name: packName,
-                title: packTitle || "Pacote Satela",
+                title: packTitle || `Pacote ${config.getBotName()}`,
                 stickers: JSON.stringify([inputSticker]),
                 sticker_type: "regular"
             });

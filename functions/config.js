@@ -24,7 +24,7 @@ const DEFAULT_CONFIG = {
     },
     sticker: {
         packName: "Sat Bot",
-        authorName: "Satela"
+        authorName: "Sat Bot"
     },
     botInfo: {
         description: "Um bot multi-plataforma para facilitar sua comunidade.",
@@ -765,13 +765,35 @@ function getBotName() {
 
 function setBotName(name) {
     const data = load();
+    const previousName = getBotName();
     data.botName = name ? String(name).trim() : "";
+    const updatedName = getBotName();
+
+    if (data.sticker) {
+        if (!data.sticker.packName || data.sticker.packName === previousName || data.sticker.packName === "Sat Bot") {
+            data.sticker.packName = updatedName;
+        }
+        if (!data.sticker.authorName || data.sticker.authorName === previousName || data.sticker.authorName === "Satela") {
+            data.sticker.authorName = updatedName;
+        }
+    }
+    if (data.botInfo && (data.botInfo.baseName === previousName || data.botInfo.baseName === "Sat Bot")) {
+        data.botInfo.baseName = updatedName;
+    }
+
     save(data);
-    return getBotName();
+    return updatedName;
 }
 
 function getBotInfo() {
-    return load().botInfo;
+    const info = load().botInfo;
+    const botName = getBotName();
+    return {
+        ...info,
+        baseName: !info.baseName || info.baseName === "Sat Bot"
+            ? botName
+            : info.baseName
+    };
 }
 
 function setBotInfo(updates) {
@@ -993,7 +1015,7 @@ function getStickerConfig() {
     const botName = getBotName() || "Sat Bot";
     const defaults = {
         packName: botName,
-        authorName: "Satela"
+        authorName: botName
     };
     if (!data.sticker) {
         data.sticker = defaults;
@@ -1002,14 +1024,16 @@ function getStickerConfig() {
     }
     return {
         packName: data.sticker.packName || defaults.packName,
-        authorName: data.sticker.authorName || defaults.authorName
+        authorName: !data.sticker.authorName || data.sticker.authorName === "Satela"
+            ? defaults.authorName
+            : data.sticker.authorName
     };
 }
 
 function setStickerPack(packName) {
     const data = load();
     data.sticker = getStickerConfig();
-    data.sticker.packName = packName ? String(packName).trim() : "Sat Bot";
+    data.sticker.packName = packName ? String(packName).trim() : getBotName();
     save(data);
     return data.sticker;
 }
@@ -1017,7 +1041,7 @@ function setStickerPack(packName) {
 function setStickerAuthor(authorName) {
     const data = load();
     data.sticker = getStickerConfig();
-    data.sticker.authorName = authorName ? String(authorName).trim() : "Satela";
+    data.sticker.authorName = authorName ? String(authorName).trim() : getBotName();
     save(data);
     return data.sticker;
 }

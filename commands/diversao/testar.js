@@ -1,6 +1,7 @@
 const path = require("path");
 const { cleanJid } = require("../../functions/moderationHelper");
 const { getTestInfo, getSavedMedia, resolveTestKey, TESTES_MEDIA_DIR, TESTES_FILE } = require("../../functions/testeHelper");
+const { renderCoupleTest } = require("../../functions/imageBanner");
 const actModule = require("./act");
 
 const { sendMedia } = actModule._internals || {};
@@ -9,13 +10,14 @@ module.exports = {
     name: "testar",
     aliases: ["teste"],
     category: "diversão",
-    description: "Executa um teste aleatório entre vários tipos de avaliação, como gay, lesbica, bonito, feio, casal, gado, corno, burro, golpe e mais.",
+    description: "Executa testes aleatórios de diversão, incluindo o teste romântico de casal com banner e fotos dos participantes.",
     usage: [
         "{prefix}testar gay",
         "{prefix}testar lesbica",
         "{prefix}testar bonito",
         "{prefix}testar feio",
         "{prefix}testar casal",
+        "{prefix}testar casal2",
         "{prefix}testar gado",
         "{prefix}testar corno",
         "{prefix}testar burro",
@@ -44,18 +46,19 @@ module.exports = {
             const percentage = Math.floor(Math.random() * 101);
             let caption;
             let mentions;
+            let casalPair;
 
-            if (testKey === "casal") {
+            if (testKey === "casal" || testKey === "casal2") {
                 const casalTargets = resolveCasalTargets(message);
                 if (!casalTargets || casalTargets.length < 2) {
                     return message.reply({
-                        text: "❌ Para testar casal, marque 1 pessoa ou 2 pessoas.\nExemplo: `!testar casal @usuario` ou `!testar casal @a @b`"
+                        text: `❌ Para testar ${testKey}, marque 1 pessoa ou 2 pessoas.\nExemplo: \`${message.prefix || "!"}testar ${testKey} @usuario\` ou \`${message.prefix || "!"}testar ${testKey} @a @b\``
                     });
                 }
 
-                const pair = casalTargets.slice(0, 2);
-                caption = buildCasalCaption(pair[0], pair[1], percentage, message.platform);
-                mentions = buildCasalMentions(message, pair);
+                casalPair = casalTargets.slice(0, 2);
+                caption = buildCasalCaption(casalPair[0], casalPair[1], percentage, message.platform);
+                mentions = buildCasalMentions(message, casalPair);
             } else {
                 const profile = getTestInfo(testKey);
                 const target = resolveTarget(message);
@@ -65,6 +68,16 @@ module.exports = {
 
             await message.reply({ text: "🔎 Verificando..." });
             await new Promise(resolve => setTimeout(resolve, 1200));
+
+            if (testKey === "casal2") {
+                const banner = await renderCoupleTest(message, casalPair, percentage);
+                return await message.replyImg({
+                    image: banner.buffer,
+                    caption: banner.caption,
+                    fileName: "casal2.png",
+                    mentions
+                });
+            }
 
             const mediaMeta = getSavedMedia(testKey);
 

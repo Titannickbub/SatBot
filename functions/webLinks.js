@@ -40,6 +40,8 @@ function ranking(message, type) {
     if (!scope) return null;
     const pathname = type === "xp"
         ? "/rankxp"
+        : type === "activity_all"
+            ? "/rankatividade-all"
         : type === "activity"
             ? "/rankatividade"
             : "/rankrico";

@@ -52,9 +52,9 @@ module.exports = {
 
         const sender = message.sender || {};
         const adapter = (message.platforms || []).find(p => p.name === message.platform);
-        const userOk = adapter?.checkUserPermission
+        const userOk = sender.isOwner || isOwner(message) || (adapter?.checkUserPermission
             ? await adapter.checkUserPermission(message.chatId, message.userId)
-            : (sender.isAdmin || sender.isOwner || sender.canManageMessages || isOwner(message));
+            : (sender.isAdmin || sender.canManageMessages));
 
         if (!userOk) {
             return message.reply({ text: "❌ Apenas administradores ou super usuários podem usar este comando." });

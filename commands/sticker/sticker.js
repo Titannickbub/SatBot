@@ -65,7 +65,7 @@ module.exports = {
             const configFn = message.functions?.config || require("../../functions/config");
             const stickerConfig = typeof configFn.getStickerConfig === "function"
                 ? configFn.getStickerConfig()
-                : { packName: "Sat Bot", authorName: "Satela" };
+                : { packName: configFn.getBotName?.() || "Sat Bot", authorName: configFn.getBotName?.() || "Sat Bot" };
 
             const telegramSticker = message.platform === "telegram"
                 ? await createTelegramSticker(buffer, {
@@ -108,7 +108,7 @@ module.exports = {
                                 packName = telegramStickerHelper.generatePackName(central.id, botUsername);
                             }
 
-                            const packTitle = `Pacote de ${central.name || message.displayName || "Usuário"} (Satela)`;
+                            const packTitle = `Pacote de ${central.name || message.displayName || "Usuário"} (${configFn.getBotName?.() || "Sat Bot"})`;
                             packResult = await telegramStickerHelper.createOrAddStickerToPack(
                                 botInst,
                                 telegramAccount.platformId,

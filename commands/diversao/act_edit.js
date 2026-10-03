@@ -17,7 +17,7 @@ const ACTION_NAME = /^[\p{L}\p{N}][\p{L}\p{N}_-]{0,31}$/u;
 module.exports = {
     name: "act_edit",
     aliases: ["actedit", "act_inspect", "actinspect"],
-    category: "diversão",
+    category: "system",
     platformSupport: {
         whatsapp: "full",
         telegram: "full",

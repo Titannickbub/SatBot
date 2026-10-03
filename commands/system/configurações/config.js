@@ -68,9 +68,6 @@ Subcomandos:
   prefix <símbolo>
     • Define um novo prefixo de comando, com um ou mais caracteres e sem espaços.
 
-  botname <nome>
-    • Define um nome personalizado para o bot (salvo em settings/config.json e preservado em atualizações).
-
   plataforma <nome> <on|off>
     • Ativa ou desativa a plataforma especificada (discord, telegram, whatsapp).
 
@@ -169,19 +166,6 @@ Subcomandos:
             return await alterarPrefixo(
                 message,
                 args[1]
-            );
-
-        }
-
-        if (
-            action === "botname" ||
-            action === "nome" ||
-            action === "name"
-        ) {
-
-            return await alterarBotName(
-                message,
-                args.slice(1).join(" ")
             );
 
         }
@@ -395,7 +379,10 @@ Plataformas
     text += `  • Telegram: ${uploads.telegramChatId || "não configurado"}\n`;
     text += `  ℹ️ ${activeProviderHint}\n`;
 
-    const stickerCfg = typeof configFn.getStickerConfig === "function" ? configFn.getStickerConfig() : { packName: "Sat Bot", authorName: "Satela" };
+    const fallbackBotName = typeof configFn.getBotName === "function" ? configFn.getBotName() : "Sat Bot";
+    const stickerCfg = typeof configFn.getStickerConfig === "function"
+        ? configFn.getStickerConfig()
+        : { packName: fallbackBotName, authorName: fallbackBotName };
     text += `\n🎨 Figurinhas (Stickers)\n`;
     text += `  • Pacote (Pack): ${stickerCfg.packName}\n`;
     text += `  • Autor (Publisher): ${stickerCfg.authorName}\n`;
@@ -458,7 +445,7 @@ async function alterarStickerConfig(message, subArgs) {
 
     if (sub === "reset" || sub === "padrao") {
         const botName = typeof configFn.getBotName === "function" ? configFn.getBotName() : "Sat Bot";
-        const updated = configFn.setStickerConfig(botName, "Satela");
+        const updated = configFn.setStickerConfig(botName, botName);
         return await message.reply({ text: `✅ Configuração de figurinhas restaurada:\n📦 Pacote: *${updated.packName}*\n👤 Autor: *${updated.authorName}*` });
     }
 
@@ -715,25 +702,6 @@ ${normalizedPrefix}
 
     });
 
-}
-
-async function alterarBotName(message, nameInput) {
-    const configFn = message.functions.config;
-    if (!nameInput || !nameInput.trim()) {
-        const currentName = typeof configFn.getBotName === "function" ? configFn.getBotName() : "Sat Bot";
-        return await message.reply({
-            text: `ℹ️ O nome atual do bot é: *${currentName}*\n\nPara alterar o nome, use:\n\`!config botname Novo Nome Do Bot\``
-        });
-    }
-
-    const cleanName = nameInput.trim();
-    if (typeof configFn.setBotName === "function") {
-        configFn.setBotName(cleanName);
-    }
-
-    return await message.reply({
-        text: `✅ Nome do bot alterado para: *${cleanName}*\n\nAgora a Inteligência Artificial e o sistema utilizarão este nome!`
-    });
 }
 
 async function alterarPlataforma(

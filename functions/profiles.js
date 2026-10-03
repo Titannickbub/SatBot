@@ -62,7 +62,9 @@ async function resolvePlatformProfile(platform, id, context = {}) {
                 avatarUrl = sock.contacts?.[primaryJid]?.imgUrl || sock.contacts?.[altJid]?.imgUrl || null;
             }
 
-            const name = context.username || context.raw?.pushName || null;
+            const contact = sock.contacts?.[primaryJid] || sock.contacts?.[altJid];
+            const name = context.username || context.raw?.pushName ||
+                contact?.name || contact?.notify || contact?.verifiedName || null;
 
             return {
                 platform,

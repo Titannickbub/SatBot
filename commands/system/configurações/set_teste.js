@@ -52,6 +52,9 @@ module.exports = {
             if (!resolvedKey) {
                 return message.reply({ text: `❌ Informe o tipo para limpar. Exemplo: \`${message.prefix}set_teste clear gay\`.` });
             }
+            if (resolvedKey === "casal2") {
+                return message.reply({ text: "ℹ️ `casal2` gera um banner romântico automaticamente e não usa mídia configurável." });
+            }
             return clearTestMedia(message, resolvedKey);
         }
 
@@ -61,11 +64,17 @@ module.exports = {
             if (!resolvedKey) {
                 return message.reply({ text: `❌ Informe o tipo do teste. Exemplo: \`${message.prefix}set_teste image gay\`.` });
             }
+            if (resolvedKey === "casal2") {
+                return message.reply({ text: "ℹ️ `casal2` gera um banner romântico automaticamente e não usa mídia configurável." });
+            }
             return saveTestFromMessage(message, resolvedKey, args.slice(2));
         }
 
         const resolvedKey = resolveTestKey(command);
         if (resolvedKey) {
+            if (resolvedKey === "casal2") {
+                return message.reply({ text: "ℹ️ `casal2` gera um banner romântico automaticamente e não usa mídia configurável." });
+            }
             const legacyAction = String(args[1] || "").trim().toLowerCase();
             if (["clear", "remove", "delete", "limpar"].includes(legacyAction)) {
                 return clearTestMedia(message, resolvedKey);

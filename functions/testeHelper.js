@@ -66,6 +66,18 @@ const TEST_DEFS = Object.freeze({
             "Só falta se pedirem em casamento, claramente se amam❤️"
         ]
     },
+    casal2: {
+        label: "casal",
+        emoji: "💘",
+        title: "Compatibilidade romântica",
+        results: [
+            "A sintonia ainda está procurando o caminho até o coração 😅",
+            "Tem uma faísca tímida querendo aparecer ✨",
+            "Uma história bonita pode estar começando 💞",
+            "O romance está no ar e todo mundo percebeu 🔥",
+            "Almas gêmeas! Só falta escolher a data do casamento 💍"
+        ]
+    },
     gado: {
         label: "gado",
         emoji: "🐂",
@@ -195,6 +207,7 @@ function resolveTestKey(value) {
         bonito: ["bonito", "bonita", "bela", "belo"],
         feio: ["feio", "feia", "feiaaa"],
         casal: ["casal", "par", "casalzinho"],
+        casal2: ["casal2"],
         gado: ["gado", "gada"],
         corno: ["corno", "corna", "chifrudo", "chifruda"],
         burro: ["burro", "burra", "jumento", "jumenta"],
