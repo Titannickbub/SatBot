@@ -28,9 +28,12 @@ module.exports = {
         const activityData = scope ? activity.load(message) : null;
         const activityUser = activityData?.users?.[String(message.userId)];
         const activityCount = Number(activityUser?.total) || 0;
-        const currentName = message.displayName || message.username || message.userId;
-
         const profile = await resolvePlatformProfile(platform, message.userId, { raw: message.raw, username: message.username });
+        const platformAccount = central?.platformAccounts?.find(account =>
+            account.platform === platform && String(account.platformId) === String(message.userId)
+        );
+        const currentName = message.displayName || message.username || profile?.name ||
+            platformAccount?.displayName || platformAccount?.username || central?.name || message.userId;
         const imageUrl = profile?.avatarUrl || null;
         const fallbackImage = path.join(__dirname, "..", "..", "semfoto.jpg");
 

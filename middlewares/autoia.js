@@ -24,9 +24,9 @@ module.exports = {
         const text = typeof message.text === "string" ? message.text.trim() : "";
         if (!text) return true;
 
-        // Ignora se for um comando do bot (ex: !ping, !ia, !help)
+        // Ignora comandos antes de avaliar menções ao bot no texto.
         const prefix = message.prefix || "!";
-        if (text.startsWith(prefix)) return true;
+        if (message.isCommand || text.startsWith(prefix)) return true;
 
         // Obtém o modo de Auto-IA para este grupo
         const mode = getAutoIAMode(message);

@@ -6,6 +6,7 @@ const { fetchBuffer } = require("./api");
 const config = require("./config");
 const { resolvePlatformProfile } = require("./profiles");
 const { getTestInfo } = require("./testeHelper");
+const { cleanJid } = require("./moderationHelper");
 
 function escapeXml(value) {
     return String(value ?? "")
@@ -69,8 +70,8 @@ async function renderProfile(message) {
         : "Inativo";
     let avatarBuffer = null;
     let avatarUrl = profile.platform === "discord" ? profile.avatarUrl : null;
-    if (profile.platform === "telegram") {
-        const platformProfile = await resolvePlatformProfile("telegram", message.userId, {
+    if (profile.platform !== "discord" || !avatarUrl) {
+        const platformProfile = await resolvePlatformProfile(profile.platform, message.userId, {
             raw: message.raw,
             username: message.username
         });
@@ -78,7 +79,7 @@ async function renderProfile(message) {
     }
 
     try {
-        if (profile.platform !== "whatsapp" && avatarUrl) {
+        if (avatarUrl) {
             const avatarMask = Buffer.from(
                 '<svg width="96" height="96" xmlns="http://www.w3.org/2000/svg"><circle cx="48" cy="48" r="48" fill="white"/></svg>'
             );
@@ -177,10 +178,16 @@ async function renderRanking(message, type, order = "rich") {
 
 async function renderCoupleTest(message, pair, percentage) {
     const people = await Promise.all(pair.map(async (target, index) => {
-        const isAuthor = String(target.id) === String(message.userId);
-        const profile = await resolvePlatformProfile(message.platform, target.id, isAuthor
-            ? { raw: message.raw, username: message.username }
-            : {});
+        const isAuthor = message.platform === "whatsapp"
+            ? cleanJid(String(target.id)) === cleanJid(String(message.userId))
+            : String(target.id) === String(message.userId);
+        const profileContext = message.platform === "whatsapp"
+            ? {
+                ...(isAuthor ? { raw: message.raw, username: message.username } : {}),
+                centralAccounts: message.functions?.centralAccounts
+            }
+            : { raw: message.raw, username: target.name };
+        const profile = await resolvePlatformProfile(message.platform, target.id, profileContext);
         const name = resolveCoupleDisplayName(target.name, profile?.name, index);
         const avatar = await loadCoupleAvatar(profile?.avatarUrl, target.id);
         return { name, avatar };

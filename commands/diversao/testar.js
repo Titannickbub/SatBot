@@ -260,7 +260,7 @@ function resolveCasalTargets(message) {
         }
     }
 
-    if (message.quoted?.userId && !candidates.some(c => cleanJid(c.id) === cleanJid(String(message.quoted.userId)))) {
+    if (message.quoted?.userId && !candidates.some(c => normalizeCasalId(message.platform, c.id) === normalizeCasalId(message.platform, message.quoted.userId))) {
         const quotedId = String(message.quoted.userId);
         candidates.push({ id: quotedId, name: message.quoted.displayName || message.quoted.username || message.quoted.name || displayFallback(message, quotedId) });
     }
@@ -268,10 +268,10 @@ function resolveCasalTargets(message) {
     const unique = [];
     const seen = new Set();
     for (const candidate of candidates) {
-        const clean = cleanJid(String(candidate.id || ""));
-        if (!clean || seen.has(clean)) continue;
-        seen.add(clean);
-        unique.push({ id: clean, name: candidate.name || displayFallback(message, clean) });
+        const id = normalizeCasalId(message.platform, candidate.id);
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        unique.push({ id, name: candidate.name || displayFallback(message, id) });
     }
 
     if (unique.length >= 2) {
@@ -280,13 +280,18 @@ function resolveCasalTargets(message) {
 
     if (unique.length === 1) {
         const author = {
-            id: cleanJid(String(message.userId || "")),
+            id: normalizeCasalId(message.platform, message.userId),
             name: message.displayName || message.username || message.sender?.displayName || message.sender?.username || "Você"
         };
         return [author, unique[0]];
     }
 
     return null;
+}
+
+function normalizeCasalId(platform, id) {
+    const value = String(id || "").trim();
+    return platform === "whatsapp" ? cleanJid(value) : value;
 }
 
 function buildCasalCaption(targetA, targetB, percentage, platform) {

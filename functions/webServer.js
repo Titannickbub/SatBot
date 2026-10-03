@@ -1,4 +1,7 @@
 const http = require("http");
+const fs = require("fs");
+const path = require("path");
+const sharp = require("sharp");
 const economy = require("./economy");
 const xp = require("./xp");
 const centralAccounts = require("./centralAccounts");
@@ -50,6 +53,20 @@ async function getDiscordAvatar(groupId, userId) {
   return member?.displayAvatarURL(avatarOptions)
     || user?.displayAvatarURL(avatarOptions)
     || null;
+}
+
+async function getProfileAvatar(platform, groupId, userId) {
+  if (platform === "discord") return getDiscordAvatar(groupId, userId);
+  return `/avatar?plataforma=${encodeURIComponent(platform)}&usuario=${encodeURIComponent(userId)}`;
+}
+
+async function sendPlaceholderAvatar(response) {
+  const placeholder = await fs.promises.readFile(path.join(__dirname, "..", "commands", "semfoto.jpg"));
+  response.writeHead(200, {
+    "Content-Type": "image/jpeg",
+    "Cache-Control": "public, max-age=86400"
+  });
+  response.end(placeholder);
 }
 
 async function getGroupName(platform, groupId, scope) {
@@ -105,13 +122,18 @@ async function readProfile(url) {
   const activityPosition = activityUser
     ? activityResult.users.findIndex(user => String(user.userId) === String(userId)) + 1
     : null;
+  const platformAccount = central?.platformAccounts?.find(item =>
+    item.platform === platform && String(item.platformId) === String(userId)
+  );
   return {
     platform,
     groupId,
     groupName,
     userId,
-    avatarUrl: platform === "discord" ? await getDiscordAvatar(groupId, userId) : null,
-    name: account?.displayName || account?.username || xpUser?.displayName || xpUser?.username || activityUser?.displayName || activityUser?.username || central?.name || "Usuário",
+    avatarUrl: await getProfileAvatar(platform, groupId, userId),
+    name: account?.displayName || account?.username || xpUser?.displayName || xpUser?.username ||
+      activityUser?.displayName || activityUser?.username || platformAccount?.displayName ||
+      platformAccount?.username || central?.name || "Usuário",
     economy: {
       exists: Boolean(account),
       balance: Number(account?.balance) || 0,
@@ -161,9 +183,8 @@ function renderProfile(profile) {
   const nofapText = profile.nofap.active
     ? `${profile.nofap.currentDays} dias • ${profile.nofap.title}`
     : "Inativo";
-  const avatarContent = profile.platform === "discord" && profile.avatarUrl
-    ? `<img src="${escapeHtml(profile.avatarUrl)}" alt="" onerror="this.remove()">`
-    : "";
+  const avatarUrl = profile.avatarUrl || "/semfoto.jpg";
+  const avatarContent = `<img src="${escapeHtml(avatarUrl)}" alt="" onerror="this.onerror=null;this.src='/semfoto.jpg'">`;
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -359,6 +380,57 @@ function start() {
     if (request.method !== "GET") {
       response.writeHead(405, { "Content-Type": "text/plain; charset=utf-8" });
       response.end("Method not allowed");
+      return;
+    }
+
+    if (requestUrl.pathname === "/semfoto.jpg") {
+      try {
+        await sendPlaceholderAvatar(response);
+      } catch (error) {
+        console.error("[WEB] Não foi possível carregar a imagem padrão de perfil:", error.message || error);
+        response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+        response.end("Profile placeholder unavailable");
+      }
+      return;
+    }
+
+    if (requestUrl.pathname === "/avatar") {
+      const platform = String(requestUrl.searchParams.get("plataforma") || "").toLowerCase();
+      const userId = requestUrl.searchParams.get("usuario");
+      if (!["telegram", "whatsapp"].includes(platform) || !userId) {
+        response.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
+        response.end("Invalid profile avatar request");
+        return;
+      }
+
+      try {
+        const { resolvePlatformProfile } = require("./profiles");
+        const profile = await resolvePlatformProfile(platform, userId);
+        if (profile?.avatarUrl) {
+          const { fetchBuffer } = require("./api");
+          const image = await fetchBuffer(profile.avatarUrl);
+          const metadata = await sharp(image).metadata();
+          const mimeType = metadata.format ? `image/${metadata.format === "jpeg" ? "jpeg" : metadata.format}` : "application/octet-stream";
+          response.writeHead(200, {
+            "Content-Type": mimeType,
+            "Cache-Control": "private, max-age=300"
+          });
+          response.end(image);
+          return;
+        }
+        await sendPlaceholderAvatar(response);
+      } catch (error) {
+        console.error(`[WEB] Não foi possível carregar o avatar de ${platform} ${userId}:`, error.message || error);
+        if (!response.headersSent) {
+          try {
+            await sendPlaceholderAvatar(response);
+          } catch (placeholderError) {
+            console.error("[WEB] Não foi possível carregar a imagem padrão de perfil:", placeholderError.message || placeholderError);
+            response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+            response.end("Profile avatar unavailable");
+          }
+        }
+      }
       return;
     }
 

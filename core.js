@@ -413,6 +413,7 @@ console.log(
         ? `${prefix}${originalText.slice(prefix.length).trimStart()}`
         : originalText;
     message.text = text;
+    message.isCommand = text.startsWith(prefix);
     
     message.functions =
     functions;

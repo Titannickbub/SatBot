@@ -5,10 +5,12 @@
 - `!perfil` agora gera o cartão de perfil em imagem, incluindo avatar no Discord.
 - O formato anterior em texto continua disponível em `!perfil_text`.
 - Removido o comando separado `!img_perfil`.
-- O cartão de `!perfil` usa o avatar do Discord ou do Telegram; no WhatsApp,
-  exibe a imagem padrão de perfil sem foto em vez de buscar a foto do usuário.
-- Se o Discord ou o Telegram não tiver um avatar disponível, `!perfil` também
-  exibe essa imagem padrão sem foto.
+- O cartão de `!perfil` tenta carregar o avatar da plataforma atual, incluindo
+  o WhatsApp; se a foto estiver indisponível, exibe a imagem padrão sem foto.
+- As páginas web de perfil também exibem o avatar de Discord, Telegram ou
+  WhatsApp, com a mesma imagem padrão quando a foto não estiver disponível.
+- No WhatsApp, os perfis usam o nome de exibição salvo na conta da plataforma
+  da Conta Central quando não há nome disponível no contato.
 - `!vip` agora apenas consulta o status e o tempo restante da assinatura do
   próprio usuário.
 - O gerenciamento manual de assinaturas VIP foi movido para `!set_vip`, na
@@ -689,6 +691,8 @@ numérico válido.
 - O teste gera um banner rosa e vermelho com os avatares, nomes, porcentagem
   de compatibilidade e um nome de filho(a) formado pela mistura dos nomes.
 - Avatares indisponíveis usam a imagem padrão de perfil sem foto.
+- Menções ao próprio bot mostram seu nome configurado, e comandos prefixados
+  não acionam uma resposta extra do Auto-IA por causa de uma menção ao bot.
 
 ## 📖 Descrições e ajuda dos comandos
 
