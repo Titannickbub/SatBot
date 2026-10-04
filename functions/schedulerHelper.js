@@ -62,7 +62,11 @@ function calcNextFire(schedule, now = Date.now()) {
     if (trigger.type === "interval") {
         const ms = trigger.intervalMs;
         if (!ms || ms <= 0) return null;
-        const base = schedule.state?.lastFiredAt || now;
+        const hasFired = Number.isFinite(schedule.state?.lastFiredAt);
+        const base = hasFired ? schedule.state.lastFiredAt : now;
+        if (!hasFired && Number.isFinite(trigger.initialDelayMs)) {
+            return now + Math.max(0, trigger.initialDelayMs);
+        }
         // Se nunca disparou, agenda para daqui a intervalMs
         return base + ms;
     }
@@ -194,7 +198,32 @@ async function fireSchedule(schedule) {
             console.error("❌[SCHEDULER] Erro ao disparar monitor do clima:", error.message || error);
             return;
         }
+    }
 
+    if (schedule.meta?.kind === "election-monitor") {
+        try {
+            const electionMonitor = require("./electionMonitor");
+            const config = electionMonitor.loadMonitorConfig({
+                platform,
+                chatId,
+                threadId: threadId || null
+            });
+            await electionMonitor.runElectionMonitor({
+                config,
+                jobId: schedule.meta.jobId,
+                send: true,
+                target: {
+                    platform,
+                    chatId,
+                    threadId: threadId || null
+                },
+                adapter: global.platformRegistry?.[platform]
+            });
+            return;
+        } catch (error) {
+            console.error("❌[SCHEDULER] Erro ao disparar monitor eleitoral:", error.message || error);
+            return;
+        }
     }
 
     if (schedule.meta?.kind === "stock-monitor") {

@@ -1,45 +1,39 @@
 # Sat Bot
 
-Bot multi-plataforma para Discord, Telegram e WhatsApp, executado com
-Node.js. O projeto oferece carregamento dinâmico de comandos, automações,
-IA, downloads e suporte a Windows, Linux, macOS e Termux.
+O Sat Bot é um bot multi-plataforma para **Discord, Telegram e WhatsApp**,
+desenvolvido em Node.js. Ele reúne comandos e ferramentas para comunidades
+em um só bot.
 
-## Links
+## O que o bot faz
 
-- Site: https://titannickbub.neocities.org/
+- Oferece comandos de administração, moderação e diversão.
+- Automatiza tarefas e configurações de grupos e servidores.
+- Inclui recursos de IA, downloads, economia virtual e sistema de XP.
+- Consulta a apuração oficial das eleições pelo comando `!eleicao`.
+- Permite configurar envios periódicos de resultados eleitorais com `!monitoreleicao`.
+- Permite que Super Usuários gerenciem VIPs temporários ou permanentes e
+  recursos exclusivos.
+- Permite usar as plataformas suportadas de forma integrada.
+
+## Contatos das plataformas
+
 - WhatsApp: https://chat.whatsapp.com/Kz372Jw4zax7Sik0wW8UpT
 - Telegram: https://t.me/satela_chats
 - Discord: https://discord.gg/yaC9CrgrF4
 
-## Comece aqui
+## Saiba mais
 
-- [Instalação e configuração](./docs/instalacao.md)
-- [Plataformas e downloads](./docs/plataformas.md)
-- [Funcionalidades](./docs/funcionalidades.md)
-- [Economia do sistema de RP](./docs/economia-rp.md)
-- [Desenvolvimento e segurança](./docs/desenvolvimento.md)
+- [Instalação](./docs/instalacao.md)
+- [Configuração](./docs/configuracao.md)
+- [Anti-PV e OnlyChats](./docs/antipv-onlychats.md)
+- [VIP e `set_vip`](./docs/setvip.md)
 
-O fluxo de login e pareamento do WhatsApp está documentado em
-[Instalação e configuração](./docs/instalacao.md#autenticação).
+## VIP
 
-## Atalho rápido
-
-```bash
-npm install
-node index.js
-```
-
-No Windows, também é possível usar `start.bat`. Em sistemas Unix, use
-`bash start.sh`.
-
-## Changelogs
-
-- [Versão 1.3](./changelog/1.3/README.md)
-- [Versão 1.2](./changelog/1.2/README.md)
-- [Versão 1.1](./changelog/1.1/README.md)
-- [Versão 1.0](./changelog/1.0/README.md)
-
-## Licença
-
-Defina a licença antes da publicação pública. MIT é uma opção comum para
-projetos open source.
+O comando `!set_vip`, exclusivo de Super Usuários, permite consultar e
+gerenciar o acesso VIP: conceder uma duração (`!set_vip set <ID> 30d`),
+adicionar tempo, cancelar ou tornar o VIP permanente (`!set_vip perm <ID>`).
+Também configura comandos e chats exclusivos para VIPs. O bypass do Anti-PV
+pode ser habilitado por plataforma para todos os usuários VIP ativos.
+Consulte [VIP e `set_vip`](./docs/setvip.md) para ver os comandos e as
+opções disponíveis.

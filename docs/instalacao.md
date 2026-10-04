@@ -1,28 +1,37 @@
-# Instalação e configuração
+# Instalação
 
 ## Requisitos
 
 - Node.js 18 ou superior
 - npm
-- terminal disponível
+- Git, caso use o instalador para baixar o repositório
+- Um terminal interativo para fazer o primeiro login
 
-## Instalação
+## Instalar o bot
 
-Clone o repositório ou use os instaladores externos:
+O instalador baixa o repositório principal na branch `main`, verifica se há
+arquivos que seriam sobrescritos e cancela a instalação se encontrar conflitos.
+Execute-o na pasta onde deseja instalar o bot:
 
 - Windows: `install.bat`
-- Linux, macOS, Android/Termux: `bash install.sh`
+- Linux, macOS e Android/Termux: `bash install.sh`
 
-Os instaladores clonam o repositório principal na branch `main`, detectam
-conflitos e abortam sem sobrescrever arquivos existentes. Para personalizar:
+No Windows, a saída será parecida com:
 
-```bash
-SATBOT_REPO_URL=https://github.com/exemplo/bot.git SATBOT_BRANCH=main bash install.sh
+```text
+[INSTALL] Instalador do SatBot
+[INSTALL] Repositorio: https://github.com/Titannickbub/SatBot.git
+[INSTALL] Destino: C:\SatBot
+[INFO] Instalando dependencias...
+[INSTALL] Instalacao concluida.
+[INFO] Para iniciar: start.bat
 ```
 
-Na primeira execução, as dependências são instaladas automaticamente.
+As mensagens podem variar conforme o sistema. Se o instalador encontrar uma
+instalação existente, ele não a substitui; use o script de atualização
+correspondente.
 
-## Inicialização
+Para iniciar o bot:
 
 ```bat
 start.bat
@@ -32,90 +41,196 @@ start.bat
 bash start.sh
 ```
 
-Ou execute diretamente:
+Os scripts verificam as dependências, instalam-nas se necessário e reiniciam
+o processo se ele sair. Também é possível executar `node index.js` diretamente;
+nesse caso, se o processo encerrar durante o primeiro login, execute o comando
+novamente para iniciar o bot conectado.
 
-```bash
-node index.js
-```
+Na primeira inicialização, o bot cria arquivos de configuração e autenticação
+dentro de `settings`.
 
-O bot cria `settings/config.json`, `settings/.env`, autenticações e arquivos
-locais de persistência conforme necessário.
+## Primeiro login
 
-## Autenticação
-
-Na primeira inicialização, escolha Discord, Telegram ou WhatsApp.
-
-- Discord: crie um bot no portal de desenvolvedores e informe o token.
-- Telegram: crie o bot pelo BotFather e informe o token.
-- WhatsApp: no primeiro bootstrap, escolha QR Code no terminal ou código de
-  pareamento por número.
-
-### Login inicial do WhatsApp
-
-Quando o WhatsApp for escolhido como a primeira plataforma no terminal, o bot
-oferece duas opções:
-
-1. **QR Code no terminal**: escaneie o QR com o aplicativo do WhatsApp em
-   `Configurações > Aparelhos conectados > Conectar aparelho`.
-2. **Código de pareamento**: informe o número com DDI. O número aceita formatos
-   copiados normalmente, por exemplo:
-
-   ```text
-   +55 33 9986-5716
-   55 (33) 9986-5716
-   553399865716
-   ```
-
-   Espaços, `+`, parênteses, hífens e outros símbolos são removidos
-   automaticamente antes da solicitação ao WhatsApp.
-
-Se Discord ou Telegram já estiverem autenticado(s), o WhatsApp não inicia um
-QR automaticamente quando não possui sessão. Nesse caso, um Super Usuário deve
-solicitar o método de login por comando.
-
-Para adicionar outra plataforma depois:
+Faça o primeiro início com `start.bat` ou `bash start.sh` em um terminal
+interativo. Se nenhuma plataforma estiver autenticada, o bot pede qual
+plataforma será conectada primeiro. Com as três plataformas ativadas, o menu
+será semelhante a este:
 
 ```text
-<prefixo>su token <discord|telegram> <SEU_TOKEN>
+[AUTH] Nenhuma plataforma autenticada. Escolha uma para iniciar:
+  1. Discord
+  2. Telegram
+  3. WhatsApp
+Digite o número da plataforma:
 ```
 
-O `<prefixo>` é o prefixo configurado no bot. Se ele for `!`, por exemplo:
+Se somente uma plataforma estiver ativada, ela será selecionada
+automaticamente. Para ver como ativar e desativar plataformas, consulte
+[Configuração](./configuracao.md).
+
+### Discord
+
+Crie uma aplicação e um bot no [Portal de Desenvolvedores do
+Discord](https://discord.com/developers/applications), copie o token do bot e
+selecione Discord no menu. O terminal pedirá o token:
 
 ```text
-!su token telegram <SEU_TOKEN>
+Digite o número da plataforma: 1
+[AUTH] Informe o token de Discord.
+Discord token:
 ```
 
-Para solicitar um novo login do WhatsApp como Super Usuário:
+Cole o token no terminal e pressione Enter. O token é salvo em
+`settings/.env`; mantenha esse arquivo privado. Quando a conexão for
+estabelecida, o terminal mostrará uma confirmação semelhante a:
 
 ```text
-<prefixo>su whatsapp qr
-<prefixo>su whatsapp codigo <número com DDI>
+🟩[DISCORD] Conectado como NomeDoBot#0000
 ```
 
-Exemplos usando o prefixo padrão `!`:
+### Telegram
+
+Crie um bot pelo [BotFather](https://t.me/BotFather), copie o token e
+selecione Telegram no menu:
+
+```text
+Digite o número da plataforma: 2
+[AUTH] Informe o token de Telegram.
+Telegram token:
+```
+
+Cole o token no terminal e pressione Enter. Ele será salvo em
+`settings/.env`. Após a conexão, o terminal mostrará o nome do bot, por
+exemplo:
+
+```text
+🟩[TELEGRAM] Conectado como MeuBot (@meu_bot)
+```
+
+### WhatsApp
+
+Selecione WhatsApp no menu. O terminal oferecerá os métodos de login:
+
+```text
+Digite o número da plataforma: 3
+[AUTH] Escolha o método de login do WhatsApp:
+  1. QR Code no terminal
+  2. Código de pareamento por número
+Digite o número do método:
+```
+
+Para usar o QR, digite `1`. Quando o QR aparecer no terminal, abra o
+WhatsApp no celular e acesse
+`Configurações > Aparelhos conectados > Conectar aparelho`; escaneie o QR.
+O terminal também informa quando a conexão é concluída:
+
+```text
+[WHATSAPP] QR code gerado.
+[WHATSAPP] Escaneie o QR code com o app do WhatsApp:
+<QR CODE exibido no terminal>
+🟩[WHATSAPP] Conectado como 5533999999999
+```
+
+Para usar o código de pareamento, digite `2` e informe o telefone com DDI:
+
+```text
+Digite o número do método: 2
+Número com DDI (aceita espaços e símbolos): +55 33 99999-9999
+[WHATSAPP] Código de pareamento: <CÓDIGO GERADO PELO WHATSAPP>
+```
+
+No celular, abra `Configurações > Aparelhos conectados > Conectar aparelho` e
+escolha a opção de conectar com número de telefone; informe o código. O número
+pode ser digitado com espaços, `+`, parênteses ou hífens: esses caracteres são
+removidos antes da solicitação.
+
+Após a conexão inicial, o processo pode encerrar para aplicar a autenticação.
+Os scripts `start.bat` e `bash start.sh` iniciam-no novamente.
+
+## Primeiro Super Usuário
+
+No primeiro início, se ainda não houver Super Usuário cadastrado, um código
+temporário será exibido no terminal:
+
+```text
+=================================
+[SU] Nenhum Super Usuário encontrado.
+[SU] Código: <CÓDIGO TEMPORÁRIO>
+=================================
+```
+
+Com o bot conectado, envie o código ao próprio bot usando o prefixo padrão `!`:
+
+```text
+!su code <CÓDIGO TEMPORÁRIO>
+```
+
+Exemplo da conversa:
+
+```text
+Você: !su code <CÓDIGO TEMPORÁRIO>
+Bot: 👑 Você agora é um super usuário.
+```
+
+Use o código válido que apareceu no seu terminal; o valor acima é apenas um
+marcador de exemplo. Se a resposta for `❌ Código inválido ou expirado.`, confira
+se copiou o código atual. Esse código só registra o primeiro Super Usuário.
+
+## Adicionar outras plataformas depois
+
+Depois de registrar um Super Usuário, use um chat privado confiável para enviar
+o token de Discord ou Telegram. Substitua `<TOKEN>` pelo token real:
+
+```text
+Você: !su token telegram <TOKEN>
+Bot: ✅ Token de telegram registrado.
+Bot: 🔄 Reiniciando Sat Bot para aplicar a configuração...
+```
+
+Para Discord, use `!su token discord <TOKEN>`. Os tokens são gravados em
+`settings/.env`; nunca os publique ou compartilhe. O bot encerra o processo
+depois de receber o comando. Com `start.bat` ou `bash start.sh`, ele inicia
+novamente e tenta conectar a plataforma.
+
+### Fazer login no WhatsApp depois
+
+Se o WhatsApp não foi a primeira plataforma, ou se precisar autenticar
+novamente, solicite o login como Super Usuário:
 
 ```text
 !su whatsapp qr
-!su whatsapp codigo +55 12 1234-1234
 ```
 
-No modo QR, o QR é enviado como imagem no chat onde o comando foi executado.
-No modo de código, o código de pareamento é exibido no terminal e enviado no
-mesmo chat. O bot reinicia para iniciar a nova sessão e remove as credenciais
-anteriores do WhatsApp antes do login.
-
-Se um código de superusuário for exibido no primeiro boot, envie:
+Resposta inicial no chat:
 
 ```text
-<prefixo>su code <CODIGO>
+Bot: ✅ Login por QR solicitado. Reiniciando; o QR será enviado aqui como imagem.
 ```
 
-Plataformas podem ser desativadas com:
+Depois que o bot reiniciar, ele envia o QR como imagem no chat em que o comando
+foi executado. Escaneie-o no celular em
+`Configurações > Aparelhos conectados > Conectar aparelho`.
+
+Para parear por número:
 
 ```text
-!config plataforma whatsapp off
-!config plataforma whatsapp on
+Você: !su whatsapp codigo +55 33 99999-9999
+Bot: ✅ Login por número solicitado. Reiniciando; o código será enviado aqui.
 ```
+
+Após o reinício, o código aparece no terminal e é enviado ao chat:
+
+```text
+Bot: 🔐 Código de pareamento do WhatsApp: <CÓDIGO GERADO PELO WHATSAPP>
+```
+
+No celular, abra `Configurações > Aparelhos conectados > Conectar aparelho` e
+escolha conectar com número de telefone. Esse processo remove a sessão anterior
+do WhatsApp antes de iniciar o novo pareamento. Proteja o QR e o código: quem
+os obtiver poderá tentar conectar um aparelho à conta.
+
+Os comandos deste guia usam o prefixo padrão `!`. Se ele tiver sido alterado,
+substitua `!` pelo prefixo configurado.
 
 ## Atualização
 

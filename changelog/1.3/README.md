@@ -1,5 +1,14 @@
 # Sat Bot — Changelog Versão 1.3
 
+## 🆔 Consulta de ID de usuário
+
+- Adicionado o comando `!id`, que mostra o ID do próprio usuário.
+- Também é possível mencionar outra pessoa ou responder à mensagem dela para
+  consultar o respectivo ID.
+- Disponível no Discord, Telegram e WhatsApp. No Telegram, menções digitadas
+  como `@username` não expõem o ID; selecione a pessoa nas sugestões ou
+  responda a uma mensagem dela.
+
 ## 👤 Comandos de perfil
 
 - `!perfil` agora gera o cartão de perfil em imagem, incluindo avatar no Discord.
@@ -728,3 +737,22 @@ numérico válido.
   formatos adequados ao embed do Discord e às mensagens do Telegram e WhatsApp.
 - A compra pode ser feita pela posição ou pelo nome completo mostrado na loja;
   nomes com espaços agora são aceitos pelo comando `!comprar`.
+
+## 🗳️ Consulta e monitoramento das eleições
+
+- Adicionado `!eleicao`, que consulta resultados oficiais do TSE por cargo,
+  estado e município. Sem opções, exibe a parcial para Presidente no Brasil.
+- O resumo inclui percentual e quantidade de seções apuradas, seções restantes,
+  votos válidos, brancos, nulos, comparecimento e horário de atualização do TSE.
+- Disponíveis os cargos Presidente, Governador, Senador, Deputado Federal e
+  Deputado Estadual. Para deputados, é possível pesquisar por nome, número ou
+  partido, com resultados paginados.
+- `!eleicao help` exibe exemplos e instruções de uso. As respostas são
+  formatadas conforme WhatsApp, Telegram ou Discord.
+- Adicionado o monitor administrativo `!monitoreleicao`, com configurações
+  independentes por chat e suporte a várias consultas simultâneas por cargo e
+  localidade.
+- Cada consulta permite definir atraso inicial e intervalo de repetição; o
+  monitor pode ser ativado, pausado, consultado, executado imediatamente ou
+  removido. Para deputados, a busca por nome, número ou partido é obrigatória.
+- `!monitoreleicao help` exibe o guia de configuração e exemplos.
