@@ -1,13 +1,18 @@
+const DESCRIPTION = `🏓 Mede a velocidade de resposta do bot, a latência de rede com a API da plataforma e o tempo de atividade contínuo (uptime).
+
+🌐 Informações exibidas:
+• 📨 Latência de mensagem (ms) — tempo de processamento entre o envio e a execução da resposta.
+• 📡 Latência da API (ms) — tempo de resposta da rede com a plataforma (Discord WebSocket, Telegram, etc.).
+• ⏱️ Uptime — tempo decorrido desde a inicialização do processo do bot.
+
+▶️ Como usar:
+{prefix}ping`;
+
 module.exports = {
-
     name: "ping",
-
-    description:
-        "Mede o tempo de resposta do bot e da API da plataforma e mostra há quanto tempo o processo está em execução.",
-
-    usage:
-        "{prefix}ping",
-
+    category: "system",
+    description: DESCRIPTION,
+    usage: "{prefix}ping",
     examples: [
         "{prefix}ping"
     ],

@@ -43,16 +43,70 @@ const STRONG_ACTIONS = ["kick", "ban"];
 module.exports = {
     name: "antilink",
     category: "adm/segurança",
-    description: `Gerencia as regras de Antilink por nível hierárquico. O antilink deleta mensagens que contenham links e aplica punições.
-Funções disponíveis:
-• on/off: Ativa ou desativa o antilink no nível especificado.
-• action <delete|warn|kick|ban>: Define a punição (deletar, avisar, expulsar ou banir).
-• message <texto>: Define uma mensagem de aviso personalizada ao punir.
-• ignoreparent <on|off>: Define se o nível atual ignora configurações de níveis superiores.
-• ignoresame <on|off>: Permite o envio do link de convite do próprio grupo/servidor.
-• ignoremedia <on|off>: Permite o envio de links de mídias (youtube, tiktok, instagram, etc).
-• whitelist <add|remove|list> [link]: Gerencia domínios permitidos (lista branca de links).
-• userwhitelist <add|remove|list> [ID]: Gerencia usuários isentos (lista branca de usuários).`,
+    description: `🔗 Configura a remoção de mensagens com links e as punições aplicadas neste grupo ou servidor.
+
+🔐 Disponível para administradores do chat e superusuários.
+
+📍 1. Escolha o nível de configuração:
+• Discord: server (servidor), categoria (categoria) ou chat (canal/tópico).
+• WhatsApp: chat (grupo) ou server (comunidade, quando disponível).
+• Telegram: server (grupo/canal) ou chat (tópico, quando disponível).
+
+Os níveis disponíveis dependem da plataforma e do local em que o comando é usado.
+
+✅ 2. Ative ou desative o antilink no nível escolhido:
+{prefix}antilink <nível> on
+{prefix}antilink chat on
+{prefix}antilink <nível> off
+
+⚙️ 3. Escolha o que fazer quando um link for detectado:
+{prefix}antilink <nível> action <delete|warn|kick|ban>
+{prefix}antilink chat action warn
+
+delete remove a mensagem; warn remove e avisa; kick remove e expulsa; ban remove e bane. As ações kick e ban exigem que o bot tenha permissão para moderar membros.
+
+💬 Personalize o aviso enviado ao punir:
+{prefix}antilink <nível> message <texto>
+{prefix}antilink chat message Links não são permitidos aqui!
+
+🧩 4. Configure exceções:
+
+Permitir links do próprio grupo ou servidor:
+{prefix}antilink <nível> ignoresame on
+
+Permitir links de mídias, como YouTube, TikTok e Instagram:
+{prefix}antilink <nível> ignoremedia on
+
+Ignorar regras dos níveis superiores:
+{prefix}antilink <nível> ignoreparent on
+
+Use off no lugar de on para desativar cada exceção. Por padrão, o nível herda as regras superiores.
+
+📋 5. Gerencie domínios permitidos:
+{prefix}antilink <nível> whitelist add <domínio>
+{prefix}antilink chat whitelist add github.com
+{prefix}antilink <nível> whitelist remove <domínio>
+{prefix}antilink <nível> whitelist list
+
+👤 6. Gerencie as exceções por usuário:
+Adicione ou remova usuários respondendo à mensagem, mencionando-os ou informando ID/número. Usuários na lista branca podem enviar links sem a punição do antilink; a lista negra impede que recebam a exceção de links de mídia. Use list para consultar cada lista.
+{prefix}antilink <nível> userwhitelist add <usuário|ID>
+{prefix}antilink <nível> userwhitelist remove <usuário|ID>
+{prefix}antilink <nível> userwhitelist list
+{prefix}antilink <nível> userblacklist add <usuário|ID>
+{prefix}antilink <nível> userblacklist remove <usuário|ID>
+{prefix}antilink <nível> userblacklist list
+
+No Discord, também é possível gerenciar exceções por cargo. A lista branca isenta o cargo; a lista negra impede que ele receba a exceção de links de mídia.
+{prefix}antilink <nível> rolewhitelist add <@cargo|ID|nome>
+{prefix}antilink <nível> rolewhitelist remove <@cargo|ID|nome>
+{prefix}antilink <nível> rolewhitelist list
+{prefix}antilink <nível> roleblacklist add <@cargo|ID|nome>
+{prefix}antilink <nível> roleblacklist remove <@cargo|ID|nome>
+{prefix}antilink <nível> roleblacklist list
+
+📊 Consulte o estado e as configurações:
+{prefix}antilink status`,
     usage: "{prefix}antilink status",
     examples: [
         "{prefix}antilink status",

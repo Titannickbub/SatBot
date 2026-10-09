@@ -5,7 +5,13 @@ module.exports = {
     name: "start",
     aliases: ["iniciar", "inicio"],
     category: null,
-    description: "Exibe a mensagem de apresentação do bot e primeiros passos.",
+    description: `🚀 Exibe a mensagem de apresentação do bot e orienta sobre os primeiros passos.
+
+📌 Uso:
+{prefix}start
+
+💡 Exemplos:
+{prefix}start`,
     usage: "{prefix}start",
 
     async execute(message) {

@@ -2,20 +2,48 @@ const { fetchBuffer } = require("../../../functions/api");
 const { isOwner } = require("../../../functions/owners");
 const { PermissionFlagsBits } = require("discord.js");
 
+const DESCRIPTION = `🖼️ Altera a imagem do grupo no WhatsApp ou Telegram, ou do servidor no Discord.
+
+🔐 Disponível para administradores do grupo/servidor e superusuários.
+🤖 No Discord, o bot também precisa da permissão Gerenciar Servidor.
+📱 No WhatsApp e Telegram, funciona apenas em grupos.
+
+1. Escolha como fornecer a imagem:
+
+Envie uma imagem com o comando na legenda:
+{prefix}setimg_chat
+
+Ou responda a uma mensagem que contenha uma imagem:
+{prefix}setimg_chat
+
+Ou informe uma URL da imagem:
+{prefix}setimg_chat <URL>
+{prefix}setimg_chat https://exemplo.com/foto.png
+
+2. O bot baixa a imagem e a define como foto do grupo ou servidor. O comando aceita arquivos de imagem; vídeos e outros tipos de arquivo não são aceitos.
+
+❔ Exiba esta ajuda:
+{prefix}setimg_chat help`;
+
+function helpText(message) {
+    return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
+}
+
 module.exports = {
     name: "setimg_chat",
     aliases: ["setimgchat", "setimg"],
     category: "adm/configurações",
-    description: `Define a imagem do grupo no WhatsApp e Telegram, e do servidor no Discord.
-
-No WhatsApp e Telegram, a alteração é permitida apenas em grupos.
-No Discord, altera a imagem do servidor sempre que possível.
-Use enviando uma imagem com o comando, respondendo uma imagem ou informando uma URL de imagem.`,
+    platformSupport: {
+        whatsapp: "full",
+        telegram: "full",
+        discord: "full"
+    },
+    description: DESCRIPTION,
     usage: "{prefix}setimg_chat [imagem|URL]",
     examples: [
-        "{prefix}setimg_chat (enviando imagem com o comando)",
-        "{prefix}setimg_chat (respondendo a uma imagem no chat)",
-        "{prefix}setimg_chat https://exemplo.com/foto.png"
+        "{prefix}setimg_chat",
+        "{prefix}setimg_chat https://exemplo.com/foto.png",
+        "{prefix}setimg_chat help"
     ],
 
     async execute(message) {
@@ -32,8 +60,11 @@ Use enviando uma imagem com o comando, respondendo uma imagem ou informando uma 
             return message.reply({ text: "❌ Apenas administradores do grupo/servidor podem usar este comando." });
         }
 
-        const targetMedia = message.media || message.quoted?.media;
         const args = message.args || [];
+        if (["help", "ajuda"].includes(String(args[0] || "").toLowerCase())) {
+            return message.reply({ text: helpText(message) });
+        }
+        const targetMedia = message.media || message.quoted?.media;
         let buffer = null;
         let mimeType = null;
         let fileName = null;

@@ -4,12 +4,21 @@ const { getCommandPlatformIndicator } = require("../functions/commandPlatformSup
 module.exports = {
     name: "menu",
     aliases: ["help", "ajuda"],
-    description: "Exibe o menu de comandos e permite listar comandos por categoria.",
+    description: `📋 Exibe o menu de comandos e permite listá-los por categoria.
+
+📌 Uso:
+{prefix}menu
+{prefix}menu <categoria>
+
+💡 Exemplos:
+{prefix}menu
+{prefix}menu adm
+{prefix}menu Bronxys`,
     usage: "{prefix}menu [categoria]",
     examples: [
         "{prefix}menu",
-        "{prefix}menu downloads",
-        "{prefix}menu diversão"
+        "{prefix}menu adm",
+        "{prefix}menu Bronxys"
     ],
     async execute(message) {
         const commands = core.getCommands();

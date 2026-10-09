@@ -1,11 +1,20 @@
-const economyAdmin = require("../../functions/economyAdmin");
-const webLinks = require("../../functions/webLinks");
+const economyAdmin = require("../../../functions/economyAdmin");
+const webLinks = require("../../../functions/webLinks");
 
 module.exports = {
     name: "gerarlink_rankativos",
     aliases: ["gerarlink-rankativos", "linkrankativos", "gerarlink_atividade"],
     category: "adm/RP",
-    description: "Gera um link web para consultar o ranking de atividade dos membros do grupo ou servidor atual.",
+    description: `📊 Gera um link web para consultar o ranking de atividade dos membros do grupo ou servidor atual.
+
+🔐 Disponível para administradores do chat e superusuários.
+
+📝 1. Execute o comando dentro de um grupo ou servidor:
+{prefix}gerarlink_rankativos
+
+O bot retorna um link exclusivo para abrir e visualizar o ranking de mensagens e atividades dos membros no painel web.
+
+⚠️ O painel web precisa estar configurado. Caso contrário, peça a um superusuário para usar o comando set_dominio.`,
     usage: "{prefix}gerarlink_rankativos",
 
     async execute(message) {

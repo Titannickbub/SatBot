@@ -1,6 +1,6 @@
-const activity = require("../functions/activity");
-const { renderRanking } = require("../functions/imageBanner");
-const { cleanJid, sameUserId } = require("../functions/moderationHelper");
+const activity = require("../../../functions/activity");
+const { renderRanking } = require("../../../functions/imageBanner");
+const { cleanJid, sameUserId } = require("../../../functions/moderationHelper");
 
 function userName(user) {
     return user.displayName || user.username || user.userId;
@@ -82,7 +82,22 @@ module.exports = {
     name: "rankativos",
     aliases: ["rankingativos", "ranking-ativos", "rankatividade"],
     category: "adm/RP",
-    description: "Gera uma imagem com os cinco membros mais ativos do grupo ou servidor. No WhatsApp, use `list` para listar em texto todos os membros do grupo e suas atividades, incluindo 0 para quem ainda não tem registro.",
+    description: `📊 Exibe o ranking de atividade dos membros deste grupo ou servidor.
+
+1. Ative o registro de atividade para começar a contabilizar mensagens:
+{prefix}atividade ativar
+
+O ranking considera as atividades registradas após a ativação.
+
+2. Consulte os cinco membros mais ativos:
+{prefix}rankativos
+
+O resultado é enviado como imagem. É necessário haver registros de atividade.
+
+3. No WhatsApp, liste todos os membros do grupo em texto:
+{prefix}rankativos list
+
+A lista inclui mensagens, comandos, figurinhas e arquivos; membros sem atividade registrada aparecem com zero. A opção list funciona apenas em grupos do WhatsApp.`,
     usage: "{prefix}rankativos [list]",
 
     async execute(message) {

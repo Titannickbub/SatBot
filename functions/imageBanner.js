@@ -60,7 +60,7 @@ async function renderProfile(message) {
         grupo: scope.id,
         plataforma: scope.platform,
         usuario: String(message.userId)
-    }));
+    }), { allowEmpty: true });
     if (profile.error) return profile;
 
     const moneyPosition = profile.economy.position ? `#${profile.economy.position}` : "Não classificado";

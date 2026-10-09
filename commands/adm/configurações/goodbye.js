@@ -43,37 +43,81 @@ const {
 const { isOwner } = require("../../../functions/owners");
 const path = require("path");
 
+const DESCRIPTION = `👋 Configura mensagens automáticas para quando membros saem do grupo ou servidor.
+
+🔐 Disponível para administradores do chat e superusuários.
+
+📌 Regras por plataforma:
+• Discord: a despedida é configurada por canal ou tópico. Apenas um canal pode estar ativo por servidor.
+• Telegram: configure no chat principal ou em um tópico.
+• WhatsApp: disponível apenas em grupos; não funciona em comunidades ou conversas privadas.
+
+📝 1. Personalize o texto da despedida:
+{prefix}goodbye text <mensagem>
+{prefix}goodbye text Até logo, {user}! Sentiremos sua falta no {group}.
+
+Você pode usar estas variáveis, que serão substituídas quando alguém sair:
+{user} ou {mention} — nome do membro que saiu.
+{group} ou {server} — nome do grupo ou servidor.
+{count} ou {members} — quantidade de membros.
+
+🎨 2. Escolha o formato da mensagem:
+{prefix}goodbye mode texto
+{prefix}goodbye mode media
+
+O modo texto envia somente a mensagem. O modo media envia a mensagem junto com uma mídia configurada.
+
+🖼️ 3. Configure a mídia (opcional):
+{prefix}goodbye media <URL>
+
+Em vez de uma URL, envie uma imagem, vídeo ou GIF com esse comando na legenda, ou responda à mídia com ele. A mídia será salva permanentemente. Se a legenda não for uma URL, ela também substituirá o texto da despedida.
+
+🧪 4. Confira a mensagem antes de ativar:
+{prefix}goodbye test
+
+Envia uma prévia usando o texto e o modo configurados.
+
+✅ 5. Ative a despedida:
+{prefix}goodbye on
+
+Quando um membro sair, o bot enviará a mensagem neste chat ou tópico.
+
+📋 Consulte as configurações:
+{prefix}goodbye status
+
+🔕 Desative sem apagar suas configurações:
+{prefix}goodbye off
+
+♻️ Restaure as configurações padrão:
+{prefix}goodbye reset
+
+Desativa o sistema e restaura as configurações padrão.`;
+
+function helpText(message) {
+    return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
+}
+
 module.exports = {
     name: "goodbye",
     aliases: ["despedida", "bye"],
     category: "adm/configurações",
-    description: `Gerencia o sistema de Despedida (Goodbye) para membros que saem do grupo ou servidor.
-
-Recursos principais:
-• Ativação/Desativação individual por chat/tópico.
-• Modos de envio: Apenas Texto ou Texto + Mídia (imagem, vídeo, GIF).
-• Armazenamento inteligente de mídias: Discord CDN, Telegram ou local (por prioridade de disponibilidade).
-• Variáveis dinâmicas no texto: {user}, {mention}, {group}, {server}, {count}, {members}.
-• Teste em tempo real com !goodbye test.
-
-Regras por plataforma:
-• Discord: Apenas 1 canal de despedida ativo por servidor por vez.
-• Telegram: Suporta tópicos e chat principal.
-• WhatsApp: Suportado apenas em grupos (bloqueado em comunidades).`,
-
-    usage: "{prefix}goodbye",
+    description: DESCRIPTION,
+    usage: "{prefix}goodbye <subcomando>",
     examples: [
         "{prefix}goodbye status",
         "{prefix}goodbye on",
+        "{prefix}goodbye mode texto",
         "{prefix}goodbye mode media",
         "{prefix}goodbye text Até mais, {user}! Sentiremos sua falta no {group}.",
-        "{prefix}goodbye media (enviar imagem/vídeo/gif com a legenda ou responder a uma mídia)",
+        "{prefix}goodbye media <URL>",
+        "{prefix}goodbye media",
         "{prefix}goodbye test",
+        "{prefix}goodbye off",
         "{prefix}goodbye reset"
     ],
 
     info(message) {
-        return _help(message);
+        return helpText(message);
     },
 
     async execute(message) {
@@ -102,7 +146,7 @@ Regras por plataforma:
         const args = message.args || [];
 
         if (!args.length) {
-            return message.reply({ text: _help(message) });
+            return message.reply({ text: helpText(message) });
         }
 
         const subCommand = args[0].toLowerCase();
@@ -114,8 +158,8 @@ Regras por plataforma:
         const { config: currentConfig } = getGoodbyeConfig(platform, serverId, chatId, threadId);
 
         // ── AJUDA / HELP ────────────────────────────────────────────────
-        if (subCommand === "help") {
-            return message.reply({ text: _help(message) });
+        if (subCommand === "help" || subCommand === "ajuda") {
+            return message.reply({ text: helpText(message) });
         }
 
         // ── STATUS ──────────────────────────────────────────────────────
@@ -302,68 +346,13 @@ Regras por plataforma:
             return message.reply({ text: `${testHeader}${previewText}` });
         }
 
-        return message.reply({ text: _help(message) });
+        return message.reply({ text: helpText(message) });
     }
 };
 
 // ─────────────────────────────────────────────────────────────
 //  FUNÇÕES DE RESPOSTA FORMATADA
 // ─────────────────────────────────────────────────────────────
-
-function _help(message) {
-    const p = message.prefix;
-    const plat = message.platform;
-
-    let header = `👋 *SISTEMA DE DESPEDIDA (GOODBYE) — AJUDA*`;
-    if (plat === "discord") header = `🎮 *DESPEDIDA (Discord) — AJUDA*`;
-    else if (plat === "whatsapp") header = `📱 *DESPEDIDA (WhatsApp) — AJUDA*`;
-    else if (plat === "telegram") header = `✈️ *DESPEDIDA (Telegram) — AJUDA*`;
-
-    return (
-`${header}
-
-Gerencie o envio automático de mensagens quando membros saem.
-
-📋 *COMANDOS DISPONÍVEIS:*
-  • \`${p}goodbye status\`
-    ↳ Exibe as configurações ativas e detalhes do chat.
-
-  • \`${p}goodbye on\` | \`${p}goodbye off\`
-    ↳ Ativa ou desativa a despedida neste chat/tópico.
-
-  • \`${p}goodbye mode <texto | media>\`
-    ↳ Define o formato: apenas texto ou texto com imagem/vídeo/GIF.
-
-  • \`${p}goodbye text <mensagem...>\`
-    ↳ Define a mensagem personalizada de despedida.
-
-  • \`${p}goodbye media [URL]\`
-    ↳ Define a mídia enviando/respondendo ou informando um link.
-
-  • \`${p}goodbye test\`
-    ↳ Simula o envio da despedida para conferir o visual.
-
-  • \`${p}goodbye reset\`
-    ↳ Restaura as configurações padrão.
-
-⚙️ *VARIÁVEIS DISPONÍVEIS NO TEXTO:*
-  • \`{user}\` ou \`{mention}\` → Nome do membro que saiu
-  • \`{group}\` ou \`{server}\` → Nome do grupo ou servidor
-  • \`{count}\` ou \`{members}\` → Quantidade total de participantes
-
-📌 *REGRAS DE ESCOPO:*
-  • *Discord:* Apenas **1 único canal ativo** por servidor.
-  • *Telegram:* Funciona no chat geral ou em tópicos específicos.
-  • *WhatsApp:* Válido apenas em **Grupos** (bloqueado em Comunidades).
-
-💡 *EXEMPLOS:*
-  ${p}goodbye on
-  ${p}goodbye mode media
-  ${p}goodbye text Até logo, {user}! Sentiremos sua falta no {group}.
-  ${p}goodbye media (com imagem/vídeo anexado)
-  ${p}goodbye test`
-    );
-}
 
 function _status(message, cfg) {
     const plat = message.platform;

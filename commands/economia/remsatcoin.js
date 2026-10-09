@@ -5,7 +5,18 @@ module.exports = {
     name: "remsatcoin",
     aliases: ["remsatcoins", "removesatcoin"],
     category: "adm/RP",
-    description: "Remove satcoins do saldo de outro usuário na economia deste grupo ou servidor. Informe o valor e depois a menção ou o ID da pessoa.",
+    description: `➖ Remove a quantidade informada de satcoins do saldo de um usuário na economia local.
+
+🔐 Disponível para administradores do chat e superusuários.
+
+📝 1. Informe a quantidade de satcoins e o destinatário:
+{prefix}remsatcoin <quantidade> <id|@usuário>
+{prefix}remsatcoin 200 @usuario
+{prefix}remsatcoin 500 5511999990000
+
+Você também pode responder à mensagem do usuário em vez de mencioná-lo ou digitar o ID.
+
+O valor informado é subtraído do saldo atual da carteira do membro neste grupo ou servidor.`,
     usage: "{prefix}remsatcoin <valor> <id|@usuário>",
 
     async execute(message) {

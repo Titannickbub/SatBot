@@ -1,10 +1,17 @@
-const xp = require("../functions/xp");
+const xp = require("../../functions/xp");
 
 module.exports = {
     name: "xp",
     aliases: ["meuxp", "perfilxp"],
     category: "contas",
-    description: "Consulta seu nível, XP atual, progresso até o próximo nível e posição no ranking do grupo ou servidor.",
+    description: `📊 Consulta seu nível, XP acumulado, progresso até o próximo nível e sua posição no ranking do grupo ou servidor.
+
+📝 1. Execute o comando dentro de um grupo ou servidor:
+{prefix}xp
+
+O bot exibe seu perfil de experiência com seu nível atual, total de XP, posição no ranking e a quantidade de XP restante para o próximo nível.
+
+⚠️ O sistema de XP precisa estar ativado no grupo ou servidor para contabilizar e exibir os dados.`,
     usage: "{prefix}xp",
 
     async execute(message) {

@@ -1,6 +1,40 @@
 const weatherMonitor = require("../../../functions/weatherMonitor");
 const { isOwner } = require("../../../functions/owners");
 
+const DESCRIPTION = `⛅ Agenda o envio diário da previsão do tempo neste chat ou tópico.
+
+🔐 Administradores do chat e superusuários podem configurar, ativar, desativar ou testar o monitor.
+
+📍 1. Escolha a cidade:
+{prefix}monitorclima set <cidade>
+{prefix}monitorclima set São Paulo
+
+O nome pode conter espaços. Para procurar uma cidade antes de configurar, consulte:
+{prefix}clima São Paulo
+
+⏰ 2. Defina os horários diários de envio:
+{prefix}monitorclima times <HH:MM,HH:MM>
+{prefix}monitorclima times 08:00,18:00
+
+Informe os horários no formato de 24 horas, separados por vírgulas. O horário padrão é 08:00.
+
+✅ 3. Ative os envios automáticos:
+{prefix}monitorclima enable
+
+A previsão será enviada diariamente nos horários configurados. Para pausar os envios sem apagar cidade ou horários:
+{prefix}monitorclima disable
+
+🧪 Consulte a previsão imediatamente:
+{prefix}monitorclima run
+
+Envia uma previsão de teste para a cidade configurada, sem alterar a programação.
+
+📋 Consulte as configurações:
+{prefix}monitorclima status
+
+❔ Exiba esta ajuda:
+{prefix}monitorclima help`;
+
 async function checkAdminPermission(message) {
     if (message.isPrivate || message.sender?.isOwner || isOwner(message)) return true;
     const adapter = (message.platforms || []).find(platform => platform.name === message.platform);
@@ -10,11 +44,15 @@ async function checkAdminPermission(message) {
     return !!message.sender?.isAdmin;
 }
 
+function helpText(message) {
+    return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
+}
+
 module.exports = {
     name: "monitorclima",
     category: "adm/configurações",
-    description: "Agenda previsões do tempo neste chat. Use `set` para escolher a cidade, `times` para definir horários, `enable`/`disable` para controlar os envios, `status` para consultar ou `run` para enviar uma previsão agora.",
-    usage: "{prefix}monitorclima <set|times|enable|disable|status|run>",
+    description: DESCRIPTION,
+    usage: "{prefix}monitorclima <set|times|enable|disable|status|run|help>",
     examples: [
         "{prefix}monitorclima set São Paulo",
         "{prefix}monitorclima times 08:00,18:00",
@@ -27,7 +65,7 @@ module.exports = {
         const args = message.args || [];
         const query = args.join(" ").trim();
         if (!query || ["help", "ajuda"].includes(query.toLowerCase())) {
-            return message.reply({ text: _help(message) });
+            return message.reply({ text: helpText(message) });
         }
 
         const target = {
@@ -96,23 +134,6 @@ module.exports = {
             }
         }
 
-        return message.reply({ text: _help(message) });
+        return message.reply({ text: helpText(message) });
     }
 };
-
-function _help(message) {
-    const prefix = message.prefix || "!";
-    return [
-        "⏰ *MONITORCLIMA — AJUDA*",
-        "",
-        "Configura a previsão automática neste chat. Apenas administradores podem alterar o monitor.",
-        "",
-        `• \`${prefix}monitorclima set <cidade>\` — Define a cidade monitorada.`,
-        `• \`${prefix}monitorclima times HH:MM,HH:MM\` — Define os horários diários.`,
-        `• \`${prefix}monitorclima enable\` / \`${prefix}monitorclima disable\` — Ativa ou desativa os envios.`,
-        `• \`${prefix}monitorclima status\` — Mostra a configuração atual.`,
-        `• \`${prefix}monitorclima run\` — Executa uma previsão de teste agora.`,
-        "",
-        `Pesquise uma cidade em tempo real com \`${prefix}clima <cidade>\`.`
-    ].join("\n");
-}

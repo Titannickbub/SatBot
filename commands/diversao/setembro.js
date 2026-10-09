@@ -5,7 +5,28 @@ module.exports = {
     category: "diversão",
     name: "setembro",
     aliases: ["setembronofap", "ranksetembro"],
-    description: "Gerencia o ranking e a entrada no desafio de Setembro/NoFap do grupo atual (WhatsApp/Telegram) ou servidor do Discord.",
+    description: `🏆 Gerencia e exibe o ranking do desafio de Setembro / NoFap entre os membros do grupo ou servidor.
+
+📝 1. Participe do desafio no chat atual:
+{prefix}setembro entrar
+
+Inscreve seu perfil no placar deste grupo e inicia sua contagem de dias.
+
+📊 2. Consulte o ranking dos membros:
+{prefix}setembro rank
+{prefix}setembro
+
+Exibe a tabela de classificação com a sequência de dias de todos os participantes do chat.
+
+🔄 3. Registre uma recaída (reset):
+{prefix}setembro reset
+
+Zera sua sequência atual de dias e atualiza seus dados no ranking.
+
+🚪 4. Deixe o desafio no grupo:
+{prefix}setembro sair
+
+Remove seu perfil do placar deste grupo ou servidor.`,
     usage: "{prefix}setembro [subcomando]",
     examples: [
         "{prefix}setembro rank",

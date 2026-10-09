@@ -46,15 +46,66 @@ const STRONG_ACTIONS = ["kick", "ban"];
 module.exports = {
     name: "antipalavras",
     category: "adm/segurança",
-    description: `Gerencia as regras de Antipalavras por nível hierárquico. O antipalavras deleta mensagens que contenham palavras proibidas e aplica punições.
-Funções disponíveis:
-• on/off: Ativa ou desativa o antipalavras no nível especificado.
-• action <delete|warn|kick|ban>: Define a punição (deletar, avisar, expulsar ou banir).
-• message <texto>: Define uma mensagem de aviso personalizada ao punir.
-• add <palavra, frase>: Adiciona novas palavras ou frases à lista de proibidas (separadas por vírgula).
-• remove <palavra, frase>: Remove palavras ou frases da lista de proibidas.
-• list: Mostra todas as palavras e frases atualmente proibidas no nível.
-• ignoreparent <on|off>: Define se o nível atual ignora configurações de níveis superiores.`,
+    description: `🚫 Configura a filtragem automática de palavras e frases proibidas e as punições aplicadas neste grupo ou servidor.
+
+🔐 Disponível para administradores do chat e superusuários.
+
+📍 1. Escolha o nível de configuração:
+• Discord: server (servidor), categoria (categoria) ou chat (canal/tópico).
+• WhatsApp: chat (grupo) ou server (comunidade, quando disponível).
+• Telegram: server (grupo/canal) ou chat (tópico, quando disponível).
+
+Os níveis disponíveis dependem da plataforma e do local em que o comando é usado.
+
+✅ 2. Ative ou desative o antipalavras no nível escolhido:
+{prefix}antipalavras <nível> on
+{prefix}antipalavras chat on
+{prefix}antipalavras <nível> off
+
+⚙️ 3. Escolha o que fazer quando uma palavra proibida for detectada:
+{prefix}antipalavras <nível> action <delete|warn|kick|ban>
+{prefix}antipalavras chat action warn
+
+delete remove a mensagem; warn remove e avisa; kick remove e expulsa; ban remove e bane. As ações kick e ban exigem que o bot tenha permissão para moderar membros.
+
+💬 Personalize o aviso enviado ao punir:
+{prefix}antipalavras <nível> message <texto>
+{prefix}antipalavras chat message Palavras ofensivas não são permitidas!
+
+📝 4. Gerencie a lista de palavras e frases proibidas:
+{prefix}antipalavras <nível> add <palavra, outra, frase proibida>
+{prefix}antipalavras chat add xingamento, palavra ruim, frase ofensiva
+{prefix}antipalavras <nível> remove <palavra, outra>
+{prefix}antipalavras <nível> list
+
+Separe as palavras ou frases por vírgula. Cada entrada é verificada individualmente nas mensagens.
+
+🧩 5. Configure exceções:
+
+Ignorar regras dos níveis superiores:
+{prefix}antipalavras <nível> ignoreparent on
+
+Use off no lugar de on para desativar a exceção. Por padrão, o nível herda as regras superiores.
+
+👤 6. Gerencie as exceções por usuário:
+Adicione ou remova usuários respondendo à mensagem, mencionando-os ou informando ID/número. Usuários na lista branca podem enviar palavras proibidas sem punição; a lista negra garante que sejam sempre punidos.
+{prefix}antipalavras <nível> userwhitelist add <usuário|ID>
+{prefix}antipalavras <nível> userwhitelist remove <usuário|ID>
+{prefix}antipalavras <nível> userwhitelist list
+{prefix}antipalavras <nível> userblacklist add <usuário|ID>
+{prefix}antipalavras <nível> userblacklist remove <usuário|ID>
+{prefix}antipalavras <nível> userblacklist list
+
+No Discord, também é possível gerenciar exceções por cargo. A lista branca isenta o cargo; a lista negra garante que membros com esse cargo sejam sempre punidos.
+{prefix}antipalavras <nível> rolewhitelist add <@cargo|ID|nome>
+{prefix}antipalavras <nível> rolewhitelist remove <@cargo|ID|nome>
+{prefix}antipalavras <nível> rolewhitelist list
+{prefix}antipalavras <nível> roleblacklist add <@cargo|ID|nome>
+{prefix}antipalavras <nível> roleblacklist remove <@cargo|ID|nome>
+{prefix}antipalavras <nível> roleblacklist list
+
+📊 Consulte o estado e as configurações:
+{prefix}antipalavras status`,
     usage: "{prefix}antipalavras",
     examples: [
         "{prefix}antipalavras status",

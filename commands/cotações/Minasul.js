@@ -4,7 +4,12 @@ const { loadMonitorState, buildSnapshot, getWeeklyBestMap, getMetricChangeText, 
 module.exports = {
     name: "minasul",
     category: "cotações",
-    description: "Exibe a cotação atual do café direto da Minasul, com variação e melhor da semana.",
+    description: `☕ Exibe a cotação atual do café direto da cooperativa Minasul para os diferentes padrões de grãos.
+
+📝 1. Execute o comando para verificar os preços:
+{prefix}minasul
+
+O bot consulta os valores praticados pela Minasul (Cereja Descascado, Bebida Mole, Bebida Dura), trazendo a variação e o melhor preço registrado na semana.`,
     usage: "{prefix}minasul",
 
     async execute(message) {

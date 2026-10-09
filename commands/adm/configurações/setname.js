@@ -29,22 +29,44 @@ function _getDiscordRenamePermission(channel, member, level) {
     return false;
 }
 
+const DESCRIPTION = `✏️ Renomeia um servidor, categoria, canal, tópico ou grupo.
+
+🔐 Disponível para administradores e superusuários.
+
+📌 O nível aceito depende da plataforma:
+• Discord: server renomeia o servidor; categoria renomeia a categoria do canal atual; chat renomeia o canal ou tópico atual.
+• Telegram: server renomeia o chat; chat renomeia o tópico atual ou, fora de um tópico, o chat.
+• WhatsApp: server ou chat renomeia o grupo atual.
+
+📝 Use o nível seguido pelo novo nome:
+{prefix}setname <nível> <novo nome>
+
+💡 Exemplos:
+{prefix}setname server Meu Servidor
+{prefix}setname categoria Notícias
+{prefix}setname chat avisos
+
+O nível categoria só é válido no Discord. Se usar chat em um tópico do Telegram, o tópico atual será renomeado.
+
+❔ Exiba esta ajuda:
+{prefix}setname help`;
+
+function helpText(message) {
+    return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
+}
+
 module.exports = {
     name: "setname",
     aliases: ["setname_chat", "chatname", "rename"],
     category: "adm/configurações",
-    description: `Renomeia o servidor, categoria, chat ou tópico conforme o nível especificado.
-
-Discord: server | categoria | chat.
-Telegram: server | chat.
-WhatsApp: server | chat.
-Use {prefix}setname <nivel> <novo nome> para definir o nome do nível correto.`,
-    usage: "{prefix}setname <nivel> <novo nome>",
+    description: DESCRIPTION,
+    usage: "{prefix}setname <nível> <novo nome>",
     examples: [
         "{prefix}setname server Meu Novo Servidor",
         "{prefix}setname categoria Canal de Notícias",
         "{prefix}setname chat Nome do Canal",
-        "{prefix}setname chat Assunto do Tópico"
+        "{prefix}setname chat Assunto do Tópico",
+        "{prefix}setname help"
     ],
 
     async execute(message) {
@@ -64,6 +86,10 @@ Use {prefix}setname <nivel> <novo nome> para definir o nome do nível correto.`,
 
         if (!userOk) {
             return message.reply({ text: "❌ Apenas administradores do grupo/servidor podem usar este comando." });
+        }
+
+        if (["help", "ajuda"].includes(String(args[0] || "").toLowerCase())) {
+            return message.reply({ text: helpText(message) });
         }
 
         if (!level || !newName) {

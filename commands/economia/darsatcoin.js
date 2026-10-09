@@ -5,7 +5,18 @@ module.exports = {
     name: "darsatcoin",
     aliases: ["darsatcoins", "addsatcoin"],
     category: "adm/RP",
-    description: "Adiciona satcoins ao saldo de outro usuário na economia deste grupo ou servidor. Informe o valor e depois a menção ou o ID do destinatário.",
+    description: `➕ Acrescenta a quantidade informada de satcoins ao saldo de um usuário na economia local.
+
+🔐 Disponível para administradores do chat e superusuários.
+
+📝 1. Informe a quantidade de satcoins e o destinatário:
+{prefix}darsatcoin <quantidade> <id|@usuário>
+{prefix}darsatcoin 500 @usuario
+{prefix}darsatcoin 1000 5511999990000
+
+Você também pode responder à mensagem do usuário em vez de mencioná-lo ou digitar o ID.
+
+O valor informado é somado ao saldo atual da carteira do membro neste grupo ou servidor.`,
     usage: "{prefix}darsatcoin <valor> <id|@usuário>",
 
     async execute(message) {

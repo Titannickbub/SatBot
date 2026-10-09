@@ -47,15 +47,75 @@ const STRONG_ACTIONS = ["kick", "ban"];
 module.exports = {
     name: "antimedia",
     category: "adm/segurança",
-    description: `Gerencia as regras de Antimedia por nível hierárquico. O antimedia bloqueia tipos de mídia e aplica punições.
-Funções disponíveis:
-• on/off: Ativa ou desativa o antimedia no nível especificado.
-• action <delete|warn|kick|ban>: Define a punição.
-• message <texto>: Define uma mensagem de aviso personalizada ao punir.
-• add <mídia, outra, ...>: Adiciona tipos de mídia proibidos (image, video, audio, sticker, location, document, contact, voice, gif).
-• remove <mídia>: Remove tipos de mídia da lista proibida.
-• list: Mostra as mídias proibidas no nível.
-• ignoreparent <on|off>: Define se o nível atual ignora configurações de níveis superiores.`,
+    description: `📹 Configura o bloqueio de tipos de mídia e as punições aplicadas neste grupo ou servidor.
+
+🔐 Disponível para administradores do chat e superusuários.
+
+📍 1. Escolha o nível de configuração:
+• Discord: server (servidor), categoria (categoria) ou chat (canal/tópico).
+• WhatsApp: chat (grupo) ou server (comunidade, quando disponível).
+• Telegram: server (grupo/canal) ou chat (tópico, quando disponível).
+
+Os níveis disponíveis dependem da plataforma e do local em que o comando é usado.
+
+📋 2. Configure os tipos de mídia bloqueados:
+Adicione um ou mais tipos; novos tipos são somados aos já configurados. Use os nomes em inglês ou português:
+image (imagem/foto), video (vídeo), audio (áudio/música), sticker (figurinha), location (localização), document (documento/arquivo), contact (contato), voice (mensagem de voz) e gif.
+
+Adicionar:
+{prefix}antimedia <nível> add <mídia1, mídia2>
+{prefix}antimedia chat add image, video, sticker
+
+Remover tipos:
+{prefix}antimedia <nível> remove <mídia1, mídia2>
+{prefix}antimedia chat remove sticker
+
+Consultar os tipos configurados:
+{prefix}antimedia <nível> list
+{prefix}antimedia chat list
+
+Se nenhum tipo estiver configurado, todos os tipos de mídia serão considerados bloqueados quando o antimedia estiver ativo.
+
+⚙️ 3. Escolha a ação aplicada:
+{prefix}antimedia <nível> action <delete|warn|kick|ban>
+{prefix}antimedia chat action warn
+
+delete remove a mídia; warn remove e avisa; kick remove e expulsa; ban remove e bane. As ações kick e ban exigem que o bot tenha permissão para moderar membros.
+
+💬 Personalize o aviso enviado ao punir:
+{prefix}antimedia <nível> message <texto>
+{prefix}antimedia chat message Mídia não permitida aqui!
+
+✅ 4. Ative ou desative a regra:
+{prefix}antimedia <nível> on
+{prefix}antimedia chat on
+{prefix}antimedia <nível> off
+
+🧩 Configure a herança:
+{prefix}antimedia <nível> ignoreparent on
+{prefix}antimedia <nível> ignoreparent off
+
+Por padrão, o nível herda as regras dos níveis superiores. Use on para ignorá-las e off para voltar a herdá-las.
+
+👤 5. Gerencie exceções por usuário:
+Adicione ou remova usuários respondendo à mensagem, mencionando-os ou informando ID/número. Usuários na lista branca ficam isentos; usuários na lista negra são punidos ao enviar qualquer mídia, mesmo que o tipo não esteja configurado.
+{prefix}antimedia <nível> userwhitelist add <usuário|ID>
+{prefix}antimedia <nível> userwhitelist remove <usuário|ID>
+{prefix}antimedia <nível> userwhitelist list
+{prefix}antimedia <nível> userblacklist add <usuário|ID>
+{prefix}antimedia <nível> userblacklist remove <usuário|ID>
+{prefix}antimedia <nível> userblacklist list
+
+No Discord, também é possível gerenciar exceções por cargo. Informe @cargo, ID ou nome:
+{prefix}antimedia <nível> rolewhitelist add <@cargo|ID|nome>
+{prefix}antimedia <nível> rolewhitelist remove <@cargo|ID|nome>
+{prefix}antimedia <nível> rolewhitelist list
+{prefix}antimedia <nível> roleblacklist add <@cargo|ID|nome>
+{prefix}antimedia <nível> roleblacklist remove <@cargo|ID|nome>
+{prefix}antimedia <nível> roleblacklist list
+
+📊 Consulte o resumo das regras:
+{prefix}antimedia status`,
     usage: "{prefix}antimedia",
     examples: [
         "{prefix}antimedia status",

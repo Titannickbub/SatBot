@@ -1,7 +1,15 @@
 module.exports = {
     name: "unir",
     category: "contas/conectar",
-    description: "Vincula esta conta à conta central usando o código temporário gerado por `gerar_unir` na sua outra plataforma. Informe o código para concluir a união.",
+    description: `🔗 Vincula esta conta à sua conta central utilizando o código temporário gerado pelo comando gerar_unir em outra plataforma.
+
+📝 1. Informe o código de união recebido:
+{prefix}unir <codigo>
+{prefix}unir ABCD1234
+
+O bot valida o código temporário e conecta as duas contas à mesma conta central, unificando seus dados entre as plataformas.
+
+⚠️ Caso ainda não tenha um código, use o comando {prefix}gerar_unir na sua outra plataforma para gerá-lo.`,
     usage: "{prefix}unir <codigo>",
     async execute(message) {
         const args = message.args || [];

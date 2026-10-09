@@ -7,21 +7,71 @@ const ACTIONS = {
     delete: "🗑️ Deletar mensagem + avisar/ignorar"
 };
 
+const DESCRIPTION = `🌐 Gerencia o bloqueio global de comandos e categorias inteiras em todas as plataformas, grupos, servidores e conversas privadas.
+
+🔐 Disponível apenas para superusuários / donos do bot.
+
+📌 Regras importantes:
+• Super Usuários / Donos do bot continuam imunes ao bloqueio global.
+• O bloqueio global sobrepõe qualquer permissão local de administradores de grupos.
+
+📋 1. Consulte o status atual:
+{prefix}blockcmd_su status
+
+Exibe se o bloqueio global está ativo, o modo de ação configurado, a mensagem personalizada e a lista de comandos bloqueados.
+
+✅ 2. Ative ou desative o bloqueio global:
+{prefix}blockcmd_su on
+{prefix}blockcmd_su off
+
+🚫 3. Adicione comandos ou categorias ao bloqueio:
+{prefix}blockcmd_su add <comando|categoria>
+{prefix}blockcmd_su add cotacao
+{prefix}blockcmd_su add ia
+
+Se o nome corresponder a uma categoria (ex: ia), todos os comandos dessa categoria serão bloqueados globalmente.
+
+🔓 4. Remova um comando ou categoria do bloqueio:
+{prefix}blockcmd_su remove <comando|categoria>
+{prefix}blockcmd_su remove cotacao
+
+📋 5. Liste os comandos bloqueados:
+{prefix}blockcmd_su list
+
+🧹 6. Limpe toda a lista de bloqueio:
+{prefix}blockcmd_su clear
+
+Remove todos os comandos e categorias da lista de bloqueio global de uma vez.
+
+⚙️ 7. Escolha o comportamento ao barrar um comando:
+{prefix}blockcmd_su action reply
+{prefix}blockcmd_su action ignore
+{prefix}blockcmd_su action delete
+
+O modo reply responde com a mensagem de aviso. O modo ignore silencia sem responder. O modo delete apaga a mensagem e avisa/ignora conforme configurado.
+
+💬 8. Personalize a mensagem de aviso:
+{prefix}blockcmd_su message <texto>
+{prefix}blockcmd_su message ⚠️ O comando {cmd} foi desativado globalmente pelo administrador do bot.
+
+Variáveis disponíveis: {cmd} (nome do comando), {user} (usuário) e {prefix} (prefixo atual).`;
+
 module.exports = {
     name: "blockcmd_su",
     aliases: ["blockcmdsu", "su_blockcmd", "sublockcmd"],
     category: "system/configurações",
-    description: "Gerencia o bloqueio global de comandos e categorias para Donos/Super Usuários. Impede a execução de comandos em todas as plataformas, chats, grupos e conversas privadas.",
-    usage: "{prefix}blockcmd_su status",
+    description: DESCRIPTION,
+    usage: "{prefix}blockcmd_su [subcomando]",
     examples: [
         "{prefix}blockcmd_su status",
         "{prefix}blockcmd_su on",
-        "{prefix}blockcmd_su add cotacao (bloqueia !cotacao globalmente)",
-        "{prefix}blockcmd_su add ia (bloqueia a categoria ia globalmente)",
-        "{prefix}blockcmd_su action ignore (ignora silenciosamente)",
+        "{prefix}blockcmd_su add cotacao",
+        "{prefix}blockcmd_su add ia",
+        "{prefix}blockcmd_su action ignore",
         "{prefix}blockcmd_su action reply",
         "{prefix}blockcmd_su remove cotacao",
         "{prefix}blockcmd_su list",
+        "{prefix}blockcmd_su clear",
         "{prefix}blockcmd_su message ⚠️ O comando {cmd} foi desativado globalmente pelo administrador do bot."
     ],
 
@@ -171,49 +221,6 @@ function _status(message) {
 }
 
 function _help(message) {
-    const p = message.prefix;
-    return `🌐 *BLOCKCMD_SU (SUPER USUÁRIO) — AJUDA*
-
-O \`blockcmd_su\` permite desativar comandos ou categorias inteiras em **todas as plataformas, grupos, servidores e mensagens privadas** de forma global. Apenas Donos do Bot possuem acesso.
-
-⚙️ **COMANDOS PRINCIPAIS:**
-  • \`${p}blockcmd_su status\`
-    ↳ Exibe o status e os comandos bloqueados na lista global.
-
-  • \`${p}blockcmd_su on|off\`
-    ↳ Ativa ou desativa o bloqueio global de comandos.
-
-  • \`${p}blockcmd_su add <comando|categoria>\`
-    ↳ Adiciona um comando/categoria ao bloqueio global (ex: \`cotacao\`, \`ia\`).
-
-  • \`${p}blockcmd_su remove <comando|categoria>\`
-    ↳ Remove um comando/categoria da lista global.
-
-  • \`${p}blockcmd_su list\`
-    ↳ Lista todos os comandos e categorias bloqueados globalmente.
-
-  • \`${p}blockcmd_su clear\`
-    ↳ Limpa totalmente a lista de bloqueio global.
-
-  • \`${p}blockcmd_su action <reply|ignore|delete>\`
-    ↳ Define a ação global ao barrar (reply, ignore ou delete).
-
-  • \`${p}blockcmd_su message <texto>\`
-    ↳ Mensagem personalizada de aviso global (suporta \`{cmd}\`, \`{user}\` e \`{prefix}\`).
-
-🛡️ **AÇÕES DISPONÍVEIS:**
-  • \`reply\`  — 💬 Responder mensagem de aviso no chat.
-  • \`ignore\` — 🔇 Ignorar silenciosamente em qualquer chat ou PV.
-  • \`delete\` — 🗑️ Deletar mensagem do comando (onde houver permissão).
-
-💡 **OBSERVAÇÕES:**
-  • Super Usuários / Donos do bot continuam imunes ao bloqueio global.
-  • O bloqueio global sobrepõe qualquer permissão local de administradores de grupos.
-
-📌 **EXEMPLOS:**
-  ${p}blockcmd_su status
-  ${p}blockcmd_su on
-  ${p}blockcmd_su add cotacao
-  ${p}blockcmd_su action ignore
-  ${p}blockcmd_su message ⚠️ O comando {cmd} foi desativado temporariamente pelo desenvolvedor.`;
+    return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
 }
+

@@ -6,7 +6,12 @@ const { updateMonitorState, loadMonitorState, normalizePrice } = require("../../
 module.exports = {
     name: "cotacao",
     category: "cotações",
-    description: "Exibe a cotação atual do café com variações e melhores preços da semana por qualidade.",
+    description: `☕ Consulta o painel consolidado de cotações do café integrando Minasul, Coocafé e CCCMG, com variações e melhores preços da semana.
+
+📝 1. Execute o comando para consultar o resumo de mercado:
+{prefix}cotacao
+
+O bot consulta simultaneamente as principais cooperativas e centros de comércio de café, exibindo uma visão comparativa com os valores atuais, oscilações recentes e os recordes de preço da semana.`,
     usage: "{prefix}cotacao",
     examples: ["{prefix}cotacao"],
 

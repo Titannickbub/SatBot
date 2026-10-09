@@ -1,11 +1,22 @@
-const xp = require("../functions/xp");
-const { renderRanking } = require("../functions/imageBanner");
+const xp = require("../../../functions/xp");
+const { renderRanking } = require("../../../functions/imageBanner");
 
 module.exports = {
     name: "rankxp",
     aliases: ["rankingxp", "ranking-xp"],
     category: "adm/RP",
-    description: "Gera uma imagem com os membros ordenados pelo XP no grupo ou servidor. Use `melhores` para os maiores valores ou `piores` para os menores.",
+    description: `🏆 Exibe um ranking de XP em imagem para este grupo ou servidor.
+
+📊 1. Escolha a ordem do ranking:
+
+Maiores valores: mostra primeiro os membros com mais XP. Esta é a opção padrão.
+{prefix}rankxp
+{prefix}rankxp melhores
+
+Menores valores: mostra primeiro os membros com menos XP.
+{prefix}rankxp piores
+
+O sistema de XP precisa estar ativado neste grupo ou servidor. O ranking considera os dados de XP registrados dos membros.`,
     usage: "{prefix}rankxp [melhores|piores]",
 
     async execute(message) {

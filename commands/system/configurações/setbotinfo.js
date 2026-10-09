@@ -15,16 +15,52 @@ const fields = {
     licença: "baseLicense"
 };
 
+const DESCRIPTION = `📋 Altera os dados públicos exibidos pelo comando {prefix}infobot.
+
+🔐 Disponível apenas para superusuários / donos do bot.
+
+📌 Campos disponíveis:
+• descricao — texto descritivo do bot.
+• dono / responsavel — nome do responsável pelo bot.
+• contato / contatos — informações de contato (separar com |).
+• base — nome do projeto base.
+• desenvolvedor — nome do desenvolvedor da base.
+• repositorio — URL do repositório do projeto.
+• licenca — tipo de licença do projeto.
+
+📝 1. Altere a descrição do bot:
+{prefix}setbotinfo descricao Meu bot multifuncional para grupos!
+
+👤 2. Defina o nome do responsável:
+{prefix}setbotinfo dono Nome do responsável
+
+📞 3. Configure os contatos:
+{prefix}setbotinfo contato WhatsApp: +55 00 00000-0000
+{prefix}setbotinfo contato WhatsApp: +55 00 00000-0000 | Discord: usuario
+
+Para vários contatos, separe-os com |.
+
+🗑️ 4. Remova todos os contatos:
+{prefix}setbotinfo contato limpar
+
+🔗 5. Configure dados do projeto base:
+{prefix}setbotinfo base SatBot
+{prefix}setbotinfo desenvolvedor NomeDoDesenvolvedor
+{prefix}setbotinfo repositorio https://github.com/usuario/repositorio
+{prefix}setbotinfo licenca MIT`;
+
 module.exports = {
     name: "setbotinfo",
     aliases: ["configinfobot"],
     category: "system/configurações",
-    description: "Altera os dados exibidos por `infobot`. Informe o campo e o novo valor; os campos incluem descrição, responsável/dono, contatos, base, desenvolvedor, repositório e licença. Para vários contatos, separe-os com `|`.",
+    description: DESCRIPTION,
     usage: "{prefix}setbotinfo <campo> <valor>",
     examples: [
+        "{prefix}setbotinfo descricao Meu bot multifuncional!",
         "{prefix}setbotinfo dono Nome do responsável",
         "{prefix}setbotinfo contato WhatsApp: +55 00 00000-0000 | Discord: usuario",
-        "{prefix}setbotinfo repositorio https://github.com/usuario/repositorio"
+        "{prefix}setbotinfo repositorio https://github.com/usuario/repositorio",
+        "{prefix}setbotinfo contato limpar"
     ],
 
     async execute(message) {

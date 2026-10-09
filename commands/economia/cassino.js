@@ -21,7 +21,16 @@ module.exports = {
     name: "cassino",
     aliases: ["casino", "slot"],
     category: "economia",
-    description: "Faz uma aposta na roleta de frutas usando satcoins do grupo ou servidor atual. Informe o valor opcionalmente (padrão: 10 satcoins); cada pessoa pode jogar até cinco vezes por dia.",
+    description: `🎰 Aposta satcoins no caça-níqueis de frutas para concorrer a prêmios e multiplicar suas moedas.
+
+📝 1. Gire a roleta informando o valor da aposta (padrão: 10 satcoins):
+{prefix}cassino
+{prefix}cassino 50
+{prefix}cassino 100
+
+Combine 3 frutas iguais para ganhar o prêmio máximo (Jackpot) ou 2 frutas iguais para receber retorno parcial.
+
+⏳ Limite de 5 jogadas diárias por usuário. Se esgotar, você pode comprar um reset na {prefix}loja.`,
     usage: "{prefix}cassino [valor]",
 
     async execute(message) {

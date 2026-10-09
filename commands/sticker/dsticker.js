@@ -25,7 +25,20 @@ module.exports = {
         telegram: "none",
         whatsapp: "none"
     },
-    description: "Cria uma figurinha (sticker) personalizada no servidor do Discord a partir de fotos, GIFs, vídeos, emojis de outros servidores ou figurinhas do Vencord.",
+    description: `🖼️ Cria e adiciona uma figurinha (sticker) personalizada ao servidor do Discord a partir de imagens, GIFs, vídeos ou emojis.
+
+🔐 Exclusivo para o Discord. Requer permissão de Gerenciar Emojis / Expressões no servidor ou Administrador.
+
+📝 1. Crie uma figurinha informando o nome e a mídia:
+{prefix}dsticker <nome>
+{prefix}dsticker minha_figurinha
+{prefix}dsticker sticker_gato <:custom_emoji:1234567890>
+
+Envie uma imagem/GIF na legenda com o comando, responda a uma mídia ou cole o link/emoji diretamente.
+
+📐 2. Modos alternativos de ajuste:
+• {prefix}fdsticker / {prefix}fds <nome> — Estica a mídia preenchendo o espaço (512x512).
+• {prefix}rdsticker / {prefix}rds <nome> — Recorta a imagem em formato quadrado centralizado.`,
     usage: "{prefix}dsticker <nome> [imagem/emoji/link]",
     examples: [
         "{prefix}dsticker minha_figurinha (respondendo a uma imagem ou na legenda)",

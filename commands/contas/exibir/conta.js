@@ -4,7 +4,12 @@ module.exports = {
     name: "conta",
     aliases: ["contaglobal", "global"],
     category: "contas/exibir",
-    description: "Exibe os dados da sua conta central e lista as contas de WhatsApp, Telegram ou Discord vinculadas a ela.",
+    description: `🌐 Exibe os dados detalhados da sua Conta Global/Central e lista todas as contas de plataformas vinculadas (WhatsApp, Discord, Telegram).
+
+📝 1. Execute o comando para ver os dados da sua conta:
+{prefix}conta
+
+O bot exibe o nome central, ID global, status VIP, data de criação, última atividade e as plataformas atualmente conectadas.`,
     usage: "{prefix}conta",
 
     async execute(message) {

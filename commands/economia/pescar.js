@@ -34,7 +34,14 @@ module.exports = {
     name: "pescar",
     aliases: ["pesca", "fish"],
     category: "economia",
-    description: "Faz uma pescaria na economia do grupo ou servidor: você pode ganhar satcoins, não obter ganho ou sofrer um prejuízo. Cada pessoa tem até duas tentativas por dia.",
+    description: `🎣 Lança a vara de pescar no rio para fisgar peixes, espécies raras e ganhar satcoins e XP.
+
+📝 1. Execute o comando dentro de um grupo ou servidor:
+{prefix}pescar
+
+O bot sorteia o resultado da pescaria, podendo capturar peixes valiosos, receber recompensas de comerciantes ou encontrar lixo e perder anzóis.
+
+⏳ Limite de 2 tentativas diárias por usuário. Se esgotar, você pode comprar um reset na {prefix}loja.`,
     usage: "{prefix}pescar",
 
     async execute(message) {

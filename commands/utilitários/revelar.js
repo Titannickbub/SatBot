@@ -1,3 +1,25 @@
+const DESCRIPTION = `🔓 Revela e reenvia como mídia permanente fotos, vídeos ou áudios enviados com visualização única (View Once).
+
+🔐 Comando público disponível para todos os usuários.
+
+📌 Regras por plataforma:
+• WhatsApp: suporte completo para mensagens de visualização única.
+• Discord / Telegram: indisponível (plataformas sem o recurso equivalente de view once).
+
+🔓 1. Como revelar uma mídia de visualização única:
+{prefix}revelar
+{prefix}vo
+{prefix}desocultar
+
+Responda (cite) diretamente à foto, vídeo ou áudio de visualização única enviando o comando.
+
+📦 2. Tipos de mídia suportados:
+• 🖼️ Imagens / Fotos de visualização única.
+• 🎥 Vídeos de visualização única.
+• 🎙️ Mensagens de áudio / recados de voz protegidos.
+
+ℹ️ A mídia será reenviada no chat como arquivo comum e permanente, preservando a legenda original quando houver.`;
+
 module.exports = {
     name: "revelar",
     aliases: ["revela", "viewonce", "vo", "quebrar", "antivo", "readvo", "desocultar"],
@@ -7,26 +29,16 @@ module.exports = {
         telegram: "none",
         discord: "none"
     },
-    description: "Revela e envia como mídia normal uma foto, vídeo ou áudio de visualização única (View Once) respondida.",
+    description: DESCRIPTION,
     usage: "{prefix}revelar (respondendo a uma mídia de visualização única)",
     examples: [
         "{prefix}revelar",
         "{prefix}vo",
-        "{prefix}revela"
+        "{prefix}revela",
+        "{prefix}desocultar"
     ],
     info(message) {
-        const prefix = message.prefix || "!";
-        return [
-            "🔓 *REVELADOR DE VISUALIZAÇÃO ÚNICA*",
-            "",
-            "Quebra o modo de visualização única e envia a mídia permanente no chat.",
-            "",
-            "📋 *COMO USAR:*",
-            `  • Responda à imagem, vídeo ou áudio de visualização única com \`${prefix}revelar\` ou \`${prefix}vo\`.`,
-            "",
-            "📌 *PLATAFORMAS:*",
-            "  • Exclusivo para *WhatsApp*."
-        ].join("\n");
+        return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
     },
 
     async execute(message) {

@@ -4,7 +4,14 @@ module.exports = {
     name: "resgatar",
     aliases: ["daily", "diario", "diária"],
     category: "economia",
-    description: "Resgata uma vez por dia a recompensa diária de satcoins na economia do grupo ou servidor atual. Use novamente após a virada do dia para receber a próxima recompensa.",
+    description: `🎁 Resgata a recompensa diária gratuita de satcoins na economia local do grupo ou servidor.
+
+📝 1. Execute o comando para coletar seu bônus do dia:
+{prefix}resgatar
+
+O bot credita o valor do bônus diário diretamente na sua carteira.
+
+⏳ Disponível uma vez por dia (reinicia na virada do dia).`,
     usage: "{prefix}resgatar",
 
     async execute(message) {

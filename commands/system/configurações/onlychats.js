@@ -8,42 +8,62 @@ const {
 } = require("../../../functions/config");
 const { isOwner } = require("../../../functions/owners");
 
+const DESCRIPTION = `🔒 Gerencia a restrição exclusiva de chats e servidores (whitelist global).
+
+🔐 Disponível apenas para superusuários / donos do bot.
+
+📌 Regras importantes:
+• Quando ativado, o bot responde apenas em contextos autorizados pela lista branca (servidores, categorias, chats, tópicos ou comandos liberados).
+• Donos do bot (SU) continuam com acesso total em qualquer chat.
+• Não afeta mensagens privadas (PV), que continuam gerenciadas pelo {prefix}antipv.
+
+📋 1. Consulte o status e a lista branca:
+{prefix}onlychats list
+{prefix}onlychats status
+
+Exibe o estado atual (ON/OFF), modo de bloqueio, mensagem de aviso e a lista completa de itens liberados.
+
+✅ 2. Ative ou desative a restrição:
+{prefix}onlychats on
+{prefix}onlychats off
+
+💬 3. Escolha o comportamento em chats não autorizados:
+{prefix}onlychats mode reply
+{prefix}onlychats mode ignore
+
+O modo reply envia a mensagem de aviso configurada. O modo ignore silencia sem responder.
+
+📝 4. Personalize a mensagem de aviso:
+{prefix}onlychats msg <texto>
+{prefix}onlychats msg ⚠️ Atendimento não autorizado neste chat.
+
+➕ 5. Adicione itens à lista branca:
+{prefix}onlychats add server
+{prefix}onlychats add chat
+{prefix}onlychats add categoria
+{prefix}onlychats add topico
+{prefix}onlychats add server 123456789 Servidor Principal
+
+Se o ID for omitido, o sistema detecta automaticamente o contexto atual (servidor, chat, categoria ou tópico).
+
+🎯 6. Libere comandos específicos em chats bloqueados:
+{prefix}onlychats add comando ping
+{prefix}onlychats allowcmd add ping
+{prefix}onlychats allowcmd list
+
+Permite que comandos essenciais (ex: ping, ajuda) funcionem mesmo em chats não autorizados.
+
+➖ 7. Remova itens da lista branca:
+{prefix}onlychats del server 123456789
+{prefix}onlychats del chat 123456789
+{prefix}onlychats del comando ping
+{prefix}onlychats allowcmd del ping
+
+Remove um item pelo seu ID ou nome da lista branca.`;
+
 module.exports = {
     name: "onlychats",
-    description: `Gerencia a restrição exclusiva de chats/servidores (whitelist global).
-
-Quando o modo onlychats está ativado, o bot responde apenas em contextos autorizados pela lista branca (servidores, categorias, chats, tópicos ou comandos liberados).
-
-📌 CARACTERÍSTICAS:
-  • Exclusivo para Super Usuários (SU).
-  • Donos do bot (SU) continuam com acesso total em qualquer chat.
-  • Não afeta mensagens privadas (PV), que continuam gerenciadas pelo Anti-PV.
-
-SUBCOMANDOS:
-  list / status
-    • Exibe o estado atual (ON/OFF), modo de bloqueio, mensagem de aviso e a lista completa de servidores, categorias, chats, tópicos e comandos liberados.
-
-  on / off
-    • Ativa ou desativa o modo de restrição exclusiva global.
-
-  mode <ignore|reply>
-    • Define o comportamento ao receber mensagens em chats não autorizados:
-      - ignore: Silêncio total (não responde nada).
-      - reply: Envia a mensagem de aviso configurada.
-
-  msg <texto>
-    • Define o texto de aviso personalizado enviado quando o modo for "reply".
-
-  add <server|categoria|chat|topico|comando> [id/nome] [descrição]
-    • Adiciona um item à whitelist.
-    • Se o ID for omitido ao adicionar server, categoria, chat ou topico, o sistema detecta automaticamente o ID e Nome do contexto atual!
-    • Para comandos: !onlychats add comando <nome_do_comando> (ex: !onlychats add comando ping).
-
-  del <server|categoria|chat|topico|comando> <id/nome>
-    • Remove um item ou comando da lista branca pelo seu ID ou nome.
-
-  allowcmd <add|del|list> <comando>
-    • Atalho para gerenciar comandos liberados que funcionam mesmo em chats bloqueados (ex: !onlychats allowcmd add ping).`,
+    description: DESCRIPTION,
     category: "system/configurações",
     usage: "{prefix}onlychats [subcomando]",
     examples: [

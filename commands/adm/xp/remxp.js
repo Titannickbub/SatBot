@@ -5,7 +5,18 @@ module.exports = {
     name: "remxp",
     aliases: ["removexp"],
     category: "adm/RP",
-    description: "Subtrai a quantidade de XP informada do perfil do usuário indicado. Informe a quantidade e depois o ID ou a menção da pessoa.",
+    description: `➖ Subtrai a quantidade de XP informada do perfil do usuário indicado.
+
+🔐 Disponível para administradores do chat e superusuários.
+
+📝 1. Informe a quantidade de XP e o usuário:
+{prefix}remxp <quantidade> <id|@usuário>
+{prefix}remxp 500 @usuario
+{prefix}remxp 1000 5511999990000
+
+Você também pode responder à mensagem do usuário em vez de mencioná-lo ou informar o ID.
+
+O XP informado é subtraído do total atual do perfil. O bot exibirá o XP anterior e o novo valor.`,
     usage: "{prefix}remxp <quantidade> <id|@usuário>",
 
     async execute(message) {

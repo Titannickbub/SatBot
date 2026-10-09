@@ -23,7 +23,21 @@ module.exports = {
         telegram: "full",
         discord: "full"
     },
-    description: "Executa uma ação interativa, como beijo, abraço ou cumprimento, direcionada a outro membro. Informe o nome da ação e mencione a pessoa ou responda à mensagem dela; use `help` para listar ações disponíveis.",
+    description: `🎭 Executa uma ação interativa de roleplay (como beijo, abraço, carinho ou tapa) direcionada a outro membro com GIF ou animação.
+
+📝 1. Escolha a ação e mencione um usuário ou responda à mensagem dele:
+{prefix}act <ação> <@usuário>
+{prefix}act kiss @usuario
+{prefix}act hug @usuario
+{prefix}act slap @usuario
+
+Você também pode apenas responder à mensagem de uma pessoa e digitar {prefix}act <ação>.
+
+📋 2. Consulte todas as ações disponíveis:
+{prefix}act help
+{prefix}act
+
+O bot escolhe aleatoriamente uma frase e uma mídia (GIF, vídeo ou imagem) cadastrada para a ação selecionada.`,
     usage: [
         "{prefix}act kiss",
         "{prefix}act hug",

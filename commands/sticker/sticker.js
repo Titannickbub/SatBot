@@ -8,7 +8,22 @@ module.exports = {
         "f", "fsticker", "ffig", "ffigurinha",
         "r", "rsticker", "rfig", "rfigurinha"
     ],
-    description: "Cria uma figurinha (sticker) no WhatsApp ou Telegram com ajuste de proporção, esticada ou cortada no centro.",
+    description: `🖼️ Converte fotos, imagens, GIFs ou vídeos curtos em figurinhas (stickers) para WhatsApp e Telegram.
+
+📝 1. Crie a figurinha mantendo a proporção original:
+{prefix}s
+{prefix}fig
+{prefix}sticker
+
+Envie uma foto ou vídeo com o comando na legenda, ou responda à mensagem de mídia com o comando.
+
+📐 2. Modos alternativos de ajuste:
+• {prefix}f / {prefix}fsticker — Estica a imagem para preencher toda a figurinha.
+• {prefix}r / {prefix}rsticker — Recorta a imagem em formato quadrado centralizado.
+
+📌 Observações:
+• Suporta fotos, imagens, GIFs e vídeos curtos (até 10 segundos).
+• No Discord, utilize {prefix}dsticker para figurinhas de servidor ou {prefix}emoji para emojis.`,
     category: "sticker",
     platformSupport: {
         whatsapp: "full",

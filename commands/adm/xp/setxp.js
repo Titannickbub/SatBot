@@ -5,7 +5,18 @@ module.exports = {
     name: "setxp",
     aliases: ["definirxp"],
     category: "adm/RP",
-    description: "Substitui o XP atual do perfil pelo valor informado, sem somar ao total existente. Informe a nova quantidade e depois o ID ou a menção da pessoa.",
+    description: `🔧 Substitui o XP atual do perfil pelo valor informado, sem somar ao total existente.
+
+🔐 Disponível para administradores do chat e superusuários.
+
+📝 1. Informe a nova quantidade de XP e o usuário:
+{prefix}setxp <quantidade> <id|@usuário>
+{prefix}setxp 500 @usuario
+{prefix}setxp 0 5511999990000
+
+Você também pode responder à mensagem do usuário em vez de mencioná-lo ou informar o ID.
+
+O XP do perfil é substituído pelo valor informado, ignorando o total anterior. O bot exibirá o XP anterior e o novo valor.`,
     usage: "{prefix}setxp <quantidade> <id|@usuário>",
 
     async execute(message) {

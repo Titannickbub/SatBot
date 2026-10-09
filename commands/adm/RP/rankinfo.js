@@ -1,6 +1,6 @@
-const activity = require("../functions/activity");
-const economy = require("../functions/economy");
-const xp = require("../functions/xp");
+const activity = require("../../../functions/activity");
+const economy = require("../../../functions/economy");
+const xp = require("../../../functions/xp");
 
 function resolveIdentifier(message) {
     return [
@@ -32,7 +32,24 @@ module.exports = {
     name: "rankinfo",
     aliases: ["consultarank", "rankusuario", "inforank"],
     category: "adm/RP",
-    description: "Consulta a posição e os dados de uma pessoa em um ranking. Informe `atividade`, `xp` ou `rico` e depois mencione o membro, responda à mensagem dele ou passe seu ID.",
+    description: `🔎 Consulta a posição e os dados de um membro em um ranking deste grupo ou servidor.
+
+1. Escolha o ranking:
+• atividade — posição, total de atividades, dados de hoje, mensagens, comandos, figurinhas e arquivos.
+• xp — posição, XP acumulado, nível e XP restante para o próximo nível.
+• rico — posição e saldo na economia.
+
+2. Identifique o membro mencionando-o, respondendo à mensagem dele ou informando o ID:
+{prefix}rankinfo <atividade|xp|rico> <@usuário|id>
+
+💡 Exemplos:
+{prefix}rankinfo atividade @usuário
+{prefix}rankinfo xp 000000000
+{prefix}rankinfo rico
+
+No último exemplo, responda à mensagem do membro para identificá-lo.
+
+O sistema correspondente precisa estar ativado neste grupo ou servidor, e o membro precisa ter dados registrados no ranking escolhido.`,
     usage: "{prefix}rankinfo <atividade|xp|rico> <id|@usuário>",
 
     async execute(message) {

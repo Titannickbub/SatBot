@@ -11,7 +11,14 @@ module.exports = {
     name: "perfil_text",
     aliases: ["perfil-text", "perfiltexto", "profiletext"],
     category: "contas/exibir",
-    description: "Exibe a versão textual do perfil da plataforma atual e informa a Conta Central vinculada.",
+    description: `📄 Exibe a versão em texto do seu perfil no grupo ou servidor atual, acompanhada da sua foto de perfil.
+
+📝 1. Execute o comando dentro de um grupo ou servidor:
+{prefix}perfil_text
+
+O bot envia uma mensagem detalhando seu nome, ID, saldo em satcoins, estatísticas de atividade, nível de XP e status do NoFap.
+
+ℹ️ Para gerar a versão visual estilizada em imagem, utilize o comando {prefix}perfil.`,
     usage: "{prefix}perfil_text",
 
     async execute(message) {

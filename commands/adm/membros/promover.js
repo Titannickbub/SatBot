@@ -9,8 +9,24 @@ module.exports = {
         telegram: "none",
         discord: "none"
     },
-    description: "Promove um membro a administrador no WhatsApp. Pode usar resposta, ID, ID central ou menção.",
+    description: `⬆️ Promove um membro a administrador do grupo no WhatsApp.
+
+🔐 Você e o bot precisam ser administradores do grupo.
+
+📌 Informe o membro por resposta, menção, número/ID ou ID central:
+{prefix}promover <número|ID central|@menção>
+
+💡 Exemplos:
+{prefix}promover 5511999999999
+{prefix}promover @membro
+
+Também é possível responder à mensagem do membro com o comando.`,
     usage: "{prefix}promover <ID|ID central|@menção> ou responda à mensagem",
+    examples: [
+        "{prefix}promover 5511999999999",
+        "{prefix}promover @membro",
+        "Responda à mensagem do membro com {prefix}promover"
+    ],
 
     async execute(message) {
         if (message.platform !== "whatsapp") {

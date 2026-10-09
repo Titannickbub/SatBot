@@ -4,7 +4,7 @@ const {
     loadSchedules,
     parseIntervalToMs,
     formatTs
-} = require("../functions/schedulerHelper");
+} = require("../../../functions/schedulerHelper");
 
 const MAX_REMINDERS = 3;
 
@@ -118,7 +118,7 @@ async function execute(message) {
 module.exports = {
     name: "lembrete",
     aliases: ["reminder"],
-    category: "utilitários",
+    category: "adm/ações imediatas",
     description: "Cria até três lembretes pessoais, enviados uma vez após um intervalo (como 2h ou 30m) ou em um horário do dia (HH:MM). Em grupos, somente administradores podem criar lembretes.",
     usage: "{prefix}lembrete <intervalo|HH:MM> <texto>",
     examples: [

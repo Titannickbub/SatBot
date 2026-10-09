@@ -14,7 +14,20 @@ function createAudioFilename(title) {
 
 module.exports = {
     name: "play",
-    description: "Baixa mídias de diversas plataformas através da API Bronxys",
+    description: `🎵 Baixa áudios e músicas em MP3 a partir de links ou buscando pelo nome em diversas plataformas (YouTube, TikTok, Instagram, Spotify, etc.).
+
+📝 1. Baixe buscando pelo nome da música:
+{prefix}play <nome da música>
+{prefix}play hotel caro
+{prefix}play Bohemian Rhapsody
+
+🔗 2. Baixe diretamente por link:
+{prefix}play <URL>
+{prefix}play https://youtu.be/...
+{prefix}play https://www.tiktok.com/...
+{prefix}play https://www.instagram.com/reel/...
+
+O bot extrai o áudio na melhor qualidade disponível e envia o arquivo de música diretamente no chat.`,
     category: "downloads",
     usage: "{prefix}play <link ou nome da música>",
     examples: [
@@ -60,6 +73,7 @@ module.exports = {
                     videoInfo = await bronxys.getYouTubeMetadata(input);
                     targetUrl = videoInfo.url;
                 } catch (searchErr) {
+                    if (bronxys.isApiError(searchErr)) throw searchErr;
                     console.error("[PLAY_SEARCH_WARNING] Falha ao obter detalhes:", searchErr.message);
                 }
             }
@@ -135,7 +149,8 @@ module.exports = {
             console.error(`[PLAY_ERROR] Falha ao processar requisição para o input "${input}":`, err);
 
             // Mensagem amigável e limpa para o usuário final
-            let userFriendlyMessage = "❌ Desculpe, não consegui processar o seu download no momento. A API de extração pode estar instável ou o link está indisponível.";
+            let userFriendlyMessage = bronxys.getUserErrorMessage(err, message.prefix) ||
+                "❌ Desculpe, não consegui processar o seu download no momento. A API de extração pode estar instável ou o link está indisponível.";
             
             // Tratamento específico se estourar o limite de tamanho da plataforma
             if (err.message.includes("muito grande")) {

@@ -152,29 +152,59 @@ const suTokenCommand = require("./su-token");
 const nofapHelper = require("../../../functions/nofapHelper");
 const { ensureParticipant } = require("../../../functions/nofapGroupHelper");
 
+const DESCRIPTION = `👑 Administra os Super Usuários (donos) com controle total sobre o bot, autenticação de plataformas e comandos de manutenção global.
+
+🔐 Disponível apenas para superusuários / donos do bot (exceto o resgate do primeiro código).
+
+📋 1. Listar superusuários registrados:
+{prefix}su list
+
+🚀 2. Reivindicar primeiro dono (código único do terminal):
+{prefix}su code CODIGO_DO_TERMINAL
+
+➕ 3. Adicionar um novo superusuário:
+{prefix}su add discord 123456789012345678
+{prefix}su add telegram 123456789
+{prefix}su add whatsapp 5511999999999
+
+➖ 4. Remover um superusuário:
+{prefix}su del discord 123456789012345678
+{prefix}su del telegram 123456789
+
+🔑 5. Configurar token de plataforma:
+{prefix}su token discord SEU_TOKEN
+{prefix}su token telegram 123456:ABCDEF
+
+📱 6. Conectar ao WhatsApp:
+{prefix}su whatsapp qr
+{prefix}su whatsapp codigo 5511999999999
+
+🛡️ 7. Configurar grupos permitidos (Onlychats):
+{prefix}su onlychats list
+{prefix}su onlychats add 123456789
+
+📅 8. Corrigir data do NoFap/Setembro:
+{prefix}su nofap @usuario 01/09/2026 12:00
+
+🔄 9. Reiniciar o bot:
+{prefix}su restart
+
+ℹ️ Plataformas suportadas: discord, telegram, whatsapp.`;
+
 module.exports = {
     category: "system/configurações",
-
     name: "su",
-
-    description:
-        "Administra os Super Usuários com acesso global ao bot. Use `list` para consultar, `add`/`del` para incluir ou remover alguém e `code` para registrar o primeiro dono durante a configuração inicial.",
-
-    usage:
-    "{prefix}su <list/function> <plataforma> [data]",
+    description: DESCRIPTION,
+    usage: "{prefix}su <list|add|del|code|token|whatsapp|onlychats|nofap|restart>",
     examples: [
-
-    "{prefix}su list",
-
-    "{prefix}su code ABCD-1234",
-
-    "{prefix}su add telegram 123456",
-
-    "{prefix}su del telegram 123456",
-
-    "{prefix}su restart"
-
-],
+        "{prefix}su list",
+        "{prefix}su code ABCD-1234",
+        "{prefix}su add telegram 123456",
+        "{prefix}su del telegram 123456",
+        "{prefix}su whatsapp qr",
+        "{prefix}su token discord TOKEN",
+        "{prefix}su restart"
+    ],
 
     async execute(message) {
 
@@ -380,39 +410,9 @@ if (sub === "restart") {
 
 };
 
-async function help(
-    message
-) {
-
-    const p =
-        message.prefix;
-
-    await message.reply({
-
-text:
-
-`👑 Sistema de Super Usuários
-
-${p}su list
-
-${p}su code CODIGO
-
-${p}su add plataforma id
-
-${p}su del plataforma id
-
-${p}su whatsapp qr
-
-${p}su whatsapp codigo <número>
-
-${p}su onlychats [opção]
-
-${p}su nofap <ID|@menção> <dd/mm/yyyy [hh:mm]>
-
-${p}su restart`
-
-    });
-
+async function help(message) {
+    const text = DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
+    await message.reply({ text });
 }
 
 async function requestWhatsAppLogin(message, args) {

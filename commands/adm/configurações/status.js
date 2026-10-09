@@ -69,6 +69,7 @@ const {
 const { getWarnConfig } = require("../../../functions/warnHelper");
 const { loadSettings } = require("../../../functions/groupSettings");
 const { getAutoIAMode } = require("../../../functions/autoiaHelper");
+const autorepoHelper = require("../../../functions/autorepoHelper");
 const cafeMonitor = require("../../../functions/cafeMonitor");
 const weatherMonitor = require("../../../functions/weatherMonitor");
 const randomWeatherMonitor = require("../../../functions/randomWeatherMonitor");
@@ -76,6 +77,40 @@ const stockMonitor = require("../../../functions/stockMonitor");
 const autoAccept = require("../../../functions/autoAccept");
 const { listSchedules, formatTs } = require("../../../functions/schedulerHelper");
 const { formatRoleMention } = require("../../../functions/antiHelper");
+
+const DESCRIPTION = `📊 Consulta o estado das configurações e dos recursos deste grupo ou servidor.
+
+🔐 Disponível para administradores do chat e superusuários.
+
+🔎 1. Veja um resumo do chat atual:
+{prefix}status
+
+Mostra as regras de moderação, os sistemas de boas-vindas e despedida, warns, monitores, outras configurações e agendamentos.
+
+📋 2. Consulte a configuração final aplicada:
+{prefix}status full
+
+Mostra as configurações efetivas no chat atual, considerando a hierarquia entre os níveis configurados.
+
+Para ver todos os nós configurados e todos os recursos:
+{prefix}status full all
+
+Para consultar um recurso específico:
+{prefix}status full <recurso>
+{prefix}status full antiraid
+
+🔧 3. Consulte o resumo de um recurso:
+{prefix}status <recurso>
+{prefix}status antilink
+
+Recursos disponíveis: antilink, antipalavras, antimedia, antiraid, blockcmd, welcome, goodbye e warnconfig.
+
+❔ Exiba esta ajuda:
+{prefix}status help`;
+
+function helpText(message) {
+    return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
+}
 
 const FEATURES = {
     antilink: {
@@ -120,10 +155,7 @@ const { isOwner } = require("../../../functions/owners");
 module.exports = {
     name: "status",
     category: "adm/configurações",
-    description: `Exibe o estado hierárquico das regras de moderação, welcome/goodbye, warns e recursos no chat atual.
-Use este comando para ver quais configurações estão ativas ✅ ou desativadas ❌, e para entender a permissão final aplicada ao chat.
-Disponível para Antilink, Antipalavras, Antimedia, Anti-Raid, Blockcmd, Welcome, Goodbye e Warnconfig.
-`,
+    description: DESCRIPTION,
     usage: "{prefix}status",
     examples: [
         "{prefix}status",
@@ -138,10 +170,11 @@ Disponível para Antilink, Antipalavras, Antimedia, Anti-Raid, Blockcmd, Welcome
         "{prefix}status goodbye",
         "{prefix}status warnconfig",
         "{prefix}status full welcome",
-        "{prefix}status full antiraid"
+        "{prefix}status full antiraid",
+        "{prefix}status help"
     ],
     info(message) {
-        return _help(message);
+        return helpText(message);
     },
 
     async execute(message) {
@@ -166,7 +199,7 @@ Disponível para Antilink, Antipalavras, Antimedia, Anti-Raid, Blockcmd, Welcome
         }
 
         if (first === "help" || first === "?") {
-            return message.reply({ text: _help(message) });
+            return message.reply({ text: helpText(message) });
         }
 
         if (first === "full") {
@@ -197,55 +230,9 @@ Disponível para Antilink, Antipalavras, Antimedia, Anti-Raid, Blockcmd, Welcome
             return message.reply({ text: _warnSummary(message) });
         }
 
-        return message.reply({ text: _help(message) });
+        return message.reply({ text: helpText(message) });
     }
 };
-
-function _help(message) {
-    const p = message.prefix;
-    return (
-`📌 Status - Ajuda
-
-Use este comando para inspecionar o estado das configurações do grupo e a hierarquia aplicada ao chat atual.
-
-${p}status
-  • Resumo rápido do chat atual para todas as regras.
-
-${p}status full
-  • Permissão final aplicada ao chat atual, considerando hierarquia.
-
-${p}status full all
-  • Exibe todos os nós configurados no servidor/grupo para todos os recursos.
-
-${p}status antilink
-  • Resumo apenas do Antilink.
-
-${p}status antipalavras
-  • Resumo apenas do Antipalavras.
-
-${p}status antimedia
-  • Resumo apenas do Antimedia.
-
-${p}status antiraid
-  • Resumo apenas do Anti-Raid.
-
-${p}status blockcmd
-  • Resumo apenas do Bloqueio de Comandos.
-
-${p}status welcome
-  • Resumo do sistema de boas-vindas.
-
-${p}status goodbye
-  • Resumo do sistema de despedida.
-
-${p}status warnconfig
-  • Resumo da configuração de warns deste grupo.
-
-${p}status full <recurso>
-  • Exibe a configuração final do recurso para este chat (ex: ${p}status full antiraid).
-`
-    );
-}
 
 function _summary(message) {
     const blocks = ["🔎 Status geral deste chat:"];
@@ -356,10 +343,15 @@ function _chatSettingsSummary(message) {
     const autoIA = getAutoIAMode(message);
     const autodownload = settings.autodownload;
     const nofap = settings.setembroNofap;
+    const autorepoConfig = autorepoHelper.loadGroup(message);
+    const autorepoStatus = autorepoConfig && autorepoConfig.enabled !== false
+        ? `✅ Ativo (${(autorepoConfig.responses || []).length} locais)`
+        : "❌ Desativado";
 
     return [
         "🔎 Outras configurações:",
         `  Auto-IA: ${autoIA === "off" ? "❌ Desativado" : `✅ Ativo (${autoIA})`}`,
+        `  Autoresposta: ${autorepoStatus}`,
         `  Auto-download: ${autodownload?.enabled ? `✅ Ativo${autodownload.deletelink ? " (apagar link: Sim)" : ""}` : "❌ Desativado"}`,
         `  Setembro/NoFap no chat: ${nofap?.enabled ? `✅ Ativo (${Object.keys(nofap.participants || {}).length} participantes)` : "❌ Desativado"}`
     ];

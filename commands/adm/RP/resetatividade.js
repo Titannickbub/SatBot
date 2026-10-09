@@ -20,12 +20,38 @@ function resolveTarget(message, targetArgument) {
     return null;
 }
 
+const DESCRIPTION = `♻️ Apaga os registros de atividade de um membro neste grupo ou servidor.
+
+🔐 Disponível para administradores do chat e superusuários.
+⚠️ Os registros apagados não podem ser recuperados.
+
+👤 Resete a atividade respondendo à mensagem do membro:
+{prefix}resetatividade
+
+Ou informe uma menção ou o ID do membro:
+{prefix}resetatividade @usuário
+{prefix}resetatividade <id>
+
+O membro precisa ter registros no ranking de atividade deste chat.
+
+❔ Exiba esta ajuda:
+{prefix}resetatividade help`;
+
+function helpText(message) {
+    return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
+}
+
 module.exports = {
     name: "resetatividade",
     aliases: ["zeraratividade", "resetaratividade"],
     category: "adm/RP",
-    description: "Apaga o histórico de atividade de um usuário neste grupo ou servidor. Informe o ID ou mencione a pessoa cujo contador deseja zerar.",
-    usage: "{prefix}resetatividade <id|@usuário>",
+    description: DESCRIPTION,
+    usage: "{prefix}resetatividade <id|@usuário|#mensagem|help>",
+    examples: [
+        "{prefix}resetatividade @usuário",
+        "{prefix}resetatividade <id>",
+        "{prefix}resetatividade help"
+    ],
 
     async execute(message) {
         if (!activity.load(message)) {
@@ -33,6 +59,10 @@ module.exports = {
         }
         if (!isAdmin(message)) {
             return message.reply({ text: "❌ Apenas administradores podem resetar a atividade." });
+        }
+
+        if (["help", "ajuda"].includes(String(message.args?.[0] || "").toLowerCase())) {
+            return message.reply({ text: helpText(message) });
         }
 
         const target = resolveTarget(message, message.args?.join(" ").trim());

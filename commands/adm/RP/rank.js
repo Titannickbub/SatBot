@@ -1,10 +1,21 @@
-const economy = require("../../functions/economy");
-const { renderRanking } = require("../../functions/imageBanner");
+const economy = require("../../../functions/economy");
+const { renderRanking } = require("../../../functions/imageBanner");
 
 module.exports = {
     name: "rank",
     category: "adm/RP",
-    description: "Consulta o ranking de satcoins da economia atual: sem opção ou com `rico`, envia uma imagem dos cinco maiores saldos; com `pobre`, lista os cinco menores.",
+    description: `💰 Exibe o ranking de satcoins deste grupo ou servidor em uma imagem com até cinco membros.
+
+📊 1. Escolha a ordem do ranking:
+
+Maiores saldos: mostra primeiro os membros com mais satcoins. Esta é a opção padrão.
+{prefix}rank
+{prefix}rank rico
+
+Menores saldos: mostra primeiro os membros com menos satcoins.
+{prefix}rank pobre
+
+O sistema de economia precisa estar ativado neste grupo ou servidor para consultar o ranking.`,
     usage: "{prefix}rank [rico|pobre|help]",
 
     async execute(message) {

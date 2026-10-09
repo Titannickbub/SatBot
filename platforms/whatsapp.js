@@ -1037,10 +1037,10 @@ async function sendFile(
 }
 
 /**
- * Verifica se o BOT é administrador no grupo (necessário para delete, kick e ban).
+ * Verifica se o BOT é administrador no grupo (necessário para moderação e convites).
  * No WhatsApp todas essas ações exigem que o bot seja admin.
  * @param {string} chatId  JID do grupo (ex: 123@g.us)
- * @param {string} action  'delete' | 'kick' | 'ban'
+ * @param {string} action  'invite' | 'delete' | 'kick' | 'ban'
  * @returns {Promise<boolean>}
  */
 async function checkBotPermission(chatId, action) {
@@ -1069,20 +1069,47 @@ async function checkBotPermission(chatId, action) {
       );
     });
     if (!botMember) return false;
-    // delete, kick e ban exigem o bot ser admin no WhatsApp
+    // Alterar o estado do grupo exige que o bot seja administrador.
     return !!botMember.admin;
   } catch {
     return false;
   }
 }
 
+async function setChatOpen(chatId, isOpen) {
+  const sock = global.whatsappSock;
+  if (!sock) throw new Error("[WHATSAPP] Socket não iniciado.");
+  if (!String(chatId).endsWith("@g.us")) {
+    throw new Error("[WHATSAPP] A abertura e o fechamento só funcionam em grupos.");
+  }
+
+  const metadata = await sock.groupMetadata(chatId);
+  if (metadata.isCommunity || metadata.isCommunityAnnounce) {
+    throw new Error("[WHATSAPP] O controle de abertura não está disponível em comunidades.");
+  }
+
+  const isCurrentlyOpen = !metadata.announce;
+  if (isCurrentlyOpen === Boolean(isOpen)) return false;
+
+  await sock.groupSettingUpdate(chatId, isOpen ? "not_announcement" : "announcement");
+  return true;
+}
+
+async function checkChatControlSupport(chatId) {
+  const sock = global.whatsappSock;
+  if (!sock || !String(chatId).endsWith("@g.us")) return false;
+  const metadata = await sock.groupMetadata(chatId);
+  return !metadata.isCommunity && !metadata.isCommunityAnnounce;
+}
+
 /**
- * Verifica se o MEMBRO é administrador ou superadmin do grupo.
+ * Verifica permissões do membro no grupo. No WhatsApp, convites exigem admin.
  * @param {string} chatId  JID do grupo
  * @param {string} userId  JID do usuário
+ * @param {string} [action] 'invite'
  * @returns {Promise<boolean>}
  */
-async function checkUserPermission(chatId, userId) {
+async function checkUserPermission(chatId, userId, action) {
   if (!global.whatsappSock) return false;
   if (!chatId.endsWith("@g.us")) return true; // PV sempre pode
   try {
@@ -1141,6 +1168,10 @@ module.exports = {
   sendFile,
 
   sendSticker,
+
+  checkChatControlSupport,
+
+  setChatOpen,
 
   checkBotPermission,
 

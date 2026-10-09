@@ -1,6 +1,29 @@
 const { setWhatsAppCommunityAnnouncementGroup } = require("../../../functions/groupSettings");
 const { isOwner } = require("../../../functions/owners");
 
+const DESCRIPTION = `📣 Define este grupo do WhatsApp como canal de avisos da comunidade vinculada.
+
+🔐 Disponível para administradores do grupo e superusuários.
+📱 Este comando funciona apenas no WhatsApp e em grupos vinculados a uma comunidade.
+
+1. Execute o comando no grupo que será usado para os avisos:
+{prefix}setgroup_c
+
+O bot identifica a comunidade vinculada e salva este grupo como canal de avisos. O grupo precisa estar associado a uma comunidade.
+
+2. Opcionalmente, informe um nome de referência para a comunidade:
+{prefix}setgroup_c <nome>
+{prefix}setgroup_c Minha Comunidade
+
+Sem um nome informado, será usado o nome atual do grupo (ou “Comunidade”, se não estiver disponível). O nome salvo é uma referência nas configurações e não altera o nome real do grupo.
+
+❔ Exiba esta ajuda:
+{prefix}setgroup_c help`;
+
+function helpText(message) {
+    return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
+}
+
 module.exports = {
     name: "setgroup_c",
     aliases: ["setcommunitygroup", "setgroupcommunity", "setgrupo_comunidade"],
@@ -10,10 +33,12 @@ module.exports = {
         telegram: "none",
         discord: "none"
     },
-    description: "Marca este grupo do WhatsApp como canal de avisos da comunidade e salva o nome de referência no JSON sem alterar o nome real do chat.",
-    usage: "{prefix}setgroup_c",
+    description: DESCRIPTION,
+    usage: "{prefix}setgroup_c [nome|help]",
     examples: [
-        "{prefix}setgroup_c"
+        "{prefix}setgroup_c",
+        "{prefix}setgroup_c Minha Comunidade",
+        "{prefix}setgroup_c help"
     ],
 
     async execute(message) {
@@ -35,6 +60,9 @@ module.exports = {
         }
 
         const args = message.args || [];
+        if (["help", "ajuda"].includes(String(args[0] || "").toLowerCase())) {
+            return message.reply({ text: helpText(message) });
+        }
         const providedName = args.join(" ").trim();
 
         if (!global.whatsappSock || typeof global.whatsappSock.groupMetadata !== "function") {

@@ -3,9 +3,19 @@ const weatherMonitor = require("../functions/weatherMonitor");
 module.exports = {
     name: "clima",
     aliases: ["tempo", "weather"],
-    description: "Consulta as condições e a previsão do tempo para a cidade informada. Escreva o nome da cidade após o comando; cidades com espaços podem ser informadas normalmente.",
-    usage: "{prefix}clima <cidade>",
-    examples: ["{prefix}clima Salvador", "{prefix}clima São Paulo"],
+    description: `🌦️ Consulta a previsão do tempo atual para uma cidade.
+
+🕒 Também temos monitor do clima estático em {prefix}monitorclima
+🎲 e monitor do clima com cidades aleatórias em {prefix}rclima
+
+📌 Uso:
+{prefix}clima [cidade]
+
+📍 Exemplos:
+{prefix}clima Mutum
+{prefix}clima São Paulo`,
+    usage: "{prefix}clima [cidade]",
+    examples: ["{prefix}clima Mutum", "{prefix}clima São Paulo"],
 
     async execute(message) {
         const city = (message.args || []).join(" ").trim();
@@ -37,14 +47,15 @@ module.exports = {
 function _help(message) {
     const prefix = message.prefix || "!";
     return [
-        "☁️ *CLIMA — AJUDA*",
+        "🌦️ *CLIMA — AJUDA*",
         "",
-        "Consulte a previsão do tempo atual para qualquer cidade.",
+        "🏙️ Consulta a previsão do tempo atual para uma cidade.",
         "",
-        `• \`${prefix}clima <cidade>\` — Busca a previsão imediata.`,
+        `🌤️ \`${prefix}clima [cidade]\` — Busca a previsão imediata.`,
         "",
-        `Para configurar os envios automáticos, use \`${prefix}monitorclima\`.`,
+        `🕒 \`${prefix}monitorclima\` — Configura o monitor do clima estático.`,
+        `🎲 \`${prefix}rclima\` — Configura o monitor do clima com cidades aleatórias.`,
         "",
-        `Exemplo: \`${prefix}clima Salvador\``
+        `📍 Exemplos: \`${prefix}clima Mutum\` e \`${prefix}clima São Paulo\`.`
     ].join("\n");
 }

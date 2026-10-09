@@ -1130,7 +1130,7 @@ async function sendFile(
 /**
  * Verifica se o BOT possui a permissão necessária para executar uma ação no canal.
  * @param {string} chatId  ID do canal
- * @param {string} action  'delete' | 'kick' | 'ban'
+ * @param {string} action  'delete' | 'kick' | 'ban' | 'mute' | 'unmute'
  * @returns {Promise<boolean>}
  */
 async function checkBotPermission(chatId, action) {
@@ -1142,9 +1142,12 @@ async function checkBotPermission(chatId, action) {
         if (!me) return false;
         const perms = channel.permissionsFor(me);
         if (!perms) return false;
+        if (action === "manageChat") return perms.has(PermissionFlagsBits.ManageChannels);
+        if (action === "invite") return perms.has(PermissionFlagsBits.CreateInstantInvite);
         if (action === "delete" || action === "warn") return perms.has(PermissionFlagsBits.ManageMessages);
         if (action === "kick") return perms.has(PermissionFlagsBits.KickMembers);
         if (action === "ban") return perms.has(PermissionFlagsBits.BanMembers);
+        if (action === "mute" || action === "unmute") return perms.has(PermissionFlagsBits.ModerateMembers);
         return false;
     } catch {
         return false;
@@ -1152,12 +1155,13 @@ async function checkBotPermission(chatId, action) {
 }
 
 /**
- * Verifica se o MEMBRO tem permissão para alterar configurações do bot no canal.
+ * Verifica permissões do membro no canal; kick/ban exigem a permissão da ação.
  * @param {string} chatId  ID do canal
  * @param {string} userId  ID do usuário
+ * @param {string} [action] 'invite' | 'delete' | 'kick' | 'ban' | 'mute' | 'unmute'
  * @returns {Promise<boolean>}
  */
-async function checkUserPermission(chatId, userId) {
+async function checkUserPermission(chatId, userId, action) {
     if (!global.discordClient) return false;
     try {
         const channel = await getDiscordChannel(chatId);
@@ -1166,6 +1170,12 @@ async function checkUserPermission(chatId, userId) {
         if (!member) return false;
         const perms = channel.permissionsFor(member);
         if (!perms) return false;
+        if (action === "invite") return perms.has(PermissionFlagsBits.CreateInstantInvite);
+        if (action === "delete" || action === "warn") return perms.has(PermissionFlagsBits.ManageMessages);
+        if (action === "kick") return perms.has(PermissionFlagsBits.KickMembers);
+        if (action === "ban") return perms.has(PermissionFlagsBits.BanMembers);
+        if (action === "mute" || action === "unmute") return perms.has(PermissionFlagsBits.ModerateMembers);
+        if (action === "manageChat") return perms.has(PermissionFlagsBits.ManageChannels);
         return (
             perms.has(PermissionFlagsBits.Administrator) ||
             perms.has(PermissionFlagsBits.ManageGuild) ||
@@ -1174,6 +1184,35 @@ async function checkUserPermission(chatId, userId) {
     } catch {
         return false;
     }
+}
+
+async function setChatOpen(chatId, isOpen) {
+    const channel = await getDiscordChannel(chatId);
+    if (!channel || !channel.guild) {
+        throw new Error("[DISCORD] Canal do servidor não encontrado.");
+    }
+    if (channel.isThread || !channel.permissionOverwrites || !channel.guild.roles?.everyone) {
+        throw new Error("[DISCORD] O controle de abertura não funciona em threads.");
+    }
+
+    const everyonePermissions = channel.permissionsFor(channel.guild.roles.everyone);
+    if (!everyonePermissions) {
+        throw new Error("[DISCORD] Não foi possível ler as permissões do canal.");
+    }
+    if (everyonePermissions.has(PermissionFlagsBits.SendMessages) === Boolean(isOpen)) {
+        return false;
+    }
+
+    await channel.permissionOverwrites.edit(channel.guild.roles.everyone, {
+        SendMessages: Boolean(isOpen)
+    });
+    return true;
+}
+
+async function checkChatControlSupport(chatId) {
+    const channel = await getDiscordChannel(chatId);
+    return Boolean(channel?.guild && !channel.isThread &&
+        channel.permissionOverwrites && channel.guild.roles?.everyone);
 }
 
 module.exports = {
@@ -1191,6 +1230,10 @@ module.exports = {
     sendAudio,
 
     sendFile,
+
+    checkChatControlSupport,
+
+    setChatOpen,
 
     checkBotPermission,
 

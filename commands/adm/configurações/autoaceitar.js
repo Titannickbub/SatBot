@@ -1,19 +1,72 @@
 const autoAccept = require("../../../functions/autoAccept");
 const { isOwner } = require("../../../functions/owners");
 
+const DESCRIPTION = `🤖 Aprova automaticamente pedidos para entrar neste grupo no Telegram ou WhatsApp.
+
+🔐 Disponível para administradores do chat e superusuários.
+📱 Funciona em grupos do Telegram e WhatsApp. Não está disponível no Discord.
+
+Configure as opções desejadas e, ao final, ative o recurso:
+
+⏱️ 1. Defina o intervalo entre aprovações, em segundos:
+{prefix}autoaceitar intervalo <segundos>
+{prefix}autoaceitar intervalo 30
+
+Use 0 para aprovar sem atraso.
+
+🚫 2. Opcionalmente, adicione filtros para ignorar pedidos:
+{prefix}autoaceitar bloquear nome <texto>
+{prefix}autoaceitar bloquear nome spam
+
+{prefix}autoaceitar bloquear simbolo <símbolo>
+{prefix}autoaceitar bloquear simbolo 🔞
+
+Pedidos cujo nome, usuário ou ID contenha o texto ou símbolo configurado não serão aprovados automaticamente.
+
+Para remover um filtro, informe o mesmo valor:
+{prefix}autoaceitar desbloquear nome <texto>
+{prefix}autoaceitar desbloquear simbolo <símbolo>
+
+🕒 3. Opcionalmente, limite as aprovações a determinados horários:
+{prefix}autoaceitar horarios <início-fim>
+{prefix}autoaceitar horarios 08:00-18:00
+
+Use o formato de 24 horas HH:MM. Para configurar mais de uma faixa, separe-as por vírgula:
+{prefix}autoaceitar horarios 08:00-12:00,18:00-22:00
+
+Os horários seguem o relógio local do bot. Para remover a restrição e permitir aprovações a qualquer hora:
+{prefix}autoaceitar horarios off
+
+✅ 4. Ative o autoaceitar:
+{prefix}autoaceitar on
+
+Pedidos que não forem bloqueados e estiverem dentro dos horários configurados serão aprovados automaticamente. Para pausar:
+{prefix}autoaceitar off
+
+📋 Consulte a configuração atual:
+{prefix}autoaceitar status
+
+❔ Exiba esta ajuda:
+{prefix}autoaceitar help`;
+
+function helpText(message) {
+    return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
+}
+
 module.exports = {
     name: "autoaceitar",
     aliases: ["autoaprovar", "autoapprove"],
     category: "adm/configurações",
     platformSupport: { whatsapp: "full", telegram: "full", discord: "none" },
-    description: "Configura a aprovação automática de pedidos para entrar em grupos do Telegram e WhatsApp. Permite ativar/desativar, consultar status, definir intervalo e horários e bloquear pedidos por nome ou símbolo.",
-    usage: "{prefix}autoaceitar [subcomando]",
+    description: DESCRIPTION,
+    usage: "{prefix}autoaceitar <subcomando>",
     examples: [
         "{prefix}autoaceitar on",
         "{prefix}autoaceitar intervalo 30",
         "{prefix}autoaceitar bloquear nome spam",
         "{prefix}autoaceitar bloquear simbolo 🔞",
-        "{prefix}autoaceitar horarios 08:00-18:00"
+        "{prefix}autoaceitar horarios 08:00-18:00",
+        "{prefix}autoaceitar help"
     ],
 
     async execute(message) {
@@ -34,6 +87,9 @@ module.exports = {
         const command = (args[0] || "status").toLowerCase();
         const current = autoAccept.getConfig(target);
 
+        if (["help", "ajuda"].includes(command)) {
+            return message.reply({ text: helpText(message) });
+        }
         if (command === "status") {
             return message.reply({ text: _status(message, current) });
         }
@@ -85,7 +141,7 @@ module.exports = {
             return message.reply({ text: `✅ Horários configurados: ${schedules.map(item => `${item.start}-${item.end}`).join(", ")}` });
         }
 
-        return message.reply({ text: _help(message) });
+        return message.reply({ text: helpText(message) });
     }
 };
 
@@ -97,20 +153,5 @@ function _status(message, config) {
         `Bloqueios por nome: ${config.blockedNames.length ? config.blockedNames.join(", ") : "(nenhum)"}`,
         `Bloqueios por símbolo: ${config.blockedSymbols.length ? config.blockedSymbols.join(", ") : "(nenhum)"}`,
         `Horários: ${config.schedules.length ? config.schedules.map(item => `${item.start}-${item.end}`).join(", ") : "todos"}`
-    ].join("\n");
-}
-
-function _help(message) {
-    const p = message.prefix;
-    return [
-        "✅ *AUTOACEITAR — AJUDA*",
-        `${p}autoaceitar on|off`,
-        `${p}autoaceitar status`,
-        `${p}autoaceitar intervalo <segundos>`,
-        `${p}autoaceitar bloquear nome <texto>`,
-        `${p}autoaceitar bloquear simbolo <símbolo>`,
-        `${p}autoaceitar desbloquear nome|simbolo <valor>`,
-        `${p}autoaceitar horarios HH:MM-HH:MM[,HH:MM-HH:MM]`,
-        `${p}autoaceitar horarios off`
     ].join("\n");
 }

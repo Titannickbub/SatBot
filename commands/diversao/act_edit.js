@@ -14,6 +14,58 @@ const MAX_MESSAGE_LENGTH = 500;
 const MEDIA_TYPES = new Set(["photo", "gif", "video"]);
 const ACTION_NAME = /^[\p{L}\p{N}][\p{L}\p{N}_-]{0,31}$/u;
 
+const DESCRIPTION = `🎭 Administra, cria e inspeciona as ações interativas de roleplay e suas mídias embutidas.
+
+🔐 Disponível apenas para superusuários / donos do bot.
+
+📋 1. Liste todas as ações cadastradas:
+{prefix}act_edit list
+
+Exibe todas as ações disponíveis, quantidade de mídias, mensagens e status (ativada/desativada).
+
+➕ 2. Crie uma nova ação interativa:
+{prefix}act_edit new <nome_da_ação>
+{prefix}act_edit new kiss
+
+💬 3. Adicione frases à ação:
+{prefix}act_edit message <ação> <frase>
+{prefix}act_edit message kiss {user1} beijou apaixonadamente {user2}!
+
+Variáveis disponíveis para a mensagem:
+• {user1} — Usuário que executou o comando
+• {user2} — Usuário mencionado ou respondido
+
+🖼️ 4. Adicione mídias (GIF, vídeo MP4 ou imagem):
+{prefix}act_edit image <ação> <URL>
+{prefix}act_edit image kiss https://exemplo.com/beijo.gif
+
+Você também pode anexar uma mídia ou responder a uma mensagem de imagem/GIF/vídeo com {prefix}act_edit image <ação>. O arquivo será salvo permanentemente no disco local.
+
+🏷️ 5. Adicione um apelido/atalho (alias):
+{prefix}act_edit alias <ação> <apelido>
+{prefix}act_edit alias kiss beijo
+
+🔍 6. Inspecione detalhes e analise arquivos de mídia:
+{prefix}act_edit show <ação>
+{prefix}act_edit inspect <ação>
+
+O comando inspect analisa o codec real, se é GIF genuíno ou MP4, além do tamanho em disco. Você também pode usar {prefix}act_edit inspect respondendo diretamente a uma mídia.
+
+🗑️ 7. Remova frases ou mídias:
+{prefix}act_edit remove-message <ação> <número>
+{prefix}act_edit remove-image <ação> <número>
+
+Consulte a numeração exata dos itens usando {prefix}act_edit show <ação>.
+
+⚡ 8. Ative ou desative uma ação:
+{prefix}act_edit enable <ação>
+{prefix}act_edit disable <ação>
+
+❌ 9. Exclua uma ação definitivamente:
+{prefix}act_edit delete <ação>
+
+Exclui a ação do banco e remove todos os arquivos de mídia associados do disco local.`;
+
 module.exports = {
     name: "act_edit",
     aliases: ["actedit", "act_inspect", "actinspect"],
@@ -23,7 +75,7 @@ module.exports = {
         telegram: "full",
         discord: "full"
     },
-    description: "Administra e inspeciona as ações interativas e mídias embutidas. Uso exclusivo de Super Usuários.",
+    description: DESCRIPTION,
     usage: "{prefix}act_edit [subcomando]",
     examples: [
         "{prefix}act_edit list",
@@ -569,22 +621,7 @@ function isReservedName(value) {
 }
 
 function help(message) {
-    const prefix = message.prefix || "!";
-    return [
-        "🎭 Gerenciador e Inspetor de Ações (exclusivo SU)",
-        `${prefix}act_edit list`,
-        `${prefix}act_edit show <ação>`,
-        `${prefix}act_edit inspect <ação>  *(inspeciona formato/tamanho das mídias)*`,
-        `${prefix}act_edit inspect *(respondendo a uma mídia para inspecioná-la)*`,
-        `${prefix}act_edit new <ação>`,
-        `${prefix}act_edit message <ação> <frase>`,
-        `${prefix}act_edit image <ação> [URL ou anexo]`,
-        `${prefix}act_edit alias <ação> <alias>`,
-        `${prefix}act_edit remove-message <ação> <índice>`,
-        `${prefix}act_edit remove-image <ação> <índice>`,
-        `${prefix}act_edit enable|disable <ação>`,
-        `${prefix}act_edit delete <ação>`
-    ].join("\n");
+    return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
 }
 
 module.exports._internals = {

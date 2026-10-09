@@ -149,6 +149,11 @@ function calcNextFire(schedule, now = Date.now()) {
 async function fireSchedule(schedule) {
     const { platform, chatId, threadId, message: msg } = schedule;
 
+    if (schedule.meta?.kind === "auto-chat-state" || schedule.meta?.kind === "chat-control-temp") {
+        await require("./chatControl").fireSchedule(schedule);
+        return;
+    }
+
     if (schedule.meta?.kind === "cafe-monitor") {
         try {
             const cafeMonitor = require("./cafeMonitor");

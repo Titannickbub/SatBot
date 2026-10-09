@@ -8,7 +8,12 @@ module.exports = {
     name: "bolsa",
     aliases: ["indices", "índices"],
     category: "cotações",
-    description: "Consulta índices do mercado financeiro, como Ibovespa, S&P 500 e Nasdaq, com valores e variações mais recentes disponíveis.",
+    description: `📈 Consulta os principais índices do mercado financeiro global (Ibovespa, S&P 500, Nasdaq, etc.) com valores e variações em tempo real.
+
+📝 1. Execute o comando para consultar as cotações:
+{prefix}bolsa
+
+O bot busca as informações mais recentes diretamente do mercado financeiro, trazendo pontuação, oscilação percentual e horário da última atualização.`,
     usage: "{prefix}bolsa",
     examples: ["{prefix}bolsa"],
 

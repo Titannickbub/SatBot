@@ -4,7 +4,28 @@ module.exports = {
     category: "diversão",
     name: "nofap",
     aliases: ["nofapset", "semana"],
-    description: "Acompanha sua sequência pessoal no desafio NoFap, salva na conta central e compartilhada entre plataformas. Use `status`, `iniciar`, `reset` ou `sair` para consultar ou controlar sua participação.",
+    description: `🔥 Acompanha e gerencia sua sequência de dias no desafio NoFap, salva na sua conta central e compartilhada entre plataformas.
+
+📝 1. Inicie sua contagem no desafio:
+{prefix}nofap iniciar
+
+Começa a contabilizar seus dias de sequência e atribui seu título inicial.
+
+📊 2. Consulte seu progresso e estatísticas:
+{prefix}nofap status
+{prefix}nofap
+
+Exibe seus dias atuais de sequência, recorde pessoal, total de resets e título alcançado.
+
+🔄 3. Caso tenha uma recaída, zere a contagem:
+{prefix}nofap reset
+
+Zera sua sequência atual e incrementa o histórico de resets, preservando seu recorde pessoal.
+
+🚪 4. Pause ou saia do desafio:
+{prefix}nofap sair
+
+Pausa a contagem dos dias e desativa seu status no desafio.`,
     usage: "{prefix}nofap [status|iniciar|reset|sair|help]",
     examples: [
         "{prefix}nofap status",

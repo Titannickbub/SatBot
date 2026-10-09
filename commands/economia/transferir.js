@@ -4,7 +4,18 @@ module.exports = {
     name: "transferir",
     aliases: ["transfer", "enviar", "pagar"],
     category: "economia",
-    description: "Transfere satcoins do seu saldo para outro membro da economia atual. Informe o valor e o destinatário por ID ou menção, ou responda à mensagem dele.",
+    description: `💸 Transfere satcoins do seu saldo para outro membro da economia local do grupo ou servidor.
+
+📝 1. Informe a quantidade e o destinatário:
+{prefix}transferir <valor> <@usuário|id>
+{prefix}transferir 50 @usuario
+{prefix}transferir 100 5511999990000
+
+Você também pode responder diretamente à mensagem do usuário com {prefix}transferir <valor>.
+
+O valor é debitado da sua carteira e creditado instantaneamente na carteira do destinatário (valor mínimo: 10 satcoins).
+
+⏳ Limite de 3 transferências diárias por usuário. Se esgotar, você pode comprar um reset na {prefix}loja.`,
     usage: "{prefix}transferir <valor> <id|@usuário> ou respondendo a uma mensagem",
 
     async execute(message) {

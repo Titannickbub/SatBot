@@ -42,6 +42,83 @@ const { downloadAndSaveMediaLocally } = require("../../../functions/welcomeHelpe
 const path = require("path");
 
 const DAY_NAMES = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const DESCRIPTION = `⏰ Gerencia agendamentos de mensagens automáticas neste chat.
+
+🔐 Disponível para administradores do chat e superusuários.
+
+📝 1. Crie um agendamento:
+{prefix}agendar add <nome>
+{prefix}agendar add Bom dia
+
+O comando retorna um ID. Copie-o para configurar o agendamento. Nos exemplos abaixo, usaremos o ID 00000.
+
+⏱️ 2. Escolha quando enviar — configure um dos tipos de gatilho:
+
+Horários fixos: envia nos horários definidos. Informe um ou mais horários no formato hora:minuto. Se configurar novamente, os horários anteriores serão substituídos.
+{prefix}agendar set <id> trigger fixed <horário1> <horário2>
+{prefix}agendar set 00000 trigger fixed 7:00 10:00 12:00
+{prefix}agendar set 00000 trigger fixed 18:00
+
+Intervalo: envia novamente após o tempo indicado. Configurar um intervalo substitui o gatilho de horários fixos. Combine h (horas), m (minutos), d (dias) e s (segundos).
+{prefix}agendar set <id> trigger interval <duração>
+{prefix}agendar set 00000 trigger interval 2h30m
+{prefix}agendar set 00000 trigger interval 25m
+
+🔁 3. Escolha como o agendamento vai se repetir:
+
+Uma vez: envia no próximo disparo e depois desativa o agendamento.
+{prefix}agendar set <id> repeat once
+{prefix}agendar set 00000 repeat once
+
+Diariamente: repete todos os dias. Com horários fixos, envia em cada horário definido; com intervalo, repete a cada intervalo.
+{prefix}agendar set <id> repeat daily
+{prefix}agendar set 00000 repeat daily
+
+Semanalmente: repete nos dias da semana escolhidos e nos horários fixos configurados. Informe um ou mais dias.
+{prefix}agendar set <id> repeat weekly <dias>
+{prefix}agendar set 00000 repeat weekly seg qua sex
+
+Mensalmente: repete no dia escolhido de cada mês e nos horários fixos configurados. O dia deve ser de 1 a 31.
+{prefix}agendar set <id> repeat monthly <dia>
+{prefix}agendar set 00000 repeat monthly 15
+
+Para weekly, use seg, ter, qua, qui, sex, sab ou dom. Também são aceitos os nomes em inglês ou números de 0 (domingo) a 6 (sábado). Os modos weekly e monthly precisam de horários fixos.
+
+💬 4. Configure o texto da mensagem:
+{prefix}agendar set <id> text <mensagem>
+{prefix}agendar set 00000 text Bom dia! Tenha um ótimo dia.
+
+✅ 5. Ative o agendamento:
+{prefix}agendar on <id>
+{prefix}agendar on 00000
+
+📋 Consultar agendamentos:
+{prefix}agendar list
+
+Lista todos os agendamentos deste chat.
+
+{prefix}agendar status <id>
+{prefix}agendar status 00000
+
+Exibe os detalhes do agendamento escolhido.
+
+🧪 Testar sem esperar pelo horário:
+{prefix}agendar test <id>
+{prefix}agendar test 00000
+
+Envia a mensagem imediatamente, sem esperar pelo próximo disparo.
+
+🔕 Desativar sem apagar:
+{prefix}agendar off <id>
+{prefix}agendar off 00000
+
+Desativa o agendamento, mas mantém suas configurações para poder ativá-lo novamente.
+
+🗑️ Apagar um agendamento:
+{prefix}agendar del <id>
+{prefix}agendar del 00000
+
+Remove o agendamento e suas configurações deste chat.`;
 
 // ─────────────────────────────────────────────────────────────
 // Helpers de permissão
@@ -117,54 +194,7 @@ function scheduleCard(s, prefix) {
 }
 
 function helpText(message) {
-    const p = message.prefix;
-    const plat = message.platform;
-
-    let header = '*⏰ SISTEMA DE AGENDAMENTOS — AJUDA*';
-    if (plat === 'discord') header = '🎮 *AGENDAMENTOS (Discord) — AJUDA*';
-    else if (plat === 'whatsapp') header = '📱 *AGENDAMENTOS (WhatsApp) — AJUDA*';
-    else if (plat === 'telegram') header = '✈️ *AGENDAMENTOS (Telegram) — AJUDA*';
-
-    const lines = [];
-    lines.push(header);
-    lines.push('');
-    lines.push('*Criação e gerenciamento:*');
-    lines.push('  `' + p + 'agendar list` — Lista agendamentos do chat');
-    lines.push('  `' + p + 'agendar add <nome>` — Cria novo agendamento (desativado)');
-    lines.push('  `' + p + 'agendar del <id>` — Remove agendamento');
-    lines.push('  `' + p + 'agendar on <id>` — Ativa');
-    lines.push('  `' + p + 'agendar off <id>` — Desativa');
-    lines.push('  `' + p + 'agendar status <id>` — Detalhes do agendamento');
-    lines.push('  `' + p + 'agendar test <id>` — Dispara imediatamente (teste)');
-    lines.push('');
-    lines.push('*Configuração de gatilho (`set ... trigger`):*');
-    lines.push('  `' + p + 'agendar set <id> trigger interval 2h30m` — A cada X tempo');
-    lines.push('  `' + p + 'agendar set <id> trigger fixed 07:00 20:00` — Em horário(s) fixo(s)');
-    lines.push('');
-    lines.push('*Configuração de repetição (`set ... repeat`):*');
-    lines.push('  `' + p + 'agendar set <id> repeat once` — Executa uma vez');
-    lines.push('  `' + p + 'agendar set <id> repeat daily` — Todo dia');
-    lines.push('  `' + p + 'agendar set <id> repeat weekly seg qua sex` — Dias da semana');
-    lines.push('  `' + p + 'agendar set <id> repeat monthly 15` — Dia 15 de cada mês');
-    lines.push('');
-    lines.push('*Mensagem e mídia:*');
-    lines.push('  `' + p + 'agendar set <id> text <texto...>` — Define o texto');
-    lines.push('  `' + p + 'agendar set <id> mode text|media` — Alterna modo');
-    lines.push('  `' + p + 'agendar set <id> media <url>` — Mídia via URL');
-    lines.push('  `' + p + 'agendar set <id> media` — Mídia via anexo ou reply');
-    lines.push('');
-    lines.push('*Dias da semana aceitos:* seg/mon, ter/tue, qua/wed, qui/thu, sex/fri, sab/sat, dom/sun ou 0-6');
-
-    lines.push('');
-    lines.push('💡 EXEMPLOS:');
-    lines.push('  ' + p + 'agendar list');
-    lines.push('  ' + p + 'agendar add Bom dia');
-    lines.push('  ' + p + 'agendar set abc1 trigger fixed 07:00');
-    lines.push('  ' + p + 'agendar set abc1 repeat daily');
-    lines.push('  ' + p + 'agendar set abc1 text Bom dia! ☀️');
-    lines.push('  ' + p + 'agendar on abc1');
-
-    return lines.join('\n');
+    return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -493,29 +523,19 @@ module.exports = {
     aliases: ["schedule", "agendamento"],
     category: "adm/configurações",
 
-    description: `Gerencia agendamentos de mensagens automáticas por chat.
-
-Permite configurar mensagens com texto e/ou mídia para serem enviadas:
-• A cada X horas/minutos (intervalo)
-• Em horários fixos do dia (ex: 07:00, 20:00)
-
-Modos de repetição:
-• Uma vez (once) — dispara e para
-• Diário (daily)
-• Semanal (weekly) — escolha os dias
-• Mensal (monthly) — escolha o dia do mês
-
-Os dados são salvos em settings/schedules.json, independente das configurações do grupo.`,
+    description: DESCRIPTION,
 
     usage: "{prefix}agendar",
     examples: [
-        "{prefix}agendar list",
         "{prefix}agendar add Bom dia",
-        "{prefix}agendar set abc1 trigger fixed 07:00",
-        "{prefix}agendar set abc1 repeat daily",
-        "{prefix}agendar set abc1 text Bom dia! ☀️",
-        "{prefix}agendar on abc1",
-        "{prefix}agendar test abc1"
+        "{prefix}agendar set 00000 trigger fixed 7:00 10:00 12:00",
+        "{prefix}agendar set 00000 repeat weekly seg qua sex",
+        "{prefix}agendar set 00000 text Bom dia! Tenha um ótimo dia.",
+        "{prefix}agendar on 00000",
+        "{prefix}agendar list",
+        "{prefix}agendar test 00000",
+        "{prefix}agendar off 00000",
+        "{prefix}agendar del 00000"
     ],
 
     async execute(message) {

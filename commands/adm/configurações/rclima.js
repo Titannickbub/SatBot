@@ -24,20 +24,68 @@ async function checkAdminPermission(message) {
     return !!(message.sender?.isAdmin);
 }
 
+const DESCRIPTION = `🎲 Agenda previsões diárias de uma cidade sorteada entre as cadastradas neste chat ou tópico.
+
+🔐 Administradores do chat e superusuários podem configurar, ativar, desativar ou testar o monitor.
+
+📍 1. Adicione as cidades que poderão ser sorteadas:
+{prefix}rclima add <cidade>
+{prefix}rclima add Salvador
+{prefix}rclima add São Paulo
+
+Adicione cada cidade separadamente. Cidades repetidas não são duplicadas.
+
+🗑️ Para remover uma cidade da lista:
+{prefix}rclima remove <cidade>
+{prefix}rclima remove Salvador
+
+Para remover todas as cidades de uma vez:
+{prefix}rclima clear
+
+⏰ 2. Defina os horários diários:
+{prefix}rclima times <HH:MM,HH:MM>
+{prefix}rclima times 08:00,18:00
+
+Informe um ou mais horários separados por vírgula. Cada nova configuração substitui os horários anteriores. O horário padrão é 08:00.
+
+✅ 3. Ative os envios automáticos:
+{prefix}rclima enable
+
+Uma cidade da lista será sorteada em cada horário configurado. Para pausar os envios sem apagar cidades ou horários:
+{prefix}rclima disable
+
+🧪 Faça um sorteio e envie uma previsão agora:
+{prefix}rclima run
+
+É necessário ter pelo menos uma cidade cadastrada. A execução imediata não altera a programação.
+
+📋 Consulte a lista, o estado e os horários:
+{prefix}rclima status
+
+❔ Exiba esta ajuda:
+{prefix}rclima help`;
+
+function helpText(message) {
+    return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
+}
+
 module.exports = {
     name: "rclima",
     category: "adm/configurações",
     aliases: ["randomclima", "climarandom"],
-    description: "Agenda previsões diárias de uma cidade sorteada entre as cadastradas para o chat atual. Use `add`/`remove` para editar a lista de cidades, `times` para definir horários e `enable`, `disable`, `status` ou `run` para controlar e consultar o monitor.",
-    usage: "{prefix}rclima <subcomando>",
+    description: DESCRIPTION,
+    usage: "{prefix}rclima <add|remove|clear|times|enable|disable|run|status|help>",
     examples: [
         "{prefix}rclima add Salvador",
+        "{prefix}rclima add São Paulo",
         "{prefix}rclima remove Salvador",
+        "{prefix}rclima clear",
         "{prefix}rclima times 08:00,18:00",
         "{prefix}rclima enable",
         "{prefix}rclima disable",
         "{prefix}rclima status",
-        "{prefix}rclima run"
+        "{prefix}rclima run",
+        "{prefix}rclima help"
     ],
     platformSupport: {
         whatsapp: "full",
@@ -58,7 +106,7 @@ module.exports = {
         const config = randomWeatherMonitor.loadMonitorConfig(target);
 
         if (["help", "ajuda", "?"].includes(command)) {
-            return message.reply({ text: _help(message) });
+            return message.reply({ text: helpText(message) });
         }
 
         if (command === "list" || command === "status") {
@@ -121,23 +169,6 @@ module.exports = {
             return message.reply({ text: adapter ? "✅ Previsão aleatória enviada (execução de teste)." : `✅ Pré-visualização:\n\n${result.text}` });
         }
 
-        return message.reply({ text: _help(message) });
+        return message.reply({ text: helpText(message) });
     }
 };
-
-function _help(message) {
-    const p = message.prefix || "!";
-    return [
-        "🎲 *RCLIMA (Monitor de Clima Aleatório) — AJUDA*",
-        "",
-        "Configura uma lista de cidades para sortear e enviar a previsão nos horários definidos.",
-        "",
-        `• \`${p}rclima add <cidade>\` — Adiciona uma cidade à lista.`,
-        `• \`${p}rclima remove <cidade>\` — Remove uma cidade da lista.`,
-        `• \`${p}rclima clear\` — Limpa todas as cidades da lista.`,
-        `• \`${p}rclima times HH:MM,HH:MM\` — Define os horários de envio diários.`,
-        `• \`${p}rclima enable\` / \`${p}rclima disable\` — Ativa ou desativa o envio automático.`,
-        `• \`${p}rclima status\` — Exibe a configuração atual do chat.`,
-        `• \`${p}rclima run\` — Executa um sorteio de teste imediato.`
-    ].join("\n");
-}

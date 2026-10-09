@@ -1,10 +1,26 @@
 const { setWarnConfig, getWarnConfig } = require("../../../functions/warnHelper");
 const { isOwner } = require("../../../functions/owners");
 
+const DESCRIPTION = `⚠️ Define quantas advertências levam a uma punição automática neste grupo ou servidor.
+
+🔐 Disponível para administradores do chat e superusuários.
+
+1. Escolha o limite de advertências e a ação aplicada ao atingir esse limite:
+{prefix}warnconfig <quantidade> <kick|ban>
+
+Exemplos:
+{prefix}warnconfig 3 ban
+{prefix}warnconfig 5 kick
+
+Use kick para expulsar o membro, permitindo que ele volte, ou ban para bani-lo. A quantidade deve ser maior que zero.
+
+2. Confira a configuração atual:
+{prefix}warnconfig status`;
+
 module.exports = {
     name: "warnconfig",
     category: "adm/configurações",
-    description: "Define quantas advertências um membro pode acumular antes de uma punição automática e escolhe se, ao atingir o limite, ele será expulso (`kick`) ou banido (`ban`).",
+    description: DESCRIPTION,
     usage: "{prefix}warnconfig <max> <kick|ban>",
 
     async execute(message) {

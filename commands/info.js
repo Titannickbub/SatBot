@@ -61,12 +61,11 @@ pelo bot.
 
 Com isso ele consegue exibir:
 
-- Nome
+- Plataforma atual e disponibilidade
+- Modelos de chaveamento
+- Acessos disponíveis (uso, aliases e exemplos)
 - Descrição
-- Categoria
 - Arquivo
-- Uso
-- Exemplos
 
 sem precisar conhecer
 previamente quais comandos
@@ -181,15 +180,24 @@ module.exports = {
 
     name: "info",
 
-    description:
-        "Exibe informações sobre comandos e categorias.",
+    description: `ℹ️ Exibe informações e tutoriais sobre comandos e categorias.
+
+📌 Uso:
+{prefix}info <comando>
+{prefix}info <categoria>
+
+💡 Exemplos:
+{prefix}info menu
+{prefix}info clima
+{prefix}info adm`,
 
     usage:
         `{prefix}info <comando|categoria>`,
 
     examples: [
         "{prefix}info menu",
-        "{prefix}info system"
+        "{prefix}info clima",
+        "{prefix}info adm"
     ],
 
     async execute(message) {
@@ -248,34 +256,48 @@ function categoryRoot(category) {
 
 function infoComandoText(message, command) {
     const platformStatus = getCommandPlatformIndicator(command, message.platform);
+    const platformLabel = platformStatus.label.charAt(0).toUpperCase() +
+        platformStatus.label.slice(1);
+    const accesses = getCommandAccesses(message, command);
+    const description = typeof command.description === "string" && command.description.trim()
+        ? command.description.replaceAll("{prefix}", message.prefix)
+        : (command.description || "Esse comando não possui descrição.");
 
-    let body =
-        `📝 Descrição:\n${command.description || "Esse comando não possui descrição."}\n\n` +
-        `📂 Categoria:\n${command.category ? categoryRoot(command.category) : "Raiz"}\n\n` +
-        `📁 Arquivo:\n/commands/${command.file}\n\n` +
-        `${platformStatus.icon} Plataforma atual (${message.platform}): ${platformStatus.label}`;
+    const body = [
+        `🔗 Plataforma Atual: ${message.platform}\n${platformStatus.icon} ${platformLabel}`,
+        [
+            "🗝️ Modelos de chaveamento:",
+            "🔤 [] = Qualquer texto",
+            "🔢 {} = Qualquer número",
+            "📄 <> = Itens específicos",
+            "👤 @ = Marcar usuário ou mensagem do usuário",
+            "📨 # = Marcar mensagem, cargo ou chat"
+        ].join("\n"),
+        `🚪 Acessos disponíveis:\n${accesses.map(access => `🔶 ${access}`).join("\n")}`,
+        `ℹ️ Descrição estática:\n${description}`
+    ];
 
-    if (command.usage) {
-        body += `\n\n⚙️ Uso:\n${command.usage.replaceAll("{prefix}", message.prefix)}`;
+    body.push(`🗂️ /commands/${command.file}`);
+
+    return sectionText(`📄 ${command.name}`, body.join("\n\n"));
+}
+
+function getCommandAccesses(message, command) {
+    const accesses = typeof command.usage === "string" && command.usage
+        ? command.usage.split("\n")
+        : [`${message.prefix}${command.name}`];
+
+    if (Array.isArray(command.aliases)) {
+        for (const alias of command.aliases) {
+            if (typeof alias === "string" && alias.trim()) {
+                accesses.push(`${message.prefix}${alias}`);
+            }
+        }
     }
 
-    if (command.examples?.length) {
-        body += `\n\n📌 Exemplos:\n`;
-        body += command.examples
-            .map((ex) => `🔶 ${ex.replaceAll("{prefix}", message.prefix)}`)
-            .join("\n");
-    }
-
-    const customHelp = typeof command.info === "function"
-        ? command.info(message)
-        : typeof command.getHelp === "function"
-            ? command.getHelp(message)
-            : null;
-    if (customHelp) {
-        body += `\n\n📚 Ajuda detalhada:\n${customHelp}`;
-    }
-
-    return sectionText(`📄 ${command.name}`, body);
+    return [...new Set(accesses
+        .map(access => access.replaceAll("{prefix}", message.prefix).trim())
+        .filter(Boolean))];
 }
 
 function infoCategoriaText(message, categoria, categoryCommands) {
@@ -290,7 +312,7 @@ function infoCategoriaText(message, categoria, categoryCommands) {
     let description = "Sem descrição para esta categoria.";
 
     if (fs.existsSync(descFile)) {
-        description = fs.readFileSync(descFile, "utf8").trim();
+        description = fs.readFileSync(descFile, "utf8").trim().replaceAll("{prefix}", message.prefix);
     }
 
     const commandLines = categoryCommands

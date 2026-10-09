@@ -6,17 +6,50 @@ const actModule = require("../../diversao/act");
 
 const { detectBufferFormat } = actModule._internals || {};
 
+const DESCRIPTION = `🧪 Administra as mídias dos testes de diversão (gay, bonito, feio, etc.).
+
+🔐 Disponível apenas para superusuários / donos do bot.
+
+📋 1. Liste todos os testes e suas mídias:
+{prefix}set_teste list
+
+Exibe todos os tipos de teste disponíveis e se possuem mídia configurada.
+
+🔍 2. Consulte o status de um teste específico:
+{prefix}set_teste info gay
+{prefix}set_teste info bonito
+
+Exibe o arquivo salvo, estado e tipo de mídia do teste.
+
+🖼️ 3. Configure a mídia de um teste:
+{prefix}set_teste image gay
+{prefix}set_teste image gay https://exemplo.com/img.gif
+
+Anexe uma imagem, GIF ou vídeo com o comando na legenda, responda a uma mídia, ou informe uma URL diretamente.
+
+🗑️ 4. Remova a mídia de um teste:
+{prefix}set_teste clear gay
+
+Remove o arquivo de mídia associado ao teste.
+
+🔄 Compatibilidade com sintaxe antiga:
+{prefix}set_teste gay (anexando imagem/gif/vídeo)
+{prefix}set_teste bonito https://exemplo.com/bonito.gif
+{prefix}set_teste feio clear
+
+ℹ️ O teste casal2 gera um banner romântico automaticamente e não usa mídia configurável.`;
+
 module.exports = {
     name: "set_teste",
     aliases: ["setteste", "testeset", "teste_edit", "testeedit"],
     category: "system/configurações",
-    description: "Administra as mídias dos testes de diversão com a mesma sintaxe do editor do act.",
+    description: DESCRIPTION,
     usage: "{prefix}set_teste [subcomando] [tipo] [url|imagem anexa]",
     examples: [
         "{prefix}set_teste list",
         "{prefix}set_teste info gay",
         "{prefix}set_teste image gay",
-        "{prefix}set_teste image gay https://.../img.gif",
+        "{prefix}set_teste image gay https://exemplo.com/img.gif",
         "{prefix}set_teste clear gay"
     ],
 
@@ -259,23 +292,6 @@ function inferUrlType(url) {
 }
 
 function help(message) {
-    const prefix = message.prefix || "!";
-    return [
-        "⚙️ *CONFIGURAR TESTES*",
-        "",
-        `Use: \`${prefix}set_teste [list|info|image|clear] [tipo] [url|imagem anexa]\``,
-        "",
-        "Subcomandos:",
-        `• \`${prefix}set_teste list\` — mostra todos os tipos e se possuem mídia`,
-        `• \`${prefix}set_teste info gay\` — exibe o status do teste`,
-        `• \`${prefix}set_teste image gay\` — salva uma imagem/video/gif anexada`,
-        `• \`${prefix}set_teste clear gay\` — remove a mídia do teste`,
-        "",
-        "Compatibilidade com sintaxe antiga:",
-        `• \`${prefix}set_teste gay\` (anexando imagem/gif/video)`,
-        `• \`${prefix}set_teste bonito https://example.com/bonito.gif\``,
-        `• \`${prefix}set_teste feio clear\``,
-        "",
-        `Tipos disponíveis: ${getSupportedTestKeys().map(item => `\`${item}\``).join(", ")}`
-    ].join("\n");
+    const base = DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
+    return `${base}\n\n📦 Tipos disponíveis: ${getSupportedTestKeys().map(item => `\`${item}\``).join(", ")}`;
 }

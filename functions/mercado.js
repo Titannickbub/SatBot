@@ -7,6 +7,13 @@ const MARKET_ASSETS = [
     { symbol: "^GSPC", label: "S&P 500", aliases: ["sp500", "s&p500"] },
     { symbol: "^IXIC", label: "Nasdaq" },
     {
+        symbol: "USD-BRL",
+        label: "Dólar Comercial",
+        aliases: ["dolar", "dólar", "usd", "dolar comercial", "dólar comercial"],
+        market: "Câmbio comercial",
+        source: "AwesomeAPI"
+    },
+    {
         symbol: "KC=F",
         label: "Café Arábica (Coffee C)",
         aliases: ["cafe", "café", "coffee", "kc"],
@@ -79,6 +86,20 @@ async function getMarketIndexes(symbols = null) {
     const wantedIndexes = normalizeMarketSymbols(symbols);
 
     return await Promise.all(wantedIndexes.map(async ({ symbol, label, unit, market }) => {
+        if (symbol === "USD-BRL") {
+            const quote = await getDollarQuote();
+            return {
+                label,
+                bid: quote.bid,
+                ask: quote.ask,
+                change: quote.change,
+                market,
+                marketLabel: "Mercado",
+                source: "AwesomeAPI",
+                updatedAt: quote.updatedAt
+            };
+        }
+
         const encodedSymbol = encodeURIComponent(symbol);
         const data = await api.fetchJson(
             `${INDEX_URL}/${encodedSymbol}?range=1d&interval=1d`
@@ -95,6 +116,7 @@ async function getMarketIndexes(symbols = null) {
                 ((quote.regularMarketPrice - quote.chartPreviousClose) / quote.chartPreviousClose) * 100,
             unit,
             market,
+            source: "Yahoo Finance",
             updatedAt: quote.regularMarketTime
                 ? new Date(quote.regularMarketTime * 1000).toLocaleString("pt-BR")
                 : null

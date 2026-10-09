@@ -2,7 +2,20 @@ const bronxys = require("../../functions/bronxys");
 
 module.exports = {
     name: "video",
-    description: "Baixa vídeo do YouTube, TikTok, Instagram, Twitter e outras plataformas",
+    description: `🎬 Baixa vídeos em MP4 a partir de links ou buscando pelo título em diversas plataformas (YouTube, TikTok, Instagram, Twitter/X, Facebook, Kwai).
+
+📝 1. Baixe buscando pelo título ou assunto do vídeo:
+{prefix}video <título do vídeo>
+{prefix}video trailer gta 6
+{prefix}video melhores momentos futebol
+
+🔗 2. Baixe diretamente por link:
+{prefix}video <URL>
+{prefix}video https://youtu.be/...
+{prefix}video https://www.tiktok.com/...
+{prefix}video https://www.instagram.com/p/...
+
+O bot processa a mídia na melhor resolução disponível e envia o vídeo diretamente no chat.`,
     usage:
         "{prefix}video <link ou nome do video>",
 
@@ -62,6 +75,7 @@ module.exports = {
                         videoInfo = firstResult;
                     }
                 } catch (searchErr) {
+                    if (bronxys.isApiError(searchErr)) throw searchErr;
                     console.error("[VIDEO_SEARCH_WARNING] Falha ao obter detalhes:", searchErr.message);
                 }
             }
@@ -149,7 +163,8 @@ module.exports = {
             console.error(`[VIDEO_ERROR] Falha no input "${input}":`, err);
 
             // Mensagem amigável para o cliente final
-            let userFriendlyMessage = "❌ Não consegui processar e baixar o vídeo solicitado. A API de extração pode estar instável ou o link está indisponível.";
+            let userFriendlyMessage = bronxys.getUserErrorMessage(err, message.prefix) ||
+                "❌ Não consegui processar e baixar o vídeo solicitado. A API de extração pode estar instável ou o link está indisponível.";
 
             if (err.message.includes("muito grande")) {
                 userFriendlyMessage = "⚠️ O arquivo solicitado excede o limite permitido. Tente outro vídeo.";

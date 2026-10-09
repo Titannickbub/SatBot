@@ -9,11 +9,26 @@ module.exports = {
         telegram: "full",
         whatsapp: "none"
     },
-    description: "Silencia um usuário temporariamente. Use respondendo à mensagem do usuário ou digitando o ID.",
+    description: `🔇 Silencia temporariamente um usuário do grupo ou servidor.
+
+🎯 Responda à mensagem do usuário, mencione-o ou informe o ID.
+⏱️ Informe a duração em minutos. Se não informar, o mute será de 10 minutos.
+🤖 O bot precisa ter permissão para aplicar castigos.
+👤 Você também precisa ter permissão para aplicar castigos.
+🚫 Este comando não está disponível no WhatsApp.
+
+📌 Uso:
+{prefix}mute <@usuário|id> [minutos]
+
+💡 Exemplos:
+{prefix}mute @user
+{prefix}mute @user 15
+{prefix}mute 123456789012345678 30`,
     usage: "{prefix}mute <@usuário|id> [tempo_em_minutos]",
     examples: [
-        "{prefix}mute 123456789012345678",
-        "{prefix}mute @user 15"
+        "{prefix}mute @user",
+        "{prefix}mute @user 15",
+        "{prefix}mute 123456789012345678 30"
     ],
 
     async execute(message) {
@@ -21,13 +36,24 @@ module.exports = {
             return message.reply({ text: "❌ Comando apenas para grupos/servidores." });
         }
 
+        if (message.platform === "whatsapp") {
+            return message.reply({ text: "❌ O mute não está disponível no WhatsApp." });
+        }
+
         const adapter = (message.platforms || []).find(p => p.name === message.platform);
         const userOk = adapter?.checkUserPermission
-            ? await adapter.checkUserPermission(message.chatId, message.userId)
+            ? await adapter.checkUserPermission(message.chatId, message.userId, "mute")
             : message.sender?.isAdmin;
 
         if (!userOk && !isOwner(message)) {
-            return message.reply({ text: "❌ Apenas administradores podem usar este comando." });
+            return message.reply({ text: "❌ Você precisa ter permissão para aplicar castigos." });
+        }
+
+        if (adapter?.checkBotPermission) {
+            const botCan = await adapter.checkBotPermission(message.chatId, "mute");
+            if (!botCan) {
+                return message.reply({ text: "❌ O bot não tem permissão para aplicar castigos neste grupo/servidor." });
+            }
         }
 
         const { targetId, targetMessageId } = parseTargetFromMessage(message);

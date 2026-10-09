@@ -82,7 +82,15 @@ module.exports = {
     name: "roubar",
     aliases: ["roubo", "assaltar"],
     category: "economia",
-    description: "Tenta roubar satcoins de outro membro da economia atual. Informe o ID ou a menção da vítima, ou responda a uma mensagem dela; o resultado pode gerar ganho ou prejuízo.",
+    description: `🥷 Tenta assaltar a carteira de outro membro para roubar satcoins na economia local.
+
+📝 1. Escolha a vítima mencionando, informando o ID ou respondendo à mensagem:
+{prefix}roubar @usuário
+{prefix}roubar 5511999990000
+
+O golpe pode ter sucesso parcial, total (levar tudo), falhar, ser bloqueado por um escudo de proteção ou resultar em multas e indenizações policiais.
+
+⏳ Limite de 3 tentativas diárias por usuário. Não é possível assaltar a mesma vítima duas vezes no mesmo dia.`,
     usage: "{prefix}roubar <id|@usuário> ou respondendo a uma mensagem",
 
     async execute(message) {

@@ -35,7 +35,14 @@ module.exports = {
     name: "trabalhar",
     aliases: ["work", "trabalho"],
     category: "economia",
-    description: "Executa um trabalho aleatório na economia do grupo ou servidor para ganhar satcoins; alguns eventos podem gerar prejuízo ou bônus. Cada pessoa tem até duas tentativas por dia.",
+    description: `💼 Realiza um trabalho aleatório na economia local para receber salário em satcoins e ganhar XP.
+
+📝 1. Execute o comando dentro de um grupo ou servidor:
+{prefix}trabalhar
+
+O bot sorteia uma profissão e o desfecho do seu expediente, podendo render salários padrão, bônus por produtividade ou descontos por incidentes.
+
+⏳ Limite de 2 tentativas diárias por usuário. Se esgotar, você pode comprar um reset na {prefix}loja.`,
     usage: "{prefix}trabalhar",
 
     async execute(message) {

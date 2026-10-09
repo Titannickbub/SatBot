@@ -38,11 +38,28 @@ function countItems(value) {
     return value && typeof value === "object" ? Object.keys(value).length : 0;
 }
 
+const DESCRIPTION = `📊 Exibe o painel de status global e diagnóstico operacional do bot em tempo real.
+
+🔐 Disponível apenas para superusuários / donos do bot.
+
+📋 Informações exibidas no relatório:
+• 👤 Identidade e execução — versão, Node.js, tempo de atividade (uptime), uso de memória RAM.
+• 🌐 Plataformas conectadas — status de conexão e latência no WhatsApp, Telegram e Discord.
+• 🧩 Recursos carregados — total de comandos, funções, contas centrais e grupos crossplay.
+• 🛡️ Sistemas globais — estado do Anti-PV, Only Chats, VIP, Auto Download e Bloqueio Global.
+• ⚙️ Configurações ativas — canais de upload, pacotes de figurinhas e inicialização protegida.
+
+▶️ Como consultar:
+{prefix}botstatus`;
+
 module.exports = {
     name: "botstatus",
     category: "system/info",
-    description: "Mostra o estado operacional do bot, incluindo plataformas conectadas, tempo de execução, recursos carregados e configurações globais relevantes.",
+    description: DESCRIPTION,
     usage: "{prefix}botstatus",
+    examples: [
+        "{prefix}botstatus"
+    ],
 
     async execute(message) {
         if (!isOwner(message)) {

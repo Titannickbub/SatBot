@@ -1,12 +1,45 @@
 const xp = require("../../../functions/xp");
 const { isOwner } = require("../../../functions/owners");
 
+const DESCRIPTION = `⭐ Controla o ganho de XP e os avisos de level-up neste grupo ou servidor.
+
+🔐 Disponível para administradores do chat e superusuários.
+
+✅ Ativar o ganho de XP:
+{prefix}xpconfig ativar
+
+🔕 Desativar o ganho de XP:
+{prefix}xpconfig desativar
+
+O progresso acumulado é preservado.
+
+🔔 Controlar os avisos de level-up:
+{prefix}xpconfig mutar
+{prefix}xpconfig desmutar
+
+Para definir onde os avisos serão enviados:
+{prefix}xpconfig canal
+{prefix}xpconfig topico
+{prefix}xpconfig chat
+
+Use canal no canal desejado do Discord, topico dentro de um tópico do Telegram ou chat para voltar ao chat atual. Os avisos são reativados ao escolher um destino.
+
+📋 Consultar o estado:
+{prefix}xpconfig status
+
+❔ Exibir esta ajuda:
+{prefix}xpconfig help`;
+
+function helpText(message) {
+    return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
+}
+
 module.exports = {
     name: "xpconfig",
     aliases: ["configxp", "configurarxp"],
     category: "adm/RP",
-    description: "Controla o ganho de XP do grupo ou servidor. Use `ativar`/`desativar` para ligar ou pausar, `mutar` para impedir avisos de nível, e `canal`, `topico` ou `status` para configurar e consultar onde o sistema atua.",
-    usage: "{prefix}xpconfig <ativar|desativar|mutar|canal|topico|status>",
+    description: DESCRIPTION,
+    usage: "{prefix}xpconfig <ativar|desativar|mutar|desmutar|canal|topico|chat|status|help>",
 
     async execute(message) {
         if (!xp.load(message)) return message.reply({ text: "❌ O XP só funciona em grupos ou servidores." });
@@ -15,6 +48,9 @@ module.exports = {
         }
 
         const action = String(message.args?.[0] || "status").toLowerCase();
+        if (["help", "ajuda"].includes(action)) {
+            return message.reply({ text: helpText(message) });
+        }
         if (action === "ativar" || action === "ativarxp") {
             xp.configure(message, { enabled: true });
             return message.reply({ text: "✅ Sistema de XP ativado." });

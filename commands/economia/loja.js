@@ -15,7 +15,14 @@ module.exports = {
     name: "loja",
     aliases: ["shop", "store"],
     category: "economia",
-    description: "Lista os resets e itens disponíveis na loja de economia, com preços, requisitos e a sintaxe para comprar por número ou nome.",
+    description: `🛒 Exibe o catálogo de itens e resets disponíveis para compra com satcoins na economia local.
+
+📝 1. Consulte os itens disponíveis e seus preços:
+{prefix}loja
+
+O bot lista todos os resets (trabalho, pesca, mineração, roubo, cassino) e itens de proteção como o Escudo Anti-Roubo.
+
+🛍️ Para comprar qualquer item listado, utilize o comando {prefix}comprar <número|nome>.`,
     usage: "{prefix}loja",
 
     async execute(message) {

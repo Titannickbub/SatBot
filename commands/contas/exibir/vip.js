@@ -4,7 +4,14 @@ module.exports = {
     name: "vip",
     aliases: ["premium"],
     category: "contas/exibir",
-    description: "Consulta se você possui uma assinatura VIP e quanto tempo resta.",
+    description: `👑 Consulta a sua assinatura VIP atual, validade restante e status em todas as contas vinculadas à Conta Central.
+
+📝 1. Execute o comando para verificar seu status VIP:
+{prefix}vip
+
+O bot exibe se o seu VIP está ativo, quanto tempo resta (ou se é permanente), data de expiração e o resumo por plataforma vinculada.
+
+ℹ️ Administradores que desejam conceder ou gerenciar assinaturas VIP devem utilizar o comando {prefix}set_vip.`,
     usage: "{prefix}vip",
 
     async execute(message) {

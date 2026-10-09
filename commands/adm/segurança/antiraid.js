@@ -29,7 +29,58 @@ module.exports = {
     name: "antiraid",
     aliases: ["raidguard", "anti_raid", "guardraid"],
     category: "adm/segurança",
-    description: "Proteção anti-raid contra flood de mensagens e imagens, repetição de conteúdo, excesso de links/convites e riscos de menções/webhooks dentro de uma janela configurável. No Discord, a contagem de servidor soma mensagens do mesmo membro entre canais; no Telegram, vale para o grupo e seus tópicos; no WhatsApp, vale para o grupo. Permite configurar quantidade e duração com flood, limites de links e convites com links, ação de moderação e listas de exceção.",
+    description: `🛡️ Configura a proteção anti-raid contra flood de mensagens, repetição de conteúdo, excesso de links/convites e riscos de menções/webhooks neste grupo ou servidor.
+
+🔐 Disponível para administradores do chat e superusuários.
+
+🌐 Escopo por plataforma:
+• Discord: no nível servidor, soma mensagens do mesmo membro em todos os canais e threads.
+• Telegram: conta no grupo; mensagens nos tópicos entram na mesma proteção.
+• WhatsApp: conta mensagens no grupo; ações mute/remove usam remoção do membro.
+• Imagens e anexos contam como mensagens para o limite de flood. Links e convites têm contadores próprios.
+• Administradores, donos e usuários/cargos na lista branca são ignorados.
+
+✅ 1. Ative ou desative o anti-raid:
+{prefix}antiraid on
+{prefix}antiraid off
+
+⚙️ 2. Escolha o que fazer quando um membro violar os limites:
+{prefix}antiraid action <mute|kick|ban>
+{prefix}antiraid action mute
+
+mute silencia o membro temporariamente; kick expulsa; ban bane. As ações kick e ban exigem que o bot tenha permissão para moderar membros.
+
+🔢 3. Configure os limites de flood:
+{prefix}antiraid flood <limite> <segundos>
+{prefix}antiraid flood 8 12
+
+Define quantas mensagens um membro pode enviar dentro da janela de tempo. Exemplo: 8 mensagens em 12 segundos. A janela também é usada para os limites de repetição, links e convites.
+
+🔗 4. Configure os limites de links e convites:
+{prefix}antiraid links <limite-links> <limite-convites>
+{prefix}antiraid links 3 2
+
+Define quantos links e convites um membro pode enviar durante a janela configurada em flood. No Discord com escopo servidor, os limites continuam contando entre canais.
+
+👤 5. Gerencie as exceções por usuário:
+Adicione ou remova usuários respondendo à mensagem, mencionando-os ou informando ID/número. Usuários na lista branca são ignorados pela proteção; a lista negra garante que sejam sempre monitorados.
+{prefix}antiraid userwhitelist add <usuário|ID>
+{prefix}antiraid userwhitelist remove <usuário|ID>
+{prefix}antiraid userwhitelist list
+{prefix}antiraid userblacklist add <usuário|ID>
+{prefix}antiraid userblacklist remove <usuário|ID>
+{prefix}antiraid userblacklist list
+
+No Discord, também é possível gerenciar exceções por cargo. A lista branca isenta o cargo; a lista negra garante que membros com esse cargo sejam sempre monitorados.
+{prefix}antiraid rolewhitelist add <@cargo|ID|nome>
+{prefix}antiraid rolewhitelist remove <@cargo|ID|nome>
+{prefix}antiraid rolewhitelist list
+{prefix}antiraid roleblacklist add <@cargo|ID|nome>
+{prefix}antiraid roleblacklist remove <@cargo|ID|nome>
+{prefix}antiraid roleblacklist list
+
+📊 Consulte o estado e as configurações:
+{prefix}antiraid status`,
     usage: "{prefix}antiraid [subcomando]",
     examples: [
         "{prefix}antiraid status",

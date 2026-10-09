@@ -4,7 +4,14 @@ module.exports = {
     name: "carteira",
     aliases: ["saldo", "wallet"],
     category: "economia",
-    description: "Consulta seu saldo de satcoins na economia do grupo ou servidor atual. Os saldos são separados por comunidade.",
+    description: `💰 Consulta o seu saldo de satcoins na economia local do grupo ou servidor atual.
+
+📝 1. Execute o comando dentro de um grupo ou servidor:
+{prefix}carteira
+
+O bot exibe seu saldo atual, identificação e avisa se você já possui a recompensa diária disponível para resgate ({prefix}resgatar).
+
+⚠️ A economia e os saldos são separados individualmente por grupo/servidor.`,
     usage: "{prefix}carteira",
 
     async execute(message) {

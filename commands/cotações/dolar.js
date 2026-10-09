@@ -8,7 +8,12 @@ module.exports = {
     name: "dolar",
     aliases: ["dólar", "usd"],
     category: "cotações",
-    description: "Consulta a cotação de compra e venda do dólar comercial em reais e sua variação, usando os dados mais recentes disponíveis.",
+    description: `💵 Consulta a cotação atual do dólar comercial em reais (BRL), com valores de compra, venda e variação diária.
+
+📝 1. Execute o comando para consultar a taxa de câmbio:
+{prefix}dolar
+
+O bot consulta o mercado de câmbio em tempo real, exibindo os preços de compra e venda da moeda americana e a oscilação percentual do dia.`,
     usage: "{prefix}dolar",
     examples: ["{prefix}dolar"],
 

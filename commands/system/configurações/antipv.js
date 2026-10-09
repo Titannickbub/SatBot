@@ -1,33 +1,51 @@
 const { isOwner } = require("../../../functions/owners");
 const configFn = require("../../../functions/config");
 
+const DESCRIPTION = `🛡️ Gerencia o sistema de proteção e bloqueio de mensagens privadas (Anti-PV).
+
+🔐 Disponível apenas para superusuários / donos do bot.
+
+📝 1. Personalize a mensagem de bloqueio:
+{prefix}antipv msg <texto>
+{prefix}antipv msg ⚠️ Atendimento indisponível no PV. Use os grupos oficiais.
+
+💬 2. Escolha o comportamento do bloqueio:
+{prefix}antipv mode reply
+{prefix}antipv mode ignore
+
+O modo reply responde ao usuário com a mensagem e mídia configuradas. O modo ignore ignora a mensagem silenciosamente sem responder.
+
+🖼️ 3. Configure a mídia de aviso (opcional):
+{prefix}antipv media (anexando ou respondendo a uma mídia/link)
+{prefix}antipv media none (remove a mídia salva)
+
+A imagem, áudio ou vídeo será salvo no disco local e enviado junto à resposta de bloqueio.
+
+⚙️ 4. Libere comandos específicos no PV:
+{prefix}antipv allowcmd add <comando>
+{prefix}antipv allowcmd remove <comando>
+{prefix}antipv allowcmd list
+
+Permite que comandos essenciais (ex: ping, doar) continuem funcionando mesmo com o Anti-PV ativado.
+
+👥 5. Libere usuários específicos no PV:
+{prefix}antipv allowuser add <id>
+{prefix}antipv allowuser remove <id>
+{prefix}antipv allowuser list
+
+Você também pode responder à mensagem de alguém com {prefix}antipv allowuser add para liberá-lo.
+
+✅ 6. Ative ou desative o Anti-PV:
+{prefix}antipv on
+{prefix}antipv off
+
+📋 Consulte o status das configurações:
+{prefix}antipv status`;
+
 module.exports = {
     name: "antipv",
     category: "system/configurações",
-    description: `Gerencia o bloqueio de mensagens em PV (Anti-PV).
-
-Subcomandos:
-  status / list
-    • Exibe o estado atual do Anti-PV.
-
-  on / off
-    • Ativa ou desativa o bloqueio em mensagens privadas.
-
-  mode <ignore|reply>
-    • ignore: bloqueia sem responder.
-    • reply: responde com a mensagem configurada.
-
-  msg <texto>
-    • Define a mensagem personalizada enviada em modo reply.
-
-  media [none]
-    • Define ou remove a mídia enviada junto com a mensagem de bloqueio.
-
-  allowcmd <add|remove|list> <comando>
-    • Libera comandos específicos para continuarem trabalhando em PV.
-
-  allowuser <add|remove|list> <userId>
-    • Libera usuários específicos para continuar usando o bot em PV.`,
+    description: DESCRIPTION,
     usage: "{prefix}antipv [subcomando]",
     examples: [
         "{prefix}antipv status",
@@ -236,40 +254,5 @@ async function showStatus(message) {
 }
 
 function _help(message) {
-    const p = message.prefix || "!";
-    const plat = message.platform;
-
-    let header = '*🛡️ ANTI-PV — AJUDA*';
-    if (plat === 'discord') header = '🎮 *ANTI-PV (Discord) — AJUDA*';
-    else if (plat === 'whatsapp') header = '📱 *ANTI-PV (WhatsApp) — AJUDA*';
-    else if (plat === 'telegram') header = '✈️ *ANTI-PV (Telegram) — AJUDA*';
-
-    const lines = [];
-    lines.push(header);
-    lines.push('');
-    lines.push('Gerencia o bloqueio de mensagens em mensagens privadas (PV).');
-    lines.push('');
-    lines.push('⚙️ COMANDOS:');
-    lines.push('  `' + p + 'antipv status|list`');
-    lines.push('    ↳ Mostra status atual do Anti-PV.');
-    lines.push('  `' + p + 'antipv on`');
-    lines.push('  `' + p + 'antipv off`');
-    lines.push('  `' + p + 'antipv mode <ignore|reply>`');
-    lines.push('  `' + p + 'antipv msg <texto>`');
-    lines.push('  `' + p + 'antipv media` (envie junto a mídia ou responda a uma mídia)');
-    lines.push('  `' + p + 'antipv media none` (remove a mídia salva)');
-    lines.push('  `' + p + 'antipv allowcmd <add|remove|list> <comando>`');
-    lines.push('  `' + p + 'antipv allowuser <add|remove|list> <userId>` (ou responda ao usuário)');
-    lines.push('');
-    lines.push('📌 VARIÁVEIS / DICAS:');
-    lines.push('  - Ao usar `media`, responda a uma mídia ou passe uma URL pública.');
-    lines.push('  - Para liberar um usuário responda a mensagem do usuário com: `' + p + 'antipv allowuser add`');
-    lines.push('');
-    lines.push('📌 EXEMPLOS:');
-    lines.push('  ' + p + 'antipv mode reply');
-    lines.push('  ' + p + 'antipv msg ⚠️ Atendimento indisponível no PV.');
-    lines.push('  ' + p + 'antipv allowcmd add ping');
-    lines.push('');
-    lines.push('Use `' + p + 'antipv help` para ver esta ajuda.');
-    return lines.join('\n');
+    return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
 }

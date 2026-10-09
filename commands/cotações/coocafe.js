@@ -4,7 +4,12 @@ const { loadMonitorState, buildSnapshot, getWeeklyBestMap, getMetricChangeText, 
 module.exports = {
     name: "coocafe",
     category: "cotações",
-    description: "Exibe a cotação atual do café direto da Coocafé, com variação e melhor da semana.",
+    description: `☕ Exibe a cotação atualizada do café direto da cooperativa Coocafé (Arábica e Conilon para MG e ES).
+
+📝 1. Execute o comando para consultar os valores:
+{prefix}coocafe
+
+O bot consulta as cotações oficiais da Coocafé, exibindo os preços por tipo de café, variação de mercado e o melhor valor registrado na semana.`,
     usage: "{prefix}coocafe",
 
     async execute(message) {

@@ -4,7 +4,16 @@ module.exports = {
     name: "comprar",
     aliases: ["buy"],
     category: "economia",
-    description: "Compra um reset ou item da loja de economia usando satcoins. Consulte `loja` para ver preços e posições; informe o número ou nome do item. Resets só podem ser comprados após esgotar as tentativas correspondentes.",
+    description: `🛍️ Compra resets de atividades ou itens de proteção (como o escudo) usando seus satcoins.
+
+📝 1. Compre informando o número ou nome do item da loja:
+{prefix}comprar 1
+{prefix}comprar resetar trabalho
+{prefix}comprar escudo
+
+Consulte a {prefix}loja para verificar a lista de produtos, números e preços atuais.
+
+⚠️ Resets só podem ser comprados após esgotar o limite diário da atividade correspondente.`,
     usage: "{prefix}comprar <número|nome>",
 
     async execute(message) {

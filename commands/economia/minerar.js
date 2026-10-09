@@ -46,7 +46,14 @@ module.exports = {
     name: "minerar",
     aliases: ["mineracao", "mineração", "mine"],
     category: "economia",
-    description: "Faz uma mineração na economia do grupo ou servidor: você pode encontrar minérios, ganhar satcoins ou sofrer um prejuízo. Cada pessoa tem até duas tentativas por dia.",
+    description: `⛏️ Explora a caverna para extrair minérios, pedras raras e ganhar satcoins e XP para seu perfil.
+
+📝 1. Execute o comando dentro de um grupo ou servidor:
+{prefix}minerar
+
+O bot sorteia os minerais encontrados e acontecimentos da mina, podendo render bons lucros ou eventuais custos de reparo de equipamento.
+
+⏳ Limite de 2 tentativas diárias por usuário. Se esgotar, você pode comprar um reset na {prefix}loja.`,
     usage: "{prefix}minerar",
 
     async execute(message) {

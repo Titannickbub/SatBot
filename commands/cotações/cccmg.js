@@ -4,7 +4,12 @@ const { loadMonitorState, buildSnapshot, getWeeklyBestMap, getMetricChangeText, 
 module.exports = {
     name: "cccmg",
     category: "cotações",
-    description: "Exibe a última cotação do café postada pelo CCCMG (Centro do Comércio do Café de MG), com variação e melhor da semana.",
+    description: `☕ Exibe a cotação mais recente do café divulgada pelo CCCMG (Centro do Comércio de Café do Estado de Minas Gerais).
+
+📝 1. Execute o comando para consultar os preços:
+{prefix}cccmg
+
+O bot busca os valores físicos da saca de 60 KG para diferentes padrões de café, exibindo a data, a variação em relação ao registro anterior e o melhor preço da semana.`,
     usage: "{prefix}cccmg",
     examples: ["{prefix}cccmg"],
 

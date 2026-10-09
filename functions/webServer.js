@@ -92,7 +92,7 @@ async function getGroupName(platform, groupId, scope) {
   return settings.serverName || settings.groupName || settings.chatName || scope?.name || `${scope?.type || "Grupo"} ${groupId}`;
 }
 
-async function readProfile(url) {
+async function readProfile(url, { allowEmpty = false } = {}) {
   const platform = String(url.searchParams.get("plataforma") || url.searchParams.get("platform") || "discord").toLowerCase();
   const groupId = url.searchParams.get("grupo") || url.searchParams.get("group");
   const userId = url.searchParams.get("usuario") || url.searchParams.get("user");
@@ -114,7 +114,7 @@ async function readProfile(url) {
     ? nofapHelper.getNofapStatus(central.id)
     : { active: false, currentDays: 0, recordDays: 0, totalResets: 0, title: "🌱 Iniciante" };
 
-  if (!scope || (!account && !xpUser && !activityUser)) {
+  if (!scope || (!allowEmpty && !account && !xpUser && !activityUser)) {
     return { error: "Não encontrei um usuário ou grupo com esses identificadores." };
   }
 

@@ -1,17 +1,16 @@
 /*
 =================================================================
 
-COMANDO: !clear
+COMANDO: {prefix}clear
 
 Apaga mensagens com controle de quantidade, escopo e exclusões.
-Apenas administradores podem usar este comando.
+É necessário que o usuário e o bot tenham permissão para gerenciar mensagens.
 
 Sintaxe:
-  !clear help
-  !clear <n>                          → canal atual (máx 20)
-  !clear <n> all                      → todos os canais do servidor
-  !clear <n> all !#ch1, #ch2         → todos EXCETO ch1 e ch2
-  !clear <n> #ch1, #ch2              → apenas ch1 e ch2
+  {prefix}clear <1-20>                    → canal atual
+  {prefix}clear <1-20> all                → todos os canais do servidor
+  {prefix}clear <1-20> all !#ch1 !#ch2    → todos EXCETO ch1 e ch2
+  {prefix}clear <1-20> #ch1 #ch2          → apenas ch1 e ch2
 
 Observações:
   • Máximo de 20 mensagens por canal.
@@ -33,22 +32,36 @@ module.exports = {
         telegram: "none",
         whatsapp: "none"
     },
-    description: `Apaga mensagens com controle de quantidade, escopo e exclusões.
+    description: `🧹 Apaga mensagens com controle de quantidade, escopo e exclusões.
 
-Sintaxe:
-  clear <n>                      → canal atual (máx 20)
-  clear <n> all                  → todos os canais do servidor (Discord)
-  clear <n> all !#ch1 !#ch2     → todos EXCETO os canais marcados com !
-  clear <n> #ch1, #ch2          → apenas os canais marcados`,
+📏 Máximo de 20 mensagens por canal.
+⏳ Apaga apenas mensagens com até 2 dias de idade.
+🤖 O bot precisa ter permissão para gerenciar mensagens.
+👤 Você também precisa ter permissão para gerenciar mensagens.
 
-    usage: "{prefix}clear <quantidade> [all [!#excluir...] | #ch1, #ch2...]",
+📌 Uso:
+Apagar mensagens no chat atual:
+{prefix}clear {1-20}
+{prefix}clear 15
+
+Apagar mensagens em todos os chats do servidor:
+{prefix}clear {1-20} all
+{prefix}clear 15 ALL
+
+Apagar mensagens em todos os chats, exceto os selecionados:
+{prefix}clear {1-20} all !#chat1 !#chat2
+{prefix}clear 15 all !#chat_adms !#chat_geral
+
+Apagar mensagens apenas nos chats selecionados:
+{prefix}clear {1-20} #chat1 #chat2
+{prefix}clear 15 #chat_geral #midia`,
+
+    usage: "{prefix}clear <1-20>",
     examples: [
-        "{prefix}clear help",
-        "{prefix}clear 10",
+        "{prefix}clear 15",
         "{prefix}clear 15 all",
-        "{prefix}clear 20 all !#geral !#logs",
-        "{prefix}clear 10 #avisos, #suporte",
-        "{prefix}clear 5 #geral #moderação"
+        "{prefix}clear 15 all !#chat_adms !#chat_geral",
+        "{prefix}clear 15 #chat_geral #midia"
     ],
 
     info(message) {
@@ -60,9 +73,20 @@ Sintaxe:
             return message.reply({ text: "❌ Este comando só pode ser usado em grupos ou servidores." });
         }
 
+        const adapter = (message.platforms || []).find(p => p.name === message.platform);
         const sender = message.sender || {};
-        if (!sender.isAdmin && !sender.isOwner && !sender.canManageMessages && !isOwner(message)) {
-            return message.reply({ text: "❌ Apenas administradores podem usar este comando." });
+        const userCanManageMessages = adapter?.checkUserPermission
+            ? await adapter.checkUserPermission(message.chatId, message.userId, "delete")
+            : sender.canManageMessages;
+        if (!userCanManageMessages && !sender.isOwner && !isOwner(message)) {
+            return message.reply({ text: "❌ Você precisa ter permissão para gerenciar mensagens neste chat." });
+        }
+
+        if (adapter?.checkBotPermission) {
+            const botCanManageMessages = await adapter.checkBotPermission(message.chatId, "delete");
+            if (!botCanManageMessages) {
+                return message.reply({ text: "❌ O bot não tem permissão para gerenciar mensagens neste chat." });
+            }
         }
 
         const args = message.args || [];
@@ -174,6 +198,8 @@ async function _execAllChannels(message, limit, excludedIds = new Set()) {
 
     for (const ch of channels.values()) {
         try {
+            if (!await canManageMessagesInChannel(message, ch.id)) continue;
+
             const fetched = await ch.messages.fetch({ limit: 100 }).catch(() => new Map());
             const msgArray = Array.from(fetched.values())
                 .filter(m => String(m.id) !== currentMsgId && m.createdTimestamp >= twoDaysAgo)
@@ -219,6 +245,11 @@ async function _execSpecificChannels(message, limit, channelIds) {
                 continue;
             }
 
+            if (!await canManageMessagesInChannel(message, ch.id)) {
+                results.push(`⚠️ <#${channelId}>: você ou o bot não tem permissão para gerenciar mensagens.`);
+                continue;
+            }
+
             const fetched = await ch.messages.fetch({ limit: 100 }).catch(() => new Map());
             const msgArray = Array.from(fetched.values())
                 .filter(m => String(m.id) !== currentMsgId && m.createdTimestamp >= twoDaysAgo)
@@ -241,6 +272,25 @@ async function _execSpecificChannels(message, limit, channelIds) {
     return message.reply({
         text: `🧹 *Limpeza concluída!* (${totalDeleted} mensagem(ns) no total)\n\n${results.join("\n")}`
     }).catch(() => console.warn("[CLEAR] Falha ao responder após limpeza de canais específicos."));
+}
+
+async function canManageMessagesInChannel(message, channelId) {
+    const adapter = (message.platforms || []).find(p => p.name === message.platform);
+    if (!adapter) return true;
+
+    const ownerOverride = message.sender?.isOwner || isOwner(message);
+    const [userCanManageMessages, botCanManageMessages] = await Promise.all([
+        ownerOverride
+            ? Promise.resolve(true)
+            : adapter.checkUserPermission
+            ? adapter.checkUserPermission(channelId, message.userId, "delete")
+            : Promise.resolve(message.sender?.canManageMessages),
+        adapter.checkBotPermission
+            ? adapter.checkBotPermission(channelId, "delete")
+            : Promise.resolve(true)
+    ]);
+
+    return !!userCanManageMessages && !!botCanManageMessages;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -278,24 +328,25 @@ Apaga mensagens com controle de quantidade, escopo e exclusões.
 
 📋 *MODOS DISPONÍVEIS:*
 
-  • \`${p}clear <n>\`
+  • \`${p}clear <1-20>\`
     ↳ Apaga **N** mensagens do canal/chat atual.
 
-  • \`${p}clear <n> all\`
+  • \`${p}clear <1-20> all\`
     ↳ Apaga **N** msgs de **todos** os canais do servidor. *(Discord)*
 
-  • \`${p}clear <n> all !#ch1 !#ch2\`
+  • \`${p}clear <1-20> all !#ch1 !#ch2\`
     ↳ Apaga **N** msgs de todos os canais, **exceto** os marcados com \`!\`. *(Discord)*
 
-  • \`${p}clear <n> #ch1, #ch2\`
+  • \`${p}clear <1-20> #ch1 #ch2\`
     ↳ Apaga **N** msgs **apenas** nos canais mencionados. *(Discord)*
+
+🤖 O bot e quem executa precisam da permissão para gerenciar mensagens.
 ${platformNotes}
 
 💡 *EXEMPLOS:*
-  \`${p}clear 10\`
+  \`${p}clear 15\`
   \`${p}clear 15 all\`
-  \`${p}clear 20 all !#geral !#logs\`
-  \`${p}clear 10 #avisos, #suporte\`
-  \`${p}clear 5 #geral #moderação\``
+  \`${p}clear 15 all !#chat_adms !#chat_geral\`
+  \`${p}clear 15 #chat_geral #midia\``
     );
 }

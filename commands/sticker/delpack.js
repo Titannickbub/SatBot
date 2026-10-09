@@ -3,7 +3,21 @@ const telegramStickerHelper = require("../../functions/telegramStickerHelper");
 module.exports = {
     name: "delpack",
     aliases: ["delfig", "delsticker", "deletarpacote", "limparpacote"],
-    description: "Exclui o seu pacote de figurinhas do Telegram ou uma figurinha específica marcada no chat.",
+    description: `🗑️ Gerencia a exclusão do seu pacote pessoal de figurinhas ou de uma figurinha específica no Telegram.
+
+📱 Exclusivo para o Telegram.
+
+📝 1. Remova uma figurinha específica do seu pacote:
+{prefix}delfig
+{prefix}delsticker
+
+Responda à figurinha que deseja remover do seu pacote com o comando.
+
+📦 2. Exclua o pacote completo de figurinhas:
+{prefix}delpack
+{prefix}deletarpacote
+
+Remove definitivamente todo o pacote de figurinhas criado por você no bot.`,
     category: "sticker",
     platformSupport: {
         telegram: "full",

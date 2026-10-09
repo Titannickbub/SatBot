@@ -33,7 +33,7 @@ module.exports = {
     name: "eleicao",
     aliases: ["eleição", "eleicoes", "eleições"],
     description: "Consulta a apuração oficial das eleições no TSE por cargo, estado e município.",
-    usage: "{prefix}eleicao [cargo] [uf <sigla>] [municipio <nome>] [busca <nome|número|partido>]",
+    usage: "{prefix}eleicao",
     examples: [
         "{prefix}eleicao",
         "{prefix}eleicao governador uf MG municipio Belo Horizonte",

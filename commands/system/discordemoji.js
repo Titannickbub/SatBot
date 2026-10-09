@@ -1,15 +1,34 @@
 const { loadDictionary, setEmojiMapping, removeEmojiMapping } = require("../../functions/discordEmojiHelper");
 const { isOwner } = require("../../functions/owners");
 
+const DESCRIPTION = `🎭 Gerencia o dicionário de tradução de emojis customizados do Discord e links Vencord para emojis padrão nas outras plataformas (WhatsApp / Telegram).
+
+🔐 Listagem pública. Adição e remoção restritas a administradores e donos do bot.
+
+📋 1. Listar todas as traduções cadastradas:
+{prefix}discordemoji list
+
+➕ 2. Adicionar ou atualizar tradução de emoji:
+{prefix}discordemoji <:pepehappy:123456789012345678> 😊
+{prefix}discordemoji [NaoSmile](https://cdn.discordapp.com/emojis/845390820705697843...) 😅
+{prefix}discordemoji pepehappy 😊
+
+🗑️ 3. Remover tradução do dicionário:
+{prefix}discordemoji remove pepehappy
+{prefix}discordemoji del pepehappy
+
+ℹ️ No crossplay, emojis não mapeados são convertidos para ⚠️ ou enviados como anexo de imagem quando enviados isoladamente.`;
+
 module.exports = {
     name: "discordemoji",
     aliases: ["setemoji", "emojidict"],
-    description: "Gerencia o dicionário de tradução de emojis customizados do Discord/Vencord para emojis padrão das outras plataformas.",
-    usage: "{prefix}discordemoji <emoji_ou_id_ou_link> <emoji_padrao>",
+    category: "system",
+    description: DESCRIPTION,
+    usage: "{prefix}discordemoji <list|remove|<emoji>> [emoji_padrao]",
     examples: [
         "{prefix}discordemoji list",
-        "{prefix}discordemoji [NaoSmile](https://cdn.discordapp.com/emojis/845390820705697843...) 😅",
         "{prefix}discordemoji <:pepehappy:123456789012345678> 😊",
+        "{prefix}discordemoji [NaoSmile](https://cdn.discordapp.com/emojis/845390820705697843...) 😅",
         "{prefix}discordemoji pepehappy 😊",
         "{prefix}discordemoji remove pepehappy"
     ],

@@ -1,11 +1,31 @@
 const owners = require("../../../functions/owners");
 const config = require("../../../functions/config");
 
+const DESCRIPTION = `🌐 Configura o protocolo e o endereço do painel web do bot.
+
+🔐 Disponível apenas para superusuários / donos do bot.
+
+📝 1. Defina o domínio e a porta:
+{prefix}set_dominio <domínio:porta>
+{prefix}set_dominio painel.exemplo.com:32013
+
+Por padrão, o protocolo utilizado é HTTP. Informe o domínio e a porta no formato domínio:porta.
+
+🔓 2. Use HTTP para servidores sem TLS:
+{prefix}set_dominio http painel.exemplo.com:32013
+
+🔒 3. Use HTTPS quando houver TLS ou proxy reverso:
+{prefix}set_dominio https painel.exemplo.com:443
+
+O HTTPS exige TLS configurado por um proxy reverso; o servidor do painel atende HTTP internamente.
+
+⚠️ A configuração é salva em settings/config.json e aplicada na próxima inicialização do bot.`;
+
 module.exports = {
     name: "set_dominio",
     aliases: ["setdominio", "set-domain"],
     category: "system/configurações",
-    description: "Configura o protocolo e o endereço do painel web. Use HTTP (padrão) para um servidor sem TLS ou HTTPS quando houver TLS/reverse proxy configurado; informe o domínio e a porta no formato `domínio:porta`. A configuração é aplicada na próxima inicialização.",
+    description: DESCRIPTION,
     usage: "{prefix}set_dominio [http|https] <domínio:porta>",
     examples: [
         "{prefix}set_dominio painel.exemplo.com:32013",

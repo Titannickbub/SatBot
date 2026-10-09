@@ -2,11 +2,35 @@ const { isOwner } = require("../../../functions/owners");
 const { readLocalPackage } = require("../../../functions/autoUpdate");
 const config = require("../../../functions/config");
 
+const DESCRIPTION = `🔄 Gerencia as atualizações automáticas do bot a partir das versões publicadas no GitHub.
+
+🔐 Disponível apenas para superusuários / donos do bot.
+
+📋 1. Consulte o status atual:
+{prefix}autoupdate status
+
+Exibe se o Auto Update está ativado ou desativado e a versão local instalada. A atualização só ocorre se o GitHub tiver uma versão mais nova — downgrades são bloqueados automaticamente.
+
+✅ 2. Ative o Auto Update:
+{prefix}autoupdate on
+
+A configuração ficará salva em settings/config.json e a atualização ocorrerá na próxima reinicialização, caso haja versão mais nova disponível.
+
+❌ 3. Desative o Auto Update:
+{prefix}autoupdate off
+
+O aviso de versão continuará sendo exibido no console; apenas a atualização automática ficará desativada.`;
+
 module.exports = {
     name: "autoupdate",
     category: "system/configurações",
-    description: "Consulta ou controla as atualizações automáticas do bot a partir das versões do GitHub. Use `status` para conferir a configuração, `on` para ativar ou `off` para desativar; atualizações e reinicialização ocorrem conforme o ciclo do bot.",
+    description: DESCRIPTION,
     usage: "{prefix}autoupdate [subcomando]",
+    examples: [
+        "{prefix}autoupdate status",
+        "{prefix}autoupdate on",
+        "{prefix}autoupdate off"
+    ],
 
     async execute(message) {
         if (!isOwner(message)) {

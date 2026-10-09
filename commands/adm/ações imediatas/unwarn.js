@@ -5,8 +5,25 @@ const { isOwner } = require("../../../functions/owners");
 module.exports = {
     name: "unwarn",
     category: "adm/ações imediatas",
-    description: "Remove uma ou mais advertências do usuário indicado, permitindo corrigir punições registradas por engano. Informe o usuário e, opcionalmente, quantas advertências remover.",
-    usage: "{prefix}unwarn @user [quantidade (opcional)]",
+    description: `🧹 Remove advertências de um usuário no grupo ou servidor.
+
+🎯 Mencione o usuário, responda à mensagem dele ou informe o ID.
+🔢 Informe uma quantidade para remover apenas algumas advertências. Sem quantidade, todas serão removidas.
+👤 Você precisa ter permissão de administrador para remover advertências.
+
+📌 Uso:
+{prefix}unwarn <@usuário|id> [quantidade]
+
+💡 Exemplos:
+{prefix}unwarn @user
+{prefix}unwarn @user 2
+{prefix}unwarn 123456789012345678 1`,
+    usage: "{prefix}unwarn <@usuário|id> [quantidade]",
+    examples: [
+        "{prefix}unwarn @user",
+        "{prefix}unwarn @user 2",
+        "{prefix}unwarn 123456789012345678 1"
+    ],
 
     async execute(message) {
         if (message.isPrivate) return message.reply({ text: "❌ Comando apenas para grupos/servidores." });

@@ -5,7 +5,18 @@ module.exports = {
     name: "darxp",
     aliases: ["addxp"],
     category: "adm/RP",
-    description: "Acrescenta a quantidade de XP informada ao perfil do usuário indicado. Use para conceder XP manualmente; informe a quantidade e depois o ID ou a menção.",
+    description: `➕ Acrescenta a quantidade de XP informada ao perfil do usuário indicado.
+
+🔐 Disponível para administradores do chat e superusuários.
+
+📝 1. Informe a quantidade de XP e o usuário:
+{prefix}darxp <quantidade> <id|@usuário>
+{prefix}darxp 500 @usuario
+{prefix}darxp 1000 5511999990000
+
+Você também pode responder à mensagem do usuário em vez de mencioná-lo ou informar o ID.
+
+O XP informado é somado ao total atual do perfil. O bot exibirá o XP anterior e o novo valor.`,
     usage: "{prefix}darxp <quantidade> <id|@usuário>",
 
     async execute(message) {

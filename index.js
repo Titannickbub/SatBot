@@ -45,7 +45,8 @@ process.on("SIGTERM", () => {
   process.exit(0);
 });
 
-process.env.TZ = "America/Sao_Paulo";
+const config = require("./functions/config");
+process.env.TZ = config.getTimezone() || "America/Sao_Paulo";
 
 require("./functions/webServer").start();
 

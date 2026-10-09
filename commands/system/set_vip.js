@@ -10,55 +10,98 @@ const {
 } = require("../../functions/config");
 const vipHelper = require("../../functions/vipHelper");
 
+const DESCRIPTION = `👑 Gerencia o sistema VIP e assinaturas Premium globais, permissões exclusivas, bypass de Anti-PV e restrição de salas.
+
+🔐 Disponível exclusivamente para superusuários / donos do bot.
+
+🔍 1. Consulte o status VIP de um usuário:
+{prefix}set_vip check
+{prefix}set_vip check @usuario
+{prefix}set_vip check 123456789
+
+Exibe o cartão detalhado com tempo restante, data de expiração e tipo de plano (temporário ou permanente).
+
+⏱️ 2. Defina uma duração de VIP a partir de agora:
+{prefix}set_vip set @usuario 15d
+{prefix}set_vip set @usuario 2h 30m
+
+Substitui qualquer VIP anterior e inicia a contagem com o tempo informado.
+
+➕ 3. Adicione mais tempo a um VIP ativo:
+{prefix}set_vip add @usuario 30d
+{prefix}set_vip add @usuario 12h
+
+Soma o tempo informado ao período que o usuário já possui.
+
+➖ 4. Remova tempo do VIP ativo:
+{prefix}set_vip rem @usuario 5d
+
+Reduz o tempo de assinatura restante do usuário.
+
+♾️ 5. Conceda VIP permanente (vitalício):
+{prefix}set_vip perm @usuario
+
+Ativa o plano VIP sem data de expiração.
+
+📅 6. Defina uma data e hora exatas para expiração:
+{prefix}set_vip date @usuario 31/12/2026
+{prefix}set_vip date @usuario 31/12/2026 23:59
+
+Configura o término do VIP exatamente na data e horário especificados.
+
+🗑️ 7. Cancele ou zere o VIP de um usuário:
+{prefix}set_vip reset @usuario
+{prefix}set_vip cancel @usuario
+
+Remove o status VIP imediatamente e zera o tempo restante.
+
+🛠️ 8. Gerencie comandos exclusivos para membros VIP:
+{prefix}set_vip listcmd
+{prefix}set_vip addcmd play
+{prefix}set_vip remcmd play
+
+Permite liberar comandos específicos para uso exclusivo de membros VIP.
+
+📩 9. Configure o bypass de Anti-PV para usuários VIP:
+{prefix}set_vip pv on whatsapp
+{prefix}set_vip pv off telegram
+
+Quando ativado, membros VIP podem usar o bot no privado mesmo com o Anti-PV global ligado na plataforma.
+
+🔒 10. Alterne o modo VIP-only em chats, servidores ou categorias:
+{prefix}set_vip chat on
+{prefix}set_vip server on
+{prefix}set_vip categorie on
+
+Restringe a utilização do bot no canal/servidor atual apenas a membros com assinatura VIP ativa.
+
+📌 Formatos de tempo aceitos:
+• d — dias (ex: 30d, 15d)
+• h — horas (ex: 12h, 2h)
+• m — minutos (ex: 45m, 30m)
+• Combinações compostas: 15d 12h 30m`;
+
 function _helpText(message) {
     const prefix = message.prefix || '!';
-    return [
-        '👑 *GERENCIAMENTO VIP / PREMIUM — AJUDA*',
-        '',
-        '🔹 *Comandos principais:*',
-        `• \`${prefix}vip\` — Consulta o próprio status VIP e o tempo restante.`,
-        `• \`${prefix}set_vip check [@user|id]\` — Consulta o status VIP do usuário atual ou de um alvo.`,
-        `• \`${prefix}set_vip set @user <tempo>\` — Define um VIP com duração exata a partir de agora.`,
-        `• \`${prefix}set_vip add @user <tempo>\` — Soma tempo ao VIP já ativo.`,
-        `• \`${prefix}set_vip rem @user <tempo>\` — Remove tempo do VIP ativo.`,
-        `• \`${prefix}set_vip reset @user\` / \`${prefix}set_vip cancel @user\` — Cancela e zera o VIP.`,
-        `• \`${prefix}set_vip date @user <data> [hora]\` — Define uma data/hora exatas de expiração.`,
-        `• \`${prefix}set_vip perm @user\` — Concede VIP permanente.`,
-        '',
-        '🔹 *Gerenciamento de comandos e PV:*',
-        `• \`${prefix}set_vip addcmd <cmd>\` — Adiciona comando liberado para usuários VIP.`,
-        `• \`${prefix}set_vip remcmd <cmd>\` — Remove comando VIP liberado.`,
-        `• \`${prefix}set_vip listcmd\` — Lista todos os comandos VIP permitidos.`,
-        `• \`${prefix}set_vip pv on|off <plataforma>\` — Habilita ou desabilita o bypass de PV por plataforma.`,
-        '',
-        '🔹 *Modo exclusivo VIP:*',
-        `• \`${prefix}set_vip chat on|off\` — Ativa/desativa o modo VIP-only no chat atual.`,
-        `• \`${prefix}set_vip server on|off\` — Ativa/desativa o modo VIP-only no servidor atual.`,
-        `• \`${prefix}set_vip categorie on|off\` — Ativa/desativa o modo VIP-only na categoria atual.`,
-        '',
-        '📌 *Formatos aceitos no tempo:*',
-        '• `10d` → 10 dias',
-        '• `2h 30m` → 2 horas e 30 minutos',
-        '• `30d` / `12h` / `90m`',
-        '',
-        '💡 *Exemplos:*',
-        `• \`${prefix}vip\``,
-        `• \`${prefix}set_vip set @José 15d\``,
-        `• \`${prefix}set_vip add @José 30d\``,
-        `• \`${prefix}set_vip rem @José 5d\``,
-        `• \`${prefix}set_vip perm @José\``,
-        `• \`${prefix}set_vip pv on whatsapp\``,
-        '',
-        '⚙️ *Atenção:* todo o comando `set_vip` exige privilégios de SU.'
-    ].join('\n');
+    return DESCRIPTION.replaceAll('{prefix}', prefix);
 }
 
 module.exports = {
     name: "set_vip",
     aliases: ["setvip"],
     category: "system",
-    description: "Gerencia manualmente assinaturas e configurações VIP. Uso exclusivo de Super Usuários.",
-    usage: "{prefix}set_vip [subcomando]",
+    description: DESCRIPTION,
+    usage: "{prefix}set_vip <check|set|add|rem|perm|date|reset|addcmd|remcmd|listcmd|pv|chat|server|categorie> [args]",
+    examples: [
+        "{prefix}set_vip check @usuario",
+        "{prefix}set_vip set @usuario 30d",
+        "{prefix}set_vip add @usuario 15d",
+        "{prefix}set_vip perm @usuario",
+        "{prefix}set_vip date @usuario 31/12/2026",
+        "{prefix}set_vip addcmd play",
+        "{prefix}set_vip pv on whatsapp",
+        "{prefix}set_vip chat on"
+    ],
     async execute(message) {
         if (!(message.sender?.isOwner || isOwner(message))) {
             return message.reply({ text: "⚠️ Apenas usuários com nível SU podem gerenciar ou consultar assinaturas VIP." });

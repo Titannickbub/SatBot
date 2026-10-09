@@ -2,6 +2,47 @@ const stockMonitor = require("../../../functions/stockMonitor");
 const { normalizeMarketSymbols } = require("../../../functions/mercado");
 const { isOwner } = require("../../../functions/owners");
 
+const DESCRIPTION = `📈 Configura o envio automático de cotações da bolsa neste chat.
+
+🔐 Administradores do chat e superusuários podem configurar o monitor.
+📊 As cotações dos índices são obtidas do Yahoo Finance; o dólar comercial é obtido da AwesomeAPI.
+
+📝 1. Escolha quais ativos acompanhar:
+{prefix}monitorbolsa set <ativos>
+{prefix}monitorbolsa set ibovespa,nasdaq,dolar
+
+Ativos disponíveis:
+• ibovespa — Ibovespa
+• sp500 — S&P 500
+• nasdaq — Nasdaq
+• cafe — Café Arábica
+• dolar — Dólar comercial (compra e venda)
+
+Informe um ou mais nomes separados por vírgula. Uma nova seleção substitui a anterior. Para acompanhar todos, informe os cinco ativos.
+
+⏰ 2. Defina os horários diários de envio:
+{prefix}monitorbolsa times <HH:MM,HH:MM>
+{prefix}monitorbolsa times 09:00,15:30
+
+Use o formato de 24 horas HH:MM. Informe um ou mais horários separados por vírgula; uma nova configuração substitui os horários anteriores. O padrão é 09:00.
+
+✅ 3. Ative os envios automáticos:
+{prefix}monitorbolsa on
+
+O relatório será enviado diariamente nos horários configurados. Para pausar os envios sem apagar as configurações:
+{prefix}monitorbolsa off
+
+🧪 Consultar as cotações agora:
+{prefix}monitorbolsa run
+
+Busca e exibe um relatório imediatamente, sem alterar os horários ou o estado do monitor.
+
+📋 Conferir o estado e as configurações:
+{prefix}monitorbolsa status
+
+❔ Exibir esta ajuda:
+{prefix}monitorbolsa help`;
+
 function getTarget(message) {
     return {
         platform: message.platform,
@@ -22,30 +63,15 @@ function canConfigure(message) {
     );
 }
 
-function help(prefix) {
-    return [
-        "📈 *Monitor da Bolsa*",
-        "",
-        `• *${prefix}monitorbolsa set <ativos>*`,
-        "  Define os ativos separados por vírgula. Ex.: ibovespa,nasdaq,cafe",
-        `• *${prefix}monitorbolsa times HH:MM,HH:MM*`,
-        "  Define os horários diários.",
-        `• *${prefix}monitorbolsa on|off*`,
-        "  Ativa ou desativa os envios automáticos.",
-        `• *${prefix}monitorbolsa status*`,
-        "  Exibe a configuração atual.",
-        `• *${prefix}monitorbolsa run*`,
-        "  Envia a cotação imediatamente.",
-        "",
-        "Ativos: ibovespa, sp500, nasdaq e cafe."
-    ].join("\n");
+function helpText(message) {
+    return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
 }
 
 module.exports = {
     name: "monitorbolsa",
     aliases: ["bolsamonitor", "monitor bolsa"],
     category: "adm/configurações",
-    description: "Configura o envio automático de cotações de Ibovespa, S&P 500, Nasdaq e café neste chat. Use `set` para escolher ativos, `times` para definir horários, `on`/`off` para controlar o envio, `status` para consultar ou `run` para enviar agora.",
+    description: DESCRIPTION,
     usage: "{prefix}monitorbolsa <set|times|on|off|status|run|help>",
 
     async execute(message) {
@@ -56,7 +82,7 @@ module.exports = {
         let config = stockMonitor.loadMonitorConfig(target);
 
         if (["help", "ajuda"].includes(action)) {
-            return message.reply({ text: help(prefix) });
+            return message.reply({ text: helpText(message) });
         }
 
         if (action === "run") {
@@ -91,7 +117,7 @@ module.exports = {
             } else if (["off", "desativar", "disable"].includes(action)) {
                 config = stockMonitor.saveMonitorConfig({ enabled: false }, target);
             } else if (action !== "status") {
-                return message.reply({ text: help(prefix) });
+                return message.reply({ text: helpText(message) });
             }
 
             if (action !== "status") {

@@ -5,7 +5,18 @@ module.exports = {
     name: "setsatcoin",
     aliases: ["setsatcoins", "setcoins"],
     category: "adm/RP",
-    description: "Substitui o saldo atual de satcoins de outro usuário pelo valor informado na economia deste grupo ou servidor. Informe o valor e depois a menção ou o ID.",
+    description: `🔧 Define o saldo exato de satcoins de um usuário na economia local, substituindo o valor atual.
+
+🔐 Disponível para administradores do chat e superusuários.
+
+📝 1. Informe o novo saldo e o usuário:
+{prefix}setsatcoin <valor> <id|@usuário>
+{prefix}setsatcoin 1000 @usuario
+{prefix}setsatcoin 5000 5511999990000
+
+Você também pode responder à mensagem do usuário em vez de mencioná-lo ou digitar o ID.
+
+O saldo atual da carteira do membro será substituído pelo valor especificado.`,
     usage: "{prefix}setsatcoin <valor> <id|@usuário>",
 
     async execute(message) {

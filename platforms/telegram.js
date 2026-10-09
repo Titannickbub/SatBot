@@ -873,7 +873,7 @@ async function sendFile(
 /**
  * Verifica se o BOT possui a permissão necessária no chat do Telegram.
  * @param {string} chatId  ID do chat
- * @param {string} action  'delete' | 'kick' | 'ban'
+ * @param {string} action  'invite' | 'delete' | 'kick' | 'ban' | 'mute' | 'unmute'
  * @returns {Promise<boolean>}
  */
 async function checkBotPermission(chatId, action) {
@@ -884,8 +884,12 @@ async function checkBotPermission(chatId, action) {
         // Criador sempre tem tudo
         if (me.status === "creator") return true;
         if (me.status !== "administrator") return false;
+        if (action === "invite") return !!me.can_invite_users;
         if (action === "delete" || action === "warn") return !!me.can_delete_messages;
-        if (action === "kick" || action === "ban") return !!me.can_restrict_members;
+        if (action === "kick" || action === "ban" || action === "mute" || action === "unmute") {
+            return !!me.can_restrict_members;
+        }
+        if (action === "manageChat") return !!me.can_restrict_members;
         if (action === "promote") return !!me.can_promote_members;
         return false;
     } catch {
@@ -894,20 +898,64 @@ async function checkBotPermission(chatId, action) {
 }
 
 /**
- * Verifica se o MEMBRO é administrador ou criador do chat.
+ * Verifica se o MEMBRO pode executar a ação no chat.
  * @param {string} chatId  ID do chat
  * @param {string} userId  ID do usuário
+ * @param {string} [action] 'invite' | 'delete' | 'kick' | 'ban' | 'mute' | 'unmute'
  * @returns {Promise<boolean>}
  */
-async function checkUserPermission(chatId, userId) {
+async function checkUserPermission(chatId, userId, action) {
     if (!bot) return false;
     try {
         const member = await bot.telegram.getChatMember(chatId, Number(userId));
         if (!member) return false;
+        if (action === "invite") {
+            return member.status === "creator" ||
+                (member.status === "administrator" && !!member.can_invite_users);
+        }
+        if (action === "delete") {
+            return member.status === "creator" ||
+                (member.status === "administrator" && !!member.can_delete_messages);
+        }
+        if (action === "kick" || action === "ban" || action === "mute" || action === "unmute") {
+            return member.status === "creator" ||
+                (member.status === "administrator" && !!member.can_restrict_members);
+        }
+        if (action === "manageChat") {
+            return ["creator", "administrator"].includes(member.status);
+        }
         return ["creator", "administrator"].includes(member.status);
     } catch {
         return false;
     }
+}
+
+async function setChatOpen(chatId, isOpen) {
+    if (!bot) throw new Error("[TELEGRAM] Bot não iniciado.");
+    const chat = await bot.telegram.getChat(chatId);
+    if (chat.type === "channel" || chat.type === "private") {
+        throw new Error("[TELEGRAM] A abertura e o fechamento só funcionam em grupos.");
+    }
+
+    const permissions = chat.permissions;
+    if (!permissions || typeof permissions !== "object") {
+        throw new Error("[TELEGRAM] Não foi possível ler as permissões atuais do grupo.");
+    }
+
+    const isCurrentlyOpen = permissions.can_send_messages !== false;
+    if (isCurrentlyOpen === Boolean(isOpen)) return false;
+
+    await bot.telegram.setChatPermissions(chatId, {
+        ...permissions,
+        can_send_messages: Boolean(isOpen)
+    });
+    return true;
+}
+
+async function checkChatControlSupport(chatId) {
+    if (!bot) return false;
+    const chat = await bot.telegram.getChat(chatId);
+    return chat.type === "group" || chat.type === "supergroup";
 }
 
 module.exports = {
@@ -925,6 +973,10 @@ module.exports = {
     sendAudio,
 
     sendFile,
+
+    checkChatControlSupport,
+
+    setChatOpen,
 
     checkBotPermission,
 

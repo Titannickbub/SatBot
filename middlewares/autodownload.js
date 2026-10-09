@@ -116,7 +116,10 @@ module.exports = {
       }
 
       let errorMessage = `❌ *Autodownload:* Não foi possível baixar a mídia de *${platformName}*.`;
-      if (err && err.message) {
+      const bronxysErrorMessage = bronxys.getUserErrorMessage(err, prefix);
+      if (bronxysErrorMessage) {
+        errorMessage += `\n${bronxysErrorMessage}`;
+      } else if (err && err.message) {
         errorMessage += `\n*Motivo:* ${err.message}`;
       }
 

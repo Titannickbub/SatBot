@@ -1,13 +1,29 @@
 const authFlow = require("../../../functions/authFlow");
 
+const DESCRIPTION = `🔑 Configura o token de autenticação para plataformas suportadas (Discord e Telegram) e reinicia o bot para aplicar as alterações.
+
+🔐 Disponível apenas para superusuários / donos do bot.
+
+🤖 1. Configure o token do Discord:
+{prefix}su token discord SEU_TOKEN_AQUI
+
+✈️ 2. Configure o token do Telegram:
+{prefix}su token telegram 123456:ABCDEF_SEU_TOKEN
+
+ℹ️ Para conectar ao WhatsApp, utilize:
+• {prefix}su whatsapp qr (via QR Code)
+• {prefix}su whatsapp codigo <número> (via código de pareamento)
+
+🔄 Após registrar o token, o bot será reiniciado automaticamente para iniciar a conexão na plataforma.`;
+
 module.exports = {
     name: "su-token",
     category: "system/configurações",
-    description: "Adiciona tokens de plataformas restantes e reinicia o bot para aplicar a configuração.",
+    description: DESCRIPTION,
     usage: "{prefix}su token <discord|telegram> <token>",
     examples: [
-        "{prefix}su token telegram 123456:ABCDEF",
-        "{prefix}su token discord TOKEN"
+        "{prefix}su token discord SEU_TOKEN_AQUI",
+        "{prefix}su token telegram 123456:ABCDEF_SEU_TOKEN"
     ],
 
     async execute(message) {

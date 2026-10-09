@@ -15,7 +15,53 @@ module.exports = {
     name: "blockcmd",
     aliases: ["bloquearcomando", "cmdblock"],
     category: "adm/segurança",
-    description: "Gerencia o bloqueio de comandos por níveis hierárquicos (servidor, categoria, chat). Permite responder com mensagem de aviso ou ignorar silenciosamente.",
+    description: `🚫 Configura o bloqueio seletivo de comandos ou categorias inteiras por nível hierárquico neste grupo ou servidor.
+
+🔐 Disponível para administradores do chat e superusuários. Administradores e donos do bot são imunes ao bloqueio.
+
+📍 1. Escolha o nível de configuração:
+• Discord: server (servidor), categoria (categoria) ou chat (canal/tópico).
+• WhatsApp: chat (grupo) ou server (comunidade, quando disponível).
+• Telegram: server (grupo/canal) ou chat (tópico, quando disponível).
+
+Os níveis disponíveis dependem da plataforma e do local em que o comando é usado.
+
+✅ 2. Ative ou desative o bloqueio no nível escolhido:
+{prefix}blockcmd <nível> on
+{prefix}blockcmd chat on
+{prefix}blockcmd <nível> off
+
+📝 3. Gerencie a lista de comandos e categorias bloqueados:
+{prefix}blockcmd <nível> add <comando|categoria>
+{prefix}blockcmd chat add cotacao
+{prefix}blockcmd chat add ia
+{prefix}blockcmd <nível> remove <comando|categoria>
+{prefix}blockcmd <nível> list
+{prefix}blockcmd <nível> clear
+
+Informe o nome do comando (sem prefixo) ou o nome de uma categoria inteira para bloquear todos os seus comandos de uma vez. Use clear para limpar toda a lista do nível.
+
+⚙️ 4. Escolha o que fazer quando alguém usar um comando bloqueado:
+{prefix}blockcmd <nível> action <reply|ignore|delete>
+{prefix}blockcmd chat action ignore
+
+reply responde com uma mensagem de aviso; ignore silencia sem responder; delete apaga a mensagem (exige permissão do bot para apagar mensagens).
+
+💬 Personalize o aviso enviado ao barrar:
+{prefix}blockcmd <nível> message <texto>
+{prefix}blockcmd chat message ⚠️ O comando {cmd} está desativado neste chat!
+
+Variáveis disponíveis: {cmd} (comando usado), {user} (usuário), {prefix} (prefixo do bot).
+
+🧩 5. Configure exceções:
+
+Ignorar regras dos níveis superiores:
+{prefix}blockcmd <nível> ignoreparent on
+
+Use off no lugar de on para desativar a exceção. Por padrão, o nível herda as regras superiores.
+
+📊 Consulte o estado e as configurações:
+{prefix}blockcmd status`,
     usage: "{prefix}blockcmd status",
     examples: [
         "{prefix}blockcmd status",

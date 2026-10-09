@@ -2,7 +2,16 @@ module.exports = {
     name: "ia",
     aliases: ["gpt", "satella", "gemini", "ai"],
     category: "ia",
-    description: "Conversa ou responde perguntas usando Inteligência Artificial.",
+    description: `🧠 Conversa, tira dúvidas e responde perguntas usando Inteligência Artificial avançada.
+
+📝 1. Faça uma pergunta ou peça uma instrução:
+{prefix}ia <pergunta ou instrução>
+{prefix}ia Qual é a velocidade da luz?
+{prefix}ia Escreva um poema sobre café
+{prefix}ia Explique o que é JavaScript para um iniciante
+
+💬 2. Você também pode responder à mensagem de alguém:
+Responda a qualquer mensagem no chat e digite {prefix}ia para a Inteligência Artificial analisar ou explicar o conteúdo daquela mensagem.`,
     usage: "{prefix}ia <sua pergunta ou instrução>",
     examples: [
         "{prefix}ia Qual é a velocidade da luz?",

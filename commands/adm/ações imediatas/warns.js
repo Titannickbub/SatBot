@@ -4,8 +4,24 @@ const { parseTargetFromMessage, formatUserMention } = require("../../../function
 module.exports = {
     name: "warns",
     category: "adm/ações imediatas",
-    description: "Consulta quantas advertências um usuário possui no grupo ou servidor. Informe uma menção para consultar outra pessoa ou omita-a para ver suas próprias advertências.",
-    usage: "{prefix}warns [@user]",
+    description: `📊 Consulta a quantidade de advertências de um usuário no grupo ou servidor.
+
+👤 Sem informar ninguém, consulta suas próprias advertências.
+🎯 Para consultar outra pessoa, mencione-a, responda à mensagem dela ou informe o ID.
+
+📌 Uso:
+{prefix}warns [@usuário|id]
+
+💡 Exemplos:
+{prefix}warns
+{prefix}warns @user
+{prefix}warns 123456789012345678`,
+    usage: "{prefix}warns [@usuário|id]",
+    examples: [
+        "{prefix}warns",
+        "{prefix}warns @user",
+        "{prefix}warns 123456789012345678"
+    ],
 
     async execute(message) {
         if (message.isPrivate) return message.reply({ text: "❌ Comando apenas para grupos/servidores." });

@@ -2,7 +2,13 @@ module.exports = {
     name: "nomecentral",
     aliases: ["centralnome"],
     category: "contas/edição de perfil",
-    description: "Altera o nome público da sua conta central, compartilhado entre as plataformas vinculadas. Informe o novo nome após o comando.",
+    description: `✏️ Altera o nome público da sua conta central, compartilhado entre todas as suas plataformas vinculadas.
+
+📝 1. Informe o novo nome desejado para sua conta:
+{prefix}nomecentral <novo nome>
+{prefix}nomecentral Satela Master
+
+O nome atualizado será exibido em todos os serviços e plataformas vinculadas à sua conta central.`,
     usage: "{prefix}nomecentral <novo nome>",
 
     async execute(message) {

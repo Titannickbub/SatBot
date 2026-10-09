@@ -1,12 +1,34 @@
 const economy = require("../../../functions/economy");
 const { isOwner } = require("../../../functions/owners");
 
+const DESCRIPTION = `💰 Ativa ou desativa a economia deste grupo ou servidor.
+
+🔐 Disponível para administradores do chat e superusuários.
+🪙 Quando ativada, os membros podem usar os comandos de saldo e atividades econômicas.
+💾 Desativar a economia pausa esses comandos, mas preserva os saldos.
+
+✅ Ativar:
+{prefix}economia ativar
+
+🔕 Desativar:
+{prefix}economia desativar
+
+📋 Consultar o estado:
+{prefix}economia status
+
+❔ Exibir esta ajuda:
+{prefix}economia help`;
+
+function helpText(message) {
+    return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
+}
+
 module.exports = {
     name: "economia",
     aliases: ["configeconomia", "economy"],
     category: "adm/RP",
-    description: "Liga, desliga ou consulta o estado da economia local do grupo ou servidor. Quando desativada, os comandos de saldo e atividades econômicas deixam de funcionar nesse contexto.",
-    usage: "{prefix}economia <ativar|desativar|status>",
+    description: DESCRIPTION,
+    usage: "{prefix}economia <ativar|desativar|status|help>",
 
     async execute(message) {
         if (!economy.getScope(message)) {
@@ -17,6 +39,9 @@ module.exports = {
         }
 
         const action = String(message.args?.[0] || "status").toLowerCase();
+        if (["help", "ajuda"].includes(action)) {
+            return message.reply({ text: helpText(message) });
+        }
         if (["ativar", "ativada", "on", "enable"].includes(action)) {
             economy.setEnabled(message, true);
             return message.reply({ text: "✅ Economia ativada neste grupo/servidor." });
@@ -31,7 +56,7 @@ module.exports = {
             });
         }
         return message.reply({
-            text: `❌ Uso: ${message.prefix}economia ativar|desativar|status`
+            text: `❌ Uso: ${message.prefix}economia ativar|desativar|status|help`
         });
     }
 };

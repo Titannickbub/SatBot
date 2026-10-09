@@ -1,13 +1,42 @@
+const DESCRIPTION = `🔑 Configura chaves de API para os provedores de IA (Gemini, Groq, OpenRouter).
+
+🔐 Disponível apenas para superusuários / donos do bot.
+
+📝 1. Configure a chave principal (posição 1):
+{prefix}setai <gemini|groq|openrouter> <sua_chave>
+{prefix}setai gemini AIzaSy...
+
+🔢 2. Configure uma chave em um slot específico (1, 2 ou 3):
+{prefix}setai <gemini|groq|openrouter> <1|2|3> <sua_chave>
+{prefix}setai gemini 2 AIzaSy_SegundaChave...
+{prefix}setai gemini 3 AIzaSy_TerceiraChave...
+
+O bot suporta até 3 chaves por provedor. Se uma chave atingir o limite (Rate Limit 429), o bot alterna automaticamente para a próxima chave.
+
+📦 3. Configure múltiplas chaves de uma vez:
+{prefix}setai <gemini|groq|openrouter> <chave1>, <chave2>, <chave3>
+{prefix}setai gemini AIzaSy_1, AIzaSy_2, AIzaSy_3
+
+🗑️ 4. Remova todas as chaves de um provedor:
+{prefix}setai <gemini|groq|openrouter> clear
+{prefix}setai gemini clear
+
+📋 5. Consulte o status das chaves:
+{prefix}setai
+
+Exibe quais chaves estão configuradas (parcialmente mascaradas) para cada provedor.`;
+
 module.exports = {
     name: "setai",
     aliases: ["setkeyai", "aikey"],
     category: "system/configurações",
-    description: "Configura chaves de API para IA (Gemini, Groq, OpenRouter) com suporte a até 3 chaves para rotação e failover.",
+    description: DESCRIPTION,
     usage: "{prefix}setai <gemini|groq|openrouter> [1|2|3] <sua_chave>",
     examples: [
         "{prefix}setai gemini AIzaSy...",
         "{prefix}setai gemini 2 AIzaSy_SegundaChave...",
-        "{prefix}setai gemini AIzaSy_1, AIzaSy_2, AIzaSy_3"
+        "{prefix}setai gemini AIzaSy_1, AIzaSy_2, AIzaSy_3",
+        "{prefix}setai gemini clear"
     ],
 
     async execute(message) {
@@ -78,53 +107,31 @@ function maskKey(key) {
 }
 
 function _help(message) {
-    const p = message.prefix;
-    const plat = message.platform;
     const aiHelper = message.functions?.aiHelper || require("../../../functions/aiHelper");
     const config = aiHelper.getConfig ? aiHelper.getConfig() : {};
-
-    const isDiscord = plat === 'discord';
-    const b = (txt) => isDiscord ? `**${txt}**` : `*${txt}*`;
-
-    let header = '🔑 ' + b('SET AI — GERENCIAMENTO DE CHAVES');
-    if (plat === 'discord') header = '🎮 ' + b('SET AI (Discord) — GERENCIAMENTO DE CHAVES');
-    else if (plat === 'whatsapp') header = '📱 ' + b('SET AI (WhatsApp) — GERENCIAMENTO DE CHAVES');
-    else if (plat === 'telegram') header = '✈️ ' + b('SET AI (Telegram) — GERENCIAMENTO DE CHAVES');
 
     const gKeys = config.geminiKeys || (config.geminiKey ? [config.geminiKey] : []);
     const grKeys = config.groqKeys || (config.groqKey ? [config.groqKey] : []);
     const oKeys = config.openrouterKeys || (config.openrouterKey ? [config.openrouterKey] : []);
 
-    const lines = [];
-    lines.push(header);
-    lines.push('');
-    lines.push('Gerencie até 3 chaves de API para cada provedor (Gemini, Groq, OpenRouter).');
-    lines.push('Se uma chave atingir o limite (Rate Limit 429), o bot alterna automaticamente para a próxima chave!');
-    lines.push('');
-    lines.push('📋 ' + b('STATUS DAS CHAVES ATIVAS:'));
-    lines.push(`  • ${b('Gemini (Google AI Studio)')}:`);
-    lines.push(`    ├─ Chave 1: ${maskKey(gKeys[0])}`);
-    lines.push(`    ├─ Chave 2: ${maskKey(gKeys[1])}`);
-    lines.push(`    └─ Chave 3: ${maskKey(gKeys[2])}`);
-    lines.push(`  • ${b('Groq')}:`);
-    lines.push(`    ├─ Chave 1: ${maskKey(grKeys[0])}`);
-    lines.push(`    ├─ Chave 2: ${maskKey(grKeys[1])}`);
-    lines.push(`    └─ Chave 3: ${maskKey(grKeys[2])}`);
-    lines.push(`  • ${b('OpenRouter')}:`);
-    lines.push(`    ├─ Chave 1: ${maskKey(oKeys[0])}`);
-    lines.push(`    ├─ Chave 2: ${maskKey(oKeys[1])}`);
-    lines.push(`    └─ Chave 3: ${maskKey(oKeys[2])}`);
-    lines.push('');
-    lines.push('⚙️ ' + b('COMANDOS:'));
-    lines.push('  `' + p + 'setai <gemini|groq|openrouter> <chave>` (Chave 1)');
-    lines.push('  `' + p + 'setai <gemini|groq|openrouter> <1|2|3> <chave>` (Slot Específico)');
-    lines.push('  `' + p + 'setai <gemini|groq|openrouter> <chave1>, <chave2>, <chave3>` (Múltiplas)');
-    lines.push('  `' + p + 'setai <gemini|groq|openrouter> clear` (Limpar)');
-    lines.push('');
-    lines.push('📌 ' + b('EXEMPLOS:'));
-    lines.push('  ' + p + 'setai gemini AIzaSy...');
-    lines.push('  ' + p + 'setai gemini 2 AIzaSy_SegundaChave...');
-    lines.push('  ' + p + 'setai gemini 3 AIzaSy_TerceiraChave...');
+    const base = DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
 
-    return lines.join('\n');
+    const status = [
+        "",
+        "📊 *STATUS DAS CHAVES ATIVAS:*",
+        `  • *Gemini (Google AI Studio)*:`,
+        `    ├─ Chave 1: ${maskKey(gKeys[0])}`,
+        `    ├─ Chave 2: ${maskKey(gKeys[1])}`,
+        `    └─ Chave 3: ${maskKey(gKeys[2])}`,
+        `  • *Groq*:`,
+        `    ├─ Chave 1: ${maskKey(grKeys[0])}`,
+        `    ├─ Chave 2: ${maskKey(grKeys[1])}`,
+        `    └─ Chave 3: ${maskKey(grKeys[2])}`,
+        `  • *OpenRouter*:`,
+        `    ├─ Chave 1: ${maskKey(oKeys[0])}`,
+        `    ├─ Chave 2: ${maskKey(oKeys[1])}`,
+        `    └─ Chave 3: ${maskKey(oKeys[2])}`
+    ].join("\n");
+
+    return `${base}\n${status}`;
 }

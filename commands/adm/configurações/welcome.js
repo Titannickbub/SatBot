@@ -53,38 +53,69 @@ const {
 const { isOwner } = require("../../../functions/owners");
 const path = require("path");
 
+const DESCRIPTION = `👋 Configura mensagens automáticas para receber novos membros no grupo ou servidor.
+
+🔐 Disponível para administradores do chat e superusuários.
+📌 No Discord, só pode haver um canal de boas-vindas ativo por servidor. No Telegram, a configuração vale para o chat ou tópico atual. No WhatsApp, funciona apenas em grupos.
+
+📝 1. Defina o texto da mensagem:
+{prefix}welcome text <mensagem>
+{prefix}welcome text Seja bem-vindo(a) ao {group}, {user}! Agora somos {count} membros.
+
+Variáveis que serão substituídas ao entrar alguém:
+{user} ou {mention} — menção ou nome do novo membro.
+{group} ou {server} — nome do grupo ou servidor.
+{count} ou {members} — quantidade de membros.
+
+🎨 2. Escolha o formato:
+{prefix}welcome mode texto
+{prefix}welcome mode media
+
+O modo texto envia apenas a mensagem. O modo media envia texto com uma imagem, vídeo ou GIF configurado.
+
+🖼️ 3. Configure a mídia (opcional):
+{prefix}welcome media <URL>
+
+Ou envie uma imagem, vídeo ou GIF com o comando na legenda, ou responda à mídia com o comando. Se a legenda não for uma URL, ela também será usada como texto de boas-vindas. A mídia enviada ou baixada é salva pelo bot.
+
+🧪 4. Teste a prévia:
+{prefix}welcome test
+
+✅ 5. Ative as boas-vindas:
+{prefix}welcome on
+
+🔕 Para desativar sem apagar as configurações:
+{prefix}welcome off
+
+📋 Consulte o estado e as configurações:
+{prefix}welcome status`;
+
+function helpText(message) {
+    return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
+}
+
 module.exports = {
     name: "welcome",
     aliases: ["boasvindas", "welc"],
     category: "adm/configurações",
-    description: `Gerencia o sistema de Boas-Vindas (Welcome) para novos membros do grupo ou servidor.
-
-Recursos principais:
-• Ativação/Desativação individual por chat/tópico.
-• Modos de envio: Apenas Texto ou Texto + Mídia (imagem, vídeo, GIF).
-• Armazenamento inteligente de mídias: Discord CDN, Telegram ou local (por prioridade de disponibilidade).
-• Variáveis dinâmicas no texto: {user}, {mention}, {group}, {server}, {count}, {members}.
-• Teste em tempo real com !welcome test.
-
-Regras por plataforma:
-• Discord: Apenas 1 canal de boas-vindas ativo por servidor por vez.
-• Telegram: Suporta tópicos e chat principal.
-• WhatsApp: Suportado apenas em grupos (bloqueado em comunidades).`,
-
-    usage: "{prefix}welcome",
+    description: DESCRIPTION,
+    usage: "{prefix}welcome <subcomando>",
     examples: [
         "{prefix}welcome status",
         "{prefix}welcome on",
         "{prefix}welcome mode media",
         "{prefix}welcome text Seja bem-vindo(a) ao {group}, {user}! Somos {count} membros.",
-        "{prefix}welcome media (enviar imagem/vídeo/gif com a legenda ou responder a uma mídia)",
+        "{prefix}welcome media <URL>",
+        "{prefix}welcome media",
         "{prefix}welcome media https://cdn.discordapp.com/attachments/exemplo.png",
         "{prefix}welcome test",
-        "{prefix}welcome reset"
+        "{prefix}welcome off",
+        "{prefix}welcome status",
+        "{prefix}welcome help"
     ],
 
     info(message) {
-        return _help(message);
+        return helpText(message);
     },
 
     async execute(message) {
@@ -114,7 +145,7 @@ Regras por plataforma:
 
         // Sem argumentos → exibe a ajuda completa
         if (!args.length) {
-            return message.reply({ text: _help(message) });
+            return message.reply({ text: helpText(message) });
         }
 
         const subCommand = args[0].toLowerCase();
@@ -127,8 +158,8 @@ Regras por plataforma:
         const { config: currentConfig } = getWelcomeConfig(platform, serverId, chatId, threadId);
 
         // ── AJUDA / HELP ────────────────────────────────────────────────
-        if (subCommand === "help") {
-            return message.reply({ text: _help(message) });
+        if (subCommand === "help" || subCommand === "ajuda") {
+            return message.reply({ text: helpText(message) });
         }
 
         // ── STATUS ──────────────────────────────────────────────────────
@@ -331,68 +362,13 @@ Regras por plataforma:
         }
 
         // Subcomando inválido
-        return message.reply({ text: _help(message) });
+        return message.reply({ text: helpText(message) });
     }
 };
 
 // ─────────────────────────────────────────────────────────────
 //  FUNÇÕES DE RESPOSTA FORMATADA (AJUDA E STATUS DETALHADOS)
 // ─────────────────────────────────────────────────────────────
-
-function _help(message) {
-    const p = message.prefix;
-    const plat = message.platform;
-
-    let header = `👋 *SISTEMA DE BOAS-VINDAS (WELCOME) — AJUDA*`;
-    if (plat === "discord") header = `🎮 *BOAS-VINDAS (Discord) — AJUDA*`;
-    else if (plat === "whatsapp") header = `📱 *BOAS-VINDAS (WhatsApp) — AJUDA*`;
-    else if (plat === "telegram") header = `✈️ *BOAS-VINDAS (Telegram) — AJUDA*`;
-
-    return (
-`${header}
-
-Gerencie o envio automático de saudações para novos membros.
-
-📋 *COMANDOS DISPONÍVEIS:*
-  • \`${p}welcome status\`
-    ↳ Exibe as configurações ativas e detalhes do chat.
-
-  • \`${p}welcome on\` | \`${p}welcome off\`
-    ↳ Ativa ou desativa as boas-vindas neste chat/tópico.
-
-  • \`${p}welcome mode <texto | media>\`
-    ↳ Define o formato: apenas texto ou texto com imagem/vídeo/GIF.
-
-  • \`${p}welcome text <mensagem...>\`
-    ↳ Define a mensagem personalizada de recepção.
-
-  • \`${p}welcome media [URL]\`
-    ↳ Envia/responda uma mídia ou informe um link para upload CDN.
-
-  • \`${p}welcome test\`
-    ↳ Simula o envio das boas-vindas para conferir o visual.
-
-  • \`${p}welcome reset\`
-    ↳ Restaura as configurações padrão.
-
-⚙️ *VARIÁVEIS DISPONÍVEIS NO TEXTO:*
-  • \`{user}\` ou \`{mention}\` → Mencionador/Nome do novo membro
-  • \`{group}\` ou \`{server}\` → Nome do grupo ou servidor
-  • \`{count}\` ou \`{members}\` → Quantidade total de participantes
-
-📌 *REGRAS DE ESCOPO:*
-  • *Discord:* Permite apenas **1 único canal ativo** por servidor.
-  • *Telegram:* Funciona no chat geral ou em tópicos específicos.
-  • *WhatsApp:* Válido apenas em **Grupos** (bloqueado em Comunidades).
-
-💡 *EXEMPLOS:*
-  ${p}welcome on
-  ${p}welcome mode media
-  ${p}welcome text Seja bem-vindo(a) ao {group}, {user}! Somos {count} membros.
-  ${p}welcome media (com imagem/vídeo anexado)
-  ${p}welcome test`
-    );
-}
 
 function _status(message, cfg) {
     const plat = message.platform;

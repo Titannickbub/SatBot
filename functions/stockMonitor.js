@@ -3,7 +3,8 @@ const path = require("path");
 const {
     getMarketIndexes,
     formatNumber,
-    formatChange
+    formatChange,
+    formatCurrency
 } = require("./mercado");
 
 const STATE_PATH = process.env.STOCK_MONITOR_PATH
@@ -98,13 +99,22 @@ function saveMonitorConfig(config, target = null) {
 function buildStockMessage(indexes) {
     const lines = ["📈 *MONITOR DA BOLSA*", ""];
     for (const index of indexes) {
-        lines.push(`*${index.label}*: ${formatNumber(index.value)} ${index.unit || "pontos"}`);
+        if (Number.isFinite(Number(index.bid)) && Number.isFinite(Number(index.ask))) {
+            lines.push(`*${index.label}*`);
+            lines.push(`Compra: *${formatCurrency(index.bid)}*`);
+            lines.push(`Venda: *${formatCurrency(index.ask)}*`);
+        } else {
+            lines.push(`*${index.label}*: ${formatNumber(index.value)} ${index.unit || "pontos"}`);
+        }
         lines.push(`Variação: *${formatChange(index.change)}*`);
-        if (index.market) lines.push(`Bolsa: ${index.market}`);
+        if (index.market) lines.push(`${index.marketLabel || "Bolsa"}: ${index.market}`);
         if (index.updatedAt) lines.push(`Atualizado em: ${index.updatedAt}`);
         lines.push("");
     }
-    lines.push("🌐 Fonte: Yahoo Finance");
+    const sources = [...new Set(indexes.map((index) => index.source).filter(Boolean))];
+    if (sources.length) {
+        lines.push(`🌐 Fonte: ${sources.join(" e ")}`);
+    }
     return lines.join("\n");
 }
 

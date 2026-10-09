@@ -5,7 +5,27 @@ module.exports = {
     name: "autodownload",
     aliases: ["downloadlink", "adl"],
     category: "adm/configurações",
-    description: "Gerencia o download automático de mídias por chat (YouTube, TikTok, Instagram, Twitter/X, Facebook, Kwai). No PV fica sempre ativo; em grupos, administradores podem ativar ou desativar.",
+    description: `🎬 Gerencia o download automático de links de mídias (YouTube, TikTok, Instagram, Twitter/X, Facebook, Kwai) enviados no chat.
+
+🔐 Em grupos e servidores, disponível apenas para administradores e superusuários (sempre ativo no PV).
+
+✅ 1. Ative o download automático no grupo:
+{prefix}autodownload on
+
+Quando qualquer membro enviar um link suportado, o bot processará e enviará a mídia diretamente.
+
+🔕 2. Desative o download automático:
+{prefix}autodownload off
+
+🗑️ 3. Configure a exclusão da mensagem com o link original:
+{prefix}autodownload deletelink on
+{prefix}autodownload deletelink off
+
+Apaga a mensagem com o link original após enviar o vídeo/música para evitar poluição no chat.
+
+📋 Consulte o status e configurações atuais:
+{prefix}autodownload status
+{prefix}autodownload`,
     usage: "{prefix}autodownload [subcomando]",
     examples: [
         "{prefix}autodownload",

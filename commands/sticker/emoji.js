@@ -25,7 +25,20 @@ module.exports = {
         telegram: "none",
         whatsapp: "none"
     },
-    description: "Cria um emoji personalizado no servidor do Discord a partir de imagens, GIFs, vídeos, emojis de outros servidores ou figurinhas do Vencord.",
+    description: `😀 Cria e adiciona um emoji personalizado (estático ou animado) ao servidor do Discord a partir de imagens, GIFs, links ou emojis de outros servidores.
+
+🔐 Exclusivo para o Discord. Requer permissão de Gerenciar Emojis / Expressões no servidor ou Administrador.
+
+📝 1. Crie um emoji informando o nome e a imagem/GIF:
+{prefix}emoji <nome>
+{prefix}emoji super_gato
+{prefix}emoji meu_emoji <:custom_emoji:1234567890>
+
+Envie uma imagem/GIF na legenda com o comando, responda a uma mídia ou cole o emoji/link diretamente.
+
+📐 2. Modos alternativos de ajuste:
+• {prefix}femoji / {prefix}fe <nome> — Estica a mídia preenchendo o espaço (128x128).
+• {prefix}remoji / {prefix}re <nome> — Recorta a imagem em formato quadrado centralizado.`,
     usage: "{prefix}emoji <nome> [imagem/emoji/link]",
     examples: [
         "{prefix}emoji super_gato (respondendo a uma imagem ou na legenda)",

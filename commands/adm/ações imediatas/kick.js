@@ -9,12 +9,28 @@ module.exports = {
         telegram: "full",
         whatsapp: "full"
     },
-    description: "Expulsa um usuário do grupo ou servidor. Use mencionando a mensagem do usuário, menção @ ou passando o ID/número diretamente.",
-    usage: "{prefix}kick <@usuário|id>",
+    description: `👢 Expulsa um usuário do grupo ou servidor, permitindo que ele volte depois.
+
+📱 No WhatsApp, expulsar tem o mesmo efeito que banir.
+🤖 O bot precisa ter permissão para expulsar membros.
+👤 Você também precisa ter permissão para expulsar membros.
+
+🎯 Responda à mensagem do usuário, mencione-o, informe o ID/número ou marque uma mensagem.
+
+📌 Uso:
+{prefix}kick <@usuário|#mensagem|id/número>
+
+💡 Exemplos:
+{prefix}kick @user
+{prefix}kick #mensagem
+{prefix}kick @titannickbub
+{prefix}kick 0000000000`,
+    usage: "{prefix}kick <@usuário>",
     examples: [
-        "{prefix}kick 123456789012345678",
         "{prefix}kick @user",
-        "{prefix}kick"
+        "{prefix}kick #mensagem",
+        "{prefix}kick @titannickbub",
+        "{prefix}kick 0000000000"
     ],
 
     async execute(message) {
@@ -24,17 +40,17 @@ module.exports = {
 
         const adapter = (message.platforms || []).find(p => p.name === message.platform);
         const userOk = adapter?.checkUserPermission
-            ? await adapter.checkUserPermission(message.chatId, message.userId)
+            ? await adapter.checkUserPermission(message.chatId, message.userId, "kick")
             : message.sender?.isAdmin;
 
         if (!userOk && !isOwner(message)) {
-            return message.reply({ text: "❌ Apenas administradores podem usar este comando." });
+            return message.reply({ text: "❌ Você precisa ter permissão para expulsar membros." });
         }
 
         if (adapter?.checkBotPermission) {
             const botCan = await adapter.checkBotPermission(message.chatId, "kick");
             if (!botCan) {
-                return message.reply({ text: "❌ O bot precisa ser administrador do grupo para expulsar membros." });
+                return message.reply({ text: "❌ O bot não tem permissão para expulsar membros neste grupo/servidor." });
             }
         }
 
@@ -60,4 +76,4 @@ module.exports = {
             return message.reply({ text: `❌ ${msgError}` });
         }
     }
-};
+};

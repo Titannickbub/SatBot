@@ -5,8 +5,27 @@ const { isOwner } = require("../../../functions/owners");
 module.exports = {
     name: "warn",
     category: "adm/ações imediatas",
-    description: "Registra uma advertência para o usuário indicado, com motivo opcional, no sistema de moderação do grupo ou servidor.",
-    usage: "{prefix}warn @user [motivo]",
+    description: `⚠️ Registra uma advertência para um usuário no grupo ou servidor.
+
+🎯 Mencione o usuário, responda à mensagem dele ou informe o ID.
+📝 O motivo é opcional.
+🚨 Ao atingir o limite configurado, o usuário será expulso ou banido automaticamente.
+👤 Você precisa ter permissão de administrador para advertir.
+🤖 Para a punição automática, o bot precisa ter permissão para expulsar ou banir.
+
+📌 Uso:
+{prefix}warn <@usuário|id> [motivo]
+
+💡 Exemplos:
+{prefix}warn @user
+{prefix}warn @user Spam
+{prefix}warn 123456789012345678 Envio de links`,
+    usage: "{prefix}warn <@usuário|id> [motivo]",
+    examples: [
+        "{prefix}warn @user",
+        "{prefix}warn @user Spam",
+        "{prefix}warn 123456789012345678 Envio de links"
+    ],
 
     async execute(message) {
         if (message.isPrivate) {

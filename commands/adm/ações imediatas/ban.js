@@ -10,12 +10,26 @@ module.exports = {
         telegram: "full",
         whatsapp: "full"
     },
-    description: "Bane um usuário do grupo ou servidor. Use respondendo à mensagem do usuário, mencionando ou digitando o ID/número.",
-    usage: "{prefix}ban <@usuário|id>",
+    description: `🔨 Bane permanentemente um usuário do grupo ou servidor.
+
+🎯 Responda à mensagem do usuário, mencione-o, informe o ID/número ou marque uma mensagem.
+🤖 O bot precisa ter permissão para banir membros.
+👤 Você também precisa ter permissão para banir membros.
+
+📌 Uso:
+{prefix}ban <@usuário|#mensagem|id/número>
+
+💡 Exemplos:
+{prefix}ban @user
+{prefix}ban #mensagem
+{prefix}ban @titannickbub
+{prefix}ban 0000000000`,
+    usage: "{prefix}ban <@usuário|#mensagem|id/número>",
     examples: [
-        "{prefix}ban 123456789012345678",
         "{prefix}ban @user",
-        "{prefix}ban"
+        "{prefix}ban #mensagem",
+        "{prefix}ban @titannickbub",
+        "{prefix}ban 0000000000"
     ],
 
     async execute(message) {
@@ -25,17 +39,17 @@ module.exports = {
 
         const adapter = (message.platforms || []).find(p => p.name === message.platform);
         const userOk = adapter?.checkUserPermission
-            ? await adapter.checkUserPermission(message.chatId, message.userId)
+            ? await adapter.checkUserPermission(message.chatId, message.userId, "ban")
             : message.sender?.isAdmin;
 
         if (!userOk && !isOwner(message)) {
-            return message.reply({ text: "❌ Apenas administradores podem usar este comando." });
+            return message.reply({ text: "❌ Você precisa ter permissão para banir membros." });
         }
 
         if (adapter?.checkBotPermission) {
             const botCan = await adapter.checkBotPermission(message.chatId, "ban");
             if (!botCan) {
-                return message.reply({ text: "❌ O bot precisa ser administrador do grupo para banir membros." });
+                return message.reply({ text: "❌ O bot não tem permissão para banir membros neste grupo/servidor." });
             }
         }
 

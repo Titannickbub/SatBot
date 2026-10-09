@@ -17,7 +17,12 @@ module.exports = {
     name: "lucro",
     aliases: ["ganhos", "lucrodiario", "lucro-diario", "media"],
     category: "economia",
-    description: "Consulta seu lucro ou prejuízo líquido de hoje na economia do grupo ou servidor, discriminado por atividade e acompanhado do total.",
+    description: `📊 Consulta o seu extrato diário de ganhos e gastos líquidos na economia local do grupo ou servidor.
+
+📝 1. Execute o comando dentro de um grupo ou servidor:
+{prefix}lucro
+
+O bot detalha os lucros e despesas de hoje em cada atividade (trabalho, pesca, mineração, cassino, roubos, transferências e loja) e exibe o saldo líquido total do dia.`,
     usage: "{prefix}lucro",
 
     async execute(message) {

@@ -15,7 +15,19 @@ module.exports = {
     name: "link",
     aliases: ["convite", "invite", "linkgp"],
     category: "adm/ações imediatas",
-    description: "Exibe o link de convite do grupo/servidor atual no WhatsApp, Discord ou Telegram.",
+    description: `🔗 Exibe o link de convite do grupo ou servidor.
+
+✨ Se ainda não houver um link disponível, o comando cria um novo.
+🤖 O bot precisa ter permissão para criar links de convite.
+👤 Você também precisa ter permissão para criar links de convite.
+
+📌 Uso:
+{prefix}link
+
+💡 Exemplos:
+{prefix}link
+{prefix}linkgp
+{prefix}convite`,
     usage: "{prefix}link",
     examples: [
         "{prefix}link",
@@ -35,6 +47,21 @@ module.exports = {
 
         const platform = message.platform;
         const chatId = message.chatId;
+        const adapter = (message.platforms || []).find(p => p.name === platform);
+
+        if (!adapter?.checkUserPermission || !adapter?.checkBotPermission) {
+            return message.reply({ text: "❌ Não foi possível verificar as permissões para criar links de convite nesta plataforma." });
+        }
+
+        const userCanCreateInvite = await adapter.checkUserPermission(chatId, message.userId, "invite");
+        if (!userCanCreateInvite) {
+            return message.reply({ text: "❌ Você não tem permissão para gerenciar ou criar links de convite neste grupo/servidor." });
+        }
+
+        const botCanCreateInvite = await adapter.checkBotPermission(chatId, "invite");
+        if (!botCanCreateInvite) {
+            return message.reply({ text: "❌ O bot não tem permissão para gerenciar ou criar links de convite neste grupo/servidor." });
+        }
 
         // 1. WhatsApp
         if (platform === "whatsapp") {
@@ -60,7 +87,7 @@ module.exports = {
             } catch (err) {
                 console.error("[link] Erro ao obter convite no WhatsApp:", err);
                 return message.reply({
-                    text: "❌ Não foi possível gerar o link de convite. Verifique se o bot possui permissão de administrador no grupo."
+                    text: "❌ Não foi possível gerar o link de convite. Verifique se as permissões do grupo permitem criar convites."
                 });
             }
         }

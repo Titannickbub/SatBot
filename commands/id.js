@@ -1,11 +1,30 @@
+const DESCRIPTION = `🆔 Consulta o identificador único (ID/JID) de usuário na plataforma atual.
+
+🔐 Comando público disponível para todos os usuários.
+
+📌 Formas de consulta:
+• 👤 Seu próprio ID: envie o comando sem argumentos.
+• 👥 ID de outro usuário: mencione a pessoa com @ ou responda a uma mensagem dela.
+
+🔍 1. Consultar seu próprio ID:
+{prefix}id
+
+👥 2. Consultar o ID de outro membro:
+{prefix}id @usuario
+
+💬 3. Consultar respondendo a uma mensagem:
+Responda a qualquer mensagem do usuário desejado com {prefix}id.
+
+ℹ️ Útil para configurações do bot, permissões, comandos administrativos e identificação entre plataformas.`;
+
 module.exports = {
     name: "id",
-    category: null,
-    description: "Mostra seu ID, ou o ID de uma pessoa mencionada ou cuja mensagem foi respondida.",
-    usage: "{prefix}id [@usuário ou mensagem respondida]",
+    category: "utilitários",
+    description: DESCRIPTION,
+    usage: "{prefix}id [@usuário ou respondendo à mensagem]",
     examples: [
         "{prefix}id",
-        "{prefix}id @usuário"
+        "{prefix}id @usuario"
     ],
 
     async execute(message) {

@@ -9,8 +9,24 @@ module.exports = {
         telegram: "none",
         discord: "none"
     },
-    description: "Rebaixa um administrador para membro no WhatsApp. Pode usar resposta, ID, ID central ou menção.",
+    description: `⬇️ Rebaixa um administrador para membro no grupo do WhatsApp.
+
+🔐 Você e o bot precisam ser administradores do grupo.
+
+📌 Informe o membro por resposta, menção, número/ID ou ID central:
+{prefix}rebaixar <número|ID central|@menção>
+
+💡 Exemplos:
+{prefix}rebaixar 5511999999999
+{prefix}rebaixar @membro
+
+Também é possível responder à mensagem do administrador com o comando.`,
     usage: "{prefix}rebaixar <ID|ID central|@menção> ou responda à mensagem",
+    examples: [
+        "{prefix}rebaixar 5511999999999",
+        "{prefix}rebaixar @membro",
+        "Responda à mensagem do administrador com {prefix}rebaixar"
+    ],
 
     async execute(message) {
         if (message.platform !== "whatsapp") {

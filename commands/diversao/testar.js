@@ -10,7 +10,27 @@ module.exports = {
     name: "testar",
     aliases: ["teste"],
     category: "diversão",
-    description: "Executa testes aleatórios de diversão, incluindo o teste romântico de casal com banner e fotos dos participantes.",
+    description: `🧪 Executa testes aleatórios e divertidos com porcentagem, frases temáticas, GIFs e gerador de banner de casal com foto.
+
+📝 1. Faça um teste em si mesmo:
+{prefix}testar <teste>
+{prefix}testar bonito
+{prefix}testar gado
+{prefix}testar otaku
+
+👥 2. Faça o teste em outro membro:
+{prefix}testar <teste> @usuário
+{prefix}testar corno @usuario
+{prefix}testar feio @usuario
+
+💑 3. Teste de compatibilidade de casal:
+{prefix}testar casal @usuário
+{prefix}testar casal2 @usuário1 @usuário2
+
+O modo casal2 gera e envia um banner personalizado em imagem com as fotos de perfil dos dois participantes e a porcentagem de amor.
+
+📋 4. Liste todos os testes disponíveis:
+{prefix}testar help`,
     usage: [
         "{prefix}testar gay",
         "{prefix}testar lesbica",

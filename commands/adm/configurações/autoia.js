@@ -1,16 +1,40 @@
 const { isOwner } = require("../../../functions/owners");
 
+const DESCRIPTION = `🤖 Configura quando a IA responde automaticamente neste grupo ou servidor.
+
+🔐 Apenas administradores do chat e superusuários podem alterar a configuração.
+
+⚙️ Modos disponíveis:
+off — desativa as respostas automáticas.
+mention — responde quando mencionarem o bot, responderem a uma mensagem dele ou citarem seu nome.
+all — responde a todas as mensagens que não sejam comandos.
+
+📌 Uso:
+{prefix}autoia <off|mention|all>
+
+💡 Exemplos:
+{prefix}autoia off
+{prefix}autoia mention
+{prefix}autoia all
+{prefix}autoia status
+{prefix}autoia help`;
+
+function helpText(message) {
+    return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
+}
+
 module.exports = {
     name: "autoia",
     aliases: ["setautoia", "iaauto", "iaautomatica"],
     category: "adm/configurações",
-    description: "Define quando a IA responde automaticamente no grupo: `off` desativa, `all` permite responder às mensagens e `mention` limita a resposta a mensagens que mencionem o bot.",
-    usage: "{prefix}autoia <off | all | mention>",
+    description: DESCRIPTION,
+    usage: "{prefix}autoia <off|mention|all|status|help>",
     examples: [
         "{prefix}autoia status",
         "{prefix}autoia off",
         "{prefix}autoia mention",
-        "{prefix}autoia all"
+        "{prefix}autoia all",
+        "{prefix}autoia help"
     ],
 
     async execute(message) {
@@ -32,7 +56,10 @@ module.exports = {
         const botName = configFn.getBotName ? configFn.getBotName() : "Sat Bot";
         const currentMode = autoiaHelper.getAutoIAMode(message);
 
-        const args = message.args;
+        const args = message.args || [];
+        if (["help", "ajuda"].includes(String(args[0] || "").toLowerCase())) {
+            return message.reply({ text: helpText(message) });
+        }
         if (!args.length || args[0].toLowerCase() === "status") {
             const modeLabels = {
                 off: "❌ Desativado (OFF)",
@@ -46,6 +73,7 @@ module.exports = {
             text += `• \`${message.prefix}autoia off\` — Desativa a IA automática.\n`;
             text += `• \`${message.prefix}autoia mention\` — Responde apenas quando marcarem, responderem ou citarem "*${botName}*".\n`;
             text += `• \`${message.prefix}autoia all\` — Responde a TODAS as mensagens no grupo.\n\n`;
+            text += `❔ Ajuda: \`${message.prefix}autoia help\`\n\n`;
             text += `⚠️ *Nota:* Apenas Administradores do grupo ou Super Usuários podem alterar esta opção.`;
 
             return await message.reply({ text });

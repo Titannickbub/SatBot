@@ -14,6 +14,7 @@ let cache = null;
 const DEFAULT_CONFIG = {
     prefix: "!",
     botName: "Sat Bot",
+    timezone: "America/Sao_Paulo",
     webDomain: null,
     webProtocol: "http",
     autoUpdate: false,
@@ -42,6 +43,34 @@ const DEFAULT_CONFIG = {
         blockedCommands: []
     }
 };
+
+function isValidTimezone(tz) {
+    if (!tz || typeof tz !== "string") return false;
+    try {
+        Intl.DateTimeFormat(undefined, { timeZone: tz.trim() });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function normalizeTimezone(tz) {
+    if (!tz || typeof tz !== "string") return null;
+    const clean = tz.trim();
+    if (typeof Intl.supportedValuesOf === "function") {
+        const supported = Intl.supportedValuesOf("timeZone");
+        const lower = clean.toLowerCase();
+        const found = supported.find(item => item.toLowerCase() === lower);
+        if (found) return found;
+    }
+    if (clean.toUpperCase() === "UTC" || clean.toUpperCase() === "GMT") {
+        return clean.toUpperCase();
+    }
+    if (isValidTimezone(clean)) {
+        return clean;
+    }
+    return null;
+}
 
 function normalizeConfig(data) {
     const source = data && typeof data === "object" ? data : {};
@@ -85,6 +114,13 @@ function normalizeConfig(data) {
         normalized.botName = DEFAULT_CONFIG.botName;
     } else {
         normalized.botName = normalized.botName.trim();
+    }
+
+    const resolvedTimezone = normalizeTimezone(normalized.timezone);
+    if (!resolvedTimezone) {
+        normalized.timezone = DEFAULT_CONFIG.timezone;
+    } else {
+        normalized.timezone = resolvedTimezone;
     }
 
     if (normalized.webDomain !== null && typeof normalized.webDomain !== "string") {
@@ -204,6 +240,24 @@ function setPrefix(prefix) {
 
     save(data);
 
+}
+
+function getTimezone() {
+    const tz = load().timezone;
+    const normalized = normalizeTimezone(tz);
+    return normalized || DEFAULT_CONFIG.timezone;
+}
+
+function setTimezone(tz) {
+    const normalized = normalizeTimezone(tz);
+    if (!normalized) {
+        return null;
+    }
+    const data = load();
+    data.timezone = normalized;
+    save(data);
+    process.env.TZ = normalized;
+    return normalized;
 }
 
 function getAutoUpdateEnabled() {
@@ -1087,6 +1141,10 @@ module.exports = {
     setWebProtocol,
     getPrefix,
     setPrefix,
+    getTimezone,
+    setTimezone,
+    isValidTimezone,
+    normalizeTimezone,
     getAutoUpdateEnabled,
     setAutoUpdateEnabled,
     getPlatforms,

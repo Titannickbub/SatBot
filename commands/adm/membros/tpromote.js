@@ -8,7 +8,30 @@ module.exports = {
         telegram: "full",
         discord: "none"
     },
-    description: "Promove um membro do grupo do Telegram a administrador e define seu nível de acesso (`staff`, `mod`, `gerente` ou `adm`). Indique o nível e o ID da pessoa, ou responda à mensagem dela.",
+    description: `⬆️ Promove um membro do grupo ou supergrupo do Telegram a administrador com um nível de acesso.
+
+👤 Você precisa ser administrador com permissão para promover membros.
+🤖 O bot precisa ser administrador com permissão para adicionar administradores.
+
+📌 Informe o nível e o ID do membro:
+{prefix}tpromote <staff|mod|gerente|adm> <ID>
+
+Ou responda à mensagem do membro:
+{prefix}tpromote <staff|mod|gerente|adm>
+
+🏷️ Níveis:
+• staff — apagar mensagens e restringir/mutar membros.
+• mod — permissões de staff, convites, alteração de informações e gerenciamento de chats de vídeo.
+• gerente — permissões administrativas gerais, sem poder promover administradores nem usar modo anônimo.
+• adm — pode promover administradores; modo anônimo não é habilitado.
+
+💡 Exemplos:
+{prefix}tpromote staff 123456789
+{prefix}tpromote mod 123456789
+{prefix}tpromote gerente 123456789
+{prefix}tpromote adm 123456789
+
+O criador do grupo não pode ser alterado. Para rebaixar alguém para membro, use {prefix}trebaixar.`,
     usage: "{prefix}tpromote <staff|mod|gerente|adm> <ID> ou responda à mensagem",
     examples: [
         "{prefix}tpromote staff 123456789",

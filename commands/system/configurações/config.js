@@ -1,53 +1,67 @@
-/*
-============================================================
+const DESCRIPTION = `⚙️ Gerencia as configurações globais do bot em todas as plataformas.
 
-COMANDO CONFIG
+🔐 Disponível apenas para superusuários / donos do bot.
 
-Gerencia configurações globais
-do bot.
-
-Apenas Super Usuários podem
-alterar configurações.
-
-Todas as alterações exigem
-reinicialização do bot.
-
-============================================================
-
-COMANDOS
-
+📋 1. Consulte o status atual:
 {prefix}config status
 
-Mostra as configurações atuais.
+Exibe o prefixo, o estado de cada plataforma, canais de upload, configurações de sticker e Anti-PV.
 
-============================================================
-
-{prefix}config prefix simbolo
-
-Altera o prefixo.
-O prefixo pode ter mais de um caractere, mas não pode conter espaços.
-
-Exemplos:
-
+✏️ 2. Altere o prefixo de comandos:
+{prefix}config prefix <símbolo>
 {prefix}config prefix !
 {prefix}config prefix #
-{prefix}config prefix $
 {prefix}config prefix sat!
 
-============================================================
+O prefixo pode ter mais de um caractere, mas não pode conter espaços. A alteração exige reinicialização.
 
-{prefix}config plataforma nome estado
-
-Ativa ou desativa plataformas.
-
-Exemplos:
-
+🌐 3. Ative ou desative plataformas:
+{prefix}config plataforma <nome> <on|off>
 {prefix}config plataforma whatsapp off
 {prefix}config plataforma telegram on
 {prefix}config plataforma discord disable
 
-============================================================
-*/
+📤 4. Configure o canal fixo de uploads de mídia:
+{prefix}config setuploads <discord|telegram> <id|none>
+{prefix}config setuploads discord 1532068325771972798
+
+Define ou remove o canal/chat fixo para onde o bot enviará uploads. Use none para remover.
+
+⏱️ 5. Configure o tempo de aquecimento inicial:
+{prefix}config ignoreinitial <tempo>
+{prefix}config ignoreinitial 30s
+{prefix}config ignoreinitial 2m
+
+Define quanto tempo o bot ignora mensagens antigas ao iniciar. Aceita s (segundos), m (minutos) e h (horas). Padrão: 30s.
+
+🎨 6. Configure as figurinhas (stickers):
+{prefix}config sticker
+{prefix}config sticker pack <nome do pacote>
+{prefix}config sticker autor <nome do autor>
+{prefix}config sticker <pacote> | <autor>
+
+Define o nome do pacote e/ou autor padrão das figurinhas geradas pelo bot.
+
+🛡️ 7. Gerencie o Anti-PV (alias):
+{prefix}config antipv status
+{prefix}config antipv on
+{prefix}config antipv off
+{prefix}config antipv mode reply
+{prefix}config antipv msg <texto>
+
+Alias de compatibilidade para o comando dedicado {prefix}antipv. Consulte {prefix}antipv para a documentação completa.
+
+🔒 8. Restrinja chats permitidos:
+{prefix}config onlychats
+
+Alias de compatibilidade para o comando dedicado {prefix}onlychats.
+
+🌐 9. Configure o fuso horário (timezone):
+{prefix}config fuso status
+{prefix}config fuso America/Sao_Paulo
+{prefix}config fuso Europe/Lisbon
+
+Alias para o comando dedicado {prefix}fuso.`;
 
 module.exports = {
     category: "system/configurações",
@@ -58,59 +72,21 @@ module.exports = {
     },
 
     name: "config",
-
-    description: `Gerencia configurações globais do bot.
-
-Subcomandos:
-  status
-    • Exibe o prefixo atual, o estado de cada plataforma, uploads e anti-pv.
-
-  prefix <símbolo>
-    • Define um novo prefixo de comando, com um ou mais caracteres e sem espaços.
-
-  plataforma <nome> <on|off>
-    • Ativa ou desativa a plataforma especificada (discord, telegram, whatsapp).
-
-  setuploads <discord|telegram> <id|none>
-    • Define ou remove o canal/chat fixo para onde o bot enviará uploads de mídia.
-
-  ignoreinitial <tempo>
-    • Define o tempo de aquecimento inicial para ignorar mensagens antigas ao ligar (ex: 30s, 2m, 1h). Padrão: 30s.
-
-  antipv <status|on|off|mode|msg|media|allowcmd|allowuser>
-   • Alias de compatibilidade do comando dedicado !antipv.
-   • Gerencia o sistema Anti-PV (ignora usuários no PV exceto Super Usuários, comandos liberados ou usuários liberados).
-`,
-
-    usage:
-        `{prefix}config [opção]`,
-
+    description: DESCRIPTION,
+    usage: "{prefix}config [subcomando]",
     examples: [
-
         "{prefix}config status",
-
         "{prefix}config prefix #",
-
+        "{prefix}config fuso America/Sao_Paulo",
+        "{prefix}config fuso Europe/Lisbon",
         "{prefix}config plataforma telegram off",
-
         "{prefix}config setuploads discord 1532068325771972798",
-
         "{prefix}config ignoreinitial 30s",
-
-        "{prefix}config ignoreinitial 2m",
-
+        "{prefix}config sticker pack MeuPack",
+        "{prefix}config sticker autor SatBot",
         "{prefix}config antipv status",
-
         "{prefix}config antipv on",
-
-        "{prefix}config antipv mode reply",
-
-        "{prefix}config antipv msg Atendimento indisponível no PV.",
-
-        "{prefix}config antipv allowcmd add ping",
-
-        "{prefix}config antipv allowuser add 123456789"
-
+        "{prefix}config onlychats"
     ],
 
     async execute(message) {
@@ -226,6 +202,18 @@ Subcomandos:
         }
 
         if (
+            action === "fuso" ||
+            action === "timezone" ||
+            action === "setfuso" ||
+            action === "fuso_horario" ||
+            action === "fusohorario"
+        ) {
+            const fusoCommand = require("./fuso");
+            message.args = args.slice(1);
+            return await fusoCommand.execute(message);
+        }
+
+        if (
             action === "sticker" ||
             action === "stickers" ||
             action === "figurinha" ||
@@ -249,46 +237,12 @@ async function ajuda(
     message
 ) {
 
-    const p =
-        message.prefix;
-
     await message.reply({
-
-        text:
-
-            `⚙️ Config
-
-${p}config status
-
-${p}config prefix #
-
-${p}config plataforma telegram off
-
-${p}config setuploads discord 1532068325771972798
-
-${p}config ignoreinitial 30s
-${p}config ignoreinitial 5m
-
-🎨 Figurinhas (Stickers):
-${p}config sticker
-${p}config sticker pack <nome do pacote>
-${p}config sticker autor <nome do autor>
-${p}config sticker <pacote> | <autor>
-
-🔒 Anti-PV:
-${p}config antipv status
-${p}config antipv on / off
-${p}config antipv mode ignore / reply
-${p}config antipv msg <texto>
-${p}config antipv media [none]
-${p}config antipv allowcmd <add|remove|list> <comando>
-${p}config antipv allowuser <add|remove|list> <user>
-
-⚠️ Alterações entram em vigor imediatamente ou exigem reinicialização.`
-
+        text: DESCRIPTION.replaceAll("{prefix}", message.prefix || "!")
     });
 
 }
+
 
 async function status(
     message
@@ -316,6 +270,23 @@ async function status(
         : `${warmupSeconds}s`;
 
     const botName = typeof configFn.getBotName === "function" ? configFn.getBotName() : "Sat Bot";
+    const timezone = typeof configFn.getTimezone === "function" ? configFn.getTimezone() : (config.timezone || "America/Sao_Paulo");
+    let timezoneDisplay = timezone;
+    try {
+        const sampleTime = new Intl.DateTimeFormat("pt-BR", {
+            timeZone: timezone,
+            timeZoneName: "shortOffset",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric"
+        }).format(new Date());
+        timezoneDisplay = `${timezone} (${sampleTime})`;
+    } catch {
+        timezoneDisplay = timezone;
+    }
 
     let text =
 
@@ -326,6 +297,9 @@ ${botName}
 
 Prefixo:
 ${config.prefix}
+
+Fuso Horário:
+🌐 ${timezoneDisplay}
 
 Tempo Inicial (Warmup):
 ${warmupDisplay}
