@@ -13,6 +13,19 @@ const authFlow = require("../functions/authFlow");
 
 let bot = null;
 
+const TELEGRAM_SEND_PERMISSIONS = [
+    "can_send_messages",
+    "can_send_audios",
+    "can_send_documents",
+    "can_send_photos",
+    "can_send_videos",
+    "can_send_video_notes",
+    "can_send_voice_notes",
+    "can_send_polls",
+    "can_send_other_messages",
+    "can_add_web_page_previews"
+];
+
 async function start(onMessage) {
     require("dotenv").config({ path: path.join(__dirname, "..", "settings", ".env"), override: true });
 
@@ -937,18 +950,35 @@ async function setChatOpen(chatId, isOpen) {
         throw new Error("[TELEGRAM] A abertura e o fechamento só funcionam em grupos.");
     }
 
-    const permissions = chat.permissions;
-    if (!permissions || typeof permissions !== "object") {
-        throw new Error("[TELEGRAM] Não foi possível ler as permissões atuais do grupo.");
+    const permissions = chat.permissions && typeof chat.permissions === "object"
+        ? chat.permissions
+        : {};
+
+    const requestedStateAlreadyApplied = TELEGRAM_SEND_PERMISSIONS.every(permission =>
+        isOpen
+            ? permissions[permission] !== false
+            : permissions[permission] === false
+    );
+    if (requestedStateAlreadyApplied) return false;
+
+    const updatedPermissions = { ...permissions };
+    for (const permission of TELEGRAM_SEND_PERMISSIONS) {
+        updatedPermissions[permission] = Boolean(isOpen);
     }
 
-    const isCurrentlyOpen = permissions.can_send_messages !== false;
-    if (isCurrentlyOpen === Boolean(isOpen)) return false;
-
-    await bot.telegram.setChatPermissions(chatId, {
-        ...permissions,
-        can_send_messages: Boolean(isOpen)
+    await bot.telegram.setChatPermissions(chatId, updatedPermissions, {
+        use_independent_chat_permissions: true
     });
+
+    const updatedChat = await bot.telegram.getChat(chatId);
+    const updatedChatPermissions = updatedChat.permissions || {};
+    const stateApplied = TELEGRAM_SEND_PERMISSIONS.every(permission =>
+        (updatedChatPermissions[permission] !== false) === Boolean(isOpen)
+    );
+    if (!stateApplied) {
+        throw new Error("[TELEGRAM] O Telegram não confirmou a alteração das permissões de envio. Verifique se o bot é administrador com permissão para restringir membros.");
+    }
+
     return true;
 }
 

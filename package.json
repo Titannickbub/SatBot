@@ -1,6 +1,6 @@
 {
   "name": "SatBot",
-  "version": "1.2.40",
+  "version": "1.2.41",
   "description": "Autoresposta (autorepo/autorepo_G) e Fuso Horário configurável, keybronxys",
   "main": "index.js",
   "scripts": {

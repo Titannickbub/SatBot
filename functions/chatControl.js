@@ -362,6 +362,22 @@ async function fireSchedule(schedule) {
         config.pendingScheduleIds = config.pendingScheduleIds.filter(id => id !== schedule.id);
         store.chats[schedule.meta.configKey] = config;
         writeStore(store);
+
+        const adapter = global.platformRegistry?.[schedule.platform];
+        if (typeof adapter?.sendText === "function") {
+            const state = schedule.meta.open ? "reaberto" : "fechado";
+            try {
+                await adapter.sendText(
+                    schedule.chatId,
+                    schedule.threadId || null,
+                    `⏰ O prazo temporário terminou. O chat foi ${state} automaticamente.`
+                );
+            } catch (error) {
+                console.error(`[CHAT CONTROL] Falha ao avisar sobre a reversão temporária (${schedule.id}):`, error);
+            }
+        } else {
+            console.error(`[CHAT CONTROL] Não foi possível avisar sobre a reversão temporária (${schedule.id}): adaptador sem suporte a envio de texto.`);
+        }
     }
     return changed;
 }

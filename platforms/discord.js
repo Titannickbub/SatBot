@@ -1191,11 +1191,13 @@ async function setChatOpen(chatId, isOpen) {
     if (!channel || !channel.guild) {
         throw new Error("[DISCORD] Canal do servidor não encontrado.");
     }
-    if (channel.isThread || !channel.permissionOverwrites || !channel.guild.roles?.everyone) {
+    if (channel.isThread?.() || !channel.permissionOverwrites?.edit ||
+        typeof channel.isTextBased !== "function" || !channel.isTextBased()) {
         throw new Error("[DISCORD] O controle de abertura não funciona em threads.");
     }
 
-    const everyonePermissions = channel.permissionsFor(channel.guild.roles.everyone);
+    const everyoneRole = channel.guild.roles?.everyone || channel.guild.id;
+    const everyonePermissions = channel.permissionsFor(everyoneRole);
     if (!everyonePermissions) {
         throw new Error("[DISCORD] Não foi possível ler as permissões do canal.");
     }
@@ -1203,7 +1205,7 @@ async function setChatOpen(chatId, isOpen) {
         return false;
     }
 
-    await channel.permissionOverwrites.edit(channel.guild.roles.everyone, {
+    await channel.permissionOverwrites.edit(everyoneRole, {
         SendMessages: Boolean(isOpen)
     });
     return true;
@@ -1211,8 +1213,9 @@ async function setChatOpen(chatId, isOpen) {
 
 async function checkChatControlSupport(chatId) {
     const channel = await getDiscordChannel(chatId);
-    return Boolean(channel?.guild && !channel.isThread &&
-        channel.permissionOverwrites && channel.guild.roles?.everyone);
+    return Boolean(channel?.guild && !channel.isThread?.() &&
+        typeof channel.isTextBased === "function" && channel.isTextBased() &&
+        typeof channel.permissionOverwrites?.edit === "function");
 }
 
 module.exports = {
