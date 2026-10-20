@@ -12,6 +12,9 @@ Configuração:
 2. Configure em settings/bronxys.json com sua apiKey
 3. Use !testbronxys para validar
 
+Observação:
+- A chave gratuita exclusiva do modo Host só funciona na hospedagem da Bronxys. Fora dela, configure uma chave própria da API.
+
 Plataformas suportadas:
 - YouTube (música e vídeo)
 - Spotify

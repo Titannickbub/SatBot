@@ -13,7 +13,11 @@ let cache = null;
 
 const DEFAULT_CONFIG = {
     prefix: "!",
-    botName: "Satella",
+    botName: "Sat Bot",
+    timezone: "America/Sao_Paulo",
+    webDomain: null,
+    webProtocol: "http",
+    autoUpdate: false,
     platforms: {},
     uploads: {
         discordChannelId: null,
@@ -21,15 +25,57 @@ const DEFAULT_CONFIG = {
     },
     sticker: {
         packName: "Sat Bot",
-        authorName: "Satela"
+        authorName: "Sat Bot"
+    },
+    botInfo: {
+        description: "Um bot multi-plataforma para facilitar sua comunidade.",
+        ownerName: "Dono do bot",
+        ownerContacts: [],
+        baseName: "Sat Bot",
+        baseDeveloper: "Titannickbub",
+        baseRepository: "https://github.com/Titannickbub/SatBot",
+        baseLicense: "ISC"
     },
     blockcmd_su: {
         enabled: false,
         action: "reply",
         message: null,
         blockedCommands: []
+    },
+    antispam: {
+        enabled: false,
+        seconds: 10,
+        notify: true
     }
 };
+
+function isValidTimezone(tz) {
+    if (!tz || typeof tz !== "string") return false;
+    try {
+        Intl.DateTimeFormat(undefined, { timeZone: tz.trim() });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function normalizeTimezone(tz) {
+    if (!tz || typeof tz !== "string") return null;
+    const clean = tz.trim();
+    if (typeof Intl.supportedValuesOf === "function") {
+        const supported = Intl.supportedValuesOf("timeZone");
+        const lower = clean.toLowerCase();
+        const found = supported.find(item => item.toLowerCase() === lower);
+        if (found) return found;
+    }
+    if (clean.toUpperCase() === "UTC" || clean.toUpperCase() === "GMT") {
+        return clean.toUpperCase();
+    }
+    if (isValidTimezone(clean)) {
+        return clean;
+    }
+    return null;
+}
 
 function normalizeConfig(data) {
     const source = data && typeof data === "object" ? data : {};
@@ -48,16 +94,32 @@ function normalizeConfig(data) {
             ...DEFAULT_CONFIG.sticker,
             ...(source.sticker && typeof source.sticker === "object" ? source.sticker : {})
         },
+        botInfo: {
+            ...DEFAULT_CONFIG.botInfo,
+            ...(source.botInfo && typeof source.botInfo === "object" ? source.botInfo : {}),
+            ownerContacts: Array.isArray(source.botInfo?.ownerContacts)
+                ? source.botInfo.ownerContacts.filter(contact => typeof contact === "string" && contact.trim())
+                : DEFAULT_CONFIG.botInfo.ownerContacts
+        },
         blockcmd_su: {
             enabled: source.blockcmd_su?.enabled === true,
             action: source.blockcmd_su?.action || "reply",
             message: source.blockcmd_su?.message || null,
             blockedCommands: Array.isArray(source.blockcmd_su?.blockedCommands) ? source.blockcmd_su.blockedCommands : []
+        },
+        antispam: {
+            enabled: source.antispam?.enabled === true,
+            seconds: Number.isSafeInteger(source.antispam?.seconds) && source.antispam.seconds >= 1
+                ? source.antispam.seconds
+                : DEFAULT_CONFIG.antispam.seconds,
+            notify: source.antispam?.notify !== false
         }
     };
 
     if (typeof normalized.prefix !== "string" || !normalized.prefix.trim()) {
         normalized.prefix = DEFAULT_CONFIG.prefix;
+    } else {
+        normalized.prefix = normalized.prefix.trim();
     }
 
     if (typeof normalized.botName !== "string" || !normalized.botName.trim()) {
@@ -65,6 +127,21 @@ function normalizeConfig(data) {
     } else {
         normalized.botName = normalized.botName.trim();
     }
+
+    const resolvedTimezone = normalizeTimezone(normalized.timezone);
+    if (!resolvedTimezone) {
+        normalized.timezone = DEFAULT_CONFIG.timezone;
+    } else {
+        normalized.timezone = resolvedTimezone;
+    }
+
+    if (normalized.webDomain !== null && typeof normalized.webDomain !== "string") {
+        normalized.webDomain = null;
+    } else if (typeof normalized.webDomain === "string") {
+        normalized.webDomain = normalized.webDomain.trim() || null;
+    }
+
+    normalized.webProtocol = normalized.webProtocol === "https" ? "https" : "http";
 
     return normalized;
 }
@@ -138,6 +215,28 @@ function getConfig() {
 
 }
 
+function getWebDomain() {
+    return load().webDomain;
+}
+
+function getWebProtocol() {
+    return load().webProtocol;
+}
+
+function setWebDomain(domain) {
+    const data = load();
+    data.webDomain = domain === null ? null : String(domain).trim() || null;
+    save(data);
+    return data.webDomain;
+}
+
+function setWebProtocol(protocol) {
+    const data = load();
+    data.webProtocol = String(protocol).toLowerCase() === "https" ? "https" : "http";
+    save(data);
+    return data.webProtocol;
+}
+
 function getPrefix() {
 
     return load().prefix;
@@ -149,10 +248,39 @@ function setPrefix(prefix) {
     const data = load();
 
     data.prefix =
-        String(prefix);
+        String(prefix).trim();
 
     save(data);
 
+}
+
+function getTimezone() {
+    const tz = load().timezone;
+    const normalized = normalizeTimezone(tz);
+    return normalized || DEFAULT_CONFIG.timezone;
+}
+
+function setTimezone(tz) {
+    const normalized = normalizeTimezone(tz);
+    if (!normalized) {
+        return null;
+    }
+    const data = load();
+    data.timezone = normalized;
+    save(data);
+    process.env.TZ = normalized;
+    return normalized;
+}
+
+function getAutoUpdateEnabled() {
+    return load().autoUpdate === true;
+}
+
+function setAutoUpdateEnabled(enabled) {
+    const data = load();
+    data.autoUpdate = !!enabled;
+    save(data);
+    return data.autoUpdate;
 }
 
 function getPlatforms() {
@@ -442,6 +570,159 @@ function removeAntiPVUser(userId) {
     return false;
 }
 
+function getDefaultVipConfig() {
+    return {
+        vipCommands: [],
+        pvBypass: {},
+        vipOnly: {
+            enabled: false,
+            mode: "ignore",
+            message: "⚠️ Este chat é exclusivo para membros VIP.",
+            whitelist: {
+                servers: [],
+                categories: [],
+                chats: []
+            }
+        }
+    };
+}
+
+function getVipConfig() {
+    const data = load();
+    const defaults = getDefaultVipConfig();
+    if (!data.vip) {
+        data.vip = defaults;
+        save(data);
+        return data.vip;
+    }
+    return {
+        ...defaults,
+        ...data.vip,
+        vipCommands: Array.isArray(data.vip.vipCommands) ? data.vip.vipCommands : [],
+        pvBypass: data.vip.pvBypass && typeof data.vip.pvBypass === 'object' ? data.vip.pvBypass : {},
+        vipOnly: {
+            enabled: !!data.vip.vipOnly?.enabled,
+            mode: data.vip.vipOnly?.mode === 'reply' ? 'reply' : 'ignore',
+            message: data.vip.vipOnly?.message || defaults.vipOnly.message,
+            whitelist: {
+                servers: Array.isArray(data.vip.vipOnly?.whitelist?.servers) ? data.vip.vipOnly.whitelist.servers : [],
+                categories: Array.isArray(data.vip.vipOnly?.whitelist?.categories) ? data.vip.vipOnly.whitelist.categories : [],
+                chats: Array.isArray(data.vip.vipOnly?.whitelist?.chats) ? data.vip.vipOnly.whitelist.chats : []
+            }
+        }
+    };
+}
+
+function getVipCommands() {
+    const config = getVipConfig();
+    return Array.isArray(config.vipCommands) ? config.vipCommands : [];
+}
+
+function addVipCommand(commandName) {
+    const data = load();
+    data.vip = getVipConfig();
+    const cmd = String(commandName || '').trim().toLowerCase();
+    if (!cmd) return false;
+    if (!Array.isArray(data.vip.vipCommands)) data.vip.vipCommands = [];
+    if (!data.vip.vipCommands.includes(cmd)) {
+        data.vip.vipCommands.push(cmd);
+        save(data);
+        return true;
+    }
+    return false;
+}
+
+function removeVipCommand(commandName) {
+    const data = load();
+    data.vip = getVipConfig();
+    const cmd = String(commandName || '').trim().toLowerCase();
+    if (!cmd || !Array.isArray(data.vip.vipCommands)) return false;
+    const initialLen = data.vip.vipCommands.length;
+    data.vip.vipCommands = data.vip.vipCommands.filter(item => item !== cmd);
+    if (data.vip.vipCommands.length !== initialLen) {
+        save(data);
+        return true;
+    }
+    return false;
+}
+
+function setVipPvPlatform(platform, enabled) {
+    const data = load();
+    data.vip = getVipConfig();
+    const key = String(platform || '').trim().toLowerCase();
+    if (!key) return false;
+    data.vip.pvBypass = data.vip.pvBypass || {};
+    data.vip.pvBypass[key] = !!enabled;
+    save(data);
+    return !!enabled;
+}
+
+function setVipOnlyEnabled(enabled) {
+    const data = load();
+    data.vip = getVipConfig();
+    data.vip.vipOnly = data.vip.vipOnly || getDefaultVipConfig().vipOnly;
+    data.vip.vipOnly.enabled = !!enabled;
+    save(data);
+    return data.vip.vipOnly.enabled;
+}
+
+function setVipOnlyMode(mode) {
+    const data = load();
+    data.vip = getVipConfig();
+    const normalized = String(mode || '').trim().toLowerCase();
+    data.vip.vipOnly = data.vip.vipOnly || getDefaultVipConfig().vipOnly;
+    data.vip.vipOnly.mode = normalized === 'reply' ? 'reply' : 'ignore';
+    save(data);
+    return data.vip.vipOnly.mode;
+}
+
+function setVipOnlyMessage(text) {
+    const data = load();
+    data.vip = getVipConfig();
+    data.vip.vipOnly = data.vip.vipOnly || getDefaultVipConfig().vipOnly;
+    data.vip.vipOnly.message = text ? String(text).trim() : '⚠️ Este chat é exclusivo para membros VIP.';
+    save(data);
+    return data.vip.vipOnly.message;
+}
+
+function addVipOnlyItem(type, id) {
+    const data = load();
+    data.vip = getVipConfig();
+    const key = String(type || '').trim().toLowerCase();
+    const itemId = String(id || '').trim();
+    if (!itemId) return false;
+    data.vip.vipOnly = data.vip.vipOnly || getDefaultVipConfig().vipOnly;
+    data.vip.vipOnly.whitelist = data.vip.vipOnly.whitelist || { servers: [], categories: [], chats: [] };
+    const bucket = key === 'server' || key === 'servers' ? 'servers' : key === 'categorie' || key === 'categories' || key === 'category' ? 'categories' : key === 'chat' || key === 'chats' ? 'chats' : null;
+    if (!bucket) return false;
+    if (!Array.isArray(data.vip.vipOnly.whitelist[bucket])) data.vip.vipOnly.whitelist[bucket] = [];
+    if (!data.vip.vipOnly.whitelist[bucket].includes(itemId)) {
+        data.vip.vipOnly.whitelist[bucket].push(itemId);
+        save(data);
+        return true;
+    }
+    return false;
+}
+
+function removeVipOnlyItem(type, id) {
+    const data = load();
+    data.vip = getVipConfig();
+    const key = String(type || '').trim().toLowerCase();
+    const itemId = String(id || '').trim();
+    if (!itemId) return false;
+    data.vip.vipOnly = data.vip.vipOnly || getDefaultVipConfig().vipOnly;
+    data.vip.vipOnly.whitelist = data.vip.vipOnly.whitelist || { servers: [], categories: [], chats: [] };
+    const bucket = key === 'server' || key === 'servers' ? 'servers' : key === 'categorie' || key === 'categories' || key === 'category' ? 'categories' : key === 'chat' || key === 'chats' ? 'chats' : null;
+    if (!bucket || !Array.isArray(data.vip.vipOnly.whitelist[bucket])) return false;
+    const before = data.vip.vipOnly.whitelist[bucket].length;
+    data.vip.vipOnly.whitelist[bucket] = data.vip.vipOnly.whitelist[bucket].filter(item => item !== itemId);
+    if (data.vip.vipOnly.whitelist[bucket].length !== before) {
+        save(data);
+        return true;
+    }
+    return false;
+}
+
 function saveAntiPVMediaLocally(buffer, fileName = "antipv_media", mimeType = "") {
     const antipvUploadDir = path.join(__dirname, "..", "settings", "uploads", "antipv");
     if (!fs.existsSync(antipvUploadDir)) {
@@ -544,14 +825,51 @@ function getBotName() {
     if (data && typeof data === "object" && typeof data.botName === "string" && data.botName.trim()) {
         return data.botName.trim();
     }
-    return "Satella";
+
+    return DEFAULT_CONFIG.botName;
 }
 
 function setBotName(name) {
     const data = load();
+    const previousName = getBotName();
     data.botName = name ? String(name).trim() : "";
+    const updatedName = getBotName();
+
+    if (data.sticker) {
+        if (!data.sticker.packName || data.sticker.packName === previousName || data.sticker.packName === "Sat Bot") {
+            data.sticker.packName = updatedName;
+        }
+        if (!data.sticker.authorName || data.sticker.authorName === previousName || data.sticker.authorName === "Satela") {
+            data.sticker.authorName = updatedName;
+        }
+    }
+    if (data.botInfo && (data.botInfo.baseName === previousName || data.botInfo.baseName === "Sat Bot")) {
+        data.botInfo.baseName = updatedName;
+    }
+
     save(data);
-    return getBotName();
+    return updatedName;
+}
+
+function getBotInfo() {
+    const info = load().botInfo;
+    const botName = getBotName();
+    return {
+        ...info,
+        baseName: !info.baseName || info.baseName === "Sat Bot"
+            ? botName
+            : info.baseName
+    };
+}
+
+function setBotInfo(updates) {
+    const data = load();
+    data.botInfo = {
+        ...data.botInfo,
+        ...(updates && typeof updates === "object" ? updates : {})
+    };
+    save(data);
+    return data.botInfo;
 }
 
 function getDefaultOnlyChatsConfig() {
@@ -763,7 +1081,7 @@ function getStickerConfig() {
     const botName = getBotName() || "Sat Bot";
     const defaults = {
         packName: botName,
-        authorName: "Satela"
+        authorName: botName
     };
     if (!data.sticker) {
         data.sticker = defaults;
@@ -772,14 +1090,16 @@ function getStickerConfig() {
     }
     return {
         packName: data.sticker.packName || defaults.packName,
-        authorName: data.sticker.authorName || defaults.authorName
+        authorName: !data.sticker.authorName || data.sticker.authorName === "Satela"
+            ? defaults.authorName
+            : data.sticker.authorName
     };
 }
 
 function setStickerPack(packName) {
     const data = load();
     data.sticker = getStickerConfig();
-    data.sticker.packName = packName ? String(packName).trim() : "Sat Bot";
+    data.sticker.packName = packName ? String(packName).trim() : getBotName();
     save(data);
     return data.sticker;
 }
@@ -787,7 +1107,7 @@ function setStickerPack(packName) {
 function setStickerAuthor(authorName) {
     const data = load();
     data.sticker = getStickerConfig();
-    data.sticker.authorName = authorName ? String(authorName).trim() : "Satela";
+    data.sticker.authorName = authorName ? String(authorName).trim() : getBotName();
     save(data);
     return data.sticker;
 }
@@ -825,10 +1145,39 @@ function setGlobalBlockcmd(newConfig) {
     return updateConfig({ blockcmd_su: updated });
 }
 
+function getAntiSpamConfig() {
+    const config = load().antispam;
+    return {
+        enabled: config.enabled === true,
+        seconds: config.seconds,
+        notify: config.notify !== false
+    };
+}
+
+function setAntiSpamConfig(newConfig) {
+    const data = load();
+    data.antispam = {
+        ...getAntiSpamConfig(),
+        ...newConfig
+    };
+    save(data);
+    return getAntiSpamConfig();
+}
+
 module.exports = {
     getConfig,
+    getWebDomain,
+    getWebProtocol,
+    setWebDomain,
+    setWebProtocol,
     getPrefix,
     setPrefix,
+    getTimezone,
+    setTimezone,
+    isValidTimezone,
+    normalizeTimezone,
+    getAutoUpdateEnabled,
+    setAutoUpdateEnabled,
     getPlatforms,
     setPlatform,
     getUploadConfig,
@@ -847,6 +1196,17 @@ module.exports = {
     removeAntiPVCommand,
     addAntiPVUser,
     removeAntiPVUser,
+    getDefaultVipConfig,
+    getVipConfig,
+    getVipCommands,
+    addVipCommand,
+    removeVipCommand,
+    setVipPvPlatform,
+    setVipOnlyEnabled,
+    setVipOnlyMode,
+    setVipOnlyMessage,
+    addVipOnlyItem,
+    removeVipOnlyItem,
     saveAntiPVMediaLocally,
     getIgnoreInitialSeconds,
     setIgnoreInitialSeconds,
@@ -854,6 +1214,8 @@ module.exports = {
     formatTimeString,
     getBotName,
     setBotName,
+    getBotInfo,
+    setBotInfo,
     getDefaultOnlyChatsConfig,
     getOnlyChatsConfig,
     setOnlyChatsEnabled,
@@ -867,5 +1229,7 @@ module.exports = {
     setStickerAuthor,
     setStickerConfig,
     getGlobalBlockcmd,
-    setGlobalBlockcmd
+    setGlobalBlockcmd,
+    getAntiSpamConfig,
+    setAntiSpamConfig
 };

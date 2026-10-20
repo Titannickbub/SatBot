@@ -6,20 +6,20 @@ require("dotenv").config({
 });
 
 const qrcode = require("qrcode-terminal");
+const QRCode = require("qrcode");
 const baileysPkg = require("@whiskeysockets/baileys");
 const groupSettings = require("../functions/groupSettings");
 const welcomeHelper = require("../functions/welcomeHelper");
+const autoAccept = require("../functions/autoAccept");
 const authFlow = require("../functions/authFlow");
+const { detectBufferFormat, convertGifToMp4 } = require("../functions/gifAdapter");
+const { fetchBuffer } = require("../functions/api");
 
 const makeWASocket = baileysPkg.default || baileysPkg.makeWASocket;
+const areJidsSameUser = baileysPkg.areJidsSameUser;
 const useMultiFileAuthState = baileysPkg.useMultiFileAuthState || baileysPkg.useSingleFileAuthState;
-let fetchLatestBaileysVersion = baileysPkg.fetchLatestBaileysVersion;
 const DisconnectReason = baileysPkg.DisconnectReason || baileysPkg.DisconnectReasons;
 let makeInMemoryStore = baileysPkg.makeInMemoryStore;
-
-if (typeof fetchLatestBaileysVersion !== 'function') {
-  fetchLatestBaileysVersion = async () => ({ version: [4, 0, 0] });
-}
 
 if (typeof makeInMemoryStore !== 'function') {
   makeInMemoryStore = () => ({ bind: () => { } });
@@ -27,10 +27,121 @@ if (typeof makeInMemoryStore !== 'function') {
 
 const authFolder = path.join(__dirname, "..", "settings", "whatsapp-auth");
 const syncedGroups = new Set();
+const groupMetadataCache = new Map();
+const FALLBACK_WA_VERSION = [2, 3000, 1044006379];
+
+async function adaptWhatsAppImage(image) {
+  let buffer = Buffer.isBuffer(image) ? image : null;
+  if (typeof image === "string") {
+    if (/^https?:\/\//i.test(image)) {
+      if (/\.gif(?:$|[?#])/i.test(image)) buffer = await fetchBuffer(image);
+    } else {
+      const resolvedPath = path.isAbsolute(image) ? image : path.join(process.cwd(), image);
+      if (!fs.existsSync(resolvedPath)) {
+        throw new Error(`[WHATSAPP] Arquivo não encontrado: ${resolvedPath}`);
+      }
+      buffer = fs.readFileSync(resolvedPath);
+    }
+  }
+
+  if (!buffer) return { image: typeof image === "string" ? { url: image } : image };
+  if (detectBufferFormat(buffer).isRealGif) {
+    return { video: await convertGifToMp4(buffer), gifPlayback: true };
+  }
+  return { image: buffer };
+}
+
+async function getGroupMetadataWithTimeout(sock, chatId, timeoutMs = 10000) {
+  const cached = groupMetadataCache.get(chatId);
+  if (cached) return cached;
+
+  const metadataPromise = sock.groupMetadata(chatId)
+    .then((metadata) => {
+      groupMetadataCache.set(chatId, metadata);
+      return metadata;
+    });
+
+  return Promise.race([
+    metadataPromise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`timeout após ${timeoutMs}ms`)), timeoutMs);
+    })
+  ]);
+}
+
+function getLoginTargetAdapter(target) {
+  if (!target || !global.platformRegistry) return null;
+  return global.platformRegistry[target.platform] || null;
+}
+
+function isWhatsAppMediaSizeError(error) {
+  const statusCode =
+    error?.output?.statusCode ||
+    error?.statusCode ||
+    error?.status ||
+    error?.data?.statusCode ||
+    error?.data?.status;
+  if (Number(statusCode) === 413) return true;
+
+  const details = [
+    error?.message,
+    error?.data,
+    error?.data?.message,
+    error?.data?.error,
+    error?.data?.reason,
+    error?.output?.payload?.message,
+    error?.output?.payload?.error,
+    error?.response?.data?.message,
+    error?.response?.data?.error
+  ].filter((value) => typeof value === "string").join(" ");
+
+  return /(?:file|media|payload|content).{0,40}(?:too large|exceed(?:s|ed)?|maximum|size limit)|(?:too large|exceed(?:s|ed)?).{0,40}(?:file|media|payload|content)/i.test(details);
+}
+
+async function sendWhatsAppMedia(sock, chatId, payload, options) {
+  try {
+    return await sock.sendMessage(chatId, payload, options);
+  } catch (error) {
+    if (isWhatsAppMediaSizeError(error)) {
+      throw new Error("Arquivo muito grande para whatsapp. O WhatsApp recusou o envio pelo tamanho.");
+    }
+    throw error;
+  }
+}
+
+async function getWAVersionFromWPP() {
+  try {
+    const axios = require("axios");
+    const response = await axios.get("https://wppconnect.io/pt-BR/whatsapp-versions/", {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9"
+      },
+      timeout: 10000
+    });
+
+    const match = String(response.data || "").match(/2\.3000\.(\d+)/);
+    if (!match?.[1]) {
+      console.warn("[VERSION] Não foi possível extrair a versão do WPPConnect.");
+      return null;
+    }
+
+    const version = [2, 3000, Number(match[1])];
+    console.log(`[VERSION] Versão WA Web obtida do WPPConnect: ${JSON.stringify(version)}`);
+    return version;
+  } catch (error) {
+    console.warn(`[VERSION] Erro ao buscar versão do WPPConnect: ${error.message}`);
+    return null;
+  }
+}
 
 async function start(onMessage) {
-  console.log('[WHATSAPP] Inicializando adapter...');
+  console.log('🔄[WHATSAPP] Inicializando...');
   try {
+    const requestedLogin = authFlow.consumeWhatsAppLoginRequest();
+    const login = requestedLogin || global.__whatsappAuthMode || null;
+    global.__whatsappAuthMode = null;
     const resolvedAuth = authFlow.ensureWhatsAppAuthFolder(authFolder);
     const effectiveAuthFolder = resolvedAuth.authFolder;
     const authStateInfo = authFlow.inspectWhatsAppAuthState(effectiveAuthFolder);
@@ -47,15 +158,21 @@ async function start(onMessage) {
         console.warn(`[WHATSAPP] Credenciais encontradas, mas parecem inválidas ou incompletas (${authStateInfo.reason}).`);
       }
     } else {
-      console.log('[WHATSAPP] Nenhuma credencial válida foi encontrada na pasta de auth; o login pode pedir QR.');
+      const isInitialBootstrap = global.__pendingAuthBootstrapPlatform === "whatsapp";
+      if (!login && !isInitialBootstrap) {
+        console.log('[WHATSAPP] Nenhuma sessão encontrada. Login aguardando !su whatsapp qr ou !su whatsapp codigo <número>.');
+        return;
+      }
+      console.log('[WHATSAPP] Nenhuma credencial válida foi encontrada; aguardando o método de login selecionado.');
     }
 
+    authFlow.cleanupWhatsAppAuthFolder(effectiveAuthFolder, { keepRecentPreKeys: 50 });
     const { state, saveCreds } = await useMultiFileAuthState(effectiveAuthFolder);
     console.log('[WHATSAPP] Credenciais carregadas.');
     const store = makeInMemoryStore({});
 
-    console.log('[WHATSAPP] Definindo versão do WhatsApp Web [2, 3000, 1044006379]...');
-    const version = [2, 3000, 1044006379];
+    const version = await getWAVersionFromWPP() || FALLBACK_WA_VERSION;
+    console.log(`[WHATSAPP] Definindo versão do WhatsApp Web ${JSON.stringify(version)}...`);
 
     const nullLogger = {
       level: "silent",
@@ -75,6 +192,25 @@ async function start(onMessage) {
       logger: nullLogger
     });
 
+    let pairingRequested = false;
+    if (login?.mode === "pairing" && login.number && typeof sock.requestPairingCode === "function") {
+      setTimeout(async () => {
+        try {
+          const code = await sock.requestPairingCode(login.number);
+          pairingRequested = true;
+          console.log(`[WHATSAPP] Código de pareamento: ${code}`);
+          if (login.target) {
+            const adapter = getLoginTargetAdapter(login.target);
+            if (adapter?.sendText) {
+              await adapter.sendText(login.target.chatId, login.target.threadId, `🔐 Código de pareamento do WhatsApp: ${code}`);
+            }
+          }
+        } catch (error) {
+          console.error("[WHATSAPP] Falha ao solicitar código de pareamento:", error);
+        }
+      }, 3000);
+    }
+
     global.whatsappSock = sock;
     store.bind(sock.ev);
 
@@ -84,8 +220,10 @@ async function start(onMessage) {
       for (const update of updates) {
         if (update.id) {
           syncedGroups.delete(update.id);
+          groupMetadataCache.delete(update.id);
           try {
             const metadata = await sock.groupMetadata(update.id);
+            groupMetadataCache.set(update.id, metadata);
             const communityId = metadata.linkedParent || null;
             groupSettings.syncWhatsAppHierarchy(
               String(update.id),
@@ -112,25 +250,53 @@ async function start(onMessage) {
       }
     });
 
-    sock.ev.on("connection.update", (update) => {
+    sock.ev.on("group.join-request", async (request) => {
+      try {
+        await autoAccept.approveWhatsApp(sock, request);
+      } catch (err) {
+        console.error("[WHATSAPP] Erro ao processar solicitação de entrada:", err);
+      }
+    });
+
+    sock.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
-        const authStateInfo = authFlow.inspectWhatsAppAuthState(authFolder);
+        authFlow.cleanupWhatsAppAuthFolder(effectiveAuthFolder, { onQR: true });
+        const authStateInfo = authFlow.inspectWhatsAppAuthState(effectiveAuthFolder);
         if (authStateInfo.hasAnyData && !authStateInfo.likelyValid) {
           console.warn(`[WHATSAPP] QR gerado mesmo com credenciais existentes na pasta de auth (${authStateInfo.reason}). Isso normalmente indica uma sessão inválida ou expirada.`);
         } else if (authStateInfo.hasAnyData) {
           console.warn(`[WHATSAPP] QR gerado mesmo com credenciais existentes na pasta de auth. A sessão pode estar inválida ou ter sido descartada.`);
         } else {
-          console.log("[WHATSAPP] QR code gerado. Escaneie com o app do WhatsApp:");
+          console.log("[WHATSAPP] QR code gerado.");
         }
-        qrcode.generate(qr, { small: true });
+
+        if (login?.mode === "pairing") {
+          console.log("[WHATSAPP] QR intermediário omitido; aguardando o código de pareamento.");
+        } else {
+          console.log("[WHATSAPP] Escaneie o QR code com o app do WhatsApp:");
+          qrcode.generate(qr, { small: true });
+        }
+
+        if (login?.mode === "qr" && login.target) {
+          try {
+            const image = await QRCode.toBuffer(qr, { type: "png", width: 480, margin: 2 });
+            const adapter = getLoginTargetAdapter(login.target);
+            if (adapter?.sendImg) {
+              await adapter.sendImg(login.target.chatId, login.target.threadId, image, "📱 Escaneie este QR Code no WhatsApp.");
+            }
+          } catch (error) {
+            console.error("[WHATSAPP] Falha ao enviar QR Code como imagem:", error);
+          }
+        }
       }
 
       if (connection === "close") {
         const status = lastDisconnect?.error?.output?.statusCode;
         if (status === DisconnectReason.loggedOut) {
-          console.log("[WHATSAPP] Sessão desconectada. Apague o arquivo whatsapp-auth.json e reconecte.");
+          console.log("[WHATSAPP] Sessão desconectada. Limpando credenciais antigas...");
+          authFlow.cleanupWhatsAppAuthFolder(effectiveAuthFolder, { all: true });
         } else {
           console.log("[WHATSAPP] Conexão fechada, reconectando...");
           start(onMessage).catch(console.error);
@@ -138,7 +304,9 @@ async function start(onMessage) {
       }
 
       if (connection === "open") {
-        console.log("[WHATSAPP] Conectado com sucesso.");
+        const botId = String(sock.user?.id || "").split("@")[0].split(":")[0];
+        console.log(`🟩[WHATSAPP] Conectado como ${botId || "número não confirmado"}`);
+        authFlow.cleanupWhatsAppAuthFolder(effectiveAuthFolder, { keepRecentPreKeys: 50 });
         if (global.__pendingAuthBootstrapPlatform === "whatsapp") {
           global.__pendingAuthBootstrapPlatform = null;
           setTimeout(() => process.exit(0), 1000);
@@ -201,7 +369,7 @@ async function start(onMessage) {
           canManageMessages = true;
         } else {
           try {
-            const metadata = await sock.groupMetadata(chatId);
+            const metadata = await getGroupMetadataWithTimeout(sock, chatId);
             const participant = metadata.participants.find(p => p.id === userId);
             if (participant) {
               isAdmin = !!participant.admin;
@@ -227,15 +395,62 @@ async function start(onMessage) {
         const botLid = sock.user?.lid ? sock.user.lid.split(":")[0].replace(/[^0-9]/g, "") : "";
         const botJid = sock.user?.id ? sock.user.id.split(":")[0] + "@s.whatsapp.net" : null;
 
+        function isViewOnceMessage(raw) {
+          if (!raw || typeof raw !== "object") return false;
+          return Boolean(
+            raw.viewOnceMessage ||
+            raw.viewOnceMessageV2 ||
+            raw.viewOnceMessageV2Extension ||
+            raw.imageMessage?.viewOnce ||
+            raw.videoMessage?.viewOnce ||
+            raw.audioMessage?.viewOnce
+          );
+        }
+
+        function unwrapMessage(rawMsg) {
+          if (!rawMsg || typeof rawMsg !== "object") return {};
+          let current = rawMsg;
+          let iterations = 0;
+          while (
+            iterations < 10 &&
+            (current.viewOnceMessage?.message ||
+             current.viewOnceMessageV2?.message ||
+             current.viewOnceMessageV2Extension?.message ||
+             current.ephemeralMessage?.message ||
+             current.documentWithCaptionMessage?.message)
+          ) {
+            current = current.viewOnceMessage?.message ||
+              current.viewOnceMessageV2?.message ||
+              current.viewOnceMessageV2Extension?.message ||
+              current.ephemeralMessage?.message ||
+              current.documentWithCaptionMessage?.message;
+            iterations++;
+          }
+          return current;
+        }
+
+        const unwrappedDirect = unwrapMessage(msg.message);
+        const isDirectViewOnce = isViewOnceMessage(msg.message);
+
+        if (unwrappedDirect.conversation) {
+          text = unwrappedDirect.conversation;
+        } else if (unwrappedDirect.extendedTextMessage?.text) {
+          text = unwrappedDirect.extendedTextMessage.text;
+        } else if (unwrappedDirect.imageMessage?.caption) {
+          text = unwrappedDirect.imageMessage.caption;
+        } else if (unwrappedDirect.videoMessage?.caption) {
+          text = unwrappedDirect.videoMessage.caption;
+        }
+
         let quoted = null;
-        const contextInfo = msg.message?.extendedTextMessage?.contextInfo ||
-          msg.message?.imageMessage?.contextInfo ||
-          msg.message?.videoMessage?.contextInfo ||
-          msg.message?.documentMessage?.contextInfo ||
-          msg.message?.audioMessage?.contextInfo ||
-          msg.message?.stickerMessage?.contextInfo ||
-          msg.message?.buttonsResponseMessage?.contextInfo ||
-          msg.message?.listResponseMessage?.contextInfo;
+        const contextInfo = unwrappedDirect.extendedTextMessage?.contextInfo ||
+          unwrappedDirect.imageMessage?.contextInfo ||
+          unwrappedDirect.videoMessage?.contextInfo ||
+          unwrappedDirect.documentMessage?.contextInfo ||
+          unwrappedDirect.audioMessage?.contextInfo ||
+          unwrappedDirect.stickerMessage?.contextInfo ||
+          unwrappedDirect.buttonsResponseMessage?.contextInfo ||
+          unwrappedDirect.listResponseMessage?.contextInfo;
 
         if (contextInfo && contextInfo.stanzaId) {
           const quotedParticipant = contextInfo.participant ? String(contextInfo.participant) : null;
@@ -245,7 +460,10 @@ async function start(onMessage) {
             (botLid && cleanQuotedNum === botLid)
           );
 
-          const qMsg = contextInfo.quotedMessage || {};
+          const rawQMsg = contextInfo.quotedMessage || {};
+          const isQuotedViewOnce = isViewOnceMessage(rawQMsg);
+          const qMsg = unwrapMessage(rawQMsg);
+
           const qImage = qMsg.imageMessage;
           const qVideo = qMsg.videoMessage;
           const qAudio = qMsg.audioMessage;
@@ -274,6 +492,7 @@ async function start(onMessage) {
             qMedia = {
               type: qMediaType,
               mimeType: qMimeType,
+              isViewOnce: isQuotedViewOnce || Boolean(qMediaKey.viewOnce),
               raw: qMediaKey,
               getBuffer: async () => {
                 if (_qCachedBuffer) return _qCachedBuffer;
@@ -291,6 +510,7 @@ async function start(onMessage) {
             fromMe: isQuotedFromMe,
             raw: qMsg,
             media: qMedia,
+            isViewOnce: isQuotedViewOnce,
             text: qMsg.conversation ||
               qMsg.extendedTextMessage?.text ||
               qMsg.imageMessage?.caption ||
@@ -330,23 +550,15 @@ async function start(onMessage) {
           quoted,
           delete: async function (messageId, participant = null) {
             try {
-              const isOwnMessage = (messageId === message.messageId);
-
               const key = {
+                ...msg.key,
                 remoteJid: chatId,
-                id: messageId
+                id: messageId,
+                fromMe: Boolean(msg.key.fromMe)
               };
 
-              if (isOwnMessage) {
-                // Deletar a própria mensagem do comando: fromMe=true
-                key.fromMe = true;
-              } else {
-                // Deletar mensagem de outro usuário (moderação)
-                // No Baileys, para deletar msg de outro em grupo, fromMe=false e participant=remetente
-                key.fromMe = false;
-                if (chatType === "group" && participant) {
-                  key.participant = participant;
-                }
+              if (!key.fromMe && chatType === "group") {
+                key.participant = participant || msg.key.participant || userId;
               }
 
               await sock.sendMessage(chatId, { delete: key });
@@ -357,11 +569,11 @@ async function start(onMessage) {
             }
           },
           media: (() => {
-            const imageMsg = msg.message.imageMessage;
-            const videoMsg = msg.message.videoMessage;
-            const audioMsg = msg.message.audioMessage;
-            const documentMsg = msg.message.documentMessage;
-            const stickerMsg = msg.message.stickerMessage;
+            const imageMsg = unwrappedDirect.imageMessage;
+            const videoMsg = unwrappedDirect.videoMessage;
+            const audioMsg = unwrappedDirect.audioMessage;
+            const documentMsg = unwrappedDirect.documentMessage;
+            const stickerMsg = unwrappedDirect.stickerMessage;
 
             let mediaKey = null;
             let mediaType = null;
@@ -385,6 +597,8 @@ async function start(onMessage) {
             return {
               type: mediaType,
               mimeType,
+              isViewOnce: isDirectViewOnce || Boolean(mediaKey.viewOnce),
+              raw: mediaKey,
               getBuffer: async () => {
                 if (_cachedBuffer) return _cachedBuffer;
                 const { getFileBuffer } = require("../functions/api");
@@ -398,9 +612,18 @@ async function start(onMessage) {
               const image = data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url;
               return await this.replyImg({ image, caption: data.caption || data.text || "" });
             }
-            await sock.sendMessage(chatId, {
+            const options = { quoted: msg };
+            if (Array.isArray(data?.mentions) && data.mentions.length) {
+              options.mentions = data.mentions;
+            }
+            const payload = {
               text: (typeof data === "string" ? data : data?.text) || ""
-            }, { quoted: msg });
+            };
+            if (Array.isArray(data?.mentions) && data.mentions.length) {
+              payload.mentions = data.mentions;
+              payload.contextInfo = { mentionedJid: data.mentions };
+            }
+            await sock.sendMessage(chatId, payload, options);
           },
           react: async function (emoji, add = true) {
             await sock.sendMessage(chatId, {
@@ -422,26 +645,11 @@ async function start(onMessage) {
             }
 
             const messagePayload = { caption };
-
-            if (Buffer.isBuffer(image)) {
-              messagePayload.image = image;
-            } else if (typeof image === "string" && /^https?:\/\//i.test(image)) {
-              messagePayload.image = { url: image };
-            } else if (typeof image === "string") {
-              const resolvedPath = path.isAbsolute(image)
-                ? image
-                : path.join(process.cwd(), image);
-
-              if (!fs.existsSync(resolvedPath)) {
-                throw new Error(
-                  `[WHATSAPP] Arquivo não encontrado: ${resolvedPath}`
-                );
-              }
-
-              messagePayload.image = fs.readFileSync(resolvedPath);
-            } else {
-              throw new Error("[WHATSAPP] Formato de imagem inválido.");
+            if (Array.isArray(data.mentions) && data.mentions.length) {
+              messagePayload.mentions = data.mentions;
             }
+
+            Object.assign(messagePayload, await adaptWhatsAppImage(image));
 
             await sock.sendMessage(chatId, messagePayload, { quoted: msg });
           },
@@ -456,6 +664,13 @@ async function start(onMessage) {
             }
 
             const messagePayload = { caption };
+            if (Array.isArray(data.mentions) && data.mentions.length) {
+              messagePayload.mentions = data.mentions;
+            }
+
+            if (data.gifPlayback) {
+              messagePayload.gifPlayback = true;
+            }
 
             if (Buffer.isBuffer(video)) {
               messagePayload.video = video;
@@ -477,7 +692,7 @@ async function start(onMessage) {
               throw new Error("[WHATSAPP] Formato de vídeo inválido.");
             }
 
-            await sock.sendMessage(chatId, messagePayload, { quoted: msg });
+            await sendWhatsAppMedia(sock, chatId, messagePayload, { quoted: msg });
           },
           replyAudio: async function (data) {
             const caption = data.caption || data.text || "";
@@ -493,8 +708,12 @@ async function start(onMessage) {
             const messagePayload = {
               caption,
               mimetype: "audio/mp4",
-              ptt: false
+              ptt: false,
+              fileName: data.filename || "audio.mp3"
             };
+            if (Array.isArray(data.mentions) && data.mentions.length) {
+              messagePayload.mentions = data.mentions;
+            }
 
             if (Buffer.isBuffer(audio)) {
               messagePayload.audio = audio;
@@ -516,7 +735,7 @@ async function start(onMessage) {
               throw new Error("[WHATSAPP] Formato de áudio inválido.");
             }
 
-            await sock.sendMessage(chatId, messagePayload, { quoted: msg });
+            await sendWhatsAppMedia(sock, chatId, messagePayload, { quoted: msg });
           },
           replyFile: async function (data) {
             const caption = data.caption || data.text || "";
@@ -593,7 +812,8 @@ async function start(onMessage) {
 async function sendText(
   chatId,
   threadId,
-  text
+  text,
+  mentions = undefined
 ) {
 
   if (!global.whatsappSock) {
@@ -604,12 +824,12 @@ async function sendText(
 
   }
 
-  const result = await global.whatsappSock.sendMessage(
-    chatId,
-    {
-      text
-    }
-  );
+  const payload = { text };
+  if (Array.isArray(mentions) && mentions.length) {
+    payload.mentions = mentions;
+  }
+
+  const result = await global.whatsappSock.sendMessage(chatId, payload);
 
   return String(result.key.id);
 
@@ -637,37 +857,7 @@ async function sendImg(
 
   };
 
-  const isRemoteUrl =
-    typeof image === "string" &&
-    /^https?:\/\//i.test(image);
-
-  if (isRemoteUrl) {
-
-    payload.image = {
-
-      url: image
-
-    };
-
-  } else if (typeof image === "string") {
-
-    const resolvedPath = path.isAbsolute(image)
-      ? image
-      : path.join(process.cwd(), image);
-
-    if (!fs.existsSync(resolvedPath)) {
-      throw new Error(
-        `[WHATSAPP] Arquivo não encontrado: ${resolvedPath}`
-      );
-    }
-
-    payload.image = fs.readFileSync(resolvedPath);
-
-  } else {
-
-    payload.image = image;
-
-  }
+  Object.assign(payload, await adaptWhatsAppImage(image));
 
   const result = await global.whatsappSock.sendMessage(
     chatId,
@@ -732,7 +922,8 @@ async function sendVideo(
 
   }
 
-  const result = await global.whatsappSock.sendMessage(
+  const result = await sendWhatsAppMedia(
+    global.whatsappSock,
     chatId,
     payload
   );
@@ -794,7 +985,8 @@ async function sendAudio(
 
   }
 
-  const result = await global.whatsappSock.sendMessage(
+  const result = await sendWhatsAppMedia(
+    global.whatsappSock,
     chatId,
     payload
   );
@@ -857,10 +1049,10 @@ async function sendFile(
 }
 
 /**
- * Verifica se o BOT é administrador no grupo (necessário para delete, kick e ban).
+ * Verifica se o BOT é administrador no grupo (necessário para moderação e convites).
  * No WhatsApp todas essas ações exigem que o bot seja admin.
  * @param {string} chatId  JID do grupo (ex: 123@g.us)
- * @param {string} action  'delete' | 'kick' | 'ban'
+ * @param {string} action  'invite' | 'delete' | 'kick' | 'ban'
  * @returns {Promise<boolean>}
  */
 async function checkBotPermission(chatId, action) {
@@ -869,30 +1061,84 @@ async function checkBotPermission(chatId, action) {
   if (!chatId.endsWith("@g.us")) return true;
   try {
     const metadata = await global.whatsappSock.groupMetadata(chatId);
-    const botId = global.whatsappSock.user?.id?.replace(/:.*/, "") + "@s.whatsapp.net";
-    const botMember = metadata.participants.find(
-      p => p.id === botId || p.id.startsWith(botId.replace("@s.whatsapp.net", ""))
-    );
+    const botIds = [
+      global.whatsappSock.user?.id,
+      global.whatsappSock.user?.lid
+    ].filter(Boolean);
+    const botMember = metadata.participants.find((participant) => {
+      const participantIds = [
+        participant.id,
+        participant.lid,
+        participant.phoneNumber
+      ].filter(Boolean);
+      return participantIds.some((participantId) =>
+        botIds.some((botId) => {
+          if (typeof areJidsSameUser === "function") {
+            return areJidsSameUser(participantId, botId);
+          }
+          return participantId === botId;
+        })
+      );
+    });
     if (!botMember) return false;
-    // delete, kick e ban exigem o bot ser admin no WhatsApp
+    // Alterar o estado do grupo exige que o bot seja administrador.
     return !!botMember.admin;
   } catch {
     return false;
   }
 }
 
+async function setChatOpen(chatId, isOpen) {
+  const sock = global.whatsappSock;
+  if (!sock) throw new Error("[WHATSAPP] Socket não iniciado.");
+  if (!String(chatId).endsWith("@g.us")) {
+    throw new Error("[WHATSAPP] A abertura e o fechamento só funcionam em grupos.");
+  }
+
+  const metadata = await sock.groupMetadata(chatId);
+  if (metadata.isCommunity || metadata.isCommunityAnnounce) {
+    throw new Error("[WHATSAPP] O controle de abertura não está disponível em comunidades.");
+  }
+
+  const isCurrentlyOpen = !metadata.announce;
+  if (isCurrentlyOpen === Boolean(isOpen)) return false;
+
+  await sock.groupSettingUpdate(chatId, isOpen ? "not_announcement" : "announcement");
+  return true;
+}
+
+async function checkChatControlSupport(chatId) {
+  const sock = global.whatsappSock;
+  if (!sock || !String(chatId).endsWith("@g.us")) return false;
+  const metadata = await sock.groupMetadata(chatId);
+  return !metadata.isCommunity && !metadata.isCommunityAnnounce;
+}
+
 /**
- * Verifica se o MEMBRO é administrador ou superadmin do grupo.
+ * Verifica permissões do membro no grupo. No WhatsApp, convites exigem admin.
  * @param {string} chatId  JID do grupo
  * @param {string} userId  JID do usuário
+ * @param {string} [action] 'invite'
  * @returns {Promise<boolean>}
  */
-async function checkUserPermission(chatId, userId) {
+async function checkUserPermission(chatId, userId, action) {
   if (!global.whatsappSock) return false;
   if (!chatId.endsWith("@g.us")) return true; // PV sempre pode
   try {
     const metadata = await global.whatsappSock.groupMetadata(chatId);
-    const member = metadata.participants.find(p => p.id === userId);
+    const member = metadata.participants.find((participant) => {
+      const participantIds = [
+        participant.id,
+        participant.lid,
+        participant.phoneNumber
+      ].filter(Boolean);
+      return participantIds.some((participantId) => {
+        if (typeof areJidsSameUser === "function") {
+          return areJidsSameUser(participantId, userId);
+        }
+        return participantId === userId;
+      });
+    });
     if (!member) return false;
     return !!member.admin; // admin ou superadmin
   } catch {
@@ -934,6 +1180,10 @@ module.exports = {
   sendFile,
 
   sendSticker,
+
+  checkChatControlSupport,
+
+  setChatOpen,
 
   checkBotPermission,
 

@@ -75,6 +75,8 @@ class CentralAccountsStore {
 
   getCentralById(id) { return this.data.centralAccounts[id] || null; }
 
+  getAllCentralAccounts() { return Object.values(this.data.centralAccounts || {}); }
+
   findByPlatform(platform, platformId) {
     return Object.values(this.data.centralAccounts).find(c => c.platformAccounts && c.platformAccounts.some(p => p.platform === platform && p.platformId === platformId)) || null;
   }
@@ -138,6 +140,39 @@ class CentralAccountsStore {
   }
 
   async cleanupMergeCodes() { const now = Date.now(); let removed = 0; for (const [code, entry] of Object.entries(this.data.mergeCodes)) { if (new Date(entry.expiresAt).getTime() < now) { delete this.data.mergeCodes[code]; removed++; } } if (removed) this._markDirty(); return removed; }
+
+  getNofap(centralId) {
+    const central = this.getCentralById(centralId);
+    return central?.nofap || null;
+  }
+
+  async setNofap(centralId, nofapData) {
+    const central = this.getCentralById(centralId);
+    if (!central) throw new Error('central not found');
+    central.nofap = { ...(central.nofap || {}), ...(nofapData || {}) };
+    central.lastActivityAt = this._nowISO();
+    this._markDirty();
+    return central.nofap;
+  }
+
+  async setLastInteraction(centralId, timestamp = null) {
+    const central = this.getCentralById(centralId);
+    if (!central) return null;
+    const iso = timestamp ? new Date(timestamp).toISOString() : this._nowISO();
+    central.lastInteractionAt = iso;
+    central.lastActivityAt = iso;
+    this._markDirty();
+    return central;
+  }
+
+  async resetNofap(centralId) {
+    const central = this.getCentralById(centralId);
+    if (!central) throw new Error('central not found');
+    central.nofap = null;
+    central.lastActivityAt = this._nowISO();
+    this._markDirty();
+    return central;
+  }
 
   getTelegramStickerPack(centralId) {
     const central = this.getCentralById(centralId);

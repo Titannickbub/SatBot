@@ -204,7 +204,7 @@ function getSetBlockcmd(message, level, newConfig = null) {
 
         const groupData = loadSettings("telegram", chatId, "chat");
 
-        if (level === "server" || !isForum) {
+        if (level === "server" || !isForum || (level === "chat" && !threadId)) {
             if (newConfig) {
                 groupData.settings.blockcmd = { ...readBlockcmd(groupData.settings), ...newConfig };
                 saveSettings("telegram", chatId, "chat", groupData);

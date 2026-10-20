@@ -1,90 +1,36 @@
-/*
-    IMPORTANTE:
-
-    menu.js deve permanecer na raiz de commands/.
-
-    Caso seja movido para outra pasta,
-    ajuste o require("../core").
-*/
-
-/*
-    COMO O MENU FUNCIONA
-
-    O menu é gerado automaticamente usando os comandos
-    registrados pelo Core.
-
-    Regras:
-
-    1. Comandos na raiz de commands/
-       aparecem no menu principal.
-
-       Ex:
-       commands/ping.js
-       commands/menu.js
-
-    2. A primeira subpasta define a categoria.
-
-       Ex:
-       commands/system/ping.js
-
-       Categoria:
-       system
-
-    3. Subpastas mais profundas servem apenas
-       para organização interna.
-
-       Ex:
-       commands/downloads/youtube/mp3.js
-
-       Continua pertencendo à categoria:
-       downloads
-
-    Exemplos:
-
-       !menu
-
-       Mostra:
-       - comandos da raiz
-       - categorias disponíveis
-
-       !menu downloads
-
-       Mostra todos os comandos cuja
-       categoria seja "downloads".
-
-    As categorias são detectadas automaticamente
-    durante o carregamento dos comandos pelo Core.
-*/
-
 const core = require("../core");
+const { getCommandPlatformIndicator } = require("../functions/commandPlatformSupport");
 
 module.exports = {
-
     name: "menu",
-
     aliases: ["help", "ajuda"],
+    description: `📋 Exibe o menu de comandos e permite listá-los por categoria.
 
-    description:
-        "Exibe o menu de comandos e permite listar comandos por categoria.",
+📌 Uso:
+{prefix}menu
+{prefix}menu <categoria>
 
-    usage:
-        "{prefix}menu [categoria]",
-
+💡 Exemplos:
+{prefix}menu
+{prefix}menu adm
+{prefix}menu Bronxys`,
+    usage: "{prefix}menu [categoria]",
     examples: [
         "{prefix}menu",
-        "{prefix}menu downloads"
+        "{prefix}menu adm",
+        "{prefix}menu Bronxys"
     ],
-
     async execute(message) {
-
         const commands = core.getCommands();
-        const category = message.args[0]?.toLowerCase();
+        const normalizeCategory = (value) => core.normalizeCommandName(value);
+        const category = normalizeCategory(message.args.join(" "));
         const headerText = `💡 Qualquer dúvida? Use ${message.prefix}info <comando ou categoria> para detalhes.`;
+        const getMenuCategory = (cmd) => normalizeCategory(cmd.category);
 
         const uniqueCommands = (() => {
             const seen = new Set();
             return Object.values(commands).filter((cmd) => {
-                const signature = `${cmd.name || ''}|${cmd.category || ''}|${cmd.file || ''}`;
+                const signature = `${cmd.name || ""}|${cmd.category || ""}|${cmd.file || ""}`;
                 if (seen.has(signature)) {
                     return false;
                 }
@@ -93,18 +39,28 @@ module.exports = {
             });
         })();
 
-        const formatCommand = (cmd) => cmd.usage
-            ? cmd.usage.replace(/\{prefix\}/g, message.prefix)
-            : `${message.prefix}${cmd.name}`;
+        const formatCommand = (cmd) => {
+            const indicator = getCommandPlatformIndicator(cmd, message.platform);
+            const commandUsage = typeof cmd.getUsage === "function"
+                ? cmd.getUsage()
+                : cmd.usage;
+            const usage = commandUsage
+                ? commandUsage.replace(/\{prefix\}/g, message.prefix)
+                : `${message.prefix}${cmd.name}`;
+            return usage
+                .split("\n")
+                .map(line => line.trim())
+                .filter(Boolean)
+                .map(line => `${indicator.icon} ${line}`);
+        };
 
         const formatSection = (title, items, prefix = "🔶") => {
             if (!items.length) return "";
 
             let text = "===================\n";
             text += `${title}\n\n`;
-            text += items.map((item) => `${prefix} ${item}`).join("\n");
+            text += items.map((item) => prefix ? `${prefix} ${item}` : item).join("\n");
             text += "\n";
-            text + "===================\n";
             return text;
         };
 
@@ -116,15 +72,19 @@ module.exports = {
             return pages;
         };
 
+        const categorizedCommands = uniqueCommands.filter((cmd) =>
+            getMenuCategory(cmd)
+        );
+
         if (!category) {
             const rootCommands = [];
             const categories = new Set();
 
             for (const cmd of uniqueCommands) {
                 if (!cmd.category) {
-                    rootCommands.push(formatCommand(cmd));
-                } else {
-                    categories.add(cmd.category);
+                    rootCommands.push(cmd);
+                } else if (categorizedCommands.includes(cmd)) {
+                    categories.add(getMenuCategory(cmd).split("/")[0]);
                 }
             }
 
@@ -133,7 +93,11 @@ module.exports = {
             if (rootCommands.length) {
                 const pages = paginate(rootCommands, 10);
                 pages.forEach((page) => {
-                    text += formatSection("📄 Comandos:", page, "🔶");
+                    text += formatSection(
+                        "📄 Comandos:",
+                        page.flatMap(formatCommand),
+                        ""
+                    );
                     text += "\n";
                 });
             }
@@ -153,27 +117,53 @@ module.exports = {
             return await message.reply({ text });
         }
 
+        const categoryPath = normalizeCategory(message.args.join(" "));
         const categoryCommands = uniqueCommands
-            .filter((cmd) => cmd.category === category)
-            .map(formatCommand);
+            .filter((cmd) => getMenuCategory(cmd) === categoryPath);
+        const subcategoryCommands = new Map();
 
-        if (!categoryCommands.length) {
+        for (const cmd of categorizedCommands) {
+            const commandCategory = getMenuCategory(cmd);
+            if (!commandCategory.startsWith(`${categoryPath}/`)) continue;
+
+            const relativeParts = commandCategory
+                .slice(categoryPath.length + 1)
+                .split("/");
+            const subcategoryPath = `${categoryPath}/${relativeParts[0]}`;
+            if (!subcategoryCommands.has(subcategoryPath)) {
+                subcategoryCommands.set(subcategoryPath, []);
+            }
+            subcategoryCommands.get(subcategoryPath).push(cmd);
+        }
+
+        if (!categoryCommands.length && !subcategoryCommands.size) {
             return await message.reply({ text: "❌ Categoria não encontrada." });
         }
 
         let text = `${headerText}\n\n`;
-        const pages = paginate(categoryCommands, 10);
+        const appendCommandSections = (sectionTitle, commandsToFormat) => {
+            const pages = paginate(commandsToFormat, 10);
+            pages.forEach((page, pageIndex) => {
+                const pageTitle = pages.length > 1
+                    ? `📂 ${sectionTitle} (${pageIndex + 1}/${pages.length})`
+                    : `📂 ${sectionTitle}`;
+                text += formatSection(
+                    pageTitle,
+                    page.flatMap(formatCommand),
+                    ""
+                );
+            });
+        };
 
-        pages.forEach((page, pageIndex) => {
-            const title = pages.length > 1
-                ? `📂 ${category} (${pageIndex + 1}/${pages.length})`
-                : `📂 ${category}`;
-            text += formatSection(title, page);
+        Array.from(subcategoryCommands.keys()).sort().forEach((subcategory) => {
+            appendCommandSections(subcategory, subcategoryCommands.get(subcategory));
         });
+
+        if (categoryCommands.length) {
+            appendCommandSections(categoryPath, categoryCommands);
+        }
         text += "===================";
 
         await message.reply({ text });
-
     }
-
 };

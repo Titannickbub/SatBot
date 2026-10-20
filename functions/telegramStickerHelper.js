@@ -1,4 +1,5 @@
 const { Input } = require("telegraf");
+const config = require("./config");
 
 function generatePackName(centralId, botUsername) {
     const cleanCentralId = String(centralId || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 10).toLowerCase();
@@ -6,20 +7,24 @@ function generatePackName(centralId, botUsername) {
     return `sat_${cleanCentralId}_by_${cleanBotUser}`;
 }
 
-async function createOrAddStickerToPack(bot, telegramUserId, packName, packTitle, stickerBuffer) {
+async function createOrAddStickerToPack(bot, telegramUserId, packName, packTitle, stickerBuffer, format = "static") {
     if (!bot || !bot.telegram) {
         throw new Error("Instância do Telegram Bot não encontrada.");
     }
+    if (!["static", "video"].includes(format)) {
+        throw new Error(`Formato de figurinha do Telegram inválido: ${format}`);
+    }
 
     const userIdNum = Number(telegramUserId);
+    const filename = format === "video" ? "sticker.webm" : "sticker.webp";
 
     // 1. Upload do arquivo de figurinha para o Telegram para obter o file_id do arquivo
     let uploadedFile = null;
     try {
         uploadedFile = await bot.telegram.uploadStickerFile(
             userIdNum,
-            Input.fromBuffer(stickerBuffer, "sticker.png"),
-            "static"
+            Input.fromBuffer(stickerBuffer, filename),
+            format
         );
     } catch (uploadErr) {
         console.error("[TELEGRAM_STICKER_UPLOAD] Falha no uploadStickerFile:", uploadErr.message || uploadErr);
@@ -34,7 +39,7 @@ async function createOrAddStickerToPack(bot, telegramUserId, packName, packTitle
     const inputSticker = {
         sticker: tempFileId,
         emoji_list: ["📌"],
-        format: "static"
+        format
     };
 
     let isCreated = false;
@@ -54,7 +59,7 @@ async function createOrAddStickerToPack(bot, telegramUserId, packName, packTitle
             await bot.telegram.callApi("createNewStickerSet", {
                 user_id: userIdNum,
                 name: packName,
-                title: packTitle || "Pacote Satela",
+                title: packTitle || `Pacote ${config.getBotName()}`,
                 stickers: JSON.stringify([inputSticker]),
                 sticker_type: "regular"
             });

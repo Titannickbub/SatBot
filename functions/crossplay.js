@@ -40,7 +40,7 @@ function getAudioSizeLimit(platform) {
 class CrossplayStore {
   constructor() {
     this.filePath = null;
-    this.data = { centralIdentities: {}, crossplayGroups: {}, linkCodes: {}, recentHistory: {} };
+    this.data = { crossplayGroups: {}, linkCodes: {}, recentHistory: {} };
     this.dirty = false;
     this.saving = false;
     this._autoSaveHandle = null;
@@ -51,14 +51,18 @@ class CrossplayStore {
     try {
       const txt = await fs.readFile(filePath, 'utf8');
       this.data = JSON.parse(txt || '{}');
-      if (!this.data.centralIdentities) this.data.centralIdentities = {};
       if (!this.data.crossplayGroups) this.data.crossplayGroups = {};
       if (!this.data.linkCodes) this.data.linkCodes = {};
       if (!this.data.recentHistory) this.data.recentHistory = {};
+      if (Object.prototype.hasOwnProperty.call(this.data, 'centralIdentities')) {
+        delete this.data.centralIdentities;
+        this._markDirty();
+      }
       await this.cleanupDuplicatesAndOrphans();
+      await this.saveNow();
     } catch (err) {
       if (err.code !== 'ENOENT') throw err;
-      this.data = { centralIdentities: {}, crossplayGroups: {}, linkCodes: {}, recentHistory: {} };
+      this.data = { crossplayGroups: {}, linkCodes: {}, recentHistory: {} };
       await this._ensureDirForFile();
       await this._atomicWrite(JSON.stringify(this.data, null, 2));
     }
@@ -156,25 +160,6 @@ class CrossplayStore {
 
   stopAutoSave() { if (!this._autoSaveHandle) return; clearInterval(this._autoSaveHandle); this._autoSaveHandle = null; }
 
-  async ensureCentral(centralId, data = {}) {
-    const existing = this.data.centralIdentities[centralId] || null;
-    if (existing) {
-      existing.name = data.name || existing.name || null;
-      existing.updatedAt = this._nowISO();
-      this._markDirty();
-      return existing;
-    }
-    const central = {
-      id: centralId,
-      name: data.name || null,
-      createdAt: this._nowISO(),
-      updatedAt: this._nowISO()
-    };
-    this.data.centralIdentities[centralId] = central;
-    this._markDirty();
-    return central;
-  }
-
   async createLinkCode(platformOrCentralId, chatIdOrOptions, options = {}) {
     let platform = null;
     let chatId = null;
@@ -189,7 +174,6 @@ class CrossplayStore {
     }
 
     const { centralId = null, centralName = null, threadId = null, ttlMinutes = 5 } = opts;
-    const central = centralId ? await this.ensureCentral(centralId, { name: centralName || null }) : null;
     const code = this._genCode(8);
     const expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
 
@@ -202,8 +186,8 @@ class CrossplayStore {
       if (existingGroup) {
         groupId = existingGroup.id;
         group = this.data.crossplayGroups[groupId];
-        if (central?.id) group.centralId = central.id;
-        if (central?.name || centralName) group.displayName = central?.name || centralName;
+        if (centralId) group.centralId = centralId;
+        if (centralName) group.displayName = centralName;
         group.updatedAt = this._nowISO();
       }
     }
@@ -213,8 +197,8 @@ class CrossplayStore {
       groupId = this._genId();
       group = {
         id: groupId,
-        centralId: central?.id || null,
-        displayName: central?.name || centralName || 'Conta central',
+        centralId: centralId || null,
+        displayName: centralName || 'Conta central',
         createdAt: this._nowISO(),
         updatedAt: this._nowISO(),
         chats: []
@@ -237,7 +221,7 @@ class CrossplayStore {
     this.data.linkCodes[code] = {
       code,
       groupId,
-      centralId: central?.id || null,
+      centralId: centralId || null,
       threadId: threadId ? String(threadId) : null,
       expiresAt,
       createdAt: this._nowISO(),
@@ -257,7 +241,7 @@ class CrossplayStore {
       await this.saveNow();
       throw new Error('code-expired');
     }
-    const central = centralId ? await this.ensureCentral(centralId, { name: centralName || null }) : (entry.centralId ? await this.ensureCentral(entry.centralId) : null);
+    const resolvedCentralId = centralId || entry.centralId || null;
     const group = this.data.crossplayGroups[entry.groupId];
     if (!group) throw new Error('group-not-found');
     const normalizedChatId = String(chatId);
@@ -268,7 +252,7 @@ class CrossplayStore {
       entry.usedBy.push({ platform, chatId: normalizedChatId, threadId: normalizedThreadId, linkedAt: this._nowISO(), reused: true });
       this._markDirty();
       await this.saveNow();
-      return { ...existing, groupId: group.id, centralId: central?.id || entry.centralId, reused: true };
+      return { ...existing, groupId: group.id, centralId: resolvedCentralId, reused: true };
     }
 
     // Desvincula o chat de qualquer OUTRO grupo onde possa ter estado anteriormente
@@ -285,8 +269,8 @@ class CrossplayStore {
       receiveMedia: ['text', 'image', 'video', 'audio', 'document', 'sticker'],
       ignoreMedia: []
     });
-    targetGroup.centralId = central?.id || targetGroup.centralId || entry.centralId || null;
-    targetGroup.displayName = central?.name || targetGroup.displayName || centralName || 'Conta central';
+    targetGroup.centralId = resolvedCentralId || targetGroup.centralId || null;
+    targetGroup.displayName = centralName || targetGroup.displayName || 'Conta central';
     targetGroup.updatedAt = this._nowISO();
     entry.usedBy = Array.isArray(entry.usedBy) ? entry.usedBy : [];
     entry.usedBy.push({ platform, chatId: normalizedChatId, threadId: normalizedThreadId, linkedAt: this._nowISO() });

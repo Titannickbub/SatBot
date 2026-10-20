@@ -6,6 +6,7 @@ const dotenv = require("dotenv");
 
 const envPath = path.join(__dirname, "..", "settings", ".env");
 const whatsappAuthDir = path.join(__dirname, "..", "settings", "whatsapp-auth");
+const whatsappLoginRequestPath = path.join(__dirname, "..", "settings", "whatsapp-login-request.json");
 
 function ensureEnvFile() {
     if (!fs.existsSync(envPath)) {
@@ -27,6 +28,10 @@ function getEnvValue(key) {
     const values = loadEnvValues();
     const value = values[key] || process.env[key];
     return value ? String(value) : "";
+}
+
+function normalizeWhatsAppPhone(value) {
+    return String(value || "").replace(/\D/g, "");
 }
 
 function setEnvValue(key, value) {
@@ -196,6 +201,20 @@ async function askQuestion(question) {
     }
 }
 
+async function promptForWhatsAppLogin() {
+    console.log("[AUTH] Escolha o método de login do WhatsApp:");
+    console.log("  1. QR Code no terminal");
+    console.log("  2. Código de pareamento por número");
+    const method = await askQuestion("Digite o número do método: ");
+    if (method === "2") {
+        const number = normalizeWhatsAppPhone(
+            await askQuestion("Número com DDI (aceita espaços e símbolos): ")
+        );
+        return number ? { mode: "pairing", number } : null;
+    }
+    return { mode: "qr", number: null };
+}
+
 async function promptForInitialPlatform() {
     const enabledPlatforms = getEnabledPlatforms();
     if (!enabledPlatforms.length) {
@@ -227,6 +246,36 @@ async function promptForPlatformToken(platform) {
     return askQuestion(`${label} token: `);
 }
 
+function requestWhatsAppLogin(mode, number, target) {
+    const request = {
+        mode,
+        number: number ? normalizeWhatsAppPhone(number) : null,
+        target: target ? {
+            platform: target.platform,
+            chatId: String(target.chatId),
+            threadId: target.threadId || null
+        } : null
+    };
+    fs.writeFileSync(whatsappLoginRequestPath, `${JSON.stringify(request, null, 2)}\n`, "utf8");
+    return request;
+}
+
+function consumeWhatsAppLoginRequest() {
+    if (!fs.existsSync(whatsappLoginRequestPath)) return null;
+    try {
+        const request = JSON.parse(fs.readFileSync(whatsappLoginRequestPath, "utf8"));
+        fs.unlinkSync(whatsappLoginRequestPath);
+        return request;
+    } catch (error) {
+        console.error("[AUTH] Falha ao ler solicitação de login do WhatsApp:", error);
+        return null;
+    }
+}
+
+function resetWhatsAppAuth() {
+    return cleanupWhatsAppAuthFolder(whatsappAuthDir, { all: true });
+}
+
 async function handleInitialBootstrap() {
     const loggedPlatforms = getLoggedPlatforms();
     if (loggedPlatforms.length > 0) {
@@ -239,6 +288,8 @@ async function handleInitialBootstrap() {
     }
 
     if (selectedPlatform === "whatsapp") {
+        const login = process.stdin.isTTY ? await promptForWhatsAppLogin() : { mode: "qr", number: null };
+        if (login) global.__whatsappAuthMode = login;
         return { status: "bootstrap", platform: "whatsapp" };
     }
 
@@ -251,10 +302,125 @@ async function handleInitialBootstrap() {
     return { status: "bootstrap", platform: selectedPlatform };
 }
 
+/**
+ * Realiza a limpeza de arquivos desnecessários ou obsoletos na pasta de autenticação do WhatsApp.
+ * @param {string} authFolderPath Caminho da pasta de autenticação
+ * @param {object} [options] Opções de limpeza
+ * @param {boolean} [options.all] Se verdadeiro, remove todos os arquivos da pasta (ex: logout)
+ * @param {boolean} [options.onQR] Se verdadeiro, limpa arquivos órfãos de sessões anteriores ao gerar novo QR code
+ * @param {number} [options.keepRecentPreKeys=50] Quantidade de pre-keys mais recentes a manter
+ */
+function cleanupWhatsAppAuthFolder(authFolderPath, options = {}) {
+    const resolvedPath = path.resolve(authFolderPath);
+    if (!fs.existsSync(resolvedPath)) return { deletedCount: 0, totalRemaining: 0 };
+
+    let deletedCount = 0;
+    const entries = fs.readdirSync(resolvedPath);
+
+    // Se for limpeza total (ex: logout)
+    if (options.all) {
+        for (const entry of entries) {
+            if (entry === "." || entry === "..") continue;
+            const fullPath = path.join(resolvedPath, entry);
+            try {
+                if (fs.statSync(fullPath).isDirectory()) {
+                    fs.rmSync(fullPath, { recursive: true, force: true });
+                } else {
+                    fs.unlinkSync(fullPath);
+                }
+                deletedCount++;
+            } catch (err) {
+                console.warn(`[AUTH_CLEANUP] Erro ao deletar ${entry}:`, err.message);
+            }
+        }
+        return { deletedCount, totalRemaining: 0 };
+    }
+
+    // 1. Limpar subpastas aninhadas duplicadas e arquivos temporários/vazios
+    for (const entry of entries) {
+        if (entry === "." || entry === "..") continue;
+        const fullPath = path.join(resolvedPath, entry);
+        try {
+            const stat = fs.statSync(fullPath);
+            if (stat.isDirectory()) {
+                fs.rmSync(fullPath, { recursive: true, force: true });
+                deletedCount++;
+                continue;
+            }
+
+            if (stat.size === 0 || entry.endsWith(".tmp") || entry.endsWith(".bak")) {
+                fs.unlinkSync(fullPath);
+                deletedCount++;
+                continue;
+            }
+        } catch {
+            // ignore
+        }
+    }
+
+    // 2. Se for na geração de novo QR Code: limpa resíduos de sessões antigas que falharam
+    if (options.onQR) {
+        const currentEntries = fs.readdirSync(resolvedPath);
+        for (const entry of currentEntries) {
+            if (entry === "creds.json") continue;
+            if (
+                entry.startsWith("pre-key-") ||
+                entry.startsWith("sender-key-") ||
+                entry.startsWith("session-") ||
+                entry.startsWith("app-state-") ||
+                entry.startsWith("identity-key-") ||
+                entry.startsWith("device-list-") ||
+                entry.startsWith("lid-mapping-") ||
+                entry.startsWith("tctoken-")
+            ) {
+                try {
+                    fs.unlinkSync(path.join(resolvedPath, entry));
+                    deletedCount++;
+                } catch {
+                    // ignore
+                }
+            }
+        }
+    } else {
+        // 3. Em sessão ativa: limpeza de pre-keys antigas acumuladas
+        const keepCount = typeof options.keepRecentPreKeys === "number" ? options.keepRecentPreKeys : 50;
+        const currentEntries = fs.readdirSync(resolvedPath);
+        const preKeyFiles = [];
+
+        for (const entry of currentEntries) {
+            const match = entry.match(/^pre-key-(\d+)\.json$/);
+            if (match) {
+                preKeyFiles.push({ name: entry, num: Number(match[1]) });
+            }
+        }
+
+        if (preKeyFiles.length > keepCount) {
+            preKeyFiles.sort((a, b) => a.num - b.num);
+            const toDelete = preKeyFiles.slice(0, preKeyFiles.length - keepCount);
+            for (const item of toDelete) {
+                try {
+                    fs.unlinkSync(path.join(resolvedPath, item.name));
+                    deletedCount++;
+                } catch {
+                    // ignore
+                }
+            }
+        }
+    }
+
+    const remaining = fs.existsSync(resolvedPath) ? fs.readdirSync(resolvedPath).length : 0;
+    if (deletedCount > 0) {
+        console.log(`[AUTH_CLEANUP] 🧹 Limpeza de credenciais concluída: ${deletedCount} arquivo(s) desnecessário(s) removido(s). Total restante: ${remaining}.`);
+    }
+
+    return { deletedCount, totalRemaining: remaining };
+}
+
 module.exports = {
     getEnabledPlatforms,
     ensureWhatsAppAuthFolder,
     inspectWhatsAppAuthState,
+    cleanupWhatsAppAuthFolder,
     isPlatformEnabled,
     isPlatformLoggedIn,
     getLoggedPlatforms,
@@ -262,5 +428,10 @@ module.exports = {
     handleInitialBootstrap,
     promptForInitialPlatform,
     promptForPlatformToken,
-    getEnvValue
+    promptForWhatsAppLogin,
+    requestWhatsAppLogin,
+    consumeWhatsAppLoginRequest,
+    resetWhatsAppAuth,
+    getEnvValue,
+    normalizeWhatsAppPhone
 };

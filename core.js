@@ -18,6 +18,84 @@ const platformRegistry = {};
 const functions = {};
 const middlewares = [];
 
+function normalizeCommandName(value) {
+    return String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLocaleLowerCase()
+        .trim();
+}
+
+function migrateLegacyDataFiles() {
+    const settingsDir = path.join(__dirname, "settings");
+    const migrations = [
+        {
+            name: "central accounts",
+            legacyPaths: [
+                path.join(__dirname, "config", "central-accounts.json"),
+                path.join(__dirname, "data", "central-accounts.json")
+            ],
+            currentPath: path.join(settingsDir, "central-accounts.json"),
+            normalize(data) {
+                return {
+                    centralAccounts: data && typeof data.centralAccounts === "object" ? data.centralAccounts : {},
+                    mergeCodes: data && typeof data.mergeCodes === "object" ? data.mergeCodes : {}
+                };
+            }
+        },
+        {
+            name: "crossplay",
+            legacyPaths: [
+                path.join(__dirname, "config", "crossplay.json"),
+                path.join(__dirname, "data", "crossplay.json")
+            ],
+            currentPath: path.join(settingsDir, "crossplay.json"),
+            normalize(data) {
+                return {
+                    crossplayGroups: data && typeof data.crossplayGroups === "object" ? data.crossplayGroups : {},
+                    linkCodes: data && typeof data.linkCodes === "object" ? data.linkCodes : {},
+                    recentHistory: data && typeof data.recentHistory === "object" ? data.recentHistory : {}
+                };
+            }
+        }
+    ];
+
+    for (const migration of migrations) {
+        const legacyPath = migration.legacyPaths.find(candidate => fs.existsSync(candidate));
+        if (!legacyPath) {
+            continue;
+        }
+
+        if (!fs.existsSync(migration.currentPath)) {
+            const legacyData = JSON.parse(fs.readFileSync(legacyPath, "utf8") || "{}");
+            const normalizedData = migration.normalize(legacyData);
+            fs.mkdirSync(settingsDir, { recursive: true });
+
+            const temporaryPath = `${migration.currentPath}.tmp`;
+            fs.writeFileSync(temporaryPath, JSON.stringify(normalizedData, null, 2), "utf8");
+            fs.renameSync(temporaryPath, migration.currentPath);
+            console.log(`${_ts()} ✅[CORE] Dados de ${migration.name} migrados para settings/.`);
+        }
+
+        const convertedData = JSON.parse(fs.readFileSync(migration.currentPath, "utf8") || "{}");
+        const normalizedData = migration.normalize(convertedData);
+        if (JSON.stringify(convertedData) !== JSON.stringify(normalizedData)) {
+            throw new Error(`Migração de ${migration.name} gerou um arquivo inválido.`);
+        }
+
+        fs.unlinkSync(legacyPath);
+        console.log(`${_ts()} ✅[CORE] Arquivo legado de ${migration.name} removido com segurança.`);
+    }
+
+    for (const legacyDirName of ["data", "config"]) {
+        const legacyDir = path.join(__dirname, legacyDirName);
+        if (fs.existsSync(legacyDir) && fs.readdirSync(legacyDir).length === 0) {
+            fs.rmdirSync(legacyDir);
+            console.log(`${_ts()} ✅[CORE] Pasta ${legacyDirName} antiga removida.`);
+        }
+    }
+}
+
 const status = {
     startedAt: null
 };
@@ -129,7 +207,16 @@ function getCommandFiles(dir) {
 
         const fullPath = path.join(dir, file);
 
-        const stat = fs.statSync(fullPath);
+        let stat;
+        try {
+            stat = fs.statSync(fullPath);
+        } catch (error) {
+            if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
+            console.warn(
+                `${_ts()} ⚠️[CORE] Caminho listado, mas indisponível; ignorando: ${fullPath}`
+            );
+            continue;
+        }
 
         if (stat.isDirectory()) {
 
@@ -203,7 +290,7 @@ function loadCommands() {
                     : null
             );
 
-        const commandKey = command.name.toLowerCase();
+        const commandKey = normalizeCommandName(command.name);
         const commandEntry = {
             ...command,
             category,
@@ -214,7 +301,7 @@ function loadCommands() {
         if (Array.isArray(command.aliases)) {
             for (const alias of command.aliases) {
                 if (!alias || typeof alias !== 'string') continue;
-                const aliasKey = alias.toLowerCase();
+                const aliasKey = normalizeCommandName(alias);
                 if (commands[aliasKey] && commands[aliasKey] !== commandEntry) {
                     console.warn(`${_ts()} ❌[CORE] Alias de comando já em uso: ${aliasKey}`);
                     continue;
@@ -327,9 +414,15 @@ console.log(
         return;
     }
 
-    const text = message.text || "";
     message.prefix =
         config.prefix || "!";
+    const prefix = message.prefix;
+    const originalText = message.text || "";
+    const text = originalText.startsWith(prefix)
+        ? `${prefix}${originalText.slice(prefix.length).trimStart()}`
+        : originalText;
+    message.text = text;
+    message.isCommand = text.startsWith(prefix);
     
     message.functions =
     functions;
@@ -340,19 +433,18 @@ console.log(
     try {
         const store = functions.centralAccounts || global.centralAccounts;
         if (store && typeof store.getOrCreateByPlatform === 'function') {
-            store.getOrCreateByPlatform(message.platform, message.userId, { username: message.username, displayName: message.displayName || message.name }).then(async (central) => {
-                const crossplayStore = functions.crossplay || global.crossplayStore;
-                if (crossplayStore && typeof crossplayStore.ensureCentral === 'function') {
-                    await crossplayStore.ensureCentral(central.id, { name: central.name }).catch(err => {
-                        console.error(`${_ts()} ❌[CORE] Crossplay ensureCentral error:`, err);
-                    });
-                }
-            }).catch(err => {
-                console.error(`${_ts()} ❌[CORE] CentralAccounts error:`, err);
-            });
+            const centralAccount = await store.getOrCreateByPlatform(
+                message.platform,
+                message.userId,
+                { username: message.username, displayName: message.displayName || message.name }
+            );
+            message.centralAccountId = centralAccount?.id || null;
+            if (!message.centralAccountId) {
+                console.error(`${_ts()} ❌[CORE] Não foi possível resolver a conta central de ${message.platform}:${message.userId}.`);
+            }
         }
     } catch (err) {
-        console.error(`${_ts()} ❌[CORE] Erro ao garantir Conta Central:`, err);
+        console.error(`${_ts()} ❌[CORE] CentralAccounts error:`, err);
     }
 
     message.sender = message.sender || { isAdmin: false, canManageMessages: false };
@@ -392,9 +484,7 @@ const parts = text
     .trim()
     .split(/\s+/);
 
-const commandName = parts[0]
-    .replace(message.prefix, "")
-    .toLowerCase();
+const commandName = normalizeCommandName(parts[0].slice(message.prefix.length));
     
     message.command = commandName;
 
@@ -463,9 +553,41 @@ message.core = {
 };
 
     
-    const command = commands[commandName];
+    let command = commands[commandName];
 
     if (!command) {
+        const candidates = new Set(Object.values(commands));
+        for (const candidate of candidates) {
+            if (typeof candidate.resolveAlias !== "function") continue;
+
+            let resolvedAlias;
+            try {
+                resolvedAlias = candidate.resolveAlias(commandName, message);
+            } catch (err) {
+                console.error(`${_ts()} ❌[CORE] Falha ao resolver alias dinâmico '${commandName}':`, err);
+                await message.reply({
+                    text: "❌ Não consegui carregar os atalhos desse comando agora."
+                });
+                return;
+            }
+
+            if (!resolvedAlias) continue;
+
+            command = candidate;
+            message.args = [resolvedAlias, ...message.args];
+            break;
+        }
+
+        if (!command) return;
+    }
+
+    const commandCategory = String(command.category || "").toLowerCase();
+    if ((commandCategory === "economia" || commandCategory.startsWith("economia/"))
+        && typeof functions.economy?.isEnabled === "function"
+        && !functions.economy.isEnabled(message)) {
+        await message.reply({
+            text: `❌ A economia está desativada neste grupo/servidor.\nUm administrador deve usar ${message.prefix}economia ativar para liberá-la.`
+        });
         return;
     }
 
@@ -491,7 +613,7 @@ message.core = {
         console.error(`${_ts()} ❌[CORE] Erro ao executar comando:`, err);
 
         await message.reply({
-            text: "❌ Erro interno."
+            text: "❌ Não consegui concluir esse comando agora. Tente novamente em instantes."
         });
 
     }
@@ -503,10 +625,11 @@ async function start() {
 
     loadMiddlewares();
     loadFunctions();
+    migrateLegacyDataFiles();
 
     // Inicializa o módulo de contas centralizadas definido em `functions/centralAccounts.js` (se presente)
     if (functions.centralAccounts && typeof functions.centralAccounts.init === 'function') {
-        const dataFile = path.join(__dirname, 'data', 'central-accounts.json');
+        const dataFile = path.join(__dirname, 'settings', 'central-accounts.json');
         try {
             await functions.centralAccounts.init(dataFile);
             functions.centralAccounts.startAutoSave(300_000); // 5 minutos
@@ -529,7 +652,7 @@ async function start() {
     }
 
     if (functions.crossplay && typeof functions.crossplay.init === 'function') {
-        const dataFile = path.join(__dirname, 'data', 'crossplay.json');
+        const dataFile = path.join(__dirname, 'settings', 'crossplay.json');
         try {
             const crossplayStore = functions.crossplay.crossplayStore || functions.crossplay;
             await crossplayStore.init(dataFile);
@@ -544,6 +667,16 @@ async function start() {
     if (functions.config) {
         functions.config.syncPlatforms();
     }
+
+    const config = functions.config && typeof functions.config.getConfig === "function"
+        ? functions.config.getConfig()
+        : {};
+    const ignoreInitialSeconds = typeof config.ignoreInitialSeconds === "number"
+        ? Math.max(0, config.ignoreInitialSeconds)
+        : 30;
+    setTimeout(() => {
+        console.log(`${_ts()} ✅[CORE] Restrição de inicialização finalizada. Mensagens serão processadas normalmente.`);
+    }, ignoreInitialSeconds * 1000);
 
     loadCommands();
     loadPlatforms();
@@ -587,7 +720,10 @@ async function start() {
         }
     }
 
-    console.log(`${_ts()} 🔛[CORE] Satella online.`);
+    const configuredBotName = typeof functions.config?.getBotName === "function"
+        ? functions.config.getBotName()
+        : "Sat Bot";
+    console.log(`${_ts()} 🔛[CORE] ${configuredBotName} online.`);
 
     // Inicia o motor de agendamentos em background
     try {
@@ -621,6 +757,7 @@ module.exports = {
     status,
 
     getCommands,
+    normalizeCommandName,
     getFunctions,
     handleMessage
 

@@ -1,0 +1,124 @@
+{
+    "responses": [
+        {
+            "id": "global_bom_dia",
+            "trigger": "bom dia",
+            "matchType": "exact",
+            "action": "reply",
+            "content": "{saudacao}, {user}! {emoji_saudacao} (Agora são {hora})",
+            "cooldown": 5
+        },
+        {
+            "id": "global_boa_tarde",
+            "trigger": "boa tarde",
+            "matchType": "exact",
+            "action": "reply",
+            "content": "{saudacao}, {user}! {emoji_saudacao} (Agora são {hora})",
+            "cooldown": 5
+        },
+        {
+            "id": "global_boa_noite",
+            "trigger": "boa noite",
+            "matchType": "exact",
+            "action": "reply",
+            "content": "{saudacao}, {user}! {emoji_saudacao} (Agora são {hora})",
+            "cooldown": 5
+        },
+        {
+            "id": "global_boa_madrugada",
+            "trigger": "boa madrugada",
+            "matchType": "exact",
+            "action": "reply",
+            "content": "{saudacao}, {user}! {emoji_saudacao} (Agora são {hora})",
+            "cooldown": 5
+        },
+        {
+            "id": "global_salve",
+            "trigger": "salve",
+            "matchType": "exact",
+            "action": "reply",
+            "content": "Salve, {user}! {saudacao}! Tmj 👊",
+            "cooldown": 5
+        },
+        {
+            "id": "global_oi",
+            "trigger": "oi",
+            "matchType": "exact",
+            "action": "reply",
+            "content": "Olá, {user}! {saudacao}! {emoji_saudacao} Tudo bem com você? (Agora são {hora})",
+            "cooldown": 5
+        },
+        {
+            "id": "global_ola",
+            "trigger": "ola",
+            "matchType": "exact",
+            "action": "reply",
+            "content": "Olá, {user}! {saudacao}! {emoji_saudacao} (Agora são {hora})",
+            "cooldown": 5
+        },
+        {
+            "id": "global_olá",
+            "trigger": "olá",
+            "matchType": "exact",
+            "action": "reply",
+            "content": "Olá, {user}! {saudacao}! {emoji_saudacao} (Agora são {hora})",
+            "cooldown": 5
+        },
+        {
+            "id": "global_que_horas",
+            "trigger": "que horas sao",
+            "matchType": "exact",
+            "action": "reply",
+            "content": "🕒 Olá, {user}! Agora são exatamente {hora} de {dia_semana}, {data}.",
+            "cooldown": 5
+        },
+        {
+            "id": "global_que_horas_acento",
+            "trigger": "que horas são",
+            "matchType": "exact",
+            "action": "reply",
+            "content": "🕒 Olá, {user}! Agora são exatamente {hora} de {dia_semana}, {data}.",
+            "cooldown": 5
+        },
+        {
+            "id": "global_certeza",
+            "trigger": "certeza",
+            "matchType": "contains",
+            "action": "react",
+            "content": "🤔",
+            "cooldown": 3
+        },
+        {
+            "id": "global_garanto",
+            "trigger": "garanto",
+            "matchType": "contains",
+            "action": "react",
+            "content": "🤔",
+            "cooldown": 3
+        },
+        {
+            "id": "global_to_falando",
+            "trigger": "to falando",
+            "matchType": "contains",
+            "action": "react",
+            "content": "🤔",
+            "cooldown": 3
+        },
+        {
+            "id": "global_e_vdd",
+            "trigger": "e vdd",
+            "matchType": "contains",
+            "action": "react",
+            "content": "🤔",
+            "cooldown": 3
+        },
+        {
+            "id": "global_e_verdade",
+            "trigger": "e verdade",
+            "matchType": "contains",
+            "action": "react",
+            "content": "🤔",
+            "cooldown": 3
+        }
+    ]
+}

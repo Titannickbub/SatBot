@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const core = require("../core");
+const { getCommandPlatformIndicator } = require("../functions/commandPlatformSupport");
 
 /*
 ============================================================
@@ -21,7 +22,7 @@ Este comando utiliza:
     require("../core")
 
 para acessar os comandos
-carregados pela Satella.
+carregados pelo bot.
 
 O caminho acima foi definido
 considerando que este arquivo
@@ -56,16 +57,15 @@ O comando consulta:
 
 para obter todos os comandos
 carregados automaticamente
-pela Satella.
+pelo bot.
 
 Com isso ele consegue exibir:
 
-- Nome
+- Plataforma atual e disponibilidade
+- Modelos de chaveamento
+- Acessos disponíveis (uso, aliases e exemplos)
 - Descrição
-- Categoria
 - Arquivo
-- Uso
-- Exemplos
 
 sem precisar conhecer
 previamente quais comandos
@@ -81,6 +81,7 @@ os seguintes campos opcionais:
     description
     usage
     examples
+    platformSupport
 
 Exemplo:
 
@@ -96,7 +97,13 @@ module.exports = {
 
     examples: [
         "{prefix}ping"
-    ]
+    ],
+
+    platformSupport: {
+        whatsapp: "full",
+        telegram: "partial",
+        discord: "none"
+    }
 
 };
 
@@ -114,6 +121,12 @@ Caso os campos não existam,
 o comando info exibirá apenas
 as informações disponíveis.
 
+`platformSupport` é opcional e aceita
+os estados `full`, `partial` e `none`
+para whatsapp, telegram e discord.
+Quando não existe, o comando é
+considerado universal.
+
 ============================================================
 
 INFORMAÇÕES DE CATEGORIAS
@@ -129,7 +142,7 @@ Exemplo:
 Conteúdo:
 
     Comandos internos
-    da Satella.
+    do bot.
 
 O comando info lerá este
 arquivo automaticamente.
@@ -167,15 +180,24 @@ module.exports = {
 
     name: "info",
 
-    description:
-        "Exibe informações sobre comandos e categorias.",
+    description: `ℹ️ Exibe informações e tutoriais sobre comandos e categorias.
+
+📌 Uso:
+{prefix}info <comando>
+{prefix}info <categoria>
+
+💡 Exemplos:
+{prefix}info menu
+{prefix}info clima
+{prefix}info adm`,
 
     usage:
         `{prefix}info <comando|categoria>`,
 
     examples: [
         "{prefix}info menu",
-        "{prefix}info system"
+        "{prefix}info clima",
+        "{prefix}info adm"
     ],
 
     async execute(message) {
@@ -186,14 +208,14 @@ module.exports = {
             return mostrarAjuda(message);
         }
 
-        const nome = args[0].toLowerCase();
+        const nome = core.normalizeCommandName(args[0]);
         const commands = core.getCommands();
 
         const command = commands[nome];
         const seen = new Set();
         const categoryCommands = Object.values(commands)
             .filter(cmd => {
-                if (!cmd.category || cmd.category.toLowerCase() !== nome) return false;
+                if (!cmd.category || categoryRoot(cmd.category) !== nome) return false;
                 const signature = `${cmd.name || ''}|${cmd.category || ''}|${cmd.file || ''}`;
                 if (seen.has(signature)) return false;
                 seen.add(signature);
@@ -219,8 +241,11 @@ module.exports = {
 };
 
 function formatCommandText(message, cmd) {
-    return cmd.usage
-        ? cmd.usage.replaceAll("{prefix}", message.prefix)
+    const commandUsage = typeof cmd.getUsage === "function"
+        ? cmd.getUsage()
+        : cmd.usage;
+    return commandUsage
+        ? commandUsage.replaceAll("{prefix}", message.prefix)
         : `${message.prefix}${cmd.name}`;
 }
 
@@ -228,31 +253,57 @@ function sectionText(title, body) {
     return `===================\n${title}\n\n${body}`;
 }
 
+function categoryRoot(category) {
+    return core.normalizeCommandName(String(category || "").split("/", 1)[0]);
+}
+
 function infoComandoText(message, command) {
-    if (typeof command.info === "function") {
-        return command.info(message);
-    }
-    if (typeof command.getHelp === "function") {
-        return command.getHelp(message);
+    const platformStatus = getCommandPlatformIndicator(command, message.platform);
+    const platformLabel = platformStatus.label.charAt(0).toUpperCase() +
+        platformStatus.label.slice(1);
+    const accesses = getCommandAccesses(message, command);
+    const description = typeof command.description === "string" && command.description.trim()
+        ? command.description.replaceAll("{prefix}", message.prefix)
+        : (command.description || "Esse comando não possui descrição.");
+
+    const body = [
+        `🔗 Plataforma Atual: ${message.platform}\n${platformStatus.icon} ${platformLabel}`,
+        [
+            "🗝️ Modelos de chaveamento:",
+            "🔤 [] = Qualquer texto",
+            "🔢 {} = Qualquer número",
+            "📄 <> = Itens específicos",
+            "👤 @ = Marcar usuário ou mensagem do usuário",
+            "📨 # = Marcar mensagem, cargo ou chat"
+        ].join("\n"),
+        `🚪 Acessos disponíveis:\n${accesses.map(access => `🔶 ${access}`).join("\n")}`,
+        `ℹ️ Descrição estática:\n${description}`
+    ];
+
+    body.push(`🗂️ /commands/${command.file}`);
+
+    return sectionText(`📄 ${command.name}`, body.join("\n\n"));
+}
+
+function getCommandAccesses(message, command) {
+    const commandUsage = typeof command.getUsage === "function"
+        ? command.getUsage()
+        : command.usage;
+    const accesses = typeof commandUsage === "string" && commandUsage
+        ? commandUsage.split("\n")
+        : [`${message.prefix}${command.name}`];
+
+    if (Array.isArray(command.aliases)) {
+        for (const alias of command.aliases) {
+            if (typeof alias === "string" && alias.trim()) {
+                accesses.push(`${message.prefix}${alias}`);
+            }
+        }
     }
 
-    let body =
-        `📝 Descrição:\n${command.description || "Esse comando não possui descrição."}\n\n` +
-        `📂 Categoria:\n${command.category || "Raiz"}\n\n` +
-        `📁 Arquivo:\n/commands/${command.file}`;
-
-    if (command.usage) {
-        body += `\n\n⚙️ Uso:\n${command.usage.replaceAll("{prefix}", message.prefix)}`;
-    }
-
-    if (command.examples?.length) {
-        body += `\n\n📌 Exemplos:\n`;
-        body += command.examples
-            .map((ex) => `🔶 ${ex.replaceAll("{prefix}", message.prefix)}`)
-            .join("\n");
-    }
-
-    return sectionText(`📄 ${command.name}`, body);
+    return [...new Set(accesses
+        .map(access => access.replaceAll("{prefix}", message.prefix).trim())
+        .filter(Boolean))];
 }
 
 function infoCategoriaText(message, categoria, categoryCommands) {
@@ -267,18 +318,21 @@ function infoCategoriaText(message, categoria, categoryCommands) {
     let description = "Sem descrição para esta categoria.";
 
     if (fs.existsSync(descFile)) {
-        description = fs.readFileSync(descFile, "utf8").trim();
+        description = fs.readFileSync(descFile, "utf8").trim().replaceAll("{prefix}", message.prefix);
     }
 
     const commandLines = categoryCommands
-        .map((cmd) => `🔶 ${formatCommandText(message, cmd)}`)
+        .map((cmd) => {
+            const indicator = getCommandPlatformIndicator(cmd, message.platform);
+            return `${indicator.icon} ${formatCommandText(message, cmd)}`;
+        })
         .join("\n");
 
     const body =
         `📝 Descrição:\n${description}\n\n` +
         `📜 Comandos:\n${commandLines}`;
 
-    return sectionText(`📂 ${categoria}`, body);
+    return sectionText(`📂 ${categoryRoot(categoria)}`, body);
 }
 
 // ===================== AJUDA =====================
@@ -301,5 +355,3 @@ ${p}info system
 📌 Use ${p}menu para ver tudo`
     });
 }
-
-

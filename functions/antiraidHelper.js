@@ -108,7 +108,11 @@ function readAntiRaid(settingsObj) {
         applyToTopics: anti.applyToTopics !== false,
         serverOnly: anti.serverOnly !== false,
         communityBypass: anti.communityBypass !== false,
-        groupOnly: anti.groupOnly !== false
+        groupOnly: anti.groupOnly !== false,
+        userWhitelist: Array.isArray(anti.userWhitelist) ? anti.userWhitelist : [],
+        userBlacklist: Array.isArray(anti.userBlacklist) ? anti.userBlacklist : [],
+        roleWhitelist: Array.isArray(anti.roleWhitelist) ? anti.roleWhitelist : [],
+        roleBlacklist: Array.isArray(anti.roleBlacklist) ? anti.roleBlacklist : []
     };
 }
 
@@ -123,7 +127,22 @@ function resolveAntiRaidConfig(message) {
 
     if (!active.length) return null;
     const winner = active[active.length - 1];
-    return { level: winner.level, config: winner.config };
+
+    const mergedUserWhitelist = [...new Set(active.flatMap(({ config }) => config.userWhitelist || []))];
+    const mergedUserBlacklist = [...new Set(active.flatMap(({ config }) => config.userBlacklist || []))];
+    const mergedRoleWhitelist = [...new Set(active.flatMap(({ config }) => config.roleWhitelist || []))];
+    const mergedRoleBlacklist = [...new Set(active.flatMap(({ config }) => config.roleBlacklist || []))];
+
+    return {
+        level: winner.level,
+        config: {
+            ...winner.config,
+            userWhitelist: mergedUserWhitelist,
+            userBlacklist: mergedUserBlacklist,
+            roleWhitelist: mergedRoleWhitelist,
+            roleBlacklist: mergedRoleBlacklist
+        }
+    };
 }
 
 function buildAntiRaidChain(message) {

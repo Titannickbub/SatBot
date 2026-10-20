@@ -1,5 +1,6 @@
-const { isAutoDownloadEnabledForChat } = require('../functions/autodownloadHelper');
+const { isAutoDownloadEnabledForChat, getAutoDownloadSettings } = require('../functions/autodownloadHelper');
 const bronxys = require('../functions/bronxys');
+const { renderMediaBanner } = require('../functions/mediaBanner');
 
 const PLATFORM_NAMES = {
   youtube: 'YouTube',
@@ -7,7 +8,9 @@ const PLATFORM_NAMES = {
   instagram: 'Instagram',
   twitter: 'X (Twitter)',
   facebook: 'Facebook',
-  kwai: 'Kwai'
+  kwai: 'Kwai',
+  soundcloud: 'SoundCloud',
+  ifunny: 'iFunny'
 };
 
 module.exports = {
@@ -38,6 +41,7 @@ module.exports = {
     }
 
     const detected = bronxys.detectMediaLinkType(targetUrl);
+    const settings = getAutoDownloadSettings(message);
     const platformName = PLATFORM_NAMES[detected.platform?.toLowerCase()] || detected.platform || 'Mídia';
 
     // 1. Reação e Mensagem de Notificação Inicial (semelhante ao comando play)
@@ -45,14 +49,45 @@ module.exports = {
       await message.react('🔎', true).catch(() => {});
     }
 
-    const statusText = `📥 *Autodownload:* Obtendo mídia de *${platformName}*... Aguarde um momento.`;
-    if (typeof message.reply === 'function') {
-      await message.reply({ text: statusText }).catch(() => {});
-    }
+    const sendPreview = async (metadata = {}) => {
+      const statusText = metadata.title
+        ? `📥 *Autodownload:* Baixando *"${metadata.title}"*${metadata.duration ? ` (${metadata.duration})` : ''}...`
+        : `📥 *Autodownload:* Obtendo mídia de *${platformName}*... Aguarde um momento.`;
+      try {
+        if (typeof message.replyImg === 'function') {
+          const banner = await renderMediaBanner({
+            type: detected.type,
+            platform: platformName,
+            title: metadata.title || `${detected.type === 'audio' ? 'Áudio' : 'Vídeo'} do ${platformName}`,
+            author: metadata.author,
+            duration: metadata.duration,
+            thumbnail: metadata.thumb
+          });
+          await message.replyImg({
+            image: banner,
+            caption: statusText,
+            fileName: `autodownload-${detected.type}-preview.png`
+          });
+          return;
+        }
+      } catch (previewError) {
+        console.error('[AUTO-DOWNLOAD] Falha ao gerar ou enviar banner de prévia:', previewError.message || previewError);
+      }
+
+      if (typeof message.reply === 'function') {
+        try {
+          await message.reply({ text: statusText });
+        } catch (replyError) {
+          console.error('[AUTO-DOWNLOAD] Falha ao enviar status de prévia:', replyError.message || replyError);
+        }
+      }
+    };
 
     try {
       // 2. Download da Mídia
-      const result = await bronxys.autodownloadSupportedLink(targetUrl, message.platform);
+      const result = await bronxys.autodownloadSupportedLink(targetUrl, message.platform, {
+        onPreview: sendPreview
+      });
 
       if (typeof message.react === 'function') {
         await message.react('🔎', false).catch(() => {});
@@ -60,15 +95,36 @@ module.exports = {
       }
 
       const sourceLabel = message.username || message.displayName || message.name || 'Usuário';
+      const mention = message.platform === 'whatsapp'
+        ? `@${String(message.userId).split('@')[0]}`
+        : message.platform === 'discord'
+          ? `<@${message.userId}>`
+          : `@${sourceLabel}`;
       const caption = detected.type === 'audio'
-        ? `🎵 *Música do ${platformName}*\n📤 Enviado por: ${sourceLabel}`
-        : `🎬 *Vídeo do ${platformName}*\n📤 Enviado por: ${sourceLabel}`;
+        ? `🎵 *${result.title || `Música do ${platformName}`}*` +
+          (result.duration ? `\n⏱️ *Duração:* ${result.duration}` : '') +
+          (result.author ? `\n👤 *Canal:* ${result.author}` : '') +
+          `\n📤 Enviado por: ${mention}`
+        : `🎬 *Vídeo do ${platformName}*\n📤 Enviado por: ${mention}`;
+
+      if (detected.type === 'audio' && result.thumb && typeof message.replyImg === 'function') {
+        try {
+          await message.replyImg({ url: result.thumb, caption });
+        } catch (previewErr) {
+          console.error('[AUTO-DOWNLOAD] Falha ao enviar prévia do YouTube:', previewErr.message || previewErr);
+        }
+      }
 
       // 3. Envio da Mídia (Áudio ou Vídeo)
       if (detected.type === 'audio' && typeof message.replyAudio === 'function') {
-        await message.replyAudio({ audio: result.buffer, caption });
+        await message.replyAudio({
+          audio: result.buffer,
+          caption,
+          filename: result.filename,
+          mentions: [message.userId]
+        });
       } else if (typeof message.replyVideo === 'function') {
-        await message.replyVideo({ video: result.buffer, caption });
+        await message.replyVideo({ video: result.buffer, caption, mentions: [message.userId] });
       } else if (typeof message.reply === 'function') {
         await message.reply({ text: caption });
       }
@@ -76,6 +132,10 @@ module.exports = {
       if (typeof message.react === 'function') {
         await message.react('📥', false).catch(() => {});
         await message.react('✅', true).catch(() => {});
+      }
+
+      if (settings.deletelink && typeof message.delete === 'function') {
+        await message.delete(message.messageId, message.userId);
       }
 
       console.log(`[AUTO-DOWNLOAD] Link suportado processado com sucesso: ${targetUrl}`);
@@ -90,7 +150,10 @@ module.exports = {
       }
 
       let errorMessage = `❌ *Autodownload:* Não foi possível baixar a mídia de *${platformName}*.`;
-      if (err && err.message) {
+      const bronxysErrorMessage = bronxys.getUserErrorMessage(err, prefix);
+      if (bronxysErrorMessage) {
+        errorMessage += `\n${bronxysErrorMessage}`;
+      } else if (err && err.message) {
         errorMessage += `\n*Motivo:* ${err.message}`;
       }
 

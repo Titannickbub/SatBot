@@ -4,6 +4,8 @@
 
 A versão **1.1** do Sat Bot traz uma grande evolução em usabilidade, estabilidade, criação de mídia e inteligência no tratamento de falhas externas. Esta versão introduz o comando de **criação de figurinhas (!sticker / !fsticker)** no WhatsApp, suporte avançado a **figurinhas do Vencord/FakeNitro** no Crossplay, sistema de **re-tentativa automática em 5 minutos** para instabilidades de provedores externos, preservação de **mensagens multilinhas (`\n`)**, além de uma drástica redução de poluição no console através do **silenciamento de logs desnecessários**.
 
+> **Nota de manutenção:** a implementação atual do processamento de figurinhas foi aprimorada na versão 1.2. O recorte central passou a ser explícito, imagens grandes e orientação EXIF são tratadas com segurança, e o WhatsApp recebe WebP puro por padrão para evitar incompatibilidades de renderização.
+
 ---
 
 ## 🚀 Novidades e Novas Funcionalidades
@@ -15,14 +17,14 @@ A versão **1.1** do Sat Bot traz uma grande evolução em usabilidade, estabili
   - **Esticar Total** (`!f`, `!fsticker`, `!ffig`, `!ffigurinha`): Estica a mídia até preencher totalmente o quadrado de 512x512 sem bordas.
   - **Cortar Quadrado no Centro** (`!r`, `!rsticker`, `!rfig`, `!rfigurinha`): Recorta um quadrado centralizado da mídia proporcionalmente.
 - **Metadados Personalizados de Pacote e Autor (EXIF)**:
-  - Injeção automática de metadados de pacote e autor no arquivo WebP da figurinha.
-  - Personalização pelo comando `!config sticker` (`pack`, `autor` ou `pacote | autor`).
+  - A personalização de pacote e autor permanece disponível no sistema de configuração.
+  - O envio padrão ao WhatsApp prioriza WebP puro para máxima compatibilidade; metadados customizados não são injetados automaticamente no fluxo padrão.
 - **Formas de Uso Suportadas**:
   - Enviar o comando na **legenda** da foto, GIF ou vídeo.
   - **Responder / Marcar** uma foto, GIF, vídeo ou figurinha com o comando.
 - **Arquitetura Técnica**:
   - Processamento e redimensionamento via `sharp` com modos de ajuste (`fit: contain`, `fit: fill`, `fit: cover`).
-  - Injeção binária de chunk `EXIF` em buffers WebP (`addExifToWebp`).
+  - Suporte opcional à injeção binária de chunk `EXIF` em buffers WebP (`addExifToWebp`).
   - Extração inteligente de mídias citadas através da propriedade `quoted.media` no adapter do WhatsApp (`platforms/whatsapp.js`).
   - Adição dos métodos `replySticker` e `sendSticker` no adapter para transmissão nativa via Baileys.
 

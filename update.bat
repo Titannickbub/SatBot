@@ -14,13 +14,8 @@ mkdir "%BACKUP_DIR%" >nul 2>&1
 echo =========================================
 echo [UPDATE] Iniciando atualizacao do SatBot...
 echo [UPDATE] Repositorio: %REPO_URL%
-echo [UPDATE] Preservando: data, settings
+echo [UPDATE] Preservando: settings
 echo =========================================
-
-if exist "%ROOT%\data" (
-  mkdir "%BACKUP_DIR%\data" >nul 2>&1
-  xcopy "%ROOT%\data\*" "%BACKUP_DIR%\data\" /E /I /Y /Q >nul
-)
 
 if exist "%ROOT%\settings" (
   mkdir "%BACKUP_DIR%\settings" >nul 2>&1
@@ -31,10 +26,10 @@ if exist "%ROOT%\update.sh" copy "%ROOT%\update.sh" "%TMP_DIR%\update.sh" >nul 2
 if exist "%ROOT%\update.bat" copy "%ROOT%\update.bat" "%TMP_DIR%\update.bat" >nul 2>&1
 
 for /f "delims=" %%F in ('dir /b "%ROOT%"') do (
-  if /I not "%%~nxF"=="data" if /I not "%%~nxF"=="settings" if /I not "%%~nxF"=="update.sh" if /I not "%%~nxF"=="update.bat" del /f /q "%ROOT%\%%~nxF"
+  if /I not "%%~nxF"=="settings" if /I not "%%~nxF"=="update.sh" if /I not "%%~nxF"=="update.bat" del /f /q "%ROOT%\%%~nxF"
 )
 for /d %%D in ("%ROOT%\*") do (
-  if /I not "%%~nxD"=="data" if /I not "%%~nxD"=="settings" if /I not "%%~nxD"=="update.sh" if /I not "%%~nxD"=="update.bat" rd /s /q "%%D"
+  if /I not "%%~nxD"=="settings" if /I not "%%~nxD"=="update.sh" if /I not "%%~nxD"=="update.bat" rd /s /q "%%D"
 )
 
 if exist "%REPO_DIR%" rd /s /q "%REPO_DIR%"
@@ -49,13 +44,7 @@ if exist "%REPO_DIR%" (
   xcopy "%REPO_DIR%\*" "%ROOT%\" /E /H /I /Y /Q >nul
 )
 
-if exist "%ROOT%\data" rd /s /q "%ROOT%\data"
 if exist "%ROOT%\settings" rd /s /q "%ROOT%\settings"
-
-if exist "%BACKUP_DIR%\data" (
-  mkdir "%ROOT%\data" >nul 2>&1
-  xcopy "%BACKUP_DIR%\data\*" "%ROOT%\data\" /E /I /Y /Q >nul
-)
 
 if exist "%BACKUP_DIR%\settings" (
   mkdir "%ROOT%\settings" >nul 2>&1
@@ -69,6 +58,6 @@ rmdir /s /q "%TMP_DIR%" >nul 2>&1
 
 echo.
 echo [UPDATE] Atualizacao concluida.
-echo [UPDATE] As pastas data e settings foram preservadas.
+echo [UPDATE] A pasta settings foi preservada.
 echo [UPDATE] Para iniciar: start.bat
 exit /b 0

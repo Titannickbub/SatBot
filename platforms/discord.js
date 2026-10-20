@@ -16,6 +16,14 @@ const {
 const groupSettings = require("../functions/groupSettings");
 const welcomeHelper = require("../functions/welcomeHelper");
 const authFlow = require("../functions/authFlow");
+const { detectBufferFormat } = require("../functions/gifAdapter");
+
+function imageAttachmentName(image, fileName) {
+    const format = detectBufferFormat(image);
+    const name = fileName || `image.${format.ext === "bin" ? "png" : format.ext}`;
+    if (!format.isRealGif || /\.gif$/i.test(name)) return name;
+    return `${name.replace(/\.[^.]+$/, "")}.gif`;
+}
 
 function formatUptime(seconds) {
     const days = Math.floor(seconds / 86400);
@@ -30,6 +38,104 @@ function formatUptime(seconds) {
     if (secs || parts.length === 0) parts.push(`${secs}s`);
 
     return parts.join(" ");
+}
+
+function extractDiscordMedia(discordMsg) {
+    if (!discordMsg) return null;
+    const { fetchBuffer } = require("../functions/api");
+
+    // 1. Sticker
+    const sticker = discordMsg.stickers?.first?.();
+    if (sticker) {
+        return {
+            url: sticker.url,
+            fileName: `${sticker.name || "sticker"}.png`,
+            mimeType: "image/png",
+            type: "sticker",
+            getBuffer: async () => fetchBuffer(sticker.url)
+        };
+    }
+
+    // 2. Anexo direto (Attachment)
+    const attachment = discordMsg.attachments?.first?.();
+    if (attachment) {
+        const ct = (attachment.contentType || "").toLowerCase();
+        const fn = (attachment.name || "").toLowerCase();
+        let type = "document";
+        if (ct.startsWith("image/") || /\.(jpeg|jpg|png|webp|gif)$/i.test(fn)) {
+            type = "image";
+        } else if (ct.startsWith("video/") || /\.(mp4|mkv|avi|mov|webm)$/i.test(fn)) {
+            type = "video";
+        } else if (ct.startsWith("audio/") || /\.(mp3|ogg|opus|wav|m4a|aac|flac)$/i.test(fn)) {
+            type = "audio";
+        }
+        return {
+            url: attachment.url,
+            fileName: attachment.name,
+            mimeType: attachment.contentType || (type === "image" ? (fn.endsWith(".gif") ? "image/gif" : "image/png") : ""),
+            type,
+            getBuffer: async () => fetchBuffer(attachment.url)
+        };
+    }
+
+    // 3. Embeds (Tenor, Giphy, imagens/vídeos inseridos via link/embed)
+    if (Array.isArray(discordMsg.embeds) && discordMsg.embeds.length > 0) {
+        for (const embed of discordMsg.embeds) {
+            const mediaUrl = embed.video?.url || embed.video?.proxyURL ||
+                embed.image?.url || embed.image?.proxyURL ||
+                embed.thumbnail?.url || embed.thumbnail?.proxyURL ||
+                (embed.url && /\.(gif|png|jpe?g|webp|mp4)$/i.test(embed.url) ? embed.url : null);
+
+            if (mediaUrl) {
+                const lower = mediaUrl.toLowerCase().split(/[?#]/)[0];
+                const isGif = lower.endsWith(".gif") ||
+                    (embed.provider?.name && /tenor|giphy/i.test(embed.provider.name)) ||
+                    /tenor|giphy/i.test(mediaUrl);
+                const isVideo = !isGif && (!!embed.video || /\.(mp4|webm|mov)$/i.test(lower));
+                const type = isVideo ? "video" : "image";
+                const mimeType = isGif ? "image/gif" : (isVideo ? "video/mp4" : "image/png");
+                const ext = isGif ? ".gif" : (isVideo ? ".mp4" : ".png");
+                const rawName = path.basename(lower) || `media${ext}`;
+                const fileName = rawName.includes(".") ? rawName : `${rawName}${ext}`;
+
+                return {
+                    url: mediaUrl,
+                    fileName,
+                    mimeType,
+                    type,
+                    getBuffer: async () => fetchBuffer(mediaUrl)
+                };
+            }
+        }
+    }
+
+    // 4. URL de mídia presente no texto
+    if (discordMsg.content && typeof discordMsg.content === "string") {
+        const urlMatch = discordMsg.content.match(/https?:\/\/[^\s]+/i);
+        if (urlMatch) {
+            const foundUrl = urlMatch[0];
+            const lower = foundUrl.toLowerCase().split(/[?#]/)[0];
+            if (/\.(gif|png|jpe?g|webp|mp4|webm|mov)$/i.test(lower) || lower.includes("tenor.com") || lower.includes("giphy.com")) {
+                const isGif = lower.endsWith(".gif") || lower.includes("tenor.com") || lower.includes("giphy.com");
+                const isVideo = !isGif && /\.(mp4|webm|mov)$/i.test(lower);
+                const type = isVideo ? "video" : "image";
+                const mimeType = isGif ? "image/gif" : (isVideo ? "video/mp4" : "image/png");
+                const ext = isGif ? ".gif" : (isVideo ? ".mp4" : ".png");
+                const rawName = path.basename(lower) || `media${ext}`;
+                const fileName = rawName.includes(".") ? rawName : `${rawName}${ext}`;
+
+                return {
+                    url: foundUrl,
+                    fileName,
+                    mimeType,
+                    type,
+                    getBuffer: async () => fetchBuffer(foundUrl)
+                };
+            }
+        }
+    }
+
+    return null;
 }
 
 async function start(onMessage) {
@@ -90,7 +196,7 @@ async function start(onMessage) {
             const slashCommandsArray = [
                 {
                     name: "start",
-                    description: "Apresentação da Satela e primeiros passos."
+                    description: `Apresentação de ${require("../functions/config").getBotName()} e primeiros passos.`
                 }
             ];
 
@@ -179,6 +285,14 @@ async function start(onMessage) {
         }
     });
 
+    client.on("guildMemberRemove", async (member) => {
+        try {
+            await welcomeHelper.handleDiscordMemberLeave(member);
+        } catch (err) {
+            console.error("❌[DISCORD] Erro ao processar guildMemberRemove para goodbye:", err);
+        }
+    });
+
     client.on("interactionCreate", async (interaction) => {
         if (!interaction.isChatInputCommand()) return;
 
@@ -247,6 +361,20 @@ async function start(onMessage) {
             media: null,
             reply: async function (data) {
                 try {
+                    if (data?.embed) {
+                        const embed = new EmbedBuilder(data.embed);
+                        if (!repliedToInteraction) {
+                            repliedToInteraction = true;
+                            if (interaction.deferred || interaction.replied) {
+                                return await interaction.editReply({ embeds: [embed] });
+                            }
+                            return await interaction.reply({ embeds: [embed] });
+                        }
+                        if (interaction.deferred || interaction.replied) {
+                            return await interaction.followUp({ embeds: [embed] });
+                        }
+                        return await interaction.channel.send({ embeds: [embed] });
+                    }
                     if (typeof data === "object" && data !== null && (data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url)) {
                         const image = data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url;
                         return await this.replyImg({ image, caption: data.caption || data.text || "" });
@@ -313,7 +441,11 @@ async function start(onMessage) {
 
                 let payload = {};
                 if (Buffer.isBuffer(image)) {
-                    payload = { content: caption, files: [{ attachment: image, name: "image.png" }] };
+                    const fileName = imageAttachmentName(image, data.fileName || data.name);
+                    payload = {
+                        embeds: [new EmbedBuilder().setImage(`attachment://${fileName}`).setDescription(caption)],
+                        files: [{ attachment: image, name: fileName }]
+                    };
                 } else if (typeof image === "string" && /^https?:\/\//i.test(image)) {
                     payload = { embeds: [new EmbedBuilder().setImage(image).setDescription(caption)] };
                 } else {
@@ -361,7 +493,10 @@ async function start(onMessage) {
 
                 let payload = {};
                 if (Buffer.isBuffer(audio)) {
-                    payload = { content: caption, files: [{ attachment: audio, name: "audio.mp3" }] };
+                    payload = {
+                        content: caption,
+                        files: [{ attachment: audio, name: data.filename || "audio.mp3" }]
+                    };
                 } else if (typeof audio === "string" && /^https?:\/\//i.test(audio)) {
                     payload = { content: `${caption}${caption ? "\n" : ""}${audio}` };
                 } else {
@@ -450,7 +585,8 @@ async function start(onMessage) {
                         fromMe: String(quotedMsg.author.id) === String(client.user.id),
                         isBot: quotedMsg.author.bot,
                         text: quotedMsg.content,
-                        raw: quotedMsg
+                        raw: quotedMsg,
+                        media: extractDiscordMedia(quotedMsg)
                     };
                 }
             } catch (err) {
@@ -546,46 +682,13 @@ async function start(onMessage) {
                 return false;
             },
 
-            media: (() => {
-                const sticker = msg.stickers?.first?.();
-                if (sticker) {
-                    return {
-                        url: sticker.url,
-                        fileName: `${sticker.name || 'sticker'}.png`,
-                        mimeType: 'image/png',
-                        type: 'sticker',
-                        getBuffer: async () => {
-                            const { fetchBuffer } = require("../functions/api");
-                            return await fetchBuffer(sticker.url);
-                        }
-                    };
-                }
-                const attachment = msg.attachments.first();
-                if (!attachment) return null;
-                const ct = (attachment.contentType || '').toLowerCase();
-                const fn = (attachment.name || '').toLowerCase();
-                let type = 'document';
-                if (ct.startsWith('image/') || /\.(jpeg|jpg|png|webp|gif)$/i.test(fn)) {
-                    type = 'image';
-                } else if (ct.startsWith('video/') || /\.(mp4|mkv|avi|mov|webm)$/i.test(fn)) {
-                    type = 'video';
-                } else if (ct.startsWith('audio/') || /\.(mp3|ogg|opus|wav|m4a|aac|flac)$/i.test(fn)) {
-                    type = 'audio';
-                }
-                return {
-                    url: attachment.url,
-                    fileName: attachment.name,
-                    mimeType: attachment.contentType,
-                    type,
-                    getBuffer: async () => {
-                        const { fetchBuffer } = require("../functions/api");
-                        return await fetchBuffer(attachment.url);
-                    }
-                };
-            })(),
+            media: extractDiscordMedia(msg),
 
             reply: async function (data) {
                 try {
+                    if (data?.embed) {
+                        return await msg.reply({ embeds: [new EmbedBuilder(data.embed)] });
+                    }
                     if (typeof data === "object" && data !== null && (data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url)) {
                         const image = data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url;
                         return await this.replyImg({ image, caption: data.caption || data.text || "" });
@@ -602,7 +705,11 @@ async function start(onMessage) {
 
                     const MAX_LEN = 2000;
                     if (text.length <= MAX_LEN) {
-                        await msg.reply(text);
+                        if (data && typeof data === "object" && data.allowedMentions) {
+                            await msg.reply({ content: text, allowedMentions: data.allowedMentions });
+                        } else {
+                            await msg.reply(text);
+                        }
                         return;
                     }
 
@@ -624,7 +731,11 @@ async function start(onMessage) {
 
                     for (let i = 0; i < chunks.length; i++) {
                         if (i === 0) {
-                            await msg.reply(chunks[i]);
+                            if (data && typeof data === "object" && data.allowedMentions) {
+                                await msg.reply({ content: chunks[i], allowedMentions: data.allowedMentions });
+                            } else {
+                                await msg.reply(chunks[i]);
+                            }
                         } else {
                             await msg.channel.send(chunks[i]);
                         }
@@ -633,6 +744,9 @@ async function start(onMessage) {
                     const reason = err && err.message ? err.message : String(err);
                     const code = err && err.code ? ` [${err.code}]` : "";
                     console.warn(`[DISCORD] ⚠️ Falha ao responder mensagem, ignorando para não derrubar o bot.${code} ${reason}`);
+                    if (data && typeof data === "object" && data.allowedMentions) {
+                        throw err;
+                    }
                     return null;
                 }
             },
@@ -658,9 +772,14 @@ async function start(onMessage) {
                 }
 
                 if (Buffer.isBuffer(image)) {
+                    const fileName = imageAttachmentName(image, data.fileName || data.name);
                     await msg.reply({
-                        content: caption,
-                        files: [{ attachment: image, name: "image.png" }]
+                        embeds: [
+                            new EmbedBuilder()
+                                .setImage(`attachment://${fileName}`)
+                                .setDescription(caption)
+                        ],
+                        files: [{ attachment: image, name: fileName }]
                     });
                 } else if (typeof image === "string" && /^https?:\/\//i.test(image)) {
                     await msg.reply({
@@ -691,7 +810,8 @@ async function start(onMessage) {
                 if (Buffer.isBuffer(video)) {
                     await msg.reply({
                         content: caption,
-                        files: [{ attachment: video, name: "video.mp4" }]
+                        files: [{ attachment: video, name: "video.mp4" }],
+                        allowedMentions: { users: data.mentions || [] }
                     });
                 } else if (typeof video === "string" && /^https?:\/\//i.test(video)) {
                     await msg.reply(`${caption}${caption ? "\n" : ""}${video}`);
@@ -716,7 +836,8 @@ async function start(onMessage) {
                 if (Buffer.isBuffer(audio)) {
                     await msg.reply({
                         content: caption,
-                        files: [{ attachment: audio, name: "audio.mp3" }]
+                        files: [{ attachment: audio, name: data.filename || "audio.mp3" }],
+                        allowedMentions: { users: data.mentions || [] }
                     });
                 } else if (typeof audio === "string" && /^https?:\/\//i.test(audio)) {
                     await msg.reply(`${caption}${caption ? "\n" : ""}${audio}`);
@@ -855,7 +976,7 @@ async function sendImg(
     if (Buffer.isBuffer(image)) {
         // Buffer from WhatsApp, send as file (use Buffer directly)
         msg = await channel.send({
-            files: [{ attachment: image, name: filename || 'image.png' }],
+            files: [{ attachment: image, name: imageAttachmentName(image, filename) }],
             content: caption || ""
         });
     } else if (isRemoteUrl) {
@@ -1028,7 +1149,7 @@ async function sendFile(
 /**
  * Verifica se o BOT possui a permissão necessária para executar uma ação no canal.
  * @param {string} chatId  ID do canal
- * @param {string} action  'delete' | 'kick' | 'ban'
+ * @param {string} action  'delete' | 'kick' | 'ban' | 'mute' | 'unmute'
  * @returns {Promise<boolean>}
  */
 async function checkBotPermission(chatId, action) {
@@ -1040,9 +1161,12 @@ async function checkBotPermission(chatId, action) {
         if (!me) return false;
         const perms = channel.permissionsFor(me);
         if (!perms) return false;
+        if (action === "manageChat") return perms.has(PermissionFlagsBits.ManageChannels);
+        if (action === "invite") return perms.has(PermissionFlagsBits.CreateInstantInvite);
         if (action === "delete" || action === "warn") return perms.has(PermissionFlagsBits.ManageMessages);
         if (action === "kick") return perms.has(PermissionFlagsBits.KickMembers);
         if (action === "ban") return perms.has(PermissionFlagsBits.BanMembers);
+        if (action === "mute" || action === "unmute") return perms.has(PermissionFlagsBits.ModerateMembers);
         return false;
     } catch {
         return false;
@@ -1050,12 +1174,13 @@ async function checkBotPermission(chatId, action) {
 }
 
 /**
- * Verifica se o MEMBRO tem permissão para alterar configurações do bot no canal.
+ * Verifica permissões do membro no canal; kick/ban exigem a permissão da ação.
  * @param {string} chatId  ID do canal
  * @param {string} userId  ID do usuário
+ * @param {string} [action] 'invite' | 'delete' | 'kick' | 'ban' | 'mute' | 'unmute'
  * @returns {Promise<boolean>}
  */
-async function checkUserPermission(chatId, userId) {
+async function checkUserPermission(chatId, userId, action) {
     if (!global.discordClient) return false;
     try {
         const channel = await getDiscordChannel(chatId);
@@ -1064,6 +1189,12 @@ async function checkUserPermission(chatId, userId) {
         if (!member) return false;
         const perms = channel.permissionsFor(member);
         if (!perms) return false;
+        if (action === "invite") return perms.has(PermissionFlagsBits.CreateInstantInvite);
+        if (action === "delete" || action === "warn") return perms.has(PermissionFlagsBits.ManageMessages);
+        if (action === "kick") return perms.has(PermissionFlagsBits.KickMembers);
+        if (action === "ban") return perms.has(PermissionFlagsBits.BanMembers);
+        if (action === "mute" || action === "unmute") return perms.has(PermissionFlagsBits.ModerateMembers);
+        if (action === "manageChat") return perms.has(PermissionFlagsBits.ManageChannels);
         return (
             perms.has(PermissionFlagsBits.Administrator) ||
             perms.has(PermissionFlagsBits.ManageGuild) ||
@@ -1072,6 +1203,38 @@ async function checkUserPermission(chatId, userId) {
     } catch {
         return false;
     }
+}
+
+async function setChatOpen(chatId, isOpen) {
+    const channel = await getDiscordChannel(chatId);
+    if (!channel || !channel.guild) {
+        throw new Error("[DISCORD] Canal do servidor não encontrado.");
+    }
+    if (channel.isThread?.() || !channel.permissionOverwrites?.edit ||
+        typeof channel.isTextBased !== "function" || !channel.isTextBased()) {
+        throw new Error("[DISCORD] O controle de abertura não funciona em threads.");
+    }
+
+    const everyoneRole = channel.guild.roles?.everyone || channel.guild.id;
+    const everyonePermissions = channel.permissionsFor(everyoneRole);
+    if (!everyonePermissions) {
+        throw new Error("[DISCORD] Não foi possível ler as permissões do canal.");
+    }
+    if (everyonePermissions.has(PermissionFlagsBits.SendMessages) === Boolean(isOpen)) {
+        return false;
+    }
+
+    await channel.permissionOverwrites.edit(everyoneRole, {
+        SendMessages: Boolean(isOpen)
+    });
+    return true;
+}
+
+async function checkChatControlSupport(chatId) {
+    const channel = await getDiscordChannel(chatId);
+    return Boolean(channel?.guild && !channel.isThread?.() &&
+        typeof channel.isTextBased === "function" && channel.isTextBased() &&
+        typeof channel.permissionOverwrites?.edit === "function");
 }
 
 module.exports = {
@@ -1089,6 +1252,10 @@ module.exports = {
     sendAudio,
 
     sendFile,
+
+    checkChatControlSupport,
+
+    setChatOpen,
 
     checkBotPermission,
 

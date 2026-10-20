@@ -5,12 +5,38 @@ require("dotenv").config({
     path: path.join(__dirname, "..", "settings", ".env")
 });
 
-const { Telegraf } = require("telegraf");
+const { Telegraf, Input } = require("telegraf");
 const groupSettings = require("../functions/groupSettings");
 const welcomeHelper = require("../functions/welcomeHelper");
+const autoAccept = require("../functions/autoAccept");
 const authFlow = require("../functions/authFlow");
+const { detectBufferFormat } = require("../functions/gifAdapter");
 
 let bot = null;
+
+function isTelegramGifImage(image) {
+    if (Buffer.isBuffer(image)) return Boolean(detectBufferFormat(image).isRealGif);
+    if (typeof image !== "string") return false;
+    if (/\.gif(?:$|[?#])/i.test(image)) return true;
+    if (/^https?:\/\//i.test(image)) return false;
+
+    const resolvedPath = path.isAbsolute(image) ? image : path.resolve(process.cwd(), image);
+    return fs.existsSync(resolvedPath) &&
+        Boolean(detectBufferFormat(fs.readFileSync(resolvedPath)).isRealGif);
+}
+
+const TELEGRAM_SEND_PERMISSIONS = [
+    "can_send_messages",
+    "can_send_audios",
+    "can_send_documents",
+    "can_send_photos",
+    "can_send_videos",
+    "can_send_video_notes",
+    "can_send_voice_notes",
+    "can_send_polls",
+    "can_send_other_messages",
+    "can_add_web_page_previews"
+];
 
 async function start(onMessage) {
     require("dotenv").config({ path: path.join(__dirname, "..", "settings", ".env"), override: true });
@@ -26,6 +52,14 @@ async function start(onMessage) {
 
     bot = new Telegraf(token);
     global.telegramBot = bot;
+
+    bot.on("chat_join_request", async (ctx) => {
+        try {
+            await autoAccept.approveTelegram(ctx);
+        } catch (err) {
+            console.error("❌[TELEGRAM] Erro ao processar solicitação de entrada:", err);
+        }
+    });
 
     bot.on("new_chat_members", async (ctx) => {
         try {
@@ -141,6 +175,9 @@ async function start(onMessage) {
                 messageId: String(replyTo.message_id),
                 userId: replyTo.from ? String(replyTo.from.id) : null,
                 username: replyTo.from?.username || null,
+                displayName: replyTo.from
+                    ? ((replyTo.from.first_name || "") + (replyTo.from.last_name ? ` ${replyTo.from.last_name}` : "")).trim() || replyTo.from.username || null
+                    : null,
                 fromMe: replyTo.from ? String(replyTo.from.id) === String(ctx.botInfo.id) : false,
                 isBot: replyTo.from ? !!replyTo.from.is_bot : false,
                 text: replyTo.text || replyTo.caption || "",
@@ -312,7 +349,11 @@ async function start(onMessage) {
 
             reply: async function (data) {
 
-                const options = {};
+                const options = {
+                    reply_parameters: {
+                        message_id: ctx.message.message_id
+                    }
+                };
 
                 if (this.target.threadId) {
 
@@ -321,6 +362,10 @@ async function start(onMessage) {
                             this.target.threadId
                         );
 
+                }
+
+                if (data && typeof data === "object" && data.parse_mode) {
+                    options.parse_mode = data.parse_mode;
                 }
 
                 if (typeof data === "object" && data !== null && (data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url)) {
@@ -361,7 +406,11 @@ async function start(onMessage) {
             },
 
             replyImg: async function (data) {
-                const options = {};
+                const options = {
+                    reply_parameters: {
+                        message_id: ctx.message.message_id
+                    }
+                };
 
                 if (this.target.threadId) {
                     options.message_thread_id = Number(this.target.threadId);
@@ -392,11 +441,18 @@ async function start(onMessage) {
                     }
                 }
 
-                await ctx.replyWithPhoto(input, options);
+                const sendImage = isTelegramGifImage(photo)
+                    ? ctx.replyWithAnimation.bind(ctx)
+                    : ctx.replyWithPhoto.bind(ctx);
+                await sendImage(input, options);
             },
 
             replyVideo: async function (data) {
-                const options = {};
+                const options = {
+                    reply_parameters: {
+                        message_id: ctx.message.message_id
+                    }
+                };
 
                 if (this.target.threadId) {
                     options.message_thread_id = Number(this.target.threadId);
@@ -431,7 +487,11 @@ async function start(onMessage) {
             },
 
             replyAudio: async function (data) {
-                const options = {};
+                const options = {
+                    reply_parameters: {
+                        message_id: ctx.message.message_id
+                    }
+                };
 
                 if (this.target.threadId) {
                     options.message_thread_id = Number(this.target.threadId);
@@ -454,7 +514,10 @@ async function start(onMessage) {
                 let input = audio;
 
                 if (Buffer.isBuffer(audio)) {
-                    input = { source: audio };
+                    input = {
+                        source: audio,
+                        filename: data.filename || "audio.mp3"
+                    };
                 } else if (typeof audio === "string" && !/^https?:\/\//i.test(audio)) {
                     const resolvedPath = path.resolve(process.cwd(), audio);
                     if (fs.existsSync(resolvedPath)) {
@@ -466,7 +529,11 @@ async function start(onMessage) {
             },
 
             replyFile: async function (data) {
-                const options = {};
+                const options = {
+                    reply_parameters: {
+                        message_id: ctx.message.message_id
+                    }
+                };
 
                 if (this.target.threadId) {
                     options.message_thread_id = Number(this.target.threadId);
@@ -501,7 +568,11 @@ async function start(onMessage) {
             },
 
             replySticker: async function (data) {
-                const options = {};
+                const options = {
+                    reply_parameters: {
+                        message_id: ctx.message.message_id
+                    }
+                };
 
                 if (this.target.threadId) {
                     options.message_thread_id = Number(this.target.threadId);
@@ -518,7 +589,8 @@ async function start(onMessage) {
                     if (typeof raw === "string") {
                         input = raw;
                     } else if (Buffer.isBuffer(raw)) {
-                        input = { source: raw };
+                        const filename = data.format === "video" ? "sticker.webm" : "sticker.webp";
+                        input = Input.fromBuffer(raw, filename);
                     }
                 }
 
@@ -531,7 +603,11 @@ async function start(onMessage) {
                 await ctx.replyWithSticker(input, options);
             }
         };
-        await onMessage(message);
+        // Não mantenha o ciclo do polling aberto enquanto downloads demorados
+        // são processados. O Telegraf encerra handlers que passam de 90s.
+        Promise.resolve(onMessage(message)).catch(err => {
+            console.error("❌[TELEGRAM] Erro assíncrono ao processar mensagem:", err);
+        });
 
     });
     bot.launch().catch(err => {
@@ -648,11 +724,10 @@ async function sendImg(
         }
     }
 
-    const result = await bot.telegram.sendPhoto(
-        chatId,
-        input,
-        options
-    );
+    const sendImage = isTelegramGifImage(image)
+        ? bot.telegram.sendAnimation.bind(bot.telegram)
+        : bot.telegram.sendPhoto.bind(bot.telegram);
+    const result = await sendImage(chatId, input, options);
 
     return String(result.message_id);
 
@@ -825,7 +900,7 @@ async function sendFile(
 /**
  * Verifica se o BOT possui a permissão necessária no chat do Telegram.
  * @param {string} chatId  ID do chat
- * @param {string} action  'delete' | 'kick' | 'ban'
+ * @param {string} action  'invite' | 'delete' | 'kick' | 'ban' | 'mute' | 'unmute'
  * @returns {Promise<boolean>}
  */
 async function checkBotPermission(chatId, action) {
@@ -836,8 +911,13 @@ async function checkBotPermission(chatId, action) {
         // Criador sempre tem tudo
         if (me.status === "creator") return true;
         if (me.status !== "administrator") return false;
+        if (action === "invite") return !!me.can_invite_users;
         if (action === "delete" || action === "warn") return !!me.can_delete_messages;
-        if (action === "kick" || action === "ban") return !!me.can_restrict_members;
+        if (action === "kick" || action === "ban" || action === "mute" || action === "unmute") {
+            return !!me.can_restrict_members;
+        }
+        if (action === "manageChat") return !!me.can_restrict_members;
+        if (action === "promote") return !!me.can_promote_members;
         return false;
     } catch {
         return false;
@@ -845,20 +925,81 @@ async function checkBotPermission(chatId, action) {
 }
 
 /**
- * Verifica se o MEMBRO é administrador ou criador do chat.
+ * Verifica se o MEMBRO pode executar a ação no chat.
  * @param {string} chatId  ID do chat
  * @param {string} userId  ID do usuário
+ * @param {string} [action] 'invite' | 'delete' | 'kick' | 'ban' | 'mute' | 'unmute'
  * @returns {Promise<boolean>}
  */
-async function checkUserPermission(chatId, userId) {
+async function checkUserPermission(chatId, userId, action) {
     if (!bot) return false;
     try {
         const member = await bot.telegram.getChatMember(chatId, Number(userId));
         if (!member) return false;
+        if (action === "invite") {
+            return member.status === "creator" ||
+                (member.status === "administrator" && !!member.can_invite_users);
+        }
+        if (action === "delete") {
+            return member.status === "creator" ||
+                (member.status === "administrator" && !!member.can_delete_messages);
+        }
+        if (action === "kick" || action === "ban" || action === "mute" || action === "unmute") {
+            return member.status === "creator" ||
+                (member.status === "administrator" && !!member.can_restrict_members);
+        }
+        if (action === "manageChat") {
+            return ["creator", "administrator"].includes(member.status);
+        }
         return ["creator", "administrator"].includes(member.status);
     } catch {
         return false;
     }
+}
+
+async function setChatOpen(chatId, isOpen) {
+    if (!bot) throw new Error("[TELEGRAM] Bot não iniciado.");
+    const chat = await bot.telegram.getChat(chatId);
+    if (chat.type === "channel" || chat.type === "private") {
+        throw new Error("[TELEGRAM] A abertura e o fechamento só funcionam em grupos.");
+    }
+
+    const permissions = chat.permissions && typeof chat.permissions === "object"
+        ? chat.permissions
+        : {};
+
+    const requestedStateAlreadyApplied = TELEGRAM_SEND_PERMISSIONS.every(permission =>
+        isOpen
+            ? permissions[permission] !== false
+            : permissions[permission] === false
+    );
+    if (requestedStateAlreadyApplied) return false;
+
+    const updatedPermissions = { ...permissions };
+    for (const permission of TELEGRAM_SEND_PERMISSIONS) {
+        updatedPermissions[permission] = Boolean(isOpen);
+    }
+
+    await bot.telegram.setChatPermissions(chatId, updatedPermissions, {
+        use_independent_chat_permissions: true
+    });
+
+    const updatedChat = await bot.telegram.getChat(chatId);
+    const updatedChatPermissions = updatedChat.permissions || {};
+    const stateApplied = TELEGRAM_SEND_PERMISSIONS.every(permission =>
+        (updatedChatPermissions[permission] !== false) === Boolean(isOpen)
+    );
+    if (!stateApplied) {
+        throw new Error("[TELEGRAM] O Telegram não confirmou a alteração das permissões de envio. Verifique se o bot é administrador com permissão para restringir membros.");
+    }
+
+    return true;
+}
+
+async function checkChatControlSupport(chatId) {
+    if (!bot) return false;
+    const chat = await bot.telegram.getChat(chatId);
+    return chat.type === "group" || chat.type === "supergroup";
 }
 
 module.exports = {
@@ -876,6 +1017,10 @@ module.exports = {
     sendAudio,
 
     sendFile,
+
+    checkChatControlSupport,
+
+    setChatOpen,
 
     checkBotPermission,
 

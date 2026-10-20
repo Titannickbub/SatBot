@@ -45,8 +45,24 @@ process.on("SIGTERM", () => {
   process.exit(0);
 });
 
-process.env.TZ = "America/Sao_Paulo";
+const config = require("./functions/config");
+process.env.TZ = config.getTimezone() || "America/Sao_Paulo";
 
-const core = require("./core");
+require("./functions/webServer").start();
 
-core.start();
+const { checkAndUpdate } = require("./functions/autoUpdate");
+
+checkAndUpdate()
+  .then((updated) => {
+    if (updated) {
+      process.exit(0);
+      return;
+    }
+    const core = require("./core");
+    return core.start();
+  })
+  .catch((error) => {
+    console.error("[AUTO-UPDATE] Falha inesperada:", error);
+    const core = require("./core");
+    return core.start();
+  });
