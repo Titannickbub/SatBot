@@ -26,7 +26,6 @@ echo ""
 
 # Lista de pastas e arquivos solicitados
 ITEMS=(
-    "changelog"
     "commands"
     "docs"
     "functions"

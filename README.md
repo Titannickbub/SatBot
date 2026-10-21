@@ -27,4 +27,4 @@ em um só bot.
 - [Configuração](./docs/configuracao.md)
 - [Anti-PV e OnlyChats](./docs/antipv-onlychats.md)
 - [VIP e `set_vip`](./docs/setvip.md)
-
+- [Tutoriais](./docs/tutoriais.md)

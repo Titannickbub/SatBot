@@ -26,7 +26,7 @@ echo ==================================================
 echo.
 
 rem Lista de pastas e arquivos a incluir
-set "ITEMS=changelog commands docs functions middlewares platforms core.js index.js install.bat install.sh package.json README.md start.bat start.sh update.bat update.sh"
+set "ITEMS=commands docs functions middlewares platforms core.js index.js install.bat install.sh package.json README.md start.bat start.sh update.bat update.sh"
 
 set "EXISTING_ITEMS="
 for %%I in (%ITEMS%) do (

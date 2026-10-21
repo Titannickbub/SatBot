@@ -3,31 +3,28 @@ const { isOwner } = require("../../../functions/owners");
 
 module.exports = {
     name: "ban",
-    aliases: ["kill"],
     category: "adm/ações imediatas",
     platformSupport: {
         discord: "full",
         telegram: "full",
         whatsapp: "full"
     },
-    description: `🔨 Bane permanentemente um usuário do grupo ou servidor.
+    description: `🔨 Bane um usuário do grupo ou servidor. No WhatsApp, remove o participante.
 
-🎯 Responda à mensagem do usuário, mencione-o, informe o ID/número ou marque uma mensagem.
+🎯 Responda à mensagem do usuário, mencione-o ou informe o ID/número.
 🤖 O bot precisa ter permissão para banir membros.
 👤 Você também precisa ter permissão para banir membros.
 
 📌 Uso:
-{prefix}ban <@usuário|#mensagem|id/número>
+{prefix}ban <@usuário|id/número>
 
 💡 Exemplos:
 {prefix}ban @user
-{prefix}ban #mensagem
 {prefix}ban @titannickbub
 {prefix}ban 0000000000`,
     usage: "{prefix}ban @marcar",
     examples: [
         "{prefix}ban @user",
-        "{prefix}ban #mensagem",
         "{prefix}ban @titannickbub",
         "{prefix}ban 0000000000"
     ],
