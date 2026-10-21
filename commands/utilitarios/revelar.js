@@ -30,7 +30,7 @@ module.exports = {
         discord: "none"
     },
     description: DESCRIPTION,
-    usage: "{prefix}revelar (respondendo a uma mídia de visualização única)",
+    usage: "{prefix}revelar @mensagem",
     examples: [
         "{prefix}revelar",
         "{prefix}vo",

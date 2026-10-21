@@ -26,7 +26,7 @@ Apaga a mensagem com o link original após enviar o vídeo/música para evitar p
 📋 Consulte o status e configurações atuais:
 {prefix}autodownload status
 {prefix}autodownload`,
-    usage: "{prefix}autodownload [subcomando]",
+    usage: "{prefix}autodownload [texto]",
     examples: [
         "{prefix}autodownload",
         "{prefix}autodownload status",

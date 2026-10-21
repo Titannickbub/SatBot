@@ -525,7 +525,7 @@ module.exports = {
 
     description: DESCRIPTION,
 
-    usage: "{prefix}agendar",
+    usage: "{prefix}agendar help",
     examples: [
         "{prefix}agendar add Bom dia",
         "{prefix}agendar set 00000 trigger fixed 7:00 10:00 12:00",

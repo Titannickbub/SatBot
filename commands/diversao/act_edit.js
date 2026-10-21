@@ -70,14 +70,14 @@ Exclui a ação do banco e remove todos os arquivos de mídia associados do disc
 const command = {
     name: "act_edit",
     aliases: [],
-    category: "system",
+    category: "adm/configurações",
     platformSupport: {
         whatsapp: "full",
         telegram: "full",
         discord: "full"
     },
     description: DESCRIPTION,
-    usage: "{prefix}act_edit [subcomando]",
+    usage: "{prefix}act_edit help",
     examples: [
         "{prefix}act_edit list",
         "{prefix}act_edit show kiss",

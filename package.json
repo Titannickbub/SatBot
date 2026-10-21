@@ -1,7 +1,7 @@
 {
   "name": "SatBot",
-  "version": "1.2.55",
-  "description": "transcrever,",
+  "version": "1.2.57",
+  "description": "play info,",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",

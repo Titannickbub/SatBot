@@ -13,7 +13,7 @@ module.exports = {
 O bot gera e envia um banner com seus dados ou os da pessoa marcada, informada ou citada ao responder uma mensagem.
 
 ℹ️ Para visualizar essas informações em formato de texto, utilize o comando {prefix}perfil_text.`,
-    usage: "{prefix}perfil [@usuário|ID]",
+    usage: "{prefix}perfil @marcar",
 
     async execute(message) {
         const target = resolveTarget(message);

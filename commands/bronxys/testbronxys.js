@@ -2,6 +2,7 @@ const bronxys = require("../../functions/bronxys");
 
 module.exports = {
     name: "testbronxys",
+    category: "system/bronxys",
     description: `🧪 Testa a chave Bronxys atualmente configurada e consulta o saldo de pedidos disponível na API.
 
 📝 1. Execute o comando para verificar o estado da chave:

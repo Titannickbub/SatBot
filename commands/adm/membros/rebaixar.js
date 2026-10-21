@@ -21,7 +21,7 @@ module.exports = {
 {prefix}rebaixar @membro
 
 Também é possível responder à mensagem do administrador com o comando.`,
-    usage: "{prefix}rebaixar <ID|ID central|@menção> ou responda à mensagem",
+    usage: "{prefix}rebaixar @marcar",
     examples: [
         "{prefix}rebaixar 5511999999999",
         "{prefix}rebaixar @membro",

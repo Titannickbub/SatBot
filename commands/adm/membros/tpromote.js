@@ -32,7 +32,7 @@ Ou responda à mensagem do membro:
 {prefix}tpromote adm 123456789
 
 O criador do grupo não pode ser alterado. Para rebaixar alguém para membro, use {prefix}trebaixar.`,
-    usage: "{prefix}tpromote <staff|mod|gerente|adm> <ID> ou responda à mensagem",
+    usage: "{prefix}tpromote [texto] @marcar",
     examples: [
         "{prefix}tpromote staff 123456789",
         "{prefix}tpromote mod 123456789",

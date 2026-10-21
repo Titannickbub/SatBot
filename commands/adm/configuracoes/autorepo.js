@@ -106,7 +106,7 @@ module.exports = {
     ],
     category: "adm/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}autorepo <on|off|global|add|del|list|status|limpar>",
+    usage: "{prefix}autorepo help",
     examples: [
         "{prefix}autorepo status",
         "{prefix}autorepo on",

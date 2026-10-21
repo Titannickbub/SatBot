@@ -28,7 +28,7 @@ module.exports = {
     aliases: ["setautoia", "iaauto", "iaautomatica"],
     category: "adm/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}autoia <off|mention|all|status|help>",
+    usage: "{prefix}autoia help",
     examples: [
         "{prefix}autoia status",
         "{prefix}autoia off",

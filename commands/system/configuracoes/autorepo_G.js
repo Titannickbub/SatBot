@@ -78,7 +78,7 @@ module.exports = {
     ],
     category: "system/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}autorepo_G <add|del|list|status>",
+    usage: "{prefix}autorepo_G help",
     examples: [
         "{prefix}autorepo_G status",
         "{prefix}autorepo_G add bom dia = Bom dia, {user}! ☀️",

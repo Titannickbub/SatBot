@@ -20,7 +20,7 @@ module.exports = {
     category: "adm/configurações",
     platformSupport: { whatsapp: "full", telegram: "full", discord: "none" },
     description: DESCRIPTION,
-    usage: "{prefix}autofigu <on|off|status>",
+    usage: "{prefix}autofigu help",
     examples: [
         "{prefix}autofigu on",
         "{prefix}autofigu off",

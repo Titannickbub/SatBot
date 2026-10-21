@@ -28,7 +28,7 @@ module.exports = {
     aliases: ["zerarxp", "resetarxp"],
     category: "adm/xp",
     description: DESCRIPTION,
-    usage: "{prefix}resetxp true <id|@usuário|help>",
+    usage: "{prefix}resetxp help",
 
     async execute(message) {
         const data = xp.load(message);

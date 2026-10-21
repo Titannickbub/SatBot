@@ -25,7 +25,7 @@ module.exports = {
 {prefix}kick #mensagem
 {prefix}kick @titannickbub
 {prefix}kick 0000000000`,
-    usage: "{prefix}kick <@usuário>",
+    usage: "{prefix}kick @marcar",
     examples: [
         "{prefix}kick @user",
         "{prefix}kick #mensagem",

@@ -46,7 +46,7 @@ module.exports = {
     name: "antipv",
     category: "system/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}antipv [subcomando]",
+    usage: "{prefix}antipv help",
     examples: [
         "{prefix}antipv status",
         "{prefix}antipv on",

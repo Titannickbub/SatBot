@@ -39,7 +39,7 @@ Envie uma imagem/GIF na legenda com o comando, responda a uma mídia ou cole o l
 📐 2. Modos alternativos de ajuste:
 • {prefix}fdsticker / {prefix}fds <nome> — Estica a mídia preenchendo o espaço (512x512).
 • {prefix}rdsticker / {prefix}rds <nome> — Recorta a imagem em formato quadrado centralizado.`,
-    usage: "{prefix}dsticker <nome> [imagem/emoji/link]",
+    usage: "{prefix}dsticker [texto] [@mensagem]",
     examples: [
         "{prefix}dsticker minha_figurinha (respondendo a uma imagem ou na legenda)",
         "{prefix}dsticker sticker_gato <:custom_emoji:1234567890>",

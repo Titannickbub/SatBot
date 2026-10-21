@@ -195,7 +195,7 @@ module.exports = {
     category: "system/configurações",
     name: "su",
     description: DESCRIPTION,
-    usage: "{prefix}su <list|add|del|code|token|whatsapp|onlychats|nofap|restart>",
+    usage: "{prefix}su help",
     examples: [
         "{prefix}su list",
         "{prefix}su code ABCD-1234",

@@ -39,7 +39,7 @@ module.exports = {
         discord: "full"
     },
     description: DESCRIPTION,
-    usage: "{prefix}setimg_chat [imagem|URL]",
+    usage: "{prefix}setimg_chat help",
     examples: [
         "{prefix}setimg_chat",
         "{prefix}setimg_chat https://exemplo.com/foto.png",

@@ -16,7 +16,7 @@ Você também pode responder diretamente à mensagem do usuário com {prefix}tra
 O valor é debitado da sua carteira e creditado instantaneamente na carteira do destinatário (valor mínimo: 10 satcoins).
 
 ⏳ Limite de 3 transferências diárias por usuário. Se esgotar, você pode comprar um reset na {prefix}loja.`,
-    usage: "{prefix}transferir <valor> <id|@usuário> ou respondendo a uma mensagem",
+    usage: "{prefix}transferir [numero] @marcar",
 
     async execute(message) {
         if (!economy.getScope(message)) {

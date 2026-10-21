@@ -37,7 +37,7 @@ module.exports = {
     aliases: ["autotranscricao", "autotranscrição"],
     category: "adm/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}autotranscrever <on|off|status>",
+    usage: "{prefix}autotranscrever help",
     examples: [
         "{prefix}autotranscrever on",
         "{prefix}autotranscrever servidor on",

@@ -74,7 +74,7 @@ module.exports = {
     category: "adm/configurações",
     aliases: ["randomclima", "climarandom"],
     description: DESCRIPTION,
-    usage: "{prefix}rclima <add|remove|clear|times|enable|disable|run|status|help>",
+    usage: "{prefix}rclima help",
     examples: [
         "{prefix}rclima add Salvador",
         "{prefix}rclima add São Paulo",

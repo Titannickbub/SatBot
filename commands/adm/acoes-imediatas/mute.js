@@ -24,7 +24,7 @@ module.exports = {
 {prefix}mute @user
 {prefix}mute @user 15
 {prefix}mute 123456789012345678 30`,
-    usage: "{prefix}mute <@usuário|id> [tempo_em_minutos]",
+    usage: "{prefix}mute @marcar [tempo]",
     examples: [
         "{prefix}mute @user",
         "{prefix}mute @user 15",

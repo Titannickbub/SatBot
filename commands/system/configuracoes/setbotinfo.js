@@ -54,7 +54,7 @@ module.exports = {
     aliases: ["configinfobot"],
     category: "system/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}setbotinfo <campo> <valor>",
+    usage: "{prefix}setbotinfo help",
     examples: [
         "{prefix}setbotinfo descricao Meu bot multifuncional!",
         "{prefix}setbotinfo dono Nome do responsável",

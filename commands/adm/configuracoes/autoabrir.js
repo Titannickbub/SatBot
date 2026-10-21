@@ -67,7 +67,7 @@ module.exports = {
     category: "adm/configurações",
     platformSupport: { whatsapp: "full", telegram: "full", discord: "full" },
     description: DESCRIPTION,
-    usage: "{prefix}autoabrir <add|remove|on|off|status>",
+    usage: "{prefix}autoabrir help",
     examples: [
         "{prefix}autoabrir add semana 12:00-18:00,06:00-11:00 seg ter qua",
         "{prefix}autoabrir add fds 10:00-22:00 sab dom",

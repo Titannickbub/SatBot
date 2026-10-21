@@ -30,7 +30,7 @@ Envie uma foto ou vídeo com o comando na legenda, ou responda à mensagem de m�
         telegram: "full",
         discord: "none"
     },
-    usage: "{prefix}sticker (normal), {prefix}fsticker (esticar) ou {prefix}rsticker (recortar centro)",
+    usage: "{prefix}sticker @mensagem\n{prefix}fsticker @mensagem\n{prefix}rsticker @mensagem",
     examples: [
         "{prefix}sticker / {prefix}s / {prefix}fig / {prefix}figurinha (manter proporção)",
         "{prefix}f / {prefix}fsticker / {prefix}ffig / {prefix}ffigurinha (esticar total)",

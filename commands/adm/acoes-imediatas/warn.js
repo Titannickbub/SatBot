@@ -20,7 +20,7 @@ module.exports = {
 {prefix}warn @user
 {prefix}warn @user Spam
 {prefix}warn 123456789012345678 Envio de links`,
-    usage: "{prefix}warn <@usuário|id> [motivo]",
+    usage: "{prefix}warn @marcar [texto]",
     examples: [
         "{prefix}warn @user",
         "{prefix}warn @user Spam",

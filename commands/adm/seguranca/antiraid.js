@@ -81,7 +81,7 @@ No Discord, também é possível gerenciar exceções por cargo. A lista branca 
 
 📊 Consulte o estado e as configurações:
 {prefix}antiraid status`,
-    usage: "{prefix}antiraid [subcomando]",
+    usage: "{prefix}antiraid help",
     examples: [
         "{prefix}antiraid status",
         "{prefix}antiraid on",

@@ -91,7 +91,7 @@ module.exports = {
     aliases: ["setvip"],
     category: "system",
     description: DESCRIPTION,
-    usage: "{prefix}set_vip <check|set|add|rem|perm|date|reset|addcmd|remcmd|listcmd|pv|chat|server|categorie> [args]",
+    usage: "{prefix}set_vip help",
     examples: [
         "{prefix}set_vip check @usuario",
         "{prefix}set_vip set @usuario 30d",

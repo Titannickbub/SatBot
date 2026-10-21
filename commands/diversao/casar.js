@@ -26,7 +26,7 @@ Ou indique quem pediu:
 {prefix}casar pedidos
 {prefix}casar status [@pessoa]
 {prefix}divorciar`,
-    usage: "{prefix}casar [@pessoa|me|aceitar|rejeitar|pedidos|status]",
+    usage: "{prefix}casar help",
 
     async execute(message) {
         try {

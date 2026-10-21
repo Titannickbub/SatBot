@@ -23,7 +23,7 @@ Ou responda à mensagem dele:
 {prefix}trebaixar 123456789
 
 O criador do grupo e o próprio bot não podem ser rebaixados por este comando.`,
-    usage: "{prefix}trebaixar <ID> ou responda à mensagem",
+    usage: "{prefix}trebaixar @marcar",
     examples: [
         "{prefix}trebaixar 123456789",
         "Responda à mensagem do membro com {prefix}trebaixar"

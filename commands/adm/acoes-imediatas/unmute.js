@@ -22,7 +22,7 @@ module.exports = {
 💡 Exemplos:
 {prefix}unmute @user
 {prefix}unmute 123456789012345678`,
-    usage: "{prefix}unmute <@usuário|id>",
+    usage: "{prefix}unmute @marcar",
     examples: [
         "{prefix}unmute @user",
         "{prefix}unmute 123456789012345678"

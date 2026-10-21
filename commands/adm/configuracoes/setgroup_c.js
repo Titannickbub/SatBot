@@ -34,7 +34,7 @@ module.exports = {
         discord: "none"
     },
     description: DESCRIPTION,
-    usage: "{prefix}setgroup_c [nome|help]",
+    usage: "{prefix}setgroup_c help",
     examples: [
         "{prefix}setgroup_c",
         "{prefix}setgroup_c Minha Comunidade",

@@ -61,7 +61,7 @@ module.exports = {
     aliases: ["setname_chat", "chatname", "rename"],
     category: "adm/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}setname [nível] <novo nome>",
+    usage: "{prefix}setname help",
     examples: [
         "{prefix}setname server Meu Novo Servidor",
         "{prefix}setname categoria Canal de Notícias",

@@ -99,7 +99,7 @@ module.exports = {
     aliases: ["boasvindas", "welc"],
     category: "adm/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}welcome <subcomando>",
+    usage: "{prefix}welcome help",
     examples: [
         "{prefix}welcome status",
         "{prefix}welcome on",

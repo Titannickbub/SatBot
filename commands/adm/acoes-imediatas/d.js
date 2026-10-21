@@ -8,7 +8,7 @@ module.exports = {
 📌 Uso:
 {prefix}d #mensagem`,
     category: "adm/ações imediatas",
-    usage: "{prefix}d (respondendo à mensagem)",
+    usage: "{prefix}d @mensagem",
     async execute(message) {
         const adapter = (message.platforms || []).find(p => p.name === message.platform);
         const userCanManageMessages = adapter?.checkUserPermission

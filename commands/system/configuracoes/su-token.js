@@ -20,7 +20,7 @@ module.exports = {
     name: "su-token",
     category: "system/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}su token <discord|telegram> <token>",
+    usage: "{prefix}su token [texto] [texto]",
     examples: [
         "{prefix}su token discord SEU_TOKEN_AQUI",
         "{prefix}su token telegram 123456:ABCDEF_SEU_TOKEN"

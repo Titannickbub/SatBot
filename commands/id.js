@@ -21,7 +21,7 @@ module.exports = {
     name: "id",
     category: "utilitários",
     description: DESCRIPTION,
-    usage: "{prefix}id [@usuário ou respondendo à mensagem]",
+    usage: "{prefix}id @marcar",
     examples: [
         "{prefix}id",
         "{prefix}id @usuario"

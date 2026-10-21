@@ -31,7 +31,7 @@ module.exports = {
 Combine 3 frutas iguais para ganhar o prêmio máximo: 11x a aposta (lucro líquido de 10x).
 
 ⏳ Limite de 5 jogadas diárias por usuário. Se esgotar, você pode comprar um reset na {prefix}loja.`,
-    usage: "{prefix}cassino [valor]",
+    usage: "{prefix}cassino [numero]",
 
     async execute(message) {
         if (!economy.getScope(message)) {

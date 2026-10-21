@@ -23,7 +23,7 @@ module.exports = {
     aliases: ["resetcoins", "zerarsatcoins", "zerarcoins"],
     category: "adm/economia",
     description: DESCRIPTION,
-    usage: "{prefix}resetsatcoins true <id|@usuário|help>",
+    usage: "{prefix}resetsatcoins help",
 
     async execute(message) {
         if (!economy.getScope(message)) {

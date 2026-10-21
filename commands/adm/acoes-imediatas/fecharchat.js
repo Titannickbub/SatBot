@@ -26,7 +26,7 @@ module.exports = {
     category: "adm/ações imediatas",
     platformSupport: { whatsapp: "full", telegram: "full", discord: "full" },
     description: DESCRIPTION,
-    usage: "{prefix}fecharchat [duração|HH:MM]",
+    usage: "{prefix}fecharchat [tempo]",
     examples: [
         "{prefix}fecharchat",
         "{prefix}fecharchat 2h",

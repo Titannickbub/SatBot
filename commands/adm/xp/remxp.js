@@ -17,7 +17,7 @@ module.exports = {
 Você também pode responder à mensagem do usuário em vez de mencioná-lo ou informar o ID.
 
 O XP informado é subtraído do total atual do perfil. O bot exibirá o XP anterior e o novo valor.`,
-    usage: "{prefix}remxp <quantidade> <id|@usuário>",
+    usage: "{prefix}remxp [numero] @marcar",
 
     async execute(message) {
         if (!xp.load(message)) return message.reply({ text: "❌ Este comando só funciona em grupos ou servidores." });

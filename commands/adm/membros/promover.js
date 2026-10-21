@@ -21,7 +21,7 @@ module.exports = {
 {prefix}promover @membro
 
 Também é possível responder à mensagem do membro com o comando.`,
-    usage: "{prefix}promover <ID|ID central|@menção> ou responda à mensagem",
+    usage: "{prefix}promover @marcar",
     examples: [
         "{prefix}promover 5511999999999",
         "{prefix}promover @membro",

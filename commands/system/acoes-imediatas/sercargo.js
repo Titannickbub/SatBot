@@ -12,7 +12,7 @@ module.exports = {
 {prefix}sercargo @Administrador @VIP
 
 O bot adiciona instantaneamente os cargos indicados ao seu perfil no servidor do Discord.`,
-    usage: "{prefix}sercargo @cargo1 @cargo2",
+    usage: "{prefix}sercargo @cargo",
     async execute(message) {
         const result = await executeRoleChange(message, { targetSelf: true });
         return message.reply({ text: result.error || result.text });

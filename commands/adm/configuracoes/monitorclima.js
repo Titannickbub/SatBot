@@ -52,7 +52,7 @@ module.exports = {
     name: "monitorclima",
     category: "adm/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}monitorclima <set|times|enable|disable|status|run|help>",
+    usage: "{prefix}monitorclima help",
     examples: [
         "{prefix}monitorclima set São Paulo",
         "{prefix}monitorclima times 08:00,18:00",

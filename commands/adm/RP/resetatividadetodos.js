@@ -21,7 +21,7 @@ module.exports = {
     aliases: ["zeraratividadetodos", "resetatividadegrupo"],
     category: "adm/atividade",
     description: DESCRIPTION,
-    usage: "{prefix}resetatividadetodos <true|help>",
+    usage: "{prefix}resetatividadetodos help",
     examples: [
         "{prefix}resetatividadetodos true",
         "{prefix}resetatividadetodos help"

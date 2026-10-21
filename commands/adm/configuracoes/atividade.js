@@ -25,7 +25,7 @@ module.exports = {
     aliases: ["atividadeconfig", "configatividade"],
     category: "adm/atividade",
     description: DESCRIPTION,
-    usage: "{prefix}atividade <ativar|desativar|help>",
+    usage: "{prefix}atividade help",
 
     async execute(message) {
         if (!activity.load(message)) {

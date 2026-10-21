@@ -24,7 +24,7 @@ Remove definitivamente todo o pacote de figurinhas criado por você no bot.`,
         whatsapp: "none",
         discord: "none"
     },
-    usage: "{prefix}delpack (excluir pacote completo) ou {prefix}delfig (respondendo a uma figurinha)",
+    usage: "{prefix}delpack\n{prefix}delfig @mensagem",
     examples: [
         "{prefix}delpack / {prefix}deletarpacote — Deleta seu pacote inteiro no Telegram",
         "{prefix}delfig / {prefix}delsticker — Deleta a figurinha citada do seu pacote"

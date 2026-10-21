@@ -39,7 +39,7 @@ module.exports = {
     aliases: ["configxp", "configurarxp"],
     category: "adm/xp",
     description: DESCRIPTION,
-    usage: "{prefix}xpconfig <ativar|desativar|mutar|desmutar|canal|topico|chat|status|help>",
+    usage: "{prefix}xpconfig help",
 
     async execute(message) {
         if (!xp.load(message)) return message.reply({ text: "❌ O XP só funciona em grupos ou servidores." });

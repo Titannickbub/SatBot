@@ -25,7 +25,7 @@ module.exports = {
     aliases: ["zerarxptodos", "resetxpgrupo"],
     category: "adm/xp",
     description: DESCRIPTION,
-    usage: "{prefix}resetxptodos <true|help>",
+    usage: "{prefix}resetxptodos help",
 
     async execute(message) {
         const data = xp.load(message);

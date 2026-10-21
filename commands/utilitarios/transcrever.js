@@ -13,7 +13,7 @@ module.exports = {
     aliases: [],
     category: "utilitarios",
     description: DESCRIPTION,
-    usage: "{prefix}transcrever (respondendo a um áudio ou vídeo)",
+    usage: "{prefix}transcrever @mensagem",
     examples: [
         "{prefix}transcrever (respondendo a um áudio)",
         "{prefix}transcrever (respondendo a um vídeo)"

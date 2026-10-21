@@ -24,7 +24,7 @@ module.exports = {
     aliases: ["setemoji", "emojidict"],
     category: "system",
     description: DESCRIPTION,
-    usage: "{prefix}discordemoji <list|remove|<emoji>> [emoji_padrao]",
+    usage: "{prefix}discordemoji [texto]",
     examples: [
         "{prefix}discordemoji list",
         "{prefix}discordemoji <:pepehappy:123456789012345678> 😊",

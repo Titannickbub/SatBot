@@ -9,7 +9,7 @@ module.exports = {
 {prefix}nomecentral Satela Master
 
 O nome atualizado será exibido em todos os serviços e plataformas vinculadas à sua conta central.`,
-    usage: "{prefix}nomecentral <novo nome>",
+    usage: "{prefix}nomecentral [texto]",
 
     async execute(message) {
         const args = message.args || [];

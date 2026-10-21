@@ -45,7 +45,7 @@ Use um número na quantidade ou infinito para um estoque que nunca acaba.
 
 Ao cancelar um pedido, o valor é devolvido ao comprador. Ao marcar como entregue, o pagamento é mantido.
 Você também pode consultar e entregar pedidos diretamente com {prefix}pedidos e {prefix}entregar <número>.`,
-    usage: "{prefix}configloja2 <ação>",
+    usage: "{prefix}configloja2",
 
     async execute(message) {
         if (!economy.getScope(message)) {

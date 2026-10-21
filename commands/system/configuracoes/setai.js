@@ -33,7 +33,7 @@ module.exports = {
     aliases: ["setkeyai", "aikey"],
     category: "system/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}setai <gemini|groq|openrouter> [1|2|3] <sua_chave>",
+    usage: "{prefix}setai help",
     examples: [
         "{prefix}setai gemini AIzaSy...",
         "{prefix}setai gemini 2 AIzaSy_SegundaChave...",

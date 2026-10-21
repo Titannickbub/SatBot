@@ -56,7 +56,7 @@ Apagar mensagens apenas nos chats selecionados:
 {prefix}clear {1-20} #chat1 #chat2
 {prefix}clear 15 #chat_geral #midia`,
 
-    usage: "{prefix}clear <1-20>",
+    usage: "{prefix}clear [numero]",
     examples: [
         "{prefix}clear 15",
         "{prefix}clear 15 all",

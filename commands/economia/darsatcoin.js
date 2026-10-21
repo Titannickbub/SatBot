@@ -17,7 +17,7 @@ module.exports = {
 Você também pode responder à mensagem do usuário em vez de mencioná-lo ou digitar o ID.
 
 O valor informado é somado ao saldo atual da carteira do membro neste grupo ou servidor.`,
-    usage: "{prefix}darsatcoin <valor> <id|@usuário>",
+    usage: "{prefix}darsatcoin [numero] @marcar",
 
     async execute(message) {
         return executeBalanceCommand(message, "add", "dar");

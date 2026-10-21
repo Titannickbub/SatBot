@@ -25,7 +25,7 @@ module.exports = {
     name: "autoupdate",
     category: "system/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}autoupdate [subcomando]",
+    usage: "{prefix}autoupdate [texto]",
     examples: [
         "{prefix}autoupdate status",
         "{prefix}autoupdate on",

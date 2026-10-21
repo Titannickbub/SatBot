@@ -1,7 +1,7 @@
 module.exports = {
     name: "ia",
     aliases: ["gpt", "satella", "gemini", "ai"],
-    category: "ia",
+    category: "utilitarios",
     description: `🧠 Conversa, tira dúvidas e responde perguntas usando Inteligência Artificial avançada.
 
 📝 1. Faça uma pergunta ou peça uma instrução:
@@ -12,7 +12,7 @@ module.exports = {
 
 💬 2. Você também pode responder à mensagem de alguém:
 Responda a qualquer mensagem no chat e digite {prefix}ia para a Inteligência Artificial analisar ou explicar o conteúdo daquela mensagem.`,
-    usage: "{prefix}ia <sua pergunta ou instrução>",
+    usage: "{prefix}ia [texto]",
     examples: [
         "{prefix}ia Qual é a velocidade da luz?",
         "{prefix}ia Escreva um poema sobre café",

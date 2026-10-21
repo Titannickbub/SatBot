@@ -72,7 +72,7 @@ module.exports = {
     aliases: ["bolsamonitor", "monitor bolsa"],
     category: "adm/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}monitorbolsa <set|times|on|off|status|run|help>",
+    usage: "{prefix}monitorbolsa help",
 
     async execute(message) {
         const target = getTarget(message);

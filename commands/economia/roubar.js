@@ -91,7 +91,7 @@ module.exports = {
 O golpe pode ter sucesso parcial, total (levar tudo), falhar, ser bloqueado por um escudo de proteção ou resultar em multas e indenizações policiais.
 
 ⏳ Limite de 3 tentativas diárias por usuário. Não é possível assaltar a mesma vítima duas vezes no mesmo dia.`,
-    usage: "{prefix}roubar <id|@usuário> ou respondendo a uma mensagem",
+    usage: "{prefix}roubar @marcar",
 
     async execute(message) {
         if (!economy.getScope(message)) {

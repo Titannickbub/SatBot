@@ -192,7 +192,7 @@ module.exports = {
 {prefix}info adm`,
 
     usage:
-        `{prefix}info <comando|categoria>`,
+        "{prefix}info [texto]",
 
     examples: [
         "{prefix}info menu",

@@ -73,7 +73,7 @@ module.exports = {
 
     name: "config",
     description: DESCRIPTION,
-    usage: "{prefix}config [subcomando]",
+    usage: "{prefix}config",
     examples: [
         "{prefix}config status",
         "{prefix}config prefix #",

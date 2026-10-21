@@ -108,7 +108,7 @@ No Discord, também é possível gerenciar exceções por cargo. A lista branca 
 
 📊 Consulte o estado e as configurações:
 {prefix}antilink status`,
-    usage: "{prefix}antilink status",
+    usage: "{prefix}antilink help",
     examples: [
         "{prefix}antilink status",
         "{prefix}antilink chat on",

@@ -100,7 +100,7 @@ module.exports = {
     name: "monitorcafe",
     category: "adm/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}monitorcafe [config|run|status|disable|help]",
+    usage: "{prefix}monitorcafe help",
     examples: [
         "{prefix}monitorcafe config both minasul,coocafe",
         "{prefix}monitorcafe config loop minasul,coocafe 07:00 13:00 20:00",

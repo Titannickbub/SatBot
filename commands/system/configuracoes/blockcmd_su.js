@@ -61,7 +61,7 @@ module.exports = {
     aliases: ["blockcmdsu", "su_blockcmd", "sublockcmd"],
     category: "system/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}blockcmd_su [subcomando]",
+    usage: "{prefix}blockcmd_su help",
     examples: [
         "{prefix}blockcmd_su status",
         "{prefix}blockcmd_su on",
@@ -223,4 +223,3 @@ function _status(message) {
 function _help(message) {
     return DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");
 }
-

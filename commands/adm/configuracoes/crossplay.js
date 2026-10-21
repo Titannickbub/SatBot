@@ -90,7 +90,7 @@ module.exports = {
     name: "crossplay",
     aliases: ["crossplay_link", "crossplay_claim", "crossplay_unlink", "crossplay_pref", "cplay"],
     description: DESCRIPTION,
-    usage: "{prefix}crossplay <link|claim|unlink|pref|status|help>",
+    usage: "{prefix}crossplay help",
 
     async execute(message) {
         if (message.isPrivate) {

@@ -59,7 +59,7 @@ module.exports = {
     category: "adm/configurações",
     platformSupport: { whatsapp: "full", telegram: "full", discord: "none" },
     description: DESCRIPTION,
-    usage: "{prefix}autoaceitar <subcomando>",
+    usage: "{prefix}autoaceitar help",
     examples: [
         "{prefix}autoaceitar on",
         "{prefix}autoaceitar intervalo 30",

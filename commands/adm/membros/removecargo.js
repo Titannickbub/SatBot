@@ -21,7 +21,7 @@ module.exports = {
 {prefix}removecargo @membro @Jogador
 
 Mencione primeiro o membro e depois um ou mais cargos a remover. Cargos gerenciados e @everyone não podem ser alterados.`,
-    usage: "{prefix}removecargo @membro @cargo1 @cargo2",
+    usage: "{prefix}removecargo @marcar @cargo",
     examples: [
         "{prefix}removecargo @membro @Jogador",
         "{prefix}removecargo @membro @Jogador @MembroVerificado"

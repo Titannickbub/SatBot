@@ -50,7 +50,7 @@ module.exports = {
 No último exemplo, responda à mensagem do membro para identificá-lo.
 
 O sistema correspondente precisa estar ativado neste grupo ou servidor, e o membro precisa ter dados registrados no ranking escolhido.`,
-    usage: "{prefix}rankinfo <atividade|xp|rico> <id|@usuário>",
+    usage: "{prefix}rankinfo [texto] @marcar",
 
     async execute(message) {
         const scope = economy.getScope(message);

@@ -19,7 +19,7 @@ module.exports = {
     aliases: ["setbotname", "nomebot"],
     category: "system",
     description: DESCRIPTION,
-    usage: "{prefix}botname [novo nome]",
+    usage: "{prefix}botname [texto]",
     examples: [
         "{prefix}botname",
         "{prefix}botname Satela",

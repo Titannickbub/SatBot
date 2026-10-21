@@ -15,7 +15,7 @@ Exemplo:
 {prefix}entregar 1
 
 O pagamento é mantido quando o pedido é marcado como entregue.`,
-    usage: "{prefix}entregar <número>",
+    usage: "{prefix}entregar [numero]",
     examples: ["{prefix}entregar 1"],
 
     async execute(message) {

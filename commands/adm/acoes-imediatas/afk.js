@@ -1,10 +1,10 @@
-const { isOwner } = require("../functions/owners");
-const centralAccounts = require("../functions/centralAccounts");
-const afk = require("../functions/afkHelper");
+const { isOwner } = require("../../../functions/owners");
+const centralAccounts = require("../../../functions/centralAccounts");
+const afk = require("../../../functions/afkHelper");
 
 module.exports = {
     name: "afk",
-    category: "utilitarios",
+    category: "adm/ações imediatas",
     description: `💤 Ativa o modo AFK com uma mensagem de ausência.
 
 Super Usuários ativam o AFK global, compartilhado entre plataformas ligadas à mesma Conta Central. Administradores ativam o AFK somente no grupo atual.
@@ -12,7 +12,7 @@ O modo é desativado automaticamente quando você voltar a enviar uma mensagem.
 
 {prefix}afk tô trabalhando
 {prefix}afk volto às 19h`,
-    usage: "{prefix}afk <motivo>",
+    usage: "{prefix}afk [texto]",
 
     async execute(message) {
         const owner = isOwner(message) || Boolean(message.sender?.isOwner);

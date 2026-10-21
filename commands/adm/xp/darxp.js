@@ -17,7 +17,7 @@ module.exports = {
 Você também pode responder à mensagem do usuário em vez de mencioná-lo ou informar o ID.
 
 O XP informado é somado ao total atual do perfil. O bot exibirá o XP anterior e o novo valor.`,
-    usage: "{prefix}darxp <quantidade> <id|@usuário>",
+    usage: "{prefix}darxp [numero] @marcar",
 
     async execute(message) {
         return executeXpCommand(message, "add", "adicionado");

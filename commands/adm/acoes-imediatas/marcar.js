@@ -9,7 +9,7 @@ module.exports = {
 
 No WhatsApp, as menções ficam ocultas no texto. No Discord, o comando usa @everyone.
 Não há suporte no Telegram.`,
-    usage: "{prefix}marcar <mensagem>",
+    usage: "{prefix}marcar [texto]",
 
     async execute(message) {
         if (!message.sender?.isAdmin) {

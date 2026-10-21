@@ -102,7 +102,7 @@ module.exports = {
     aliases: ["despedida", "bye"],
     category: "adm/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}goodbye <subcomando>",
+    usage: "{prefix}goodbye help",
     examples: [
         "{prefix}goodbye status",
         "{prefix}goodbye on",

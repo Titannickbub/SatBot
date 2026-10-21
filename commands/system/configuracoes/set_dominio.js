@@ -26,7 +26,7 @@ module.exports = {
     aliases: ["setdominio", "set-domain"],
     category: "system/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}set_dominio [http|https] <domínio:porta>",
+    usage: "{prefix}set_dominio [texto] [texto]",
     examples: [
         "{prefix}set_dominio painel.exemplo.com:32013",
         "{prefix}set_dominio http painel.exemplo.com:32013",

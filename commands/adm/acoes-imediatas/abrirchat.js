@@ -26,7 +26,7 @@ module.exports = {
     category: "adm/ações imediatas",
     platformSupport: { whatsapp: "full", telegram: "full", discord: "full" },
     description: DESCRIPTION,
-    usage: "{prefix}abrirchat [duração|HH:MM]",
+    usage: "{prefix}abrirchat [tempo]",
     examples: [
         "{prefix}abrirchat",
         "{prefix}abrirchat 2h",

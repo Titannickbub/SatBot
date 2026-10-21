@@ -189,7 +189,7 @@ module.exports = {
     ],
     category: "system/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}fuso [fuso_horario|status|comuns|lista]",
+    usage: "{prefix}fuso lista",
     examples: [
         "{prefix}fuso status",
         "{prefix}fuso America/Sao_Paulo",

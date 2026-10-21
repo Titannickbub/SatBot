@@ -27,7 +27,7 @@ Zera sua sequência atual de dias e atualiza seus dados no ranking.
 {prefix}setembro sair
 
 Remove seu perfil do placar deste grupo ou servidor.`,
-    usage: "{prefix}setembro [subcomando]",
+    usage: "{prefix}setembro help",
     examples: [
         "{prefix}setembro rank",
         "{prefix}setembro entrar",

@@ -16,7 +16,7 @@ module.exports = {
 {prefix}warns
 {prefix}warns @user
 {prefix}warns 123456789012345678`,
-    usage: "{prefix}warns [@usuário|id]",
+    usage: "{prefix}warns @marcar",
     examples: [
         "{prefix}warns",
         "{prefix}warns @user",

@@ -3,7 +3,9 @@ const { renderMediaBanner } = require("../../functions/mediaBanner");
 
 module.exports = {
     name: "video",
-    description: `🎬 Baixa vídeos em MP4 a partir de links ou buscando pelo título em diversas plataformas (YouTube, TikTok, Instagram, Twitter/X, Facebook, Kwai e iFunny).
+    description: `🎬 Baixa vídeos em MP4 por link ou buscando pelo título.
+
+🌐 Plataformas de origem suportadas: YouTube, TikTok, Instagram, X (Twitter), Facebook, Kwai e iFunny.
 
 📝 1. Baixe buscando pelo título ou assunto do vídeo:
 {prefix}video <título do vídeo>
@@ -19,7 +21,7 @@ module.exports = {
 
 O bot processa a mídia na melhor resolução disponível e envia o vídeo diretamente no chat.`,
     usage:
-        "{prefix}video <link ou nome do video>",
+        "{prefix}video [texto]",
 
     category: "utilitarios",
 
@@ -36,7 +38,7 @@ O bot processa a mídia na melhor resolução disponível e envia o vídeo diret
 
         if (!input.trim()) {
             return await message.reply({
-                text: `❌ Você precisa informar um link ou o nome de um vídeo.\nExemplo: ${message.prefix}video did i tell u jumpstyle`
+                text: `❌ Você precisa informar um link ou o nome de um vídeo.\nExemplo: ${message.prefix}video did i tell u jumpstyle\n\n🌐 Plataformas suportadas: YouTube, TikTok, Instagram, X (Twitter), Facebook, Kwai e iFunny.`
             });
         }
 

@@ -12,7 +12,7 @@ module.exports = {
 {prefix}delcargo @Membro @VIP
 
 O bot remove instantaneamente os cargos indicados do seu perfil no servidor do Discord.`,
-    usage: "{prefix}delcargo @cargo1 @cargo2",
+    usage: "{prefix}delcargo @cargo",
     async execute(message) {
         const result = await executeRoleChange(message, { targetSelf: true, remove: true });
         return message.reply({ text: result.error || result.text });

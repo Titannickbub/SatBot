@@ -63,7 +63,7 @@ Use off no lugar de on para desativar a exceção. Por padrão, o nível herda a
 
 📊 Consulte o estado e as configurações:
 {prefix}blockcmd status`,
-    usage: "{prefix}blockcmd status",
+    usage: "{prefix}blockcmd help",
     examples: [
         "{prefix}blockcmd status",
         "{prefix}blockcmd chat on",

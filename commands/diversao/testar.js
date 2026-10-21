@@ -48,25 +48,7 @@ O teste de casal gera um banner personalizado com as fotos dos participantes, a 
 
 📋 4. Liste todos os testes disponíveis:
 {prefix}testar help`,
-    usage: [
-        "{prefix}testar <teste> [@usuário]",
-        "{prefix}gay [@usuário]",
-        "{prefix}lesbica [@usuário]",
-        "{prefix}bonito [@usuário]",
-        "{prefix}feio [@usuário]",
-        "{prefix}casal @usuário",
-        "{prefix}casal2 @usuário",
-        "{prefix}casal @usuário1 @usuário2",
-        "{prefix}gado [@usuário]",
-        "{prefix}corno [@usuário]",
-        "{prefix}burro [@usuário]",
-        "{prefix}golpe [@usuário]",
-        "{prefix}gostoso [@usuário]",
-        "{prefix}gostosa [@usuário]",
-        "{prefix}triste [@usuário]",
-        "{prefix}doido [@usuário]",
-        "{prefix}otaku [@usuário]"
-    ].join("\n"),
+    usage: "{prefix}testar help",
 
     async execute(message) {
         const directTest = message.command && !["testar", "teste"].includes(message.command)

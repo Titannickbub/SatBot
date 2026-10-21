@@ -27,7 +27,7 @@ module.exports = {
     aliases: ["anti-spam", "antiflood"],
     category: "system/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}antispam [status|on|off|tempo|aviso]",
+    usage: "{prefix}antispam help",
     examples: [
         "{prefix}antispam status",
         "{prefix}antispam on",

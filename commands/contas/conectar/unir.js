@@ -10,7 +10,7 @@ module.exports = {
 O bot valida o código temporário e conecta as duas contas à mesma conta central, unificando seus dados entre as plataformas.
 
 ⚠️ Caso ainda não tenha um código, use o comando {prefix}gerar_unir na sua outra plataforma para gerá-lo.`,
-    usage: "{prefix}unir <codigo>",
+    usage: "{prefix}unir [texto]",
     async execute(message) {
         const args = message.args || [];
         const code = args[0];

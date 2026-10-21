@@ -44,7 +44,7 @@ module.exports = {
     aliases: ["setteste", "testeset", "teste_edit", "testeedit"],
     category: "system/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}set_teste [subcomando] [tipo] [url|imagem anexa]",
+    usage: "{prefix}set_teste help",
     examples: [
         "{prefix}set_teste list",
         "{prefix}set_teste info gay",

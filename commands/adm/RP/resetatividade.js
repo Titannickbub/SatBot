@@ -46,7 +46,7 @@ module.exports = {
     aliases: ["zeraratividade", "resetaratividade"],
     category: "adm/atividade",
     description: DESCRIPTION,
-    usage: "{prefix}resetatividade true <id|@usuário|#mensagem|help>",
+    usage: "{prefix}resetatividade help",
     examples: [
         "{prefix}resetatividade true @usuário",
         "{prefix}resetatividade true <id>",

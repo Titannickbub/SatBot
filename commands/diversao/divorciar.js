@@ -14,7 +14,7 @@ Marque seu cônjuge ou responda a uma mensagem dele:
 {prefix}divorciar (respondendo à mensagem do parceiro)
 
 Sem marcar ninguém, o comando mostra estas instruções e não altera seu casamento.`,
-    usage: "{prefix}divorciar [@parceiro]",
+    usage: "{prefix}divorciar @marcar",
 
     async execute(message) {
         try {

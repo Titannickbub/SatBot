@@ -17,7 +17,7 @@ module.exports = {
 {prefix}porcentagem gay @usuario
 
 Você também pode responder à mensagem de uma pessoa e digitar {prefix}porcentagem <tema>.`,
-    usage: "{prefix}porcentagem <argumento> [@membro ou mensagem respondida]",
+    usage: "{prefix}porcentagem [texto] @marcar",
 
     async execute(message) {
         const argument = String(message.args?.[0] || "").trim();

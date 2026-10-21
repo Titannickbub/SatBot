@@ -15,7 +15,9 @@ function createAudioFilename(title) {
 
 module.exports = {
     name: "play",
-    description: `🎵 Baixa áudios em MP3 a partir de links ou buscando pelo nome em diversas plataformas (YouTube, SoundCloud, TikTok, Instagram, Spotify, X/Twitter e Facebook).
+    description: `🎵 Baixa áudios em MP3 por link ou buscando pelo nome da música.
+
+🌐 Plataformas de origem suportadas: YouTube, SoundCloud, TikTok, Instagram, Spotify, X (Twitter) e Facebook.
 
 📝 1. Baixe buscando pelo nome da música:
 {prefix}play <nome da música>
@@ -29,9 +31,9 @@ module.exports = {
 {prefix}play https://www.tiktok.com/...
 {prefix}play https://www.instagram.com/reel/...
 
-O bot extrai o áudio na melhor qualidade disponível e envia o arquivo de música diretamente no chat.`,
+O bot extrai o áudio na melhor qualidade disponível e envia o arquivo diretamente no chat.`,
     category: "utilitarios",
-    usage: "{prefix}play <link ou nome da música>",
+    usage: "{prefix}play [texto]",
     examples: [
         "{prefix}play hotel caro",
         "{prefix}play https://youtu.be/...",
@@ -44,7 +46,7 @@ O bot extrai o áudio na melhor qualidade disponível e envia o arquivo de músi
 
         if (!input) {
             return await message.reply({
-                text: `❌ Você precisa informar um link ou o nome de uma música.\nExemplo: ${message.prefix}play did i tell u jumpstyle`
+                text: `❌ Você precisa informar um link ou o nome de uma música.\nExemplo: ${message.prefix}play did i tell u jumpstyle\n\n🌐 Plataformas suportadas: YouTube, SoundCloud, TikTok, Instagram, Spotify, X (Twitter) e Facebook.`
             });
         }
 

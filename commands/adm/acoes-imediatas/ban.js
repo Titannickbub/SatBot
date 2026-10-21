@@ -24,7 +24,7 @@ module.exports = {
 {prefix}ban #mensagem
 {prefix}ban @titannickbub
 {prefix}ban 0000000000`,
-    usage: "{prefix}ban <@usuário|#mensagem|id/número>",
+    usage: "{prefix}ban @marcar",
     examples: [
         "{prefix}ban @user",
         "{prefix}ban #mensagem",

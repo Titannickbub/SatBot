@@ -51,7 +51,7 @@ Todos podem ler as notas; apenas administradores podem gerenciar.
 {prefix}notas título — exibe uma nota pelo título.
 {prefix}notas 1 — exibe a primeira nota da lista.
 {prefix}notas del título — apaga uma nota pelo título.`,
-    usage: "{prefix}notas [add|del|título|número]",
+    usage: "{prefix}notas",
     examples: [
         "{prefix}notas",
         "{prefix}notas add Regras - Leiam as regras do grupo.",

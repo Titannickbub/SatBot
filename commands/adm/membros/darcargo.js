@@ -21,7 +21,7 @@ module.exports = {
 {prefix}darcargo @membro @MembroVerificado @Jogador
 
 Mencione primeiro o membro e depois um ou mais cargos a conceder. Cargos gerenciados e @everyone não podem ser atribuídos.`,
-    usage: "{prefix}darcargo @membro @cargo1 @cargo2",
+    usage: "{prefix}darcargo @marcar @cargo",
     examples: [
         "{prefix}darcargo @membro @MembroVerificado",
         "{prefix}darcargo @membro @MembroVerificado @Jogador"

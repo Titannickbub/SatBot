@@ -27,8 +27,8 @@ https://api.bronxyshost.com.br/
 
 🧪 Para verificar se a chave atual está funcionando sem alterá-la, use:
 {prefix}testbronxys`,
-    category: "bronxys",
-    usage: "{prefix}setkey <nova_chave|bronxys>",
+    category: "system/bronxys",
+    usage: "{prefix}setkey [texto]",
     examples: [
         "{prefix}setkey SUA_NOVA_CHAVE_BRONXYS",
         "{prefix}setbronxyskey SUA_NOVA_CHAVE_BRONXYS",

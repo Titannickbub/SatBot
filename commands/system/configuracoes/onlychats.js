@@ -65,7 +65,7 @@ module.exports = {
     name: "onlychats",
     description: DESCRIPTION,
     category: "system/configurações",
-    usage: "{prefix}onlychats [subcomando]",
+    usage: "{prefix}onlychats help",
     examples: [
         "{prefix}onlychats list",
         "{prefix}onlychats on",

@@ -15,7 +15,7 @@ Consulte a {prefix}loja para verificar a lista de produtos, números e preços a
 Para comprar um item da loja configurada pelos administradores, use {prefix}loja2 e informe o ID (a partir de 1001) ou nome. Os pedidos aguardam entrega manual e podem ser cancelados pela equipe.
 
 ⚠️ Resets só podem ser comprados após esgotar o limite diário da atividade correspondente.`,
-    usage: "{prefix}comprar <número|nome>",
+    usage: "{prefix}comprar [texto]",
 
     async execute(message) {
         if (!economy.getScope(message)) {

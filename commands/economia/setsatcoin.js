@@ -17,7 +17,7 @@ module.exports = {
 Você também pode responder à mensagem do usuário em vez de mencioná-lo ou digitar o ID.
 
 O saldo atual da carteira do membro será substituído pelo valor especificado.`,
-    usage: "{prefix}setsatcoin <valor> <id|@usuário>",
+    usage: "{prefix}setsatcoin [numero] @marcar",
 
     async execute(message) {
         if (!economy.getScope(message)) return message.reply({ text: "❌ Este comando só funciona em grupos ou servidores." });

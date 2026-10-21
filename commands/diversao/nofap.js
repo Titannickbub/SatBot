@@ -26,7 +26,7 @@ Zera sua sequência atual e incrementa o histórico de resets, preservando seu r
 {prefix}nofap sair
 
 Pausa a contagem dos dias e desativa seu status no desafio.`,
-    usage: "{prefix}nofap [status|iniciar|reset|sair|help]",
+    usage: "{prefix}nofap help",
     examples: [
         "{prefix}nofap status",
         "{prefix}nofap iniciar",

@@ -1,7 +1,7 @@
 module.exports = {
     name: "imagine",
     aliases: ["gerarimg", "dalle", "stablediffusion", "desenhar"],
-    category: "ia",
+    category: "utilitarios",
     description: `🎨 Gera imagens e ilustrações artísticas em alta resolução a partir de descrições de texto usando Inteligência Artificial.
 
 📝 1. Descreva detalhadamente a imagem desejada:
@@ -11,7 +11,7 @@ module.exports = {
 {prefix}imagine Um dragão de cristal no topo de uma montanha de neve
 
 O bot processa sua solicitação com IA e envia a imagem gerada diretamente no chat.`,
-    usage: "{prefix}imagine <descrição da imagem em português ou inglês>",
+    usage: "{prefix}imagine [texto]",
     examples: [
         "{prefix}imagine Um gato astronauta flutuando no espaço, arte digital 4k",
         "{prefix}imagine Paisagem futurista estilo cyberpunk com luzes neon",

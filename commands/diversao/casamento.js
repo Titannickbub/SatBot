@@ -14,7 +14,7 @@ module.exports = {
 {prefix}casamento
 {prefix}casamento 2
 {prefix}casamento @parceiro`,
-    usage: "{prefix}casamento [número|@parceiro]",
+    usage: "{prefix}casamento [numero]\n{prefix}casamento @marcar",
 
     async execute(message) {
         try {

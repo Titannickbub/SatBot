@@ -39,7 +39,7 @@ Envie uma imagem/GIF na legenda com o comando, responda a uma mídia ou cole o e
 📐 2. Modos alternativos de ajuste:
 • {prefix}femoji / {prefix}fe <nome> — Estica a mídia preenchendo o espaço (128x128).
 • {prefix}remoji / {prefix}re <nome> — Recorta a imagem em formato quadrado centralizado.`,
-    usage: "{prefix}emoji <nome> [imagem/emoji/link]",
+    usage: "{prefix}emoji [texto] [@mensagem]",
     examples: [
         "{prefix}emoji super_gato (respondendo a uma imagem ou na legenda)",
         "{prefix}emoji meu_emoji <:custom_emoji:1234567890>",

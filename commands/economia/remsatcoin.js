@@ -17,7 +17,7 @@ module.exports = {
 Você também pode responder à mensagem do usuário em vez de mencioná-lo ou digitar o ID.
 
 O valor informado é subtraído do saldo atual da carteira do membro neste grupo ou servidor.`,
-    usage: "{prefix}remsatcoin <valor> <id|@usuário>",
+    usage: "{prefix}remsatcoin [numero] @marcar",
 
     async execute(message) {
         if (!economy.getScope(message)) return message.reply({ text: "❌ Este comando só funciona em grupos ou servidores." });

@@ -28,7 +28,7 @@ module.exports = {
     aliases: ["configeconomia", "economy"],
     category: "adm/economia",
     description: DESCRIPTION,
-    usage: "{prefix}economia <ativar|desativar|status|help>",
+    usage: "{prefix}economia help",
 
     async execute(message) {
         if (!economy.getScope(message)) {

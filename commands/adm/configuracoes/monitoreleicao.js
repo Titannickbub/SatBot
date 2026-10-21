@@ -168,7 +168,7 @@ module.exports = {
     aliases: ["monitoreleicoes", "monitoreleição"],
     category: "adm/configurações",
     description: "Agenda parciais eleitorais do TSE por cargo e localidade, com início e intervalo configuráveis.",
-    usage: "{prefix}monitoreleicao <add|remove|on|off|status|run|help>",
+    usage: "{prefix}monitoreleicao help",
     examples: [
         "{prefix}monitoreleicao add presidente intervalo 5m inicio 0m",
         "{prefix}monitoreleicao add senador uf MG intervalo 10m inicio 30m",

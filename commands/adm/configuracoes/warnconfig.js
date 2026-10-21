@@ -21,7 +21,7 @@ module.exports = {
     name: "warnconfig",
     category: "adm/configurações",
     description: DESCRIPTION,
-    usage: "{prefix}warnconfig <max> <kick|ban>",
+    usage: "{prefix}warnconfig help",
 
     async execute(message) {
         if (message.isPrivate) return message.reply({ text: "❌ Comando apenas para grupos/servidores." });

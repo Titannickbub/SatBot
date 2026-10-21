@@ -212,7 +212,7 @@ Acrescente list a qualquer opção para listar todos os membros envolvidos, por 
 🔐 Todas as opções list são exclusivas para administradores, pois podem mencionar todos os membros. No WhatsApp, as listas incluem todos os membros atuais do grupo e mostram valores zerados quando não houver dados salvos. No Telegram e no Discord, mostram somente os membros que possuem registro nos dados JSON.
 
 Os comandos antigos rankxp, rankativos, rankrico, rank_rico, rankcoins, rankpobre e rank_pobre continuam como atalhos para as opções correspondentes.`,
-    usage: "{prefix}rank <xp|notxp|xplist|ativos|inativos|inativoslist|rico|pobre> [list]",
+    usage: "{prefix}rank [texto]",
 
     async execute(message) {
         if (!economy.getScope(message)) {
