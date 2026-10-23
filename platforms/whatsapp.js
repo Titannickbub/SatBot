@@ -363,6 +363,7 @@ async function start(onMessage) {
 
         let isAdmin = false;
         let canManageMessages = false;
+        let groupName = null;
 
         if (chatType === "private") {
           isAdmin = true;
@@ -370,6 +371,7 @@ async function start(onMessage) {
         } else {
           try {
             const metadata = await getGroupMetadataWithTimeout(sock, chatId);
+            groupName = metadata?.subject || null;
             const participant = metadata.participants.find(p => p.id === userId);
             if (participant) {
               isAdmin = !!participant.admin;
@@ -532,6 +534,7 @@ async function start(onMessage) {
           userId,
           username,
           displayName: username || null,
+          groupName,
           text,
           raw: msg,
           messageId: String(msg.key.id),

@@ -20,6 +20,7 @@ function defaultData(message) {
     return {
         platform: scope.platform,
         chatId: String(scope.id),
+        groupName: scope.name,
         enabled: false,
         levelUp: {
             muted: false,
@@ -275,6 +276,38 @@ function configure(message, changes) {
     return data;
 }
 
+function refreshNames(message) {
+    const target = filePath(message);
+    if (!target || !fs.existsSync(target)) return false;
+    const scope = economy.getScope(message);
+    if (!scope) return false;
+    try {
+        JSON.parse(fs.readFileSync(target, "utf8"));
+    } catch (error) {
+        console.error(`[xp] Não foi possível atualizar nomes em ${target}:`, error);
+        return false;
+    }
+    const data = load(message);
+    let changed = false;
+    if (scope.name && data.groupName !== scope.name) {
+        data.groupName = scope.name;
+        changed = true;
+    }
+    const user = data.users[String(message.userId)];
+    if (user) {
+        if (message.username && user.username !== message.username) {
+            user.username = message.username;
+            changed = true;
+        }
+        const displayName = message.displayName || message.name;
+        if (displayName && user.displayName !== displayName) {
+            user.displayName = displayName;
+            changed = true;
+        }
+    }
+    return changed ? save(message, data) : false;
+}
+
 module.exports = {
     load,
     save,
@@ -291,6 +324,7 @@ module.exports = {
     activityXp,
     notifyLevelUp,
     configure,
+    refreshNames,
     getUser,
     scopeId
 };

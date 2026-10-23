@@ -104,7 +104,8 @@ não como configuração geral.
 Agrupar eventos de entrada/saída e automações operacionais:
 
 - Boas-vindas e despedidas, com prévia, texto, mídia e estado.
-- Aprovação automática de pedidos de entrada.
+- Aprovação automática de pedidos de entrada, com intervalo, bloqueios por
+  nome/símbolo e faixas de horário no relógio local do bot.
 - Horários programados para abrir/fechar.
 - Respostas automáticas e Auto-IA.
 - Conversão automática em figurinha, download automático e transcrição.
@@ -124,12 +125,16 @@ prévia ou resumo da configuração antes de salvar.
 Separar em três cartões/telas próprias:
 
 - **Atividade:** ativar/desativar e consultar o ranking; reset individual ou
-  total deve ser tratado como ação irreversível.
-- **XP:** ativar/desativar, configurar avisos de level-up e consultar o estado.
-  Alterar ou zerar o XP de membros fica em uma área avançada.
-- **Economia:** ativar/desativar sem apagar saldos; exibir estado da economia.
-  Gestão de loja, pedidos, entrega e alteração de saldo ficam em ferramentas
-  separadas, com confirmação reforçada e resumo do impacto.
+  total deve ser tratado como ação irreversível. O painel lista os registros
+  existentes com os nomes salvos e permite apagar o registro de um membro ou
+  resetar todos os registros deste escopo.
+- **XP:** ativar/desativar, silenciar avisos de level-up, escolher o canal ou
+  tópico de destino compatível e consultar membros. O painel permite definir,
+  acrescentar, retirar ou zerar o XP de um membro ou resetar o XP de todos.
+- **Economia:** ativar/desativar sem apagar saldos e consultar as contas locais
+  pelo nome salvo. O painel permite definir, acrescentar, retirar ou zerar o
+  saldo individual ou resetar os saldos de todos; não altera contas, limites
+  nem as regras econômicas.
 
 Não misturar configurações dos sistemas com ações de edição de dados dos
 membros.
@@ -188,7 +193,9 @@ ativação e os outros campos já armazenados.
 
 ### 6. Membros e cargos
 
-- Busca de membro por nome/ID e acesso ao perfil local.
+- Busca de membro por nome/ID e acesso ao perfil local. A seleção de
+  participantes do WhatsApp usa cartões próprios com nome e ID, em vez de uma
+  seleção genérica.
 - Alteração de cargos/permissões administrativas, respeitando os recursos
   próprios de cada plataforma: cargos do Discord, estado de administrador do
   WhatsApp e níveis de permissão do bot no Telegram.
@@ -199,6 +206,9 @@ No Discord, a lista de cargos exclui `@everyone`, cargos gerenciados e cargos
 que estejam acima do maior cargo do administrador ou do bot. No Telegram, o
 painel usa os níveis existentes no helper de administração; no WhatsApp, a ação
 altera o estado nativo de administrador do participante.
+Os nomes de usuários e de grupos/servidores são atualizados a partir das
+mensagens recebidas nos arquivos dos sistemas que já possuem esses registros.
+O nome personalizável da Conta Central não é substituído por esses nomes.
 
 ### 7. Rankings e relatórios
 

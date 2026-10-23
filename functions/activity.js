@@ -23,6 +23,7 @@ function defaultData(message) {
     return {
         platform: scope.platform,
         scopeId: scope.id,
+        scopeName: scope.name,
         enabled: false,
         users: {}
     };
@@ -177,6 +178,38 @@ function resetAll(message) {
     return count;
 }
 
+function refreshNames(message) {
+    const target = getFilePath(message);
+    if (!target || !fs.existsSync(target)) return false;
+    const scope = getScope(message);
+    if (!scope) return false;
+    try {
+        JSON.parse(fs.readFileSync(target, "utf8"));
+    } catch (error) {
+        console.error(`[activity] Não foi possível atualizar nomes em ${target}:`, error);
+        return false;
+    }
+    const data = load(message);
+    let changed = false;
+    if (scope.name && data.scopeName !== scope.name) {
+        data.scopeName = scope.name;
+        changed = true;
+    }
+    const user = data.users[String(message.userId)];
+    if (user) {
+        if (message.username && user.username !== message.username) {
+            user.username = message.username;
+            changed = true;
+        }
+        const displayName = message.displayName || message.name;
+        if (displayName && user.displayName !== displayName) {
+            user.displayName = displayName;
+            changed = true;
+        }
+    }
+    return changed ? save(message, data) : false;
+}
+
 module.exports = {
     configure,
     findUser,
@@ -184,5 +217,6 @@ module.exports = {
     ranking,
     record,
     resetAll,
-    resetUser
+    resetUser,
+    refreshNames
 };

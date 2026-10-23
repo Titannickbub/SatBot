@@ -120,6 +120,7 @@ function loadScope(scope) {
     let data = {
         platform: scope.platform,
         scopeId: scope.id,
+        scopeName: scope.name,
         enabled: false,
         accounts: {},
         communityStore: createCommunityStore()
@@ -132,6 +133,7 @@ function loadScope(scope) {
                 data = {
                     platform: parsed.platform || scope.platform,
                     scopeId: parsed.scopeId || scope.id,
+                    scopeName: parsed.scopeName || scope.name,
                     enabled: parsed.enabled === true,
                     accounts: parsed.accounts && typeof parsed.accounts === "object" && !Array.isArray(parsed.accounts)
                         ? parsed.accounts
@@ -186,7 +188,7 @@ function getScope(message) {
         type = "servidor";
     } else {
         id = message?.chatId;
-        name = raw.chat?.title || raw.chat?.name || raw.metadata?.subject || null;
+        name = message?.groupName || message?.chatName || raw.chat?.title || raw.chat?.name || raw.metadata?.subject || null;
     }
 
     if (!id) return null;
@@ -357,6 +359,52 @@ function getAccountByUser(message, userId) {
     const store = loadScope(scope);
     const account = store.accounts[String(userId)];
     return account && typeof account === "object" ? account : null;
+}
+
+function listAccounts(message) {
+    const scope = getScope(message);
+    if (!scope) return [];
+    return Object.values(loadScope(scope).accounts)
+        .filter(account => account && typeof account === "object")
+        .sort((left, right) =>
+            Number(right.balance || 0) - Number(left.balance || 0) ||
+            String(left.displayName || left.username || left.userId).localeCompare(
+                String(right.displayName || right.username || right.userId),
+                "pt-BR"
+            )
+        );
+}
+
+function refreshNames(message) {
+    const scope = getScope(message);
+    if (!scope) return false;
+    const dataFile = getScopeFile(scope);
+    if (!fs.existsSync(dataFile)) return false;
+    try {
+        JSON.parse(fs.readFileSync(dataFile, "utf8"));
+    } catch (error) {
+        console.error(`[ECONOMY] Não foi possível atualizar nomes em ${dataFile}:`, error);
+        return false;
+    }
+    const data = loadScope(scope);
+    let changed = false;
+    if (scope.name && data.scopeName !== scope.name) {
+        data.scopeName = scope.name;
+        changed = true;
+    }
+    const account = data.accounts[String(message.userId)];
+    if (account) {
+        if (message.displayName && account.displayName !== message.displayName) {
+            account.displayName = message.displayName;
+            changed = true;
+        }
+        if (message.username && account.username !== message.username) {
+            account.username = message.username;
+            changed = true;
+        }
+    }
+    if (changed) saveScope(scope, data);
+    return changed;
 }
 
 function resetBalance(message, userId) {
@@ -1302,6 +1350,7 @@ module.exports = {
     canClaimDaily,
     formatMoney,
     getAccount,
+    listAccounts,
     getBalance,
     getAccountByUser,
     resetBalance,
@@ -1316,6 +1365,7 @@ module.exports = {
     getLocalDate,
     isEnabled,
     setEnabled,
+    refreshNames,
     LEVEL_UP_REWARD_BASE,
     rewardLevelUp,
     canCasino,

@@ -276,6 +276,53 @@ function saveSettings(platform, id, type, data, context = {}) {
     }
 }
 
+function refreshNames(message) {
+    if (!message || message.isPrivate) return false;
+    const platform = String(message.platform || "");
+    const raw = message.raw || {};
+    const guild = raw.guild || {};
+    const channel = raw.channel || {};
+    const chat = raw.chat || {};
+    const metadata = raw.metadata || {};
+    const context = {
+        raw,
+        serverName: message.serverName || guild.name || null,
+        groupName: message.groupName || message.chatName || chat.title || metadata.subject || channel.name || guild.name || null,
+        chatName: message.chatName || channel.name || message.groupName || chat.title || metadata.subject || null,
+        categoryName: message.categoryName || channel.parent?.name || null
+    };
+    const targets = [];
+    if (platform === "discord") {
+        const guildId = guild.id || message.guildId;
+        if (guildId) targets.push({ id: String(guildId), type: "server" });
+        if (channel.id && guildId) targets.push({ id: String(channel.id), type: "group" });
+    } else if (["whatsapp", "telegram"].includes(platform) && message.chatId) {
+        const isTelegramChannel = platform === "telegram" && chat.type === "channel";
+        targets.push({ id: String(message.chatId), type: isTelegramChannel ? "channel" : "group" });
+    }
+    let changed = false;
+    for (const target of targets) {
+        const filename = getFilename(platform, target.id, target.type);
+        const filePath = path.join(groupsDir, filename);
+        if (!fs.existsSync(filePath)) continue;
+        try {
+            const current = JSON.parse(fs.readFileSync(filePath, "utf8"));
+            const before = JSON.stringify(current);
+            const targetContext = platform === "discord"
+                ? target.type === "server"
+                    ? { ...context, groupName: context.serverName || context.groupName, chatName: context.serverName || context.chatName }
+                    : { ...context, groupName: context.chatName || context.groupName }
+                : context;
+            ensureSettingsMetadata(current, platform, target.type, targetContext);
+            if (JSON.stringify(current) === before) continue;
+            if (saveSettings(platform, target.id, target.type, current, targetContext)) changed = true;
+        } catch (error) {
+            console.error(`[groupSettings] Não foi possível atualizar nomes em ${filename}:`, error);
+        }
+    }
+    return changed;
+}
+
 /**
  * Deleta o arquivo de configurações de um grupo/servidor.
  */
@@ -691,6 +738,7 @@ function syncWhatsAppHierarchy(groupId, communityId = null, groupName = null, co
 module.exports = {
     loadSettings,
     saveSettings,
+    refreshNames,
     deleteSettingsFile,
     syncDiscordHierarchy,
     syncTelegramHierarchy,

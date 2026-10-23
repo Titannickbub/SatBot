@@ -1711,6 +1711,201 @@ function saveAdminBlockcmdConfig(message, scope, input) {
   return saved;
 }
 
+function getAdminAutoApproveConfig(message, scope) {
+  const scopedMessage = getScopedAdminMessage(message, scope);
+  return autoAcceptHelper.getConfig({
+    platform: scopedMessage.platform,
+    chatId: String(scopedMessage.chatId),
+    raw: scopedMessage.raw,
+    chatName: scopedMessage.groupName || scopedMessage.chatName
+  });
+}
+
+function validateAdminAutoApproveConfig(input, current) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("Configuração de autoaprovação inválida.");
+  }
+  const intervalSeconds = Number(input.intervalSeconds);
+  if (!Number.isInteger(intervalSeconds) || intervalSeconds < 0 || intervalSeconds > 86400) {
+    throw new Error("O intervalo deve ser um número inteiro entre 0 e 86400 segundos.");
+  }
+  const readList = (value, label) => {
+    if (!Array.isArray(value)) throw new Error(`Informe a lista de ${label} como itens separados por linha.`);
+    const entries = value;
+    const normalized = [...new Set(entries.map(item => String(item).trim()).filter(Boolean))];
+    if (normalized.length > 100 || normalized.some(item => item.length > 100)) {
+      throw new Error(`A lista de ${label} aceita até 100 itens, com no máximo 100 caracteres cada.`);
+    }
+    return normalized;
+  };
+  if (!Array.isArray(input.schedules)) throw new Error("Informe as faixas de horário como uma lista.");
+  const schedules = input.schedules;
+  if (schedules.length > 24 || schedules.some(schedule =>
+    !schedule || autoAcceptHelper.parseTime(schedule.start) === null ||
+    autoAcceptHelper.parseTime(schedule.end) === null
+  )) {
+    throw new Error("Informe até 24 faixas de horário válidas no formato HH:MM-HH:MM.");
+  }
+  return {
+    ...current,
+    intervalSeconds,
+    blockedNames: readList(input.blockedNames, "nomes"),
+    blockedSymbols: readList(input.blockedSymbols, "símbolos"),
+    schedules: schedules.map(schedule => ({
+      start: String(schedule.start).trim(),
+      end: String(schedule.end).trim()
+    }))
+  };
+}
+
+function getAdminXpConfig(message, scope) {
+  const scopedMessage = getScopedAdminMessage(message, scope);
+  const data = xp.load(scopedMessage);
+  return {
+    enabled: data?.enabled === true,
+    muted: data?.levelUp?.muted === true,
+    chatId: data?.levelUp?.chatId || "",
+    threadId: data?.levelUp?.threadId || ""
+  };
+}
+
+async function saveAdminXpConfig(message, scope, input) {
+  if (!input || typeof input !== "object" || Array.isArray(input) || typeof input.muted !== "boolean") {
+    throw new Error("Configuração de XP inválida.");
+  }
+  const scopedMessage = getScopedAdminMessage(message, scope);
+  let chatId = null;
+  let threadId = null;
+  const destination = typeof input.destination === "string" ? input.destination.trim() : "";
+  if (destination && message.platform === "discord") {
+    const options = await getAdminSystemsOptions(message.platform, String(message.groupId || message.chatId));
+    const channel = options.logChannels.find(item => item.id === destination);
+    if (!channel) throw new Error("Canal de avisos inválido para este servidor.");
+    chatId = destination;
+  } else if (destination && message.platform === "telegram") {
+    const options = await getAdminSystemsOptions(message.platform, String(message.groupId || message.chatId));
+    const topic = options.topics.find(item => item.id === destination);
+    if (!topic) throw new Error("Tópico de avisos inválido para este grupo.");
+    chatId = String(scopedMessage.chatId);
+    threadId = destination;
+  } else if (destination) {
+    throw new Error("Destino de avisos não disponível nesta plataforma.");
+  }
+  const saved = xp.configure(scopedMessage, {
+    muted: input.muted,
+    chatId,
+    threadId
+  });
+  if (!saved) throw new Error("Não foi possível salvar as configurações de XP.");
+  return getAdminXpConfig(message, scope);
+}
+
+function getAdminRpUserData(message, setting, query = "") {
+  const normalizedQuery = String(query).trim().replace(/^@/, "").toLowerCase();
+  let entries;
+  if (setting === "economy") {
+    entries = economy.listAccounts(message).map(account => ({
+      userId: String(account.userId),
+      username: account.username || "",
+      displayName: account.displayName || "",
+      value: Number(account.balance) || 0,
+      detail: economy.formatMoney(account.balance)
+    }));
+  } else if (setting === "xp") {
+    entries = xp.ranking(message).map(user => ({
+      userId: String(user.userId),
+      username: user.username || "",
+      displayName: user.displayName || "",
+      value: Number(user.xp) || 0,
+      detail: `${Number(user.xp) || 0} XP · Nível ${xp.levelForXp(user.xp).level}`
+    }));
+  } else if (setting === "activity") {
+    entries = (activity.ranking(message)?.users || []).map(user => ({
+      userId: String(user.userId),
+      username: user.username || "",
+      displayName: user.displayName || "",
+      value: Number(user.total) || 0,
+      detail: `${Number(user.total) || 0} registros · ${Number(user.messages) || 0} mensagens · ${Number(user.commands) || 0} comandos`
+    }));
+  } else {
+    throw new Error("Sistema de RP inválido.");
+  }
+  const matches = normalizedQuery
+    ? entries.filter(user => [user.userId, user.username, user.displayName]
+      .some(value => String(value).toLowerCase().includes(normalizedQuery)))
+    : entries;
+  return {
+    total: matches.length,
+    users: matches.slice(0, 100)
+  };
+}
+
+function executeAdminRpAction(message, setting, input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("Ação de gerenciamento inválida.");
+  }
+  const action = typeof input.action === "string" ? input.action : "";
+  if (action === "resetAll") {
+    let resetCount;
+    if (setting === "economy") {
+      resetCount = economy.resetAllBalances(message);
+    } else if (setting === "xp") {
+      resetCount = xp.resetAll(message);
+    } else if (setting === "activity") {
+      resetCount = activity.resetAll(message);
+    } else {
+      throw new Error("Sistema de RP inválido.");
+    }
+    if (resetCount === null || resetCount === false) {
+      throw new Error("Não foi possível resetar os dados deste sistema.");
+    }
+    return { resetCount };
+  }
+  const userId = typeof input.userId === "string" ? input.userId.trim() : "";
+  if (!userId || userId.length > 100) throw new Error("Selecione um usuário válido.");
+  if (setting === "activity") {
+    if (action !== "reset") throw new Error("Ação de atividade inválida.");
+    if (!activity.resetUser(message, userId)) throw new Error("Não há registro de atividade para este usuário.");
+  } else if (setting === "economy") {
+    const account = economy.getAccountByUser(message, userId);
+    if (!account) throw new Error("Conta de economia não encontrada neste grupo.");
+    if (action === "reset") {
+      if (!economy.resetBalance(message, userId)) throw new Error("Não foi possível zerar o saldo.");
+    } else {
+      const amountText = String(input.amount ?? "").trim().replace(",", ".");
+      if (!/^\d+(?:\.\d{1,2})?$/.test(amountText)) throw new Error("Informe um valor válido com até duas casas decimais.");
+      const [whole, fraction = ""] = amountText.split(".");
+      const amount = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+      if (!Number.isSafeInteger(amount) || amount < 0) throw new Error("O valor informado é inválido.");
+      if (!["set", "add", "subtract"].includes(action)) throw new Error("Ação de economia inválida.");
+      if (action === "subtract" && amount > Number(account.balance || 0)) {
+        throw new Error("O saldo não pode ficar negativo.");
+      }
+      const operation = action === "subtract" ? "subtract" : action;
+      if (!economy.adjustBalance(message, { userId }, amount, operation)) throw new Error("Não foi possível ajustar o saldo.");
+    }
+  } else if (setting === "xp") {
+    const user = xp.getUserById(message, userId);
+    if (!user) throw new Error("Usuário não encontrado no sistema de XP.");
+    if (action === "reset") {
+      if (!xp.resetUser(message, userId)) throw new Error("Não foi possível zerar o XP.");
+    } else {
+      const amountText = String(input.amount ?? "").trim();
+      const amount = Number(amountText);
+      if (!amountText || !Number.isSafeInteger(amount) || amount < 0 || amount > 1_000_000_000) {
+        throw new Error("Informe uma quantidade inteira de XP entre 0 e 1.000.000.000.");
+      }
+      if (!["set", "add", "subtract"].includes(action)) throw new Error("Ação de XP inválida.");
+      if (!xp.adjustXp(message, { userId }, amount, action === "subtract" ? "subtract" : action)) {
+        throw new Error("Não foi possível ajustar o XP.");
+      }
+    }
+  } else {
+    throw new Error("Sistema de RP inválido.");
+  }
+  return getAdminRpUserData(message, setting, userId);
+}
+
 function getAdminWelcomeConfig(message, scope, setting) {
   const scopedMessage = getScopedAdminMessage(message, scope);
   const helper = setting === "welcome" ? welcomeHelper.getWelcomeConfig : welcomeHelper.getGoodbyeConfig;
@@ -2517,10 +2712,12 @@ function renderGroupAdmin(data) {
         ? `<h3 class="setting-category" style="margin:12px 0 0;color:#b9c6ff;font-size:14px">${escapeHtml(setting.category)}</h3>`
         : "";
       previousSettingCategory = setting.category || previousSettingCategory;
-      const configurableSettings = ["antilink", "antimedia", "antipalavras", "antiraid", "blockcmd", "welcome", "goodbye", "autorepo", "autodownload"];
+      const configurableSettings = ["antilink", "antimedia", "antipalavras", "antiraid", "blockcmd", "welcome", "goodbye", "autorepo", "autodownload", "autoApprove"];
       const isMonitor = Object.prototype.hasOwnProperty.call(ADMIN_MONITOR_HELPERS, setting.key);
       const configButton = configurableSettings.includes(setting.key)
-        ? `<button type="button" class="setting-icon-button" data-${setting.key}-config data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Configurar ${setting.key} neste escopo" title="Configurações do ${setting.key}">${ADMIN_SETTINGS_GEAR_ICON}</button>`
+        ? `<button type="button" class="setting-icon-button" data-${setting.key.toLowerCase()}-config data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Configurar ${setting.key} neste escopo" title="Configurações do ${setting.key}">${ADMIN_SETTINGS_GEAR_ICON}</button>`
+        : ["economy", "xp", "activity"].includes(setting.key)
+          ? `<button type="button" class="setting-icon-button" data-rp-config="${setting.key}" data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Gerenciar ${setting.label}" title="Gerenciar ${setting.label}">${ADMIN_SETTINGS_GEAR_ICON}</button>`
         : setting.key === "agendar"
           ? `<button type="button" class="setting-icon-button" data-schedule-config data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Gerenciar agendamentos neste escopo" title="Gerenciar agendamentos">${ADMIN_SETTINGS_GEAR_ICON}</button>`
         : isMonitor
@@ -2540,6 +2737,8 @@ function renderGroupAdmin(data) {
   }).join("");
   const autorespostaDialog = `<dialog class="antilink-dialog autoresposta-dialog" id="autorepoDialog" aria-labelledby="autorepoDialogTitle"><form id="autorepoForm"><header class="antilink-dialog-heading"><div><h2 id="autorepoDialogTitle">Respostas automáticas</h2><p id="autorepoScopeLabel"></p></div><button type="button" class="dialog-close" data-close-autorepo aria-label="Fechar">×</button></header><label class="autorepo-global-toggle"><input type="checkbox" name="useGlobal"><span><strong>Usar respostas oficiais globais</strong><small><span id="autorepoGlobalCount">0</span> resposta(s) disponível(is), mantidas pelos administradores do bot.</small></span></label><section class="autorepo-responses"><div class="autorepo-section-heading"><div><h3>Respostas deste grupo</h3><p>Gatilhos locais são usados antes das respostas globais.</p></div><button type="button" id="addAutoresposta">Adicionar resposta</button></div><div id="autorepoResponseList" class="autorepo-response-list"></div></section><p class="antilink-form-feedback" id="autorepoFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-autorepo>Cancelar</button><button type="submit" class="primary">Salvar respostas</button></footer></form></dialog>`;
   const autodownloadDialog = `<dialog class="antilink-dialog welcome-dialog" id="autodownloadDialog" aria-labelledby="autodownloadDialogTitle"><form id="autodownloadForm"><header class="antilink-dialog-heading"><div><h2 id="autodownloadDialogTitle">Configurações do download automático</h2><p id="autodownloadScopeLabel"></p></div><button type="button" class="dialog-close" data-close-autodownload aria-label="Fechar">×</button></header><label class="autorepo-global-toggle"><input type="checkbox" name="deletelink"><span><strong>Excluir a mensagem com o link original</strong><small>Depois que o bot enviar a mídia baixada, remove do chat a mensagem que contém o link.</small></span></label><p class="antilink-form-feedback" id="autodownloadFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-autodownload>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>`;
+  const autoApproveDialog = `<dialog class="antilink-dialog welcome-dialog" id="autoApproveDialog" aria-labelledby="autoApproveDialogTitle"><form id="autoApproveForm"><header class="antilink-dialog-heading"><div><h2 id="autoApproveDialogTitle">Configurações da autoaprovação</h2><p id="autoApproveScopeLabel"></p></div><button type="button" class="dialog-close" data-close-autoApprove aria-label="Fechar">×</button></header><label>Intervalo entre aprovações (segundos)<input name="intervalSeconds" type="number" min="0" max="86400" step="1" required></label><label>Nomes bloqueados<textarea name="blockedNames" rows="3" placeholder="um texto por linha"></textarea></label><label>Símbolos bloqueados<textarea name="blockedSymbols" rows="3" placeholder="um símbolo por linha"></textarea></label><label>Horários permitidos (HH:MM-HH:MM, uma faixa por linha)<textarea name="schedules" rows="3" placeholder="08:00-18:00"></textarea><small>Sem faixas, a autoaprovação pode ocorrer a qualquer horário local.</small></label><p class="antilink-form-feedback" id="autoApproveFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-autoApprove>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>`;
+  const rpManagerDialog = `<dialog class="antilink-dialog rp-manager-dialog" id="rpManagerDialog" aria-labelledby="rpManagerTitle"><header class="antilink-dialog-heading"><div><h2 id="rpManagerTitle">Gerenciar sistema</h2><p id="rpManagerScopeLabel"></p></div><button type="button" class="dialog-close" data-close-rp-manager aria-label="Fechar">×</button></header><section id="rpXpSettings" class="rp-xp-settings" hidden><h3>Mensagens de level-up</h3><label class="autorepo-global-toggle"><input id="rpXpMuted" type="checkbox"><span><strong>Silenciar avisos de level-up</strong><small>O ganho de XP continua ativo; somente os avisos serão silenciados.</small></span></label><label><span id="rpXpDestinationLabel">Canal para mensagens de level-up</span><select id="rpXpDestination"><option value="">Canal onde o XP foi ganho</option></select><small id="rpXpDestinationHint">Deixe o destino padrão para avisar onde o XP foi ganho.</small></label><button type="button" id="saveRpXpSettings">Salvar configurações de XP</button></section><div class="rp-manager-toolbar"><button type="button" id="resetRpSystem" class="moderation-action danger">Resetar sistema</button></div><form id="rpSearchForm" class="moderation-search"><input id="rpSearch" type="search" maxlength="100" autocomplete="off" placeholder="Buscar por nome, username ou ID"><button type="submit">Buscar</button></form><p class="moderation-help" id="rpManagerDescription"></p><div id="rpManagerUsers" class="rp-manager-users" aria-live="polite"></div><p class="antilink-form-feedback" id="rpManagerFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-rp-manager>Fechar</button></footer></dialog>`;
   const monitorDialog = `<dialog class="antilink-dialog monitor-dialog" id="monitorDialog" aria-labelledby="monitorDialogTitle"><form id="monitorForm"><header class="antilink-dialog-heading"><div><h2 id="monitorDialogTitle">Configurações do monitor</h2><p id="monitorScopeLabel"></p></div><button type="button" class="dialog-close" data-close-monitor aria-label="Fechar">×</button></header><div id="monitorFormFields" class="monitor-form-fields"></div><p class="antilink-form-feedback" id="monitorFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-monitor>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>`;
   const schedulesDialog = `<dialog class="antilink-dialog schedules-dialog" id="schedulesDialog" aria-labelledby="schedulesDialogTitle"><header class="antilink-dialog-heading"><div><h2 id="schedulesDialogTitle">Agendamentos</h2><p id="schedulesScopeLabel"></p></div><button type="button" class="dialog-close" data-close-schedules aria-label="Fechar">×</button></header><p class="monitor-field-caption">Gerencie mensagens automáticas para este chat ou tópico. Os horários seguem o fuso horário local do computador que executa o bot.</p><div id="scheduleList" class="schedule-list"></div><button type="button" id="addSchedule" class="schedule-add">Criar agendamento</button><form id="scheduleForm" hidden style="display:none"><input type="hidden" name="id"><div class="antilink-form-grid"><label>Nome<input name="name" type="text" maxlength="100" required></label><label>Gatilho<select name="triggerType"><option value="fixed">Horários fixos</option><option value="interval">Intervalo</option></select></label></div><div id="scheduleFixedFields"><label>Horários (HH:MM, separados por vírgula)<input name="times" type="text" placeholder="07:00, 12:00, 20:00"></label></div><div id="scheduleIntervalFields" hidden><label>Intervalo (por exemplo, 30m, 2h ou 1d2h)<input name="interval" type="text" placeholder="1h"></label></div><div class="antilink-form-grid"><label>Repetição<select name="repeatMode"><option value="once">Uma vez</option><option value="daily">Diariamente</option><option value="weekly">Semanalmente</option><option value="monthly">Mensalmente</option></select></label><label id="scheduleMonthDayField" hidden>Dia do mês<input name="monthDay" type="number" min="1" max="31"></label></div><fieldset class="antilink-options" id="scheduleWeekdayFields" hidden style="display:none"><legend>Dias da semana</legend><div class="monitor-check-list">${[["0","Domingo"],["1","Segunda"],["2","Terça"],["3","Quarta"],["4","Quinta"],["5","Sexta"],["6","Sábado"]].map(([day,label])=>`<label><input type="checkbox" name="days" value="${day}">${label}</label>`).join("")}</div></fieldset><label>Tipo de mensagem<select name="messageMode"><option value="text">Texto</option><option value="media">Mídia com legenda</option></select></label><label>Texto / legenda<textarea name="text" maxlength="4000" rows="4"></textarea></label><section class="schedule-media"><strong>Mídia: </strong><span id="scheduleMediaStatus">Nenhuma mídia configurada.</span><p class="monitor-field-caption">O upload é salvo imediatamente; os demais campos só são salvos pelo botão abaixo.</p><label>Enviar imagem ou vídeo (JPEG, PNG, WebP, GIF ou MP4; até 8 MB)<input type="file" name="mediaFile" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4"></label><div class="antilink-dialog-actions"><button type="button" id="uploadScheduleMedia">Enviar mídia</button><button type="button" id="removeScheduleMedia" hidden>Remover mídia</button></div></section><p class="antilink-form-feedback" id="scheduleFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" id="cancelScheduleEdit">Cancelar</button><button type="submit" class="primary">Salvar agendamento</button></footer></form></dialog>`;
 
@@ -2580,6 +2779,23 @@ function renderGroupAdmin(data) {
     @media(max-width:520px){.autorepo-response-fields{grid-template-columns:1fr}.autorepo-response-fields label.autorepo-content-field{grid-column:auto}.autorepo-section-heading{align-items:flex-start;flex-direction:column}}
     .moderation-layout{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(320px,.8fr);gap:14px}.moderation-card{min-width:0;padding:18px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#171d2b,#131925)}.moderation-card h3{margin:0 0 7px;font-size:15px}.moderation-search{display:flex;gap:8px}.moderation-search input,.moderation-fields input,.moderation-fields textarea,.moderation-fields select{width:100%;min-width:0;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#0e121b;color:#f5f7fb;font:inherit}.moderation-fields textarea{min-height:74px;resize:vertical}.moderation-search button,.moderation-card button,.moderation-action{padding:9px 12px;border:1px solid #6f7fa5;border-radius:10px;background:#ffffff0b;color:#f5f7fb;font-weight:700;cursor:pointer}.moderation-card button:hover,.moderation-action:hover{border-color:#9b8cff;background:#8b7bff20}.moderation-card button:disabled,.moderation-action:disabled{opacity:.5;cursor:not-allowed}.moderation-help,.moderation-feedback{margin:9px 0 0;color:var(--muted);font-size:12px;line-height:1.5}.moderation-feedback.error{color:#ff9eaa}.moderation-results,.warning-list{display:grid;gap:8px;margin:14px 0 0;padding:0;list-style:none}.moderation-result,.warning-list li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:#ffffff05}.moderation-result span{min-width:0;overflow-wrap:anywhere;font-size:12px}.moderation-result small,.warning-identity small{display:block;margin-top:3px;color:var(--muted);font-size:11px;overflow-wrap:anywhere}.warning-list li{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 10px}.warning-identity{grid-column:1;min-width:0}.warning-identity strong{display:block;overflow-wrap:anywhere;font-size:12px}.warning-list li .warning-count{grid-column:2;white-space:nowrap}.warning-history{grid-column:1/-1;width:100%;color:var(--muted);font-size:11px}.warning-history summary{cursor:pointer}.warning-history ul{display:grid;gap:6px;margin:8px 0 0;padding-left:18px}.warning-history li{display:list-item;grid-column:auto;grid-template-columns:none;align-items:initial;justify-content:initial;gap:0;padding:0;border:0;border-radius:0;background:none;overflow-wrap:anywhere}.warning-history li small{display:block;color:var(--muted);font-size:10px}.warning-list li button{grid-column:1/-1;width:100%;min-width:0;white-space:normal}.moderation-fields{display:grid;gap:9px;margin-top:14px}.moderation-fields[hidden]{display:none}.moderation-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.moderation-actions[hidden],.moderation-role-select[hidden]{display:none}.moderation-actions button[aria-pressed=true]{border-color:#9b8cff;background:#8b7bff20}.moderation-action.danger{border-color:#b65b6a66;color:#ffb3bd}.member-admin{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.member-admin h4{margin:0;font-size:13px}.moderation-role-select{width:100%;margin-top:12px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#0e121b;color:#f5f7fb;font:inherit}.warning-list button{flex:none;font-size:11px}.warning-empty{margin:10px 0 0;color:var(--muted);font-size:12px}.permission-help{margin:12px 0 0;color:var(--muted);font-size:11px;line-height:1.5}@media(max-width:700px){.moderation-layout{grid-template-columns:1fr}.moderation-search{align-items:stretch;flex-direction:column}.moderation-result{align-items:flex-start;flex-direction:column}.moderation-result button,.warning-list button{width:100%}}
   .settings{gap:8px}.setting-card{gap:12px;padding:13px 15px}.setting-card h2{font-size:14px}.setting-card p{margin-top:4px;font-size:11px}.setting-controls{gap:8px}.state{min-width:82px;padding:6px 8px}.setting-controls button{min-width:88px;padding:8px 10px;font-size:12px}.setting-category{grid-column:1/-1;margin:10px 0 0}.setting-scope{display:inline-block;margin-bottom:5px;padding:3px 7px;border:1px solid #8195d344;border-radius:999px;background:#8297d014;color:#b9c6ff;font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}.setting-icon-button{display:grid;min-width:34px!important;width:34px;height:34px;padding:7px!important;place-items:center}.setting-icon-button svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.scope-list-label{grid-column:1/-1;margin:4px 0 -2px;color:#dce2f3;font-size:12px;font-weight:800}.scope-picker{display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin:10px 0}.scope-picker label{display:grid;gap:5px;color:#b9c6ff;font-size:11px;font-weight:700}.scope-picker select{min-width:min(260px,80vw);padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#171d2b;color:#f5f7fb}.scope-panel{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#ffffff04}.scope-panel[hidden]{display:none}.scope-panel-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px}.scope-panel h3{margin:0;font-size:14px}.scope-current{color:#b9c6ff;font-size:11px;font-weight:700}.scope-note{margin:5px 0 0;color:var(--muted);font-size:11px;line-height:1.45}.antilink-dialog{width:min(720px,calc(100vw - 24px));max-height:90vh;overflow:auto;padding:20px;border:1px solid #53668f;border-radius:16px;background:#151c2b;color:#f5f7fb;box-shadow:0 24px 90px #000a}.antilink-dialog::backdrop{background:#080b12bb;backdrop-filter:blur(3px)}.antilink-dialog form{display:grid;gap:14px}.antilink-dialog-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.antilink-dialog-heading h2{margin:0;font-size:18px}.antilink-dialog-heading p{margin:5px 0 0;color:#b9c6ff;font-size:12px}.dialog-close{width:32px;height:32px;border:1px solid var(--line);border-radius:9px;background:#ffffff08;color:#fff;font-size:21px;cursor:pointer}.antilink-form-grid,.antilink-list-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.antilink-dialog label{display:grid;gap:6px;color:#dce2f3;font-size:12px;font-weight:700}.antilink-dialog textarea,.antilink-dialog select{width:100%;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#0e121b;color:#f5f7fb;font:inherit;font-size:12px}.antilink-dialog textarea{resize:vertical}.antilink-dialog small{color:var(--muted);font-size:10px;font-weight:400;line-height:1.4}.antilink-options{display:grid;gap:8px;margin:0;padding:12px;border:1px solid var(--line);border-radius:10px}.antilink-options legend{padding:0 6px;color:#b9c6ff;font-size:12px;font-weight:700}.antilink-options label{display:flex;align-items:flex-start;gap:8px;font-weight:400}.antilink-options input{margin:2px 0 0;accent-color:#9b8cff}.antilink-form-feedback{min-height:16px;margin:0;color:#9cf0cf;font-size:12px}.antilink-form-feedback.error{color:#ff9eaa}.antilink-dialog-actions{display:flex;justify-content:flex-end;gap:8px}.antilink-dialog-actions button{padding:9px 12px;border:1px solid #6f7fa5;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font:inherit;font-size:12px;font-weight:700;cursor:pointer}.antilink-dialog-actions .primary{border-color:#9b8cff;background:#8b7bff20}.antilink-dialog-actions button:disabled{opacity:.55;cursor:wait}.monitor-form-fields{display:grid;gap:12px}.monitor-form-fields input[type="text"],.monitor-form-fields input[type="number"]{width:100%;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#0e121b;color:#f5f7fb;font:inherit;font-size:12px}.monitor-check-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}.monitor-check-list label{display:flex;align-items:center;gap:8px;padding:9px;border:1px solid var(--line);border-radius:9px;background:#ffffff05}.monitor-check-list input{accent-color:#9b8cff}.monitor-job{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#ffffff05}.monitor-job button{grid-column:1/-1;justify-self:end;padding:6px 9px;border:1px solid #b65b6a66;border-radius:8px;background:#ffffff08;color:#ffb3bd;cursor:pointer}.monitor-field-caption{margin:0;color:var(--muted);font-size:11px;line-height:1.45}@media(min-width:640px){#rootSettings{grid-template-columns:repeat(2,minmax(0,1fr))}.setting-card{align-items:flex-start;flex-direction:column;justify-content:flex-start}.setting-controls{width:100%;justify-content:space-between}}@media(max-width:520px){.antilink-form-grid,.antilink-list-grid{grid-template-columns:1fr}.antilink-dialog{padding:15px}.monitor-job{grid-template-columns:1fr}}
+  </style><style>
+    .rp-manager-dialog button:not(.dialog-close){min-height:38px;padding:9px 12px;border:1px solid #6f7fa5;border-radius:10px;background:#ffffff0b;color:#f5f7fb;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+    .rp-manager-dialog button:not(.dialog-close):hover{border-color:#9b8cff;background:#8b7bff20}
+    .rp-manager-dialog button:not(.dialog-close):disabled{opacity:.55;cursor:wait}
+    .rp-manager-dialog .moderation-search{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+    .rp-manager-dialog .rp-xp-settings:not([hidden]){display:grid;gap:12px;padding:14px;border:1px solid var(--line);border-radius:12px;background:#ffffff05}
+    .rp-manager-dialog .rp-manager-toolbar{margin:12px 0}
+    .rp-manager-dialog .rp-manager-toolbar button,.rp-manager-dialog #saveRpXpSettings{width:100%}
+    .rp-manager-dialog .rp-manager-toolbar .danger,.rp-manager-dialog .rp-user-actions .danger{border-color:#b65b6a66;color:#ffb3bd}
+    .rp-manager-users{display:grid;gap:10px;margin-top:12px}
+    .rp-manager-dialog .rp-user-card{grid-template-columns:minmax(0,1fr)!important}
+    .rp-manager-dialog .rp-user-card input{grid-column:1!important;min-height:38px}
+    .rp-user-actions{display:grid;grid-column:1;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:100%}
+    .rp-user-actions .moderation-action{width:100%;min-width:0}
+    .rp-user-actions .moderation-action:only-child{grid-column:1/-1}
+    .rp-manager-dialog .antilink-dialog-actions button{min-width:108px}
+    @media(max-width:480px){.rp-user-actions{grid-template-columns:1fr}}
   </style></head><body><main class="admin-page">
     <nav class="topbar"><a href="/painel-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">← Painel do membro</a><span>${escapeHtml(config.getBotName())} · Administração</span></nav>
     <header class="hero"><img class="avatar" src="${escapeHtml(data.avatarUrl || "/semfoto.jpg")}" alt="Foto de ${escapeHtml(data.userName)}" onerror="this.onerror=null;this.src='/semfoto.jpg'"><div><div class="eyebrow">Painel de administração</div><h1>${escapeHtml(data.groupName)}</h1><p>${groupType} · ${escapeHtml(data.platform)} · Acesso verificado para ${escapeHtml(data.userName)}</p></div></header>
@@ -2588,7 +2804,7 @@ function renderGroupAdmin(data) {
       <h2 class="section-title" id="moderationTitle">Moderação</h2>
       <p class="section-intro">Gerencie advertências e aplique ações compatíveis com esta plataforma. Sua permissão e a do bot são verificadas ao executar cada ação.</p>
       <div class="moderation-layout">
-        <article class="moderation-card"><h3>Buscar usuário</h3><form class="moderation-search" id="moderationSearch"><input id="moderationQuery" type="search" maxlength="100" autocomplete="off" placeholder="${data.platform === "whatsapp" ? "ID ou número" : "ID ou username"}" aria-label="ID ou username do usuário"><button type="submit">Buscar</button>${data.platform === "whatsapp" ? '<button type="button" id="loadMembers">Selecionar membro</button>' : ""}</form>${data.platform === "whatsapp" ? '<label class="moderation-help" for="memberSelect">Ou escolha um participante pelo nome e ID:</label><select id="memberSelect" class="member-select" style="width:100%;margin-top:9px;padding:11px 12px;border:1px solid #334366;border-radius:10px;background:#0e121b;color:#f5f7fb;font:inherit" hidden><option value="">Selecione um membro</option></select>' : ""}<p class="moderation-help">${data.platform === "telegram" ? "Informe o ID numérico ou um username já conhecido pelo bot. O Telegram não permite localizar qualquer usuário apenas pelo username." : data.platform === "whatsapp" ? "Informe o ID/número para buscar ou carregue os participantes do grupo." : "Informe o ID ou username do membro do Discord."}</p><div id="moderationResults" class="moderation-results" aria-live="polite"></div><div id="moderationSelected"></div><p class="moderation-feedback" id="moderationFeedback" role="status" aria-live="polite"></p></article>
+        <article class="moderation-card"><h3>Buscar usuário</h3><form class="moderation-search" id="moderationSearch"><input id="moderationQuery" type="search" maxlength="100" autocomplete="off" placeholder="${data.platform === "whatsapp" ? "ID ou número" : "ID ou username"}" aria-label="ID ou username do usuário"><button type="submit">Buscar</button>${data.platform === "whatsapp" ? '<button type="button" id="loadMembers">Abrir lista de membros</button>' : ""}</form>${data.platform === "whatsapp" ? '<section id="memberPicker" class="member-picker-card" hidden style="margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#ffffff05"><h4 style="margin:0 0 5px;font-size:13px">Selecionar membro do grupo</h4><p class="moderation-help" style="margin:0 0 9px">Os participantes aparecem pelo nome e pelo ID. Selecione um cartão para abrir as ações de moderação.</p><div id="memberPickerList" class="member-picker-list" aria-live="polite"></div></section>' : ""}<p class="moderation-help">${data.platform === "telegram" ? "Informe o ID numérico ou um username já conhecido pelo bot. O Telegram não permite localizar qualquer usuário apenas pelo username." : data.platform === "whatsapp" ? "Informe o ID/número para buscar ou abra a lista personalizada de participantes." : "Informe o ID ou username do membro do Discord."}</p><div id="moderationResults" class="moderation-results" aria-live="polite"></div><div id="moderationSelected"></div><p class="moderation-feedback" id="moderationFeedback" role="status" aria-live="polite"></p></article>
         <article class="moderation-card"><h3>Usuários com advertências</h3><p class="moderation-help">Abra “Ver motivos” para consultar o histórico. Advertências anteriores à atualização aparecem sem motivo registrado. Remover pela lista apaga todas as advertências da pessoa.</p><ul class="warning-list" id="warningList">${warningRows || ""}</ul><p class="warning-empty" id="warningEmpty" ${warningRows ? "hidden" : ""}>Nenhum usuário com advertências registradas.</p><p class="warning-empty" id="warningMore" ${data.moderation.total > data.moderation.entries.length ? "" : "hidden"}>Mostrando ${data.moderation.entries.length} de ${data.moderation.total}. Pesquise pelo ID para localizar outros registros.</p></article>
       </div>
     </section>
@@ -2601,6 +2817,8 @@ function renderGroupAdmin(data) {
     ${welcomeGoodbyeDialogs}
     ${autorespostaDialog}
     ${autodownloadDialog}
+    ${autoApproveDialog}
+    ${rpManagerDialog}
     ${monitorDialog}
     ${schedulesDialog}
     <p class="feedback" id="adminFeedback" role="status" aria-live="polite"></p>
@@ -2641,7 +2859,7 @@ function renderGroupAdmin(data) {
         const heading=item.category!==lastCategory?'<h3 class="setting-category" style="margin:12px 0 0;color:#b9c6ff;font-size:14px">'+item.category+'</h3>':"";
         lastCategory=item.category;
         const scopeAttr=JSON.stringify(scope).replace(/&/g,"&amp;").replace(/"/g,"&quot;");
-        const configButton=item.key==="agendar"?'<button type="button" class="setting-icon-button" data-schedule-config data-scope="'+scopeAttr+'" aria-label="Gerenciar agendamentos" title="Gerenciar agendamentos">'+gearIcon+'</button>':["antilink","antimedia","antipalavras","antiraid","blockcmd","welcome","goodbye","autorepo","autodownload"].includes(item.key)?'<button type="button" class="setting-icon-button" data-'+item.key+'-config data-scope="'+scopeAttr+'" aria-label="Configurar '+item.label+' neste escopo" title="Configurações do '+item.label+'">'+gearIcon+'</button>':["monitorStock","monitorCafe","monitorWeather","monitorRandomWeather","monitorElection"].includes(item.key)?'<button type="button" class="setting-icon-button" data-monitor-config data-monitor-setting="'+item.key+'" data-scope="'+scopeAttr+'" aria-label="Configurar '+item.label+' neste escopo" title="Configurações do '+item.label+'">'+gearIcon+'</button>':"";
+        const configButton=item.key==="agendar"?'<button type="button" class="setting-icon-button" data-schedule-config data-scope="'+scopeAttr+'" aria-label="Gerenciar agendamentos" title="Gerenciar agendamentos">'+gearIcon+'</button>':["antilink","antimedia","antipalavras","antiraid","blockcmd","welcome","goodbye","autorepo","autodownload","autoApprove"].includes(item.key)?'<button type="button" class="setting-icon-button" data-'+item.key.toLowerCase()+'-config data-scope="'+scopeAttr+'" aria-label="Configurar '+item.label+' neste escopo" title="Configurações do '+item.label+'">'+gearIcon+'</button>':["economy","xp","activity"].includes(item.key)?'<button type="button" class="setting-icon-button" data-rp-config="'+item.key+'" data-scope="'+scopeAttr+'" aria-label="Gerenciar '+item.label+'" title="Gerenciar '+item.label+'">'+gearIcon+'</button>':["monitorStock","monitorCafe","monitorWeather","monitorRandomWeather","monitorElection"].includes(item.key)?'<button type="button" class="setting-icon-button" data-monitor-config data-monitor-setting="'+item.key+'" data-scope="'+scopeAttr+'" aria-label="Configurar '+item.label+' neste escopo" title="Configurações do '+item.label+'">'+gearIcon+'</button>':"";
         const controls=item.key==="agendar"?'<span class="state '+(enabled?"on":"off")+'" data-state="'+item.key+'">'+(enabled?"Ativo":"Sem agendamentos ativos")+'</span>'+configButton:'<span class="state '+(enabled?"on":"off")+'" data-state="'+item.key+'">'+(enabled?"Ativado":"Desativado")+'</span><button type="button" data-setting="'+item.key+'" data-enabled="'+enabled+'" data-scope="'+scopeAttr+'">'+(enabled?"Desativar":"Ativar")+'</button>'+configButton;
         return heading+'<article class="setting-card"><div class="setting-info"><span class="setting-scope"></span><h2>'+item.label+'</h2><p>'+item.description+'</p></div><div class="setting-controls">'+controls+'</div></article>';
       }).join("");
@@ -2910,6 +3128,167 @@ function renderGroupAdmin(data) {
         feedback.textContent=result.announcementWarning||result.message||"Configurações atualizadas.";
       }catch(error){autodownloadFeedback.classList.add("error");autodownloadFeedback.textContent=error.message}
       finally{submitButton.disabled=false}
+    });
+    const autoApproveDialog=document.getElementById("autoApproveDialog");
+    const autoApproveForm=document.getElementById("autoApproveForm");
+    const autoApproveFeedback=document.getElementById("autoApproveFormFeedback");
+    let activeAutoApproveScope=null;
+    function openAutoApproveDialog(button){
+      activeAutoApproveScope=JSON.parse(button.dataset.scope||'{"level":"server"}');
+      document.getElementById("autoApproveScopeLabel").textContent=button.closest(".setting-card").querySelector(".setting-scope").textContent;
+      autoApproveFeedback.classList.remove("error");autoApproveFeedback.textContent="Carregando configurações...";
+      autoApproveDialog.showModal();
+      requestAdminApi("/api/account/local/admin-autoApprove-state",{scope:activeAutoApproveScope}).then(({config})=>{
+        autoApproveForm.elements.intervalSeconds.value=Number(config.intervalSeconds)||0;
+        autoApproveForm.elements.blockedNames.value=Array.isArray(config.blockedNames)?config.blockedNames.join("\\n"):"";
+        autoApproveForm.elements.blockedSymbols.value=Array.isArray(config.blockedSymbols)?config.blockedSymbols.join("\\n"):"";
+        autoApproveForm.elements.schedules.value=Array.isArray(config.schedules)?config.schedules.map(item=>item.start+"-"+item.end).join("\\n"):"";
+        autoApproveFeedback.textContent="";
+      }).catch(error=>{autoApproveFeedback.classList.add("error");autoApproveFeedback.textContent=error.message});
+    }
+    autoApproveDialog.querySelectorAll("[data-close-autoApprove]").forEach(button=>button.addEventListener("click",()=>autoApproveDialog.close()));
+    autoApproveDialog.addEventListener("click",event=>{if(event.target===autoApproveDialog)autoApproveDialog.close()});
+    autoApproveForm.addEventListener("submit",async event=>{
+      event.preventDefault();
+      const submitButton=autoApproveForm.querySelector('[type="submit"]');
+      submitButton.disabled=true;autoApproveFeedback.classList.remove("error");autoApproveFeedback.textContent="Salvando configurações...";
+      const readLines=field=>autoApproveForm.elements[field].value.split(/\\r?\\n/).map(value=>value.trim()).filter(Boolean);
+      const schedules=readLines("schedules").map(value=>{
+        const match=/^([01]\\d|2[0-3]):([0-5]\\d)-([01]\\d|2[0-3]):([0-5]\\d)$/.exec(value);
+        return match?{start:match[1]+":"+match[2],end:match[3]+":"+match[4]}:{start:value,end:""};
+      });
+      try{
+        const result=await requestAdminApi("/api/account/local/admin-autoApprove",{scope:activeAutoApproveScope,config:{
+          intervalSeconds:Number(autoApproveForm.elements.intervalSeconds.value),
+          blockedNames:readLines("blockedNames"),
+          blockedSymbols:readLines("blockedSymbols"),
+          schedules
+        }});
+        autoApproveFeedback.textContent="Configurações da autoaprovação salvas.";
+        feedback.classList.toggle("error",Boolean(result.announcementWarning));
+        feedback.textContent=result.announcementWarning||result.message||"Configurações atualizadas.";
+      }catch(error){autoApproveFeedback.classList.add("error");autoApproveFeedback.textContent=error.message}
+      finally{submitButton.disabled=false}
+    });
+    const rpManagerDialog=document.getElementById("rpManagerDialog");
+    const rpManagerUsers=document.getElementById("rpManagerUsers");
+    const rpManagerFeedback=document.getElementById("rpManagerFeedback");
+    const rpXpSettings=document.getElementById("rpXpSettings");
+    const rpXpDestination=document.getElementById("rpXpDestination");
+    const rpResetSystem=document.getElementById("resetRpSystem");
+    let activeRpSetting=null,activeRpScope=null;
+    const rpLabels={economy:"Economia",xp:"Sistema de XP",activity:"Registro de atividade"};
+    function appendRpAction(card,label,action,userId,amountInput){
+      let actions=card.querySelector(".rp-user-actions");
+      if(!actions){actions=document.createElement("div");actions.className="rp-user-actions";card.append(actions)}
+      const button=document.createElement("button");button.type="button";button.className="moderation-action"+(action==="reset"?" danger":"");button.textContent=label;
+      button.addEventListener("click",async()=>{
+        const amount=amountInput?.value;
+        if(action==="reset"&&!window.confirm("Confirma zerar/remover os dados deste usuário?"))return;
+        button.disabled=true;rpManagerFeedback.classList.remove("error");rpManagerFeedback.textContent="Atualizando...";
+        try{
+          await requestAdminApi("/api/account/local/admin-rp-action",{scope:activeRpScope,setting:activeRpSetting,userId,action,amount});
+          const refreshed=await loadRpUsers(document.getElementById("rpSearch").value);
+          if(refreshed)rpManagerFeedback.textContent=action==="reset"?"Dados do usuário atualizados.":"Valor do usuário atualizado.";
+          else rpManagerFeedback.textContent="Alteração salva, mas não foi possível atualizar a lista. Recarregue os dados.";
+        }catch(error){rpManagerFeedback.classList.add("error");rpManagerFeedback.textContent=error.message}
+        finally{button.disabled=false}
+      });
+      actions.append(button);
+    }
+    function renderRpUsers(users,total){
+      rpManagerUsers.replaceChildren();
+      if(!users.length){const empty=document.createElement("p");empty.className="warning-empty";empty.textContent="Nenhum registro encontrado.";rpManagerUsers.append(empty);return}
+      users.forEach(user=>{
+        const card=document.createElement("article");card.className="rp-user-card";card.style.cssText="display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 10px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#ffffff05";
+        const title=document.createElement("strong");title.textContent=user.displayName||user.username||user.userId;
+        const savedUserLabel=user.username?(context.platform==="whatsapp"?"Nome salvo: "+user.username:"@"+user.username)+" · ":"";
+        const id=document.createElement("small");id.textContent=savedUserLabel+"ID: "+user.userId;
+        const detail=document.createElement("p");detail.textContent=user.detail;
+        id.style.cssText="grid-column:1/-1;color:var(--muted);font-size:11px;overflow-wrap:anywhere";
+        detail.style.cssText="margin:0;color:var(--muted);font-size:12px";
+        card.append(title,id,detail);
+        if(activeRpSetting==="economy"||activeRpSetting==="xp"){
+          const field=document.createElement("input");field.type="number";field.min="0";field.step=activeRpSetting==="economy"?"0.01":"1";field.placeholder=activeRpSetting==="economy"?"Valor em SatCoins":"Quantidade de XP";field.setAttribute("aria-label","Valor para "+(user.displayName||user.userId));field.style.cssText="grid-column:1/-1;width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#0e121b;color:#f5f7fb;font:inherit";card.append(field);
+          appendRpAction(card,"Definir","set",user.userId,field);
+          appendRpAction(card,"Adicionar","add",user.userId,field);
+          if(activeRpSetting==="economy"||activeRpSetting==="xp")appendRpAction(card,"Retirar","subtract",user.userId,field);
+        }
+        appendRpAction(card,activeRpSetting==="activity"?"Apagar registro":"Zerar valor","reset",user.userId,null);
+        rpManagerUsers.append(card);
+      });
+      if(total>users.length){const more=document.createElement("p");more.className="warning-empty";more.textContent="Mostrando "+users.length+" de "+total+" registros. Refine a busca pelo nome ou ID.";rpManagerUsers.append(more)}
+    }
+    async function loadRpUsers(query=""){
+      rpManagerFeedback.classList.remove("error");rpManagerFeedback.textContent="Carregando registros...";
+      try{
+        const result=await requestAdminApi("/api/account/local/admin-rp-state",{scope:activeRpScope,setting:activeRpSetting,query});
+        renderRpUsers(result.users,result.total);
+        rpManagerFeedback.textContent=result.total+" registro(s) encontrado(s).";
+        return true;
+      }catch(error){rpManagerFeedback.classList.add("error");rpManagerFeedback.textContent=error.message}
+      return false;
+    }
+    async function openRpManager(button){
+      activeRpSetting=button.dataset.rpConfig;
+      activeRpScope=JSON.parse(button.dataset.scope||'{"level":"server"}');
+      document.getElementById("rpManagerTitle").textContent=rpLabels[activeRpSetting]||"Gerenciar sistema";
+      document.getElementById("rpManagerScopeLabel").textContent=button.closest(".setting-card").querySelector(".setting-scope").textContent;
+      document.getElementById("rpXpDestinationLabel").textContent=context.platform==="discord"
+        ?"Canal das mensagens de level-up"
+        :"Tópico das mensagens de level-up";
+      document.getElementById("rpManagerDescription").textContent=activeRpSetting==="activity"
+        ?"Os registros são exibidos com os nomes salvos pelo sistema. Apagar remove o histórico desse usuário neste grupo. O reset total remove os registros de todos os membros."
+        :activeRpSetting==="economy"
+          ?"Os valores são salvos em centavos de SatCoins. Ajustar ou zerar o saldo não altera os demais dados da conta. O reset total zera os saldos de todos os membros."
+          :"Ajuste a quantidade de XP sem apagar o nível ou os dados do usuário. Zerar preserva o registro e o nome; o reset total zera o XP de todos os membros.";
+      rpXpSettings.hidden=activeRpSetting!=="xp";
+      rpResetSystem.textContent="Resetar "+(activeRpSetting==="economy"?"economia":activeRpSetting==="xp"?"XP":"atividade")+" de todos";
+      document.getElementById("rpSearch").value="";
+      rpManagerFeedback.classList.remove("error");rpManagerFeedback.textContent="";
+      rpManagerDialog.showModal();
+      if(activeRpSetting==="xp"){
+        try{
+          const {config,destinations}=await requestAdminApi("/api/account/local/admin-xp-state",{scope:activeRpScope});
+          document.getElementById("rpXpMuted").checked=config.muted;
+          rpXpDestination.replaceChildren(new Option(context.platform==="discord"?"Onde o XP foi ganho":"Tópico onde o XP foi ganho",""));
+          (destinations||[]).forEach(item=>rpXpDestination.add(new Option(item.name,item.id)));
+          rpXpDestination.value=config.threadId||config.chatId||"";
+          document.getElementById("rpXpDestinationHint").textContent=context.platform==="telegram"&&!(destinations||[]).length
+            ?"Nenhum tópico conhecido. Envie uma mensagem em cada tópico para que ele apareça nesta lista."
+            :"Deixe o destino padrão para avisar onde o XP foi ganho.";
+        }catch(error){rpManagerFeedback.classList.add("error");rpManagerFeedback.textContent=error.message}
+      }
+      await loadRpUsers("");
+    }
+    rpResetSystem.addEventListener("click",async()=>{
+      const resetName=activeRpSetting==="economy"?"todos os saldos da economia":activeRpSetting==="xp"?"o XP de todos os membros":"todos os registros de atividade";
+      if(!window.confirm("Esta ação é irreversível e vai resetar "+resetName+" neste escopo. Deseja continuar?"))return;
+      rpResetSystem.disabled=true;rpManagerFeedback.classList.remove("error");rpManagerFeedback.textContent="Resetando dados...";
+      try{
+        const result=await requestAdminApi("/api/account/local/admin-rp-action",{scope:activeRpScope,setting:activeRpSetting,action:"resetAll"});
+        const refreshed=await loadRpUsers(document.getElementById("rpSearch").value);
+        rpManagerFeedback.textContent=refreshed
+          ?"Reset concluído para "+Number(result.result?.resetCount||0)+" registro(s)."
+          :"Reset concluído para "+Number(result.result?.resetCount||0)+" registro(s), mas não foi possível atualizar a lista.";
+        rpManagerFeedback.classList.toggle("error",!refreshed);
+      }catch(error){rpManagerFeedback.classList.add("error");rpManagerFeedback.textContent=error.message}
+      finally{rpResetSystem.disabled=false}
+    });
+    rpManagerDialog.querySelectorAll("[data-close-rp-manager]").forEach(button=>button.addEventListener("click",()=>rpManagerDialog.close()));
+    rpManagerDialog.addEventListener("click",event=>{if(event.target===rpManagerDialog)rpManagerDialog.close()});
+    document.getElementById("rpSearchForm").addEventListener("submit",event=>{
+      event.preventDefault();loadRpUsers(document.getElementById("rpSearch").value);
+    });
+    document.getElementById("saveRpXpSettings").addEventListener("click",async event=>{
+      const button=event.currentTarget;button.disabled=true;rpManagerFeedback.classList.remove("error");rpManagerFeedback.textContent="Salvando configurações de XP...";
+      try{
+        const result=await requestAdminApi("/api/account/local/admin-xp",{scope:activeRpScope,config:{muted:document.getElementById("rpXpMuted").checked,destination:rpXpDestination.value}});
+        rpManagerFeedback.textContent=result.announcementWarning||"Configurações de XP salvas.";
+        feedback.classList.toggle("error",Boolean(result.announcementWarning));
+        feedback.textContent=result.announcementWarning||result.message||"Configurações atualizadas.";
+      }catch(error){rpManagerFeedback.classList.add("error");rpManagerFeedback.textContent=error.message}
+      finally{button.disabled=false}
     });
     const monitorDialog=document.getElementById("monitorDialog");
     const monitorForm=document.getElementById("monitorForm");
@@ -3307,6 +3686,10 @@ function renderGroupAdmin(data) {
       if(monitorGear){openMonitorDialog(monitorGear);return}
       const autodownloadGear=event.target.closest("[data-autodownload-config]");
       if(autodownloadGear){openAutodownloadDialog(autodownloadGear);return}
+      const autoApproveGear=event.target.closest("[data-autoapprove-config]");
+      if(autoApproveGear){openAutoApproveDialog(autoApproveGear);return}
+      const rpGear=event.target.closest("[data-rp-config]");
+      if(rpGear){openRpManager(rpGear);return}
       const autorepoGear=event.target.closest("[data-autorepo-config]");
       if(autorepoGear){openAutorespostaDialog(autorepoGear);return}
       const welcomeGear=event.target.closest("[data-welcome-config]");
@@ -3529,8 +3912,8 @@ function renderGroupAdmin(data) {
     const moderationSelected=document.getElementById("moderationSelected");
     const warningList=document.getElementById("warningList");
     const warningEmpty=document.getElementById("warningEmpty");
-    const memberSelect=document.getElementById("memberSelect");
-    const memberUsers=new Map();
+    const memberPicker=document.getElementById("memberPicker");
+    const memberPickerList=document.getElementById("memberPickerList");
     const telegramLevels=${JSON.stringify(Object.entries(telegramAdminLevels).map(([id, level]) => ({ id, label: level.label })))};
     const actionDefinitions=[["warn","Advertir",false],...${JSON.stringify(immediateActionDefinitions)}];
     let selectedUser=null;
@@ -3797,22 +4180,20 @@ function renderGroupAdmin(data) {
         const button=event.currentTarget;button.disabled=true;moderationFeedback.classList.remove("error");moderationFeedback.textContent="Carregando participantes...";
         try{
           const result=await moderationRequest("moderation-search",{query:""});
-          memberUsers.clear();
-          memberSelect.replaceChildren(new Option("Selecione um membro", ""));
+          memberPickerList.replaceChildren();
           result.users.forEach(user=>{
-            memberUsers.set(user.id,user);
-            memberSelect.add(new Option(moderationUserDetails(user),user.id));
+            const card=document.createElement("article");card.className="moderation-result";card.style.cssText="display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;width:100%";
+            const details=document.createElement("span");details.textContent=moderationUserDetails(user);
+            const select=document.createElement("button");select.type="button";select.textContent="Selecionar";select.addEventListener("click",()=>{
+              moderationResults.replaceChildren();moderationSelected.replaceChildren();selectedUser=null;
+              selectModerationUser(user);
+            });
+            card.append(details,select);memberPickerList.append(card);
           });
-          memberSelect.hidden=false;
+          memberPicker.hidden=false;
           moderationFeedback.textContent=result.users.length+" participante(s) carregado(s).";
         }catch(error){showModerationError(error)}
         finally{button.disabled=false}
-      });
-      memberSelect.addEventListener("change",()=>{
-        const user=memberUsers.get(memberSelect.value);
-        if(!user)return;
-        moderationResults.replaceChildren();moderationSelected.replaceChildren();selectedUser=null;
-        selectModerationUser(user);
       });
     }
     warningList.addEventListener("click",event=>{
@@ -4926,6 +5307,107 @@ function start() {
             error: statusCode === 403 || statusCode === 503 || statusCode === 400
               ? reason
               : "Não foi possível atualizar os agendamentos."
+          });
+        }
+        return;
+      }
+
+      if ([
+        "/api/account/local/admin-autoApprove-state",
+        "/api/account/local/admin-autoApprove",
+        "/api/account/local/admin-xp-state",
+        "/api/account/local/admin-xp",
+        "/api/account/local/admin-rp-state",
+        "/api/account/local/admin-rp-action"
+      ].includes(requestUrl.pathname)) {
+        const platform = typeof payload?.platform === "string" ? payload.platform : "";
+        const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
+        const isRpRequest = requestUrl.pathname.includes("/admin-rp-");
+        const setting = isRpRequest
+          ? typeof payload?.setting === "string" ? payload.setting : ""
+          : requestUrl.pathname.includes("autoApprove") ? "autoApprove" : "xp";
+        try {
+          await getGroupAdminData(central, platform, groupId);
+          const scope = await validateAdminSettingsScope(platform, groupId, payload?.scope || {});
+          if (!getAdminSystemDefinitions(platform, scope.level).some(item => item.key === setting)) {
+            sendJson(response, 400, { error: `O sistema ${setting} não está disponível neste escopo.` });
+            return;
+          }
+          const platformAccount = central.platformAccounts.find(account => account.platform === platform);
+          const baseMessage = getLocalGroupMessage(platform, groupId, String(platformAccount.platformId));
+          const message = getScopedAdminMessage(baseMessage, scope);
+          if (requestUrl.pathname === "/api/account/local/admin-rp-state") {
+            const result = getAdminRpUserData(message, setting, payload?.query);
+            sendJson(response, 200, result);
+            return;
+          }
+          if (requestUrl.pathname === "/api/account/local/admin-xp-state") {
+            const options = await getAdminSystemsOptions(platform, groupId);
+            const destinations = platform === "discord"
+              ? options.logChannels
+              : platform === "telegram"
+                ? options.topics
+                : [];
+            sendJson(response, 200, { config: getAdminXpConfig(baseMessage, scope), destinations });
+            return;
+          }
+          if (requestUrl.pathname === "/api/account/local/admin-autoApprove-state") {
+            sendJson(response, 200, { config: getAdminAutoApproveConfig(baseMessage, scope) });
+            return;
+          }
+          if (requestUrl.pathname === "/api/account/local/admin-rp-action") {
+            const result = executeAdminRpAction(message, setting, payload);
+            sendJson(response, 200, { success: true, result });
+            return;
+          }
+
+          let updatedConfig;
+          if (setting === "autoApprove") {
+            const target = {
+              platform: message.platform,
+              chatId: String(message.chatId),
+              raw: message.raw,
+              chatName: message.groupName || message.chatName
+            };
+            const current = autoAcceptHelper.getConfig(target);
+            const next = validateAdminAutoApproveConfig(payload?.config, current);
+            updatedConfig = autoAcceptHelper.saveConfig(target, next);
+            if (!updatedConfig) throw new Error("Não foi possível salvar as configurações de autoaprovação.");
+          } else {
+            updatedConfig = await saveAdminXpConfig(baseMessage, scope, payload?.config);
+          }
+          let announcementWarning = "";
+          try {
+            const announced = platform === "whatsapp"
+              ? await announceWhatsAppAdminSetting(groupId, String(platformAccount.platformId), setting)
+              : await announceAdminSystemSetting(platform, groupId, String(platformAccount.platformId), setting);
+            if (!announced && platform === "discord") {
+              announcementWarning = "Configurações salvas. Escolha um canal de logs para receber avisos do dashboard.";
+            }
+          } catch (error) {
+            announcementWarning = platform === "discord"
+              ? "As configurações foram salvas, mas não foi possível avisar no canal de logs."
+              : platform === "telegram"
+                ? "As configurações foram salvas, mas não foi possível avisar no chat principal."
+                : "As configurações foram salvas, mas não foi possível avisar no grupo.";
+            console.error(`[WEB] ${setting} atualizado, mas falhou o aviso no ${platform}:`, error.message || error);
+          }
+          sendJson(response, 200, {
+            success: true,
+            config: updatedConfig,
+            announcementWarning,
+            message: `Configurações de ${setting} alteradas.`
+          });
+        } catch (error) {
+          const reason = String(error?.message || "");
+          const statusCode = /não participa|não está vinculada|permissão administrativa|não tem permissão|precisa ser administrador/i.test(reason) ? 403
+            : /offline/i.test(reason) ? 503
+              : /inválid|não disponível|não encontrado|horário|faixa|lista|intervalo|caracteres|valor|quantidade|saldo|XP|atividade|ação|configuração|configurações|conta de economia|registro/i.test(reason) ? 400 : 500;
+          if (statusCode === 500) console.error("[WEB] Falha ao carregar ou alterar sistemas de RP:", error.message || error);
+          sendJson(response, statusCode, {
+            error: statusCode === 403 || statusCode === 503 || statusCode === 400
+              ? reason
+              : "Não foi possível carregar ou atualizar este sistema."
           });
         }
         return;

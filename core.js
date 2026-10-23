@@ -433,6 +433,16 @@ console.log(
     message.platforms =
     platforms;
 
+    for (const nameStore of ["economy", "xp", "activity", "groupSettings"]) {
+        const updateNames = functions[nameStore]?.refreshNames;
+        if (typeof updateNames !== "function") continue;
+        try {
+            updateNames(message);
+        } catch (error) {
+            console.error(`${_ts()} ❌[CORE] Não foi possível atualizar nomes em ${nameStore}:`, error);
+        }
+    }
+
     // Garantir que o usuário tenha uma Conta Central (criada ao enviar qualquer mensagem)
     try {
         const store = functions.centralAccounts || global.centralAccounts;
