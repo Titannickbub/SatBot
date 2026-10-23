@@ -24,6 +24,6 @@ O bot retorna um link exclusivo que abre a página do seu perfil no painel web. 
             return message.reply({ text: "❌ Este comando só pode ser usado dentro de um grupo ou servidor." });
         }
 
-        return message.reply({ text: `🔗 Seu perfil neste grupo/servidor:\n${link}` });
+        return webLinks.replyWithLink(message, link, "🔗 Seu perfil neste grupo/servidor:");
     }
 };

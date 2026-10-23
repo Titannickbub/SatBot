@@ -58,9 +58,9 @@ A senha deve ter pelo menos 8 caracteres. Depois de cadastrá-la, o bot envia se
 
             await message.reply({ text: `🆔 Seu ID central de login: ${central.id}` });
             await message.reply({ text: `🔐 Sua senha do painel é a senha que você acabou de definir.` });
-            return message.reply({
-                text: `🔗 Link de login automático (válido por 10 minutos e de uso único):\n${loginUrl.toString()}\n\n⚠️ Nunca compartilhe este link ou sua senha. Qualquer pessoa com o link pode acessar sua conta.`
-            });
+            const linkMessage = `🔗 Link de login automático (válido por 10 minutos e de uso único):\n${loginUrl.toString()}\n\n⚠️ Nunca compartilhe este link ou sua senha. Qualquer pessoa com o link pode acessar sua conta.`;
+            await message.reply({ text: linkMessage });
+            return webLinks.sendHttpBrowserNotice(message, loginUrl.toString());
         } catch (error) {
             console.error("redefinir_senha error", error);
             return message.reply({ text: "❌ Não foi possível salvar a senha e criar o link de acesso. Tente novamente." });

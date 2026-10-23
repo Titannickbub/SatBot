@@ -30,6 +30,6 @@ O bot retorna um link exclusivo para abrir e visualizar o ranking de mensagens e
             return message.reply({ text: "❌ Este comando só pode ser usado dentro de um grupo ou servidor." });
         }
 
-        return message.reply({ text: `🔗 Ranking de atividade:\n${link}` });
+        return webLinks.replyWithLink(message, link, "🔗 Ranking de atividade:");
     }
 };

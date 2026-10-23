@@ -30,6 +30,6 @@ O bot retorna um link exclusivo para abrir o ranking completo no painel web. No 
             return message.reply({ text: "❌ Este comando só pode ser usado dentro de um grupo ou servidor." });
         }
 
-        return message.reply({ text: `🔗 Ranking completo de atividade:\n${link}` });
+        return webLinks.replyWithLink(message, link, "🔗 Ranking completo de atividade:");
     }
 };

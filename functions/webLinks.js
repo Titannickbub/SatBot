@@ -48,8 +48,34 @@ function ranking(message, type) {
     return buildUrl(pathname, scope);
 }
 
+function dashboard() {
+    const baseUrl = getBaseUrl();
+    return baseUrl ? `${baseUrl}/dashboard` : null;
+}
+
+function httpBrowserNotice(url) {
+    return /^http:\/\//i.test(String(url || ""))
+        ? "⚠️ Este link usa HTTP. Copie o link da mensagem anterior e cole na barra de endereços do navegador, de preferência o Chrome."
+        : "";
+}
+
+async function sendHttpBrowserNotice(message, url) {
+    const notice = httpBrowserNotice(url);
+    if (notice) return message.reply({ text: notice });
+}
+
+async function replyWithLink(message, link, text = "") {
+    const linkMessage = text ? `${text}\n${link}` : link;
+    await message.reply({ text: linkMessage });
+    return sendHttpBrowserNotice(message, link);
+}
+
 module.exports = {
     getBaseUrl,
+    dashboard,
     profile,
-    ranking
+    ranking,
+    httpBrowserNotice,
+    sendHttpBrowserNotice,
+    replyWithLink
 };

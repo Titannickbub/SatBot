@@ -11,6 +11,8 @@ Exibe o link de convite do grupo/servidor atual em qualquer plataforma:
 =================================================================
 */
 
+const webLinks = require("../../../functions/webLinks");
+
 module.exports = {
     name: "link",
     aliases: ["convite", "invite", "linkgp"],
@@ -81,9 +83,11 @@ module.exports = {
                 }
 
                 const inviteLink = `https://chat.whatsapp.com/${code}`;
-                return message.reply({
+                const reply = await message.reply({
                     text: `🔗 *Link de convite do grupo:*\n${inviteLink}`
                 });
+                await webLinks.sendHttpBrowserNotice(message, inviteLink);
+                return reply;
             } catch (err) {
                 console.error("[link] Erro ao obter convite no WhatsApp:", err);
                 return message.reply({
@@ -105,9 +109,12 @@ module.exports = {
             try {
                 // Se o servidor tiver URL de vaidade/personalizada
                 if (guild.vanityURLCode) {
-                    return message.reply({
-                        text: `🔗 **Link de convite do servidor:**\nhttps://discord.gg/${guild.vanityURLCode}`
+                    const inviteLink = `https://discord.gg/${guild.vanityURLCode}`;
+                    const reply = await message.reply({
+                        text: `🔗 **Link de convite do servidor:**\n${inviteLink}`
                     });
+                    await webLinks.sendHttpBrowserNotice(message, inviteLink);
+                    return reply;
                 }
 
                 if (!channel || typeof channel.createInvite !== "function") {
@@ -126,9 +133,11 @@ module.exports = {
                     return message.reply({ text: "❌ Não foi possível gerar o link de convite do Discord." });
                 }
 
-                return message.reply({
+                const reply = await message.reply({
                     text: `🔗 **Link de convite do servidor:**\n${invite.url}`
                 });
+                await webLinks.sendHttpBrowserNotice(message, invite.url);
+                return reply;
             } catch (err) {
                 console.error("[link] Erro ao obter convite no Discord:", err);
                 return message.reply({
@@ -177,9 +186,11 @@ module.exports = {
                     });
                 }
 
-                return message.reply({
+                const reply = await message.reply({
                     text: `🔗 <b>Link de convite do grupo:</b>\n${inviteLink}`
                 });
+                await webLinks.sendHttpBrowserNotice(message, inviteLink);
+                return reply;
             } catch (err) {
                 console.error("[link] Erro ao obter convite no Telegram:", err);
                 return message.reply({

@@ -1,6 +1,6 @@
 {
   "name": "SatBot",
-  "version": "1.2.60",
+  "version": "1.2.61",
   "description": "eleiçao2, re-login, painel web beta1",
   "main": "index.js",
   "scripts": {
