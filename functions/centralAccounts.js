@@ -108,6 +108,158 @@ class CentralAccountsStore {
     return central;
   }
 
+  async setWebPassword(centralId, password) {
+    const central = this.getCentralById(centralId);
+    if (!central) throw new Error('central not found');
+    const salt = crypto.randomBytes(16);
+    const passwordHash = await new Promise((resolve, reject) => {
+      crypto.scrypt(password, salt, 64, (error, derivedKey) => {
+        if (error) return reject(error);
+        resolve(derivedKey.toString('hex'));
+      });
+    });
+    central.webAuth = {
+      passwordSalt: salt.toString('hex'),
+      passwordHash
+    };
+    central.lastActivityAt = this._nowISO();
+    this._markDirty();
+    await this.saveNow();
+  }
+
+  async verifyWebPassword(centralId, password) {
+    const central = this.getCentralById(centralId);
+    const saltHex = central?.webAuth?.passwordSalt;
+    const passwordHash = central?.webAuth?.passwordHash;
+    if (!saltHex || !passwordHash) return false;
+
+    const salt = Buffer.from(saltHex, 'hex');
+    const expectedHash = Buffer.from(passwordHash, 'hex');
+    if (salt.length !== 16 || expectedHash.length !== 64) return false;
+
+    const derivedKey = await new Promise((resolve, reject) => {
+      crypto.scrypt(password, salt, expectedHash.length, (error, key) => {
+        if (error) return reject(error);
+        resolve(key);
+      });
+    });
+    return crypto.timingSafeEqual(derivedKey, expectedHash);
+  }
+
+  async createWebLoginToken(centralId, ttlMinutes = 10) {
+    const central = this.getCentralById(centralId);
+    if (!central?.webAuth?.passwordHash) throw new Error('web password not configured');
+    const token = crypto.randomBytes(32).toString('base64url');
+    central.webAuth.loginTokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    central.webAuth.loginTokenExpiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
+    this._markDirty();
+    await this.saveNow();
+    return token;
+  }
+
+  async consumeWebLoginToken(token) {
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const central = Object.values(this.data.centralAccounts).find(account => {
+      const storedHash = account.webAuth?.loginTokenHash;
+      if (!storedHash || storedHash.length !== tokenHash.length) return false;
+      return crypto.timingSafeEqual(Buffer.from(storedHash), Buffer.from(tokenHash));
+    });
+    if (!central) return null;
+
+    const expiresAt = Date.parse(central.webAuth.loginTokenExpiresAt || '');
+    delete central.webAuth.loginTokenHash;
+    delete central.webAuth.loginTokenExpiresAt;
+    this._markDirty();
+    await this.saveNow();
+    return expiresAt > Date.now() ? central : null;
+  }
+
+  async createRememberedWebSession(centralId, ttlDays = 30) {
+    const central = this.getCentralById(centralId);
+    if (!central?.webAuth?.passwordHash) throw new Error('web password not configured');
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const now = Date.now();
+    const sessions = Array.isArray(central.webAuth.rememberedSessions)
+      ? central.webAuth.rememberedSessions.filter(session => Date.parse(session.expiresAt) > now)
+      : [];
+    sessions.push({
+      tokenHash: crypto.createHash('sha256').update(token).digest('hex'),
+      expiresAt: new Date(now + ttlDays * 24 * 60 * 60 * 1000).toISOString()
+    });
+    central.webAuth.rememberedSessions = sessions.slice(-10);
+    this._markDirty();
+    await this.saveNow();
+    return token;
+  }
+
+  async getCentralByRememberedWebSession(token) {
+    if (!/^[a-f0-9]{64}$/i.test(token)) return null;
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const now = Date.now();
+    let removedExpiredSession = false;
+
+    for (const central of Object.values(this.data.centralAccounts)) {
+      const sessions = central.webAuth?.rememberedSessions;
+      if (!Array.isArray(sessions)) continue;
+
+      const activeSessions = [];
+      let matched = false;
+      for (const session of sessions) {
+        if (Date.parse(session.expiresAt) <= now) {
+          removedExpiredSession = true;
+          continue;
+        }
+        activeSessions.push(session);
+        if (!/^[a-f0-9]{64}$/i.test(session.tokenHash || "")) continue;
+        const storedHash = Buffer.from(session.tokenHash, 'hex');
+        const expectedHash = Buffer.from(tokenHash, 'hex');
+        if (storedHash.length === expectedHash.length && crypto.timingSafeEqual(storedHash, expectedHash)) {
+          matched = true;
+        }
+      }
+      central.webAuth.rememberedSessions = activeSessions;
+      if (matched) {
+        if (removedExpiredSession) {
+          this._markDirty();
+          await this.saveNow();
+        }
+        return central;
+      }
+    }
+
+    if (removedExpiredSession) {
+      this._markDirty();
+      await this.saveNow();
+    }
+    return null;
+  }
+
+  async revokeRememberedWebSession(token) {
+    if (!/^[a-f0-9]{64}$/i.test(token)) return false;
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    let removed = false;
+
+    for (const central of Object.values(this.data.centralAccounts)) {
+      const sessions = central.webAuth?.rememberedSessions;
+      if (!Array.isArray(sessions)) continue;
+      const activeSessions = sessions.filter(session => {
+        const storedHash = session.tokenHash || "";
+        const isMatch = /^[a-f0-9]{64}$/i.test(storedHash) &&
+          crypto.timingSafeEqual(Buffer.from(storedHash, 'hex'), Buffer.from(tokenHash, 'hex'));
+        if (isMatch) removed = true;
+        return !isMatch && Date.parse(session.expiresAt) > Date.now();
+      });
+      central.webAuth.rememberedSessions = activeSessions;
+    }
+
+    if (removed) {
+      this._markDirty();
+      await this.saveNow();
+    }
+    return removed;
+  }
+
   async generateMergeCode(centralId, ttlHours = 24) {
     const central = this.getCentralById(centralId);
     if (!central) throw new Error('central not found');

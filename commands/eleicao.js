@@ -29,15 +29,17 @@ const OFFICE_ALIASES = Object.freeze({
 const OFFICE_PHRASES = Object.keys(OFFICE_ALIASES)
     .sort((a, b) => b.split(" ").length - a.split(" ").length);
 
+const OFFICIAL_URL = "https://resultados.tse.jus.br/oficial/app/index.html#/eleicao/6258/uf/br/cargo/1/vis/nominal/resultados";
+
 module.exports = {
     name: "eleicao",
-    aliases: ["eleição", "eleicoes", "eleições"],
-    description: "Consulta a apuração oficial das eleições no TSE por cargo, estado e município.",
+    aliases: ["eleição", "eleicoes", "eleições", "eleicao2", "eleição2", "2turno", "segundoturno"],
+    description: "Consulta a apuração oficial do 2º turno das eleições (Presidente) no TSE.",
     usage: "{prefix}eleicao",
     examples: [
         "{prefix}eleicao",
-        "{prefix}eleicao governador uf MG municipio Belo Horizonte",
-        "{prefix}eleicao deputado federal uf SP busca PT",
+        "{prefix}eleicao uf SP",
+        "{prefix}eleicao uf MG municipio Belo Horizonte",
         "{prefix}eleicao help"
     ],
 
@@ -50,7 +52,12 @@ module.exports = {
         let options;
         try {
             options = parseArguments(args);
-            const results = await electionResults.getResults(options);
+            const results = await electionResults.getResults({
+                ...options,
+                office: "presidente",
+                turn: 2,
+                electionId: "6258"
+            });
             if (options.page > results.pages) {
                 throw new Error(`Essa busca tem ${results.pages} página(s), mas você pediu a página ${options.page}.`);
             }
@@ -61,9 +68,9 @@ module.exports = {
             }
             return message.reply(output);
         } catch (error) {
-            console.error("[ELEICAO] Erro ao consultar a apuração do TSE:", error.message || error);
+            console.error("[ELEICAO] Erro ao consultar a apuração do 2º turno do TSE:", error.message || error);
             return message.reply({
-                text: `⚠️ Não consegui consultar os resultados eleitorais agora.\n${error.message || "Tente novamente em instantes."}\n\nFonte oficial: https://resultados.tse.jus.br/`
+                text: `⚠️ Não consegui consultar os resultados eleitorais agora.\n${error.message || "Tente novamente em instantes."}\n\nFonte oficial: ${OFFICIAL_URL}`
             });
         }
     }
@@ -141,13 +148,8 @@ function parseArguments(args) {
         values.municipality = remaining.join(" ");
     }
 
-    office = office || "presidente";
-    if (!electionResults.OFFICES[office]) {
-        throw new Error("Cargo não reconhecido. Use presidente, governador, senador, deputado federal ou deputado estadual.");
-    }
-
-    if (["deputado federal", "deputado estadual"].includes(office) && !values.query) {
-        throw new Error("Para evitar uma lista enorme, informe uma busca por nome, número ou partido para deputados. Exemplo: busca 1313.");
+    if (office && office !== "presidente") {
+        throw new Error("No 2º turno das eleições 2026, está disponível apenas o cargo de Presidente.\nPara consultar os resultados do 1º turno (governador, senador, deputados), use o comando !eleicao1.");
     }
 
     const page = values.page ? Number(values.page) : 1;
@@ -156,7 +158,7 @@ function parseArguments(args) {
     }
 
     return {
-        office,
+        office: "presidente",
         state: values.state || "",
         municipality: values.municipality || "",
         query: values.query || "",
@@ -168,27 +170,24 @@ function resolveOffice(value) {
     const normalized = electionResults.normalize(value).replace(/\s+/g, " ");
     const alias = OFFICE_ALIASES[normalized];
     if (alias) return alias;
-    throw new Error("Cargo não reconhecido. Use presidente, governador, senador, deputado federal ou deputado estadual.");
+    throw new Error("Cargo não reconhecido. No 2º turno, utilize o cargo de Presidente (ou use !eleicao1 para o 1º turno).");
 }
 
 function buildHelp(prefix) {
     return [
-        "🗳️ *ELEIÇÃO — RESULTADOS OFICIAIS DO TSE*",
+        "🗳️ *ELEIÇÃO 2º TURNO — RESULTADOS OFICIAIS DO TSE*",
         "",
-        "Consulte a parcial por cargo, estado ou município. Sem opções, mostra todos os candidatos a presidente no Brasil.",
+        "Consulte a parcial oficial do 2º turno para Presidente no Brasil, por estado ou por município.",
         "",
         "📌 *Como usar*",
-        `• \`${prefix}eleicao\` — Presidente no Brasil`,
-        `• \`${prefix}eleicao presidente uf MG\` — Presidente em um estado`,
-        `• \`${prefix}eleicao governador uf MG municipio Belo Horizonte\``,
-        `• \`${prefix}eleicao senador uf SP\``,
-        `• \`${prefix}eleicao deputado federal uf SP busca PT\` — filtra por partido`,
-        `• \`${prefix}eleicao deputado estadual uf RJ busca nome do candidato\``,
+        `• \`${prefix}eleicao\` — Presidente no Brasil (2º Turno)`,
+        `• \`${prefix}eleicao uf MG\` — Presidente em Minas Gerais`,
+        `• \`${prefix}eleicao uf SP municipio Campinas\` — Presidente em Campinas/SP`,
+        `• \`${prefix}eleicao busca Lula\` — Filtra candidato`,
         "",
-        "🔎 Para deputados, a busca é obrigatória e pode ser por nome, número ou partido. Os resultados aparecem em páginas de 15; avance com `pagina 2`, `pagina 3` etc.",
-        "📍 Município exige estado. Não há filtro por seção: a apuração usa todas as seções da localidade escolhida.",
+        `💡 Para consultar os resultados do 1º turno (Presidente, Governador, Senador, Deputados), use \`${prefix}eleicao1\`.`,
         "",
-        "Os dados são publicados pelo TSE e podem estar zerados antes do início da apuração. O horário de atualização aparece no resultado."
+        `Fonte oficial: ${OFFICIAL_URL}`
     ].join("\n");
 }
 
@@ -209,7 +208,7 @@ function getSummaryLines(results) {
     const remainingSections = Math.max(0, totalSections - countedSections);
 
     return [
-        `📊 *PARCIAL — ${results.election.year}*`,
+        `📊 *PARCIAL — 2º TURNO ${results.election.year}*`,
         `📍 ${results.office} — ${results.location.label}`,
         `🗳️ Apuração: ${number(countedSections)} de ${number(totalSections)} seções (${percent(sections.pst)}%)`,
         `⏳ Faltam: ${number(remainingSections)} seções`,
@@ -252,7 +251,7 @@ function getCandidateLines(results) {
 function formatResults(results, platform) {
     const summary = getSummaryLines(results);
     const candidates = getCandidateLines(results);
-    const title = `🗳️ ${results.office} — ${results.location.label}`;
+    const title = `🗳️ 2º Turno — ${results.office} — ${results.location.label}`;
 
     if (platform === "discord") {
         const candidateList = candidates.join("\n\n");
@@ -261,7 +260,7 @@ function formatResults(results, platform) {
                 color: 0x168A50,
                 title,
                 description: [...summary.slice(2), "", "📋 *Candidatos*", "", candidateList].join("\n"),
-                footer: { text: "Fonte oficial: Tribunal Superior Eleitoral (TSE)" }
+                footer: { text: "Fonte oficial: Tribunal Superior Eleitoral (TSE) — 2º Turno" }
             }
         };
     }
@@ -275,10 +274,10 @@ function formatResults(results, platform) {
         const telegramSummary = summary.map(telegramText);
         const telegramCandidates = candidates.map(telegramText);
         return {
-            text: `${telegramSummary.join("\n")}\n\n📋 CANDIDATOS\n\n${telegramCandidates.join("\n\n")}\n\nFonte: TSE — https://resultados.tse.jus.br/`,
+            text: `${telegramSummary.join("\n")}\n\n📋 CANDIDATOS\n\n${telegramCandidates.join("\n\n")}\n\nFonte: TSE — ${OFFICIAL_URL}`,
             parse_mode: "HTML"
         };
     }
 
-    return `${summary.join("\n")}\n\n📋 *CANDIDATOS*\n\n${candidates.join("\n\n")}\n\nFonte: TSE — https://resultados.tse.jus.br/`;
+    return `${summary.join("\n")}\n\n📋 *CANDIDATOS*\n\n${candidates.join("\n\n")}\n\nFonte: TSE — ${OFFICIAL_URL}`;
 }

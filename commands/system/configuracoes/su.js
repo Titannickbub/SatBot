@@ -151,6 +151,7 @@ const { resolvePlatformProfile } = require("../../../functions/profiles");
 const suTokenCommand = require("./su-token");
 const nofapHelper = require("../../../functions/nofapHelper");
 const { ensureParticipant } = require("../../../functions/nofapGroupHelper");
+const maintenance = require("../../../functions/maintenanceHelper");
 
 const DESCRIPTION = `👑 Administra os Super Usuários (donos) com controle total sobre o bot, autenticação de plataformas e comandos de manutenção global.
 
@@ -189,6 +190,9 @@ const DESCRIPTION = `👑 Administra os Super Usuários (donos) com controle tot
 🔄 9. Reiniciar o bot:
 {prefix}su restart
 
+🧹 10. Limpar os dados de grupos/servidores que o bot deixou:
+{prefix}su atualizar_chats confirmar
+
 ℹ️ Plataformas suportadas: discord, telegram, whatsapp.`;
 
 module.exports = {
@@ -203,6 +207,7 @@ module.exports = {
         "{prefix}su del telegram 123456",
         "{prefix}su whatsapp qr",
         "{prefix}su token discord TOKEN",
+        "{prefix}su atualizar_chats confirmar",
         "{prefix}su restart"
     ],
 
@@ -299,6 +304,21 @@ module.exports = {
             const onlychatsCmd = require("./onlychats");
             message.args = args.slice(1);
             return await onlychatsCmd.execute(message);
+        }
+
+        if (sub === "atualizar_chats") {
+            if (String(args[1] || "").toLowerCase() !== "confirmar") {
+                return await message.reply({
+                    text: `⚠️ Esta ação apagará configurações, dados locais, mídias e arquivos dos grupos/servidores que o bot deixou nas três plataformas. O Telegram só pode verificar os grupos encontrados nos dados salvos; falhas de verificação preservam os dados. Para continuar, envie ${message.prefix || "!"}su atualizar_chats confirmar.`
+                });
+            }
+            try {
+                const report = await maintenance.updateOrphanedChats();
+                return await message.reply({ text: formatChatMaintenanceReport(report) });
+            } catch (error) {
+                console.error("[MAINTENANCE] Falha em su atualizar_chats:", error);
+                return await message.reply({ text: `❌ A limpeza não foi concluída. Nenhum dado foi apagado: ${error.message || error}` });
+            }
         }
 
         if (sub === "add") {
@@ -409,6 +429,27 @@ if (sub === "restart") {
     }
 
 };
+
+function formatChatMaintenanceReport(report) {
+    const checked = ["discord", "whatsapp", "telegram"]
+        .map(platform => `${platform}: ${report.checked[platform]} verificado(s), ${report.orphaned[platform]} removido(s)`)
+        .join(" · ");
+    const groups = report.deletedGroups.slice(0, 12)
+        .map(group => `${group.platform} ${group.id}`);
+    const extraGroups = report.deletedGroups.length - groups.length;
+    const issues = report.errors.slice(0, 4)
+        .map(error => `- ${error}`);
+    return [
+        "✅ Atualização de grupos concluída.",
+        `Verificação dos grupos com dados salvos: ${checked}.`,
+        `Arquivos apagados: ${report.deletedFiles} · mídias apagadas: ${report.deletedMedia}.`,
+        report.updatedCommunityChats ? `Chats removidos de configurações de comunidade WhatsApp: ${report.updatedCommunityChats}.` : null,
+        groups.length ? `Grupos/servidores removidos: ${groups.join(", ")}${extraGroups ? ` e mais ${extraGroups}` : ""}.` : "Nenhum grupo/servidor órfão encontrado.",
+        report.errors.length
+            ? `⚠️ Pendências (${report.errors.length}); os dados não confirmados foram preservados:\n${issues.join("\n")}${report.errors.length > 4 ? "\n- ..." : ""}`
+            : null
+    ].filter(Boolean).join("\n");
+}
 
 async function help(message) {
     const text = DESCRIPTION.replaceAll("{prefix}", message.prefix || "!");

@@ -1,7 +1,7 @@
 {
   "name": "SatBot",
-  "version": "1.2.57",
-  "description": "play info,",
+  "version": "1.2.60",
+  "description": "eleiçao2, re-login, painel web beta1",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",

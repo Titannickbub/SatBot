@@ -53,8 +53,8 @@ O bot exibe o nome central, ID global, status VIP, data de criação, última at
             `• ${message.prefix}perfil — conta atual, NoFap e satcoins`,
             `• ${message.prefix}conta — exibe esta conta global`,
             `• ${message.prefix}nomecentral <nome> — altera o nome central`,
-            `• ${message.prefix}gerar_unir — gera código para vincular uma conta`,
-            `• ${message.prefix}unir <código> — vincula outra plataforma`
+            `• ${message.prefix}unir_contas codigo — gera código para vincular uma conta`,
+            `• ${message.prefix}unir_contas login <código> — confirma a união de contas`
         ];
 
         return message.reply({ text: lines.join("\n") });

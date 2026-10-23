@@ -33,17 +33,46 @@ function ensureStateFile() {
     }
 }
 
+function sanitizeJobForSecondTurn(job) {
+    if (!job || typeof job !== "object") return null;
+    return {
+        id: job.id || randomUUID().slice(0, 8),
+        office: "presidente",
+        state: job.state || "",
+        municipality: job.municipality || "",
+        query: "",
+        intervalMs: Number(job.intervalMs) || 5 * 60 * 1000,
+        initialDelayMs: job.initialDelayMs !== undefined ? Number(job.initialDelayMs) : 5 * 60 * 1000
+    };
+}
+
 function readStore() {
     ensureStateFile();
     const parsed = JSON.parse(fs.readFileSync(STATE_PATH, "utf8") || "{}");
     if (!parsed || typeof parsed !== "object") {
         throw new Error("O arquivo de configuração do monitor eleitoral está inválido.");
     }
+    const config = parsed.config && typeof parsed.config === "object"
+        ? { ...createDefaultConfig(), ...parsed.config }
+        : createDefaultConfig();
+    config.jobs = (Array.isArray(config.jobs) ? config.jobs : []).map(sanitizeJobForSecondTurn).filter(Boolean);
+
+    const configs = {};
+    if (parsed.configs && typeof parsed.configs === "object") {
+        for (const [key, item] of Object.entries(parsed.configs)) {
+            if (item && typeof item === "object") {
+                configs[key] = {
+                    ...createDefaultConfig(),
+                    ...item,
+                    jobs: (Array.isArray(item.jobs) ? item.jobs : []).map(sanitizeJobForSecondTurn).filter(Boolean)
+                };
+            }
+        }
+    }
+
     return {
-        config: parsed.config && typeof parsed.config === "object"
-            ? { ...createDefaultConfig(), ...parsed.config }
-            : createDefaultConfig(),
-        configs: parsed.configs && typeof parsed.configs === "object" ? parsed.configs : {}
+        config,
+        configs
     };
 }
 
@@ -100,12 +129,9 @@ function saveMonitorConfig(patch, target = null) {
 }
 
 function createJob(options) {
-    const office = electionResults.OFFICES[options.office];
-    if (!office) throw new Error("Cargo eleitoral inválido.");
-
     return {
         id: randomUUID().slice(0, 8),
-        office: options.office,
+        office: "presidente",
         state: options.state || "",
         municipality: options.municipality || "",
         query: options.query || "",
@@ -129,11 +155,10 @@ function formatDuration(milliseconds) {
 }
 
 function getJobLabel(job) {
-    const office = electionResults.OFFICES[job.office]?.label || job.office;
     const location = job.municipality
         ? `${job.municipality} - ${job.state}`
         : job.state || "Brasil";
-    return `${office} — ${location}`;
+    return `Presidente — ${location}`;
 }
 
 function getDeliveryText(result, platform) {
@@ -157,11 +182,13 @@ async function runElectionMonitor(options = {}) {
     if (!job) throw new Error("Essa configuração do monitor eleitoral não existe mais.");
 
     const result = await electionResults.getResults({
-        office: job.office,
+        office: "presidente",
         state: job.state,
         municipality: job.municipality,
         query: job.query,
-        page: 1
+        page: 1,
+        turn: 2,
+        electionId: "6258"
     });
     const text = getDeliveryText(result, options.target?.platform);
 
@@ -201,7 +228,7 @@ async function syncMonitorSchedules(config, target = null) {
         );
         const wasJustEnabled = current && !current.enabled && Boolean(config.enabled);
         const patch = {
-            name: `Apuração eleitoral: ${getJobLabel(job)}`,
+            name: `Apuração eleitoral (2º Turno): ${getJobLabel(job)}`,
             enabled: Boolean(config.enabled),
             platform,
             chatId,

@@ -18,6 +18,34 @@ const welcomeHelper = require("../functions/welcomeHelper");
 const authFlow = require("../functions/authFlow");
 const { detectBufferFormat } = require("../functions/gifAdapter");
 
+let reconnectAttempts = 0;
+let reconnectTimer = null;
+
+function isInvalidDiscordToken(error) {
+    return error?.code === "TokenInvalid" ||
+        error?.status === 401 ||
+        Number(error?.code) === 4004 ||
+        /invalid token/i.test(error?.message || "");
+}
+
+function scheduleDiscordReconnect(onMessage, error) {
+    if (reconnectTimer) return;
+
+    reconnectAttempts += 1;
+    const delay = Math.min(5000 * (2 ** (reconnectAttempts - 1)), 60000);
+    console.error(
+        `⚠️[DISCORD] Falha temporária na conexão. Nova tentativa em ${Math.ceil(delay / 1000)}s:`,
+        error?.message || error
+    );
+
+    reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        start(onMessage).catch(reconnectError => {
+            console.error("❌[DISCORD] Falha ao reiniciar a conexão:", reconnectError.message || reconnectError);
+        });
+    }, delay);
+}
+
 function imageAttachmentName(image, fileName) {
     const format = detectBufferFormat(image);
     const name = fileName || `image.${format.ext === "bin" ? "png" : format.ext}`;
@@ -880,7 +908,16 @@ async function start(onMessage) {
 
     });
 
-    await client.login(token);
+    try {
+        await client.login(token);
+        reconnectAttempts = 0;
+    } catch (error) {
+        if (isInvalidDiscordToken(error)) {
+            console.error("❌[DISCORD] Token inválido. Reconexão automática suspensa:", error.message || error);
+            throw error;
+        }
+        scheduleDiscordReconnect(onMessage, error);
+    }
 }
 
 async function getDiscordChannel(chatId) {

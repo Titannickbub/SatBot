@@ -62,8 +62,28 @@ function getWarnData(platform, targetId, targetType) {
     if (!data.settings.warnsData) {
         data.settings.warnsData = {};
     }
+    if (!data.settings.warnsHistory) {
+        data.settings.warnsHistory = {};
+    }
 
     return data;
+}
+
+function getWarnHistory(value, storedHistory) {
+    const legacyValue = value && typeof value === "object" && !Array.isArray(value)
+        ? value.count
+        : Array.isArray(value) ? value.length : value;
+    const count = Number.isFinite(Number(legacyValue)) ? Math.max(0, Math.floor(Number(legacyValue))) : 0;
+    const storedRecords = Array.isArray(storedHistory) ? storedHistory : storedHistory?.records;
+    const legacyRecords = Array.isArray(value) ? value : value?.records;
+    const records = (storedRecords || legacyRecords || [])
+        .filter(record => record && typeof record === "object")
+        .map(record => ({
+            reason: String(record.reason || ""),
+            createdAt: record.createdAt || null
+        }));
+    if (records.length > count) records.splice(0, records.length - count);
+    return { count, records, legacyCount: Math.max(0, count - records.length) };
 }
 
 /**
@@ -97,11 +117,18 @@ function getWarnConfig(message) {
  * Retorna a quantidade de warns de um usuário.
  */
 function getUserWarns(message, userId) {
+    return getUserWarnHistory(message, userId).count;
+}
+
+function getUserWarnHistory(message, userId) {
     const target = getWarnTarget(message);
-    if (!target) return 0;
+    if (!target) return { count: 0, records: [], legacyCount: 0 };
 
     const data = getWarnData(message.platform, target.id, target.type);
-    return data.settings.warnsData[String(userId)] || 0;
+    return getWarnHistory(
+        data.settings.warnsData[String(userId)],
+        data.settings.warnsHistory[String(userId)]
+    );
 }
 
 /**
@@ -120,10 +147,21 @@ async function addWarn(message, userId, reason = "Sem motivo") {
     const warnsData = data.settings.warnsData;
 
     const uid = String(userId);
-    let currentWarns = (warnsData[uid] || 0) + 1;
+    const history = getWarnHistory(warnsData[uid], data.settings.warnsHistory[uid]);
+    const currentWarns = history.count + 1;
+    history.records.push({
+        reason: String(reason || "Sem motivo informado").trim().slice(0, 500),
+        createdAt: new Date().toISOString()
+    });
     warnsData[uid] = currentWarns;
+    data.settings.warnsHistory[uid] = {
+        legacyCount: history.legacyCount,
+        records: history.records
+    };
 
-    saveSettings(message.platform, target.id, target.type, data, message);
+    if (!saveSettings(message.platform, target.id, target.type, data, message)) {
+        throw new Error("Não foi possível salvar a advertência.");
+    }
 
     const result = {
         currentWarns,
@@ -134,18 +172,21 @@ async function addWarn(message, userId, reason = "Sem motivo") {
 
     if (currentWarns >= max) {
         result.punished = true;
-        // Reseta os warns após a punição
-        delete data.settings.warnsData[uid];
-        saveSettings(message.platform, target.id, target.type, data, message);
-
         try {
             if (action === "kick") {
-                await kickMember(message.platform, { ...message, userId: uid });
+                await kickMember(message.platform, { ...message, userId: uid }, reason);
             } else if (action === "ban") {
                 await banMember(message.platform, { ...message, userId: uid }, reason);
             }
         } catch (err) {
             console.error("[WARN] Erro ao aplicar punição automática:", err);
+            throw new Error("A advertência foi salva, mas a punição automática falhou. Verifique as permissões do bot.");
+        }
+
+        delete data.settings.warnsData[uid];
+        delete data.settings.warnsHistory[uid];
+        if (!saveSettings(message.platform, target.id, target.type, data, message)) {
+            throw new Error("A punição foi aplicada, mas não foi possível atualizar o registro de advertências.");
         }
     }
 
@@ -169,10 +210,24 @@ function removeWarns(message, userId, amount = 0) {
 
     if (amount <= 0) {
         delete data.settings.warnsData[uid];
+        delete data.settings.warnsHistory[uid];
     } else {
-        data.settings.warnsData[uid] -= amount;
-        if (data.settings.warnsData[uid] <= 0) {
+        const history = getWarnHistory(data.settings.warnsData[uid], data.settings.warnsHistory[uid]);
+        const removed = Math.min(Math.floor(amount), history.count);
+        const removedLegacy = Math.min(removed, history.legacyCount);
+        history.legacyCount -= removedLegacy;
+        const remainingToRemove = removed - removedLegacy;
+        history.records.splice(0, remainingToRemove);
+        history.count -= removed;
+        if (history.count <= 0) {
             delete data.settings.warnsData[uid];
+            delete data.settings.warnsHistory[uid];
+        } else {
+            data.settings.warnsData[uid] = history.count;
+            data.settings.warnsHistory[uid] = {
+                legacyCount: history.legacyCount,
+                records: history.records
+            };
         }
     }
 
@@ -185,6 +240,8 @@ module.exports = {
     setWarnConfig,
     getWarnConfig,
     getUserWarns,
+    getUserWarnHistory,
+    getWarnHistory,
     addWarn,
     removeWarns
 };

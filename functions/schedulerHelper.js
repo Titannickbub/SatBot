@@ -113,26 +113,22 @@ function calcNextFire(schedule, now = Date.now()) {
 
         if (repeat.mode === "monthly" && repeat.monthDay) {
             const targetDay = Number(repeat.monthDay);
-            const sorted = [...candidates].sort((a, b) => a - b);
-            for (const ts of sorted) {
-                const d = new Date(ts);
-                if (d.getDate() === targetDay && ts > now) return ts;
-            }
-            // Nenhum hoje — acha próximo mês
             const ref = new Date(now);
-            let year = ref.getFullYear();
-            let month = ref.getMonth();
-            // Tenta o mês atual primeiro
-            let candidate = new Date(year, month, targetDay);
-            for (const [hh, mm] of times.map(t => t.split(":").map(Number))) {
-                candidate = new Date(year, month, targetDay, hh, mm, 0, 0);
-                if (candidate.getTime() > now) return candidate.getTime();
+            const sortedTimes = times
+                .map(time => time.split(":").map(Number))
+                .sort((a, b) => (a[0] * 60 + a[1]) - (b[0] * 60 + b[1]));
+            for (let offset = 0; offset < 24; offset++) {
+                const monthStart = new Date(ref.getFullYear(), ref.getMonth() + offset, 1);
+                const year = monthStart.getFullYear();
+                const month = monthStart.getMonth();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                if (targetDay > daysInMonth) continue;
+                for (const [hh, mm] of sortedTimes) {
+                    const candidate = new Date(year, month, targetDay, hh, mm, 0, 0);
+                    if (candidate.getTime() > now) return candidate.getTime();
+                }
             }
-            // Mês seguinte
-            month += 1;
-            if (month > 11) { month = 0; year += 1; }
-            const [hh, mm] = times[0].split(":").map(Number);
-            return new Date(year, month, targetDay, hh, mm, 0, 0).getTime();
+            return null;
         }
 
         // daily / once → próximo horário que ainda não passou
@@ -146,7 +142,7 @@ function calcNextFire(schedule, now = Date.now()) {
 // Disparo
 // ─────────────────────────────────────────────────────────────
 
-async function fireSchedule(schedule) {
+async function fireSchedule(schedule, options = {}) {
     const { platform, chatId, threadId, message: msg } = schedule;
 
     if (schedule.meta?.kind === "auto-chat-state" || schedule.meta?.kind === "chat-control-temp") {
@@ -281,7 +277,7 @@ async function fireSchedule(schedule) {
         }
     }
 
-    if (!msg || !msg.text) return;
+    if (!msg || (!msg.text && !(msg.mode === "media" && msg.media?.url))) return;
 
     // Busca a plataforma no registry global
     const registry = global.platformRegistry || {};
@@ -289,6 +285,7 @@ async function fireSchedule(schedule) {
 
     if (!adapter) {
         console.warn(`⏰[SCHEDULER] Plataforma não encontrada: ${platform}`);
+        if (options.throwOnError) throw new Error(`Plataforma não disponível: ${platform}`);
         return;
     }
 
@@ -341,6 +338,7 @@ async function fireSchedule(schedule) {
         console.log(`⏰[SCHEDULER] Agendamento disparado: "${schedule.name}" (${schedule.id})`);
     } catch (err) {
         console.error(`❌[SCHEDULER] Erro ao disparar agendamento "${schedule.name}":`, err.message || err);
+        if (options.throwOnError) throw err;
     }
 }
 

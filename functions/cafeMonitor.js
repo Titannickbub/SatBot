@@ -567,8 +567,10 @@ async function syncMonitorSchedules(config, target = null) {
             return [];
         }
 
+        const threadId = target?.threadId || config.threadId || null;
         const existing = schedulerHelper.listSchedules(chatId, platform)
-            .filter(schedule => schedule.meta?.kind === "cafe-monitor");
+            .filter(schedule => schedule.meta?.kind === "cafe-monitor" &&
+                (schedule.threadId || null) === threadId);
 
         const times = Array.isArray(config.times) && config.times.length
             ? config.times
@@ -580,7 +582,7 @@ async function syncMonitorSchedules(config, target = null) {
             enabled: Boolean(config.enabled && isScheduledMode && times.length),
             platform,
             chatId,
-            threadId: target?.threadId || config.threadId || null,
+            threadId,
             chatName: target?.chatName || null,
             trigger: {
                 type: "fixed",

@@ -128,15 +128,17 @@ async function syncMonitorSchedules(config, target = null) {
     const chatId = target?.chatId || config.chatId || null;
     if (!platform || !chatId) return [];
 
+    const threadId = target?.threadId || config.threadId || null;
     const existing = schedulerHelper.listSchedules(chatId, platform)
-        .filter(schedule => schedule.meta?.kind === "random-weather-monitor");
+        .filter(schedule => schedule.meta?.kind === "random-weather-monitor" &&
+            (schedule.threadId || null) === threadId);
     const times = Array.isArray(config.times) && config.times.length ? config.times : ["08:00"];
     const patch = {
         name: "Previsão aleatória do tempo",
         enabled: Boolean(config.enabled && config.cities?.length && times.length),
         platform,
         chatId,
-        threadId: target?.threadId || config.threadId || null,
+        threadId,
         chatName: target?.chatName || null,
         trigger: { type: "fixed", times, intervalMs: null },
         repeat: { mode: "daily", days: [], monthDay: null },

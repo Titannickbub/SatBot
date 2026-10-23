@@ -81,7 +81,7 @@ function getCargoCodes(election) {
     return codes;
 }
 
-function selectElection(config, officeCode) {
+function selectElection(config, officeCode, turn = 2, electionId = null) {
     const currentYear = new Date().getFullYear();
     const options = [];
 
@@ -90,16 +90,36 @@ function selectElection(config, officeCode) {
         if (!year || year > currentYear) continue;
 
         for (const election of plan.e || []) {
+            if (electionId && String(election.cd) === String(electionId)) {
+                return { cycle: plan.c, year, election };
+            }
             if (getCargoCodes(election).has(officeCode)) {
-                options.push({ cycle: plan.c, year, election });
+                options.push({
+                    cycle: plan.c,
+                    year,
+                    election,
+                    turn: Number(election.t) || 1
+                });
             }
         }
     }
 
-    options.sort((a, b) => b.year - a.year);
+    if (electionId) {
+        throw new Error(`Eleição ${electionId} não foi encontrada na base do TSE.`);
+    }
+
     if (!options.length) {
         throw new Error("O TSE ainda não publicou uma eleição disponível para esse cargo.");
     }
+
+    options.sort((a, b) => {
+        if (b.year !== a.year) return b.year - a.year;
+        const aTurnMatch = a.turn === turn ? 1 : 0;
+        const bTurnMatch = b.turn === turn ? 1 : 0;
+        if (bTurnMatch !== aTurnMatch) return bTurnMatch - aTurnMatch;
+        return b.turn - a.turn;
+    });
+
     return options[0];
 }
 
@@ -223,15 +243,22 @@ function getCargoData(payload, officeCode) {
 }
 
 async function getResults(options = {}) {
+    const requestedTurn = options.turn !== undefined ? Number(options.turn) : 2;
+    const requestedElectionId = options.electionId ? String(options.electionId) : null;
     const office = OFFICES[options.office] || OFFICES.presidente;
+
+    if (requestedTurn === 2 && office.code !== "1") {
+        throw new Error(`O 2º turno das eleições contempla apenas o cargo de Presidente. Para consultar ${office.label} no 1º turno, use o comando eleicao1.`);
+    }
+
     const config = await getElectionConfig();
-    const selectedElection = selectElection(config, office.code);
+    const selectedElection = selectElection(config, office.code, requestedTurn, requestedElectionId);
     const electionId = String(selectedElection.election.cd);
 
     const geographyElection = (config.pl || [])
         .filter(plan => plan.c === selectedElection.cycle)
         .flatMap(plan => plan.e || [])
-        .find(election => getCargoCodes(election).has("1")) || selectedElection.election;
+        .find(election => String(election.cd) === electionId || (getCargoCodes(election).has("1") && (Number(election.t) || 1) === (Number(selectedElection.election.t) || 1))) || selectedElection.election;
     const municipalities = await getMunicipalityConfig(selectedElection.cycle, geographyElection.cd);
     const location = findLocation(municipalities, options.state, options.municipality);
     const url = buildResultsUrl(
@@ -271,6 +298,7 @@ async function getResults(options = {}) {
             cycle: selectedElection.cycle,
             year: selectedElection.year,
             id: electionId,
+            turn: Number(selectedElection.election.t) || (electionId === "6258" ? 2 : 1),
             updatedDate: payload.dg || "",
             updatedTime: payload.hg || ""
         },

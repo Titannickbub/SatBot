@@ -115,13 +115,20 @@ function parseJobArguments(args) {
 
     if (values.office) {
         const value = electionResults.normalize(values.office).replace(/\s+/g, " ");
-        office = OFFICE_ALIASES[value];
-        if (!office) throw new Error("Cargo inválido. Use presidente, governador, senador, deputado federal ou deputado estadual.");
+        const resolved = OFFICE_ALIASES[value];
+        if (resolved && resolved !== "presidente") {
+            throw new Error("No 2º turno das eleições, está disponível apenas o cargo de Presidente.");
+        }
+        if (!resolved) {
+            throw new Error("Cargo inválido. No 2º turno, apenas o cargo de Presidente está disponível.");
+        }
+        office = "presidente";
     }
 
-    if (!office) {
-        throw new Error("Informe um cargo. Ex.: `add presidente intervalo 5m inicio 0m`.");
+    if (office && office !== "presidente") {
+        throw new Error("No 2º turno das eleições, está disponível apenas o cargo de Presidente.");
     }
+    office = "presidente";
 
     const intervalMs = parseDuration(values.interval || "5m", "intervalo");
     if (intervalMs < 60_000) throw new Error("O intervalo mínimo entre consultas é 1 minuto.");
@@ -135,12 +142,8 @@ function parseJobArguments(args) {
     if (!values.state && remaining.length) values.state = remaining.shift();
     if (!values.municipality && remaining.length) values.municipality = remaining.join(" ");
 
-    if (office.startsWith("deputado") && !values.query) {
-        throw new Error("Para monitorar deputados, informe uma busca por nome, número ou partido. Ex.: busca PT.");
-    }
-
     return {
-        office,
+        office: "presidente",
         state: values.state || "",
         municipality: values.municipality || "",
         query: values.query || "",
@@ -167,12 +170,12 @@ module.exports = {
     name: "monitoreleicao",
     aliases: ["monitoreleicoes", "monitoreleição"],
     category: "adm/configurações",
-    description: "Agenda parciais eleitorais do TSE por cargo e localidade, com início e intervalo configuráveis.",
+    description: "Agenda parciais eleitorais do 2º turno (Presidente) no TSE por localidade, com início e intervalo configuráveis.",
     usage: "{prefix}monitoreleicao help",
     examples: [
-        "{prefix}monitoreleicao add presidente intervalo 5m inicio 0m",
-        "{prefix}monitoreleicao add senador uf MG intervalo 10m inicio 30m",
-        "{prefix}monitoreleicao add governador uf MG municipio Belo Horizonte intervalo 5m inicio 0m",
+        "{prefix}monitoreleicao add intervalo 5m inicio 0m",
+        "{prefix}monitoreleicao add uf MG intervalo 10m inicio 30m",
+        "{prefix}monitoreleicao add uf MG municipio Belo Horizonte intervalo 5m inicio 0m",
         "{prefix}monitoreleicao on"
     ],
 
@@ -201,7 +204,7 @@ module.exports = {
                 if (config.jobs.length >= 20) {
                     throw new Error("Este chat já possui 20 consultas configuradas. Remova uma antes de adicionar outra.");
                 }
-                await electionResults.getResults({ ...jobOptions, page: 1 });
+                await electionResults.getResults({ ...jobOptions, office: "presidente", turn: 2, electionId: "6258", page: 1 });
                 const job = electionMonitor.createJob(jobOptions);
                 const updated = electionMonitor.saveMonitorConfig({ jobs: [...config.jobs, job] }, target);
                 await electionMonitor.syncMonitorSchedules(updated, target);
@@ -272,7 +275,7 @@ function buildStatus(config, target) {
         : [];
     const schedulesByJob = new Map(schedules.map(schedule => [schedule.meta.jobId, schedule]));
     const lines = [
-        "🗳️ *MONITOR ELEITORAL*",
+        "🗳️ *MONITOR ELEITORAL (2º TURNO — PRESIDENTE)*",
         "",
         `Status: ${config.enabled ? "✅ Ativo" : "⏸️ Pausado"}`,
         `Consultas: ${config.jobs.length}`
@@ -287,21 +290,22 @@ function buildStatus(config, target) {
 
 function buildHelp(prefix) {
     return [
-        "🗳️ *MONITORELEICAO — AJUDA*",
+        "🗳️ *MONITORELEICAO — AJUDA (2º TURNO)*",
         "",
-        "Configure várias parciais oficiais por chat. Cada consulta inicia no atraso escolhido e depois se repete no intervalo configurado.",
+        "Configure parciais oficiais do 2º turno (Presidente) por chat. Cada consulta inicia no atraso escolhido e depois se repete no intervalo configurado.",
         "",
-        `• \`${prefix}monitoreleicao add presidente intervalo 5m inicio 0m\``,
-        `• \`${prefix}monitoreleicao add senador uf MG intervalo 10m inicio 30m\``,
-        `• \`${prefix}monitoreleicao add governador uf MG municipio Belo Horizonte intervalo 5m inicio 0m\``,
-        `• \`${prefix}monitoreleicao add deputado federal uf SP busca PT intervalo 15m inicio 0m\``,
+        `• \`${prefix}monitoreleicao add intervalo 5m inicio 0m\` — Monitora Presidente no Brasil`,
+        `• \`${prefix}monitoreleicao add uf MG intervalo 10m inicio 30m\` — Monitora Presidente em MG`,
+        `• \`${prefix}monitoreleicao add uf MG municipio Belo Horizonte intervalo 5m inicio 0m\` — Presidente em BH`,
         `• \`${prefix}monitoreleicao on\` / \`${prefix}monitoreleicao off\` — Ativa ou pausa todos os envios.`,
         `• \`${prefix}monitoreleicao status\` — Exibe as consultas, horários e IDs.`,
         `• \`${prefix}monitoreleicao run [ID|all]\` — Envia uma ou todas as parciais agora.`,
         `• \`${prefix}monitoreleicao remove <ID|all>\` — Remove uma ou todas as consultas.`,
         "",
-        "Cargos: presidente, governador, senador, deputado federal e deputado estadual.",
-        "Município exige estado. Para deputados, busca por nome, número ou partido é obrigatória. Intervalo mínimo entre consultas: 1 minuto; atraso inicial padrão: o mesmo intervalo.",
-        "Os horários usam o fuso local do servidor. O início `0m` dispara no próximo ciclo do agendador (até 30 segundos)."
+        "No 2º turno está disponível apenas o cargo de Presidente (Brasil, por estado ou por município).",
+        "Intervalo mínimo entre consultas: 1 minuto; atraso inicial padrão: o mesmo intervalo.",
+        "Os horários usam o fuso local do servidor. O início `0m` dispara no próximo ciclo do agendador (até 30 segundos).",
+        "",
+        `💡 Para consultar resultados do 1º turno, use o comando \`${prefix}eleicao1\`.`
     ].join("\n");
 }

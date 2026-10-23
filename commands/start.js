@@ -56,8 +56,8 @@ module.exports = {
                                 `\`${prefix}perfil\` — Exibe seu perfil em imagem.`,
                                 `\`${prefix}perfil_text\` — Exibe os dados do perfil em texto.`,
                                 `\`${prefix}nomecentral <nome>\` — Altera seu nome central.`,
-                                `\`${prefix}gerar_unir\` — Gera código de vínculo.`,
-                                `\`${prefix}unir <code>\` — Conecta outra plataforma.`
+                                `\`${prefix}unir_contas codigo\` — Gera código de vínculo.`,
+                                `\`${prefix}unir_contas login <codigo>\` — Confirma a união.`
                             ].join("\n")
                         }
                     ],
@@ -86,8 +86,8 @@ module.exports = {
                 `• <code>${escapeHtml(prefix)}perfil</code> — Exibe seu perfil em imagem.`,
                 `• <code>${escapeHtml(prefix)}perfil_text</code> — Exibe os dados do perfil em texto.`,
                 `• <code>${escapeHtml(prefix)}nomecentral &lt;nome&gt;</code> — Altera o nome da sua Conta Central.`,
-                `• <code>${escapeHtml(prefix)}gerar_unir</code> — Gera código para vincular esta conta.`,
-                `• <code>${escapeHtml(prefix)}unir &lt;code&gt;</code> — Conecta contas de outras plataformas.`,
+                `• <code>${escapeHtml(prefix)}unir_contas codigo</code> — Gera código para vincular esta conta.`,
+                `• <code>${escapeHtml(prefix)}unir_contas login &lt;codigo&gt;</code> — Confirma a união das contas.`,
                 "",
                 `💡 <b>Dica:</b> Use <code>${escapeHtml(prefix)}info &lt;comando&gt;</code> para detalhes.`
             ].join("\n");
@@ -113,8 +113,8 @@ module.exports = {
             `• *${prefix}perfil* — Exibe seu perfil em imagem.`,
             `• *${prefix}perfil_text* — Exibe os dados do perfil em texto.`,
             `• *${prefix}nomecentral <nome>* — Altera o nome da sua Conta Central.`,
-            `• *${prefix}gerar_unir* — Gera código para vincular esta conta.`,
-            `• *${prefix}unir <code>* — Conecta contas de outras plataformas.`,
+            `• *${prefix}unir_contas codigo* — Gera código para vincular esta conta.`,
+            `• *${prefix}unir_contas login <codigo>* — Confirma a união das contas.`,
             "",
             `💡 _Dica:_ Use *${prefix}info <comando>* para detalhes.`
         ].join("\n");

@@ -200,6 +200,10 @@ function getScope(message) {
     };
 }
 
+function invalidateScope(platform, id) {
+    scopeCache.delete(`${String(platform || "unknown")}:${String(id || "")}`);
+}
+
 function isEnabled(message) {
     const scope = getScope(message);
     if (!scope) return false;
@@ -1308,6 +1312,8 @@ module.exports = {
     findAccount,
     getRanking,
     getScope,
+    invalidateScope,
+    getLocalDate,
     isEnabled,
     setEnabled,
     LEVEL_UP_REWARD_BASE,

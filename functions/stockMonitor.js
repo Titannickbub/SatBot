@@ -143,15 +143,17 @@ async function syncMonitorSchedules(config, target = null) {
         const chatId = target?.chatId || config.chatId;
         if (!platform || !chatId) return [];
 
+        const threadId = target?.threadId || config.threadId || null;
         const existing = schedulerHelper.listSchedules(chatId, platform)
-            .filter((schedule) => schedule.meta?.kind === "stock-monitor");
+            .filter(schedule => schedule.meta?.kind === "stock-monitor" &&
+                (schedule.threadId || null) === threadId);
         const times = Array.isArray(config.times) && config.times.length ? config.times : ["09:00"];
         const patch = {
             name: "Cotações da bolsa",
             enabled: Boolean(config.enabled && times.length),
             platform,
             chatId,
-            threadId: target?.threadId || config.threadId || null,
+            threadId,
             chatName: target?.chatName || null,
             trigger: { type: "fixed", times, intervalMs: null },
             repeat: { mode: "daily", days: [], monthDay: null },

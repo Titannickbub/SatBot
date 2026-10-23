@@ -18,6 +18,7 @@ Por padrão, o protocolo utilizado é HTTP. Informe o domínio e a porta no form
 {prefix}set_dominio https painel.exemplo.com:443
 
 O HTTPS exige TLS configurado por um proxy reverso; o servidor do painel atende HTTP internamente.
+⚠️ O painel também funciona com HTTP, mas a conexão não criptografa os dados. A página inicial exibirá um aviso para os usuários.
 
 ⚠️ A configuração é salva em settings/config.json e aplicada na próxima inicialização do bot.`;
 

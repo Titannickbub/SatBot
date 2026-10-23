@@ -4,7 +4,8 @@
 
 O comando `!monitoreleicao` (também chamado `!monitoreleicoes` ou
 `!monitoreleição`) agenda consultas automáticas de parciais eleitorais do
-TSE, por cargo e localidade, com intervalo e atraso inicial configuráveis.
+2º turno do TSE (cargo de **Presidente**), por localidade (Brasil, estado ou município),
+com intervalo e atraso inicial configuráveis.
 É possível cadastrar até **20 consultas** por chat.
 
 O prefixo nos exemplos é `!`. Se o prefixo do bot foi alterado, substitua-o
@@ -22,26 +23,25 @@ pelo prefixo configurado.
 
 | Conceito | Descrição |
 | --- | --- |
-| **Consulta (job)** | Uma parcial específica por cargo e localidade, com seu próprio intervalo e atraso inicial |
+| **Consulta (job)** | Uma parcial específica de Presidente (nacional, por estado ou município), com seu próprio intervalo e atraso inicial |
 | **Intervalo** | Tempo entre cada envio automático (mínimo: 1 minuto) |
 | **Atraso inicial (início)** | Tempo até o primeiro envio. `0m` dispara no próximo ciclo do agendador (até 30 segundos) |
 | **ID** | Identificador único da consulta, usado para remover ou executar individualmente |
 
 ---
 
-## Cargos disponíveis
+## Cargo no 2º Turno
+
+No 2º turno das eleições, está disponível o cargo de **Presidente**.
 
 | Cargo | Exemplo |
 | --- | --- |
-| `presidente` | `add presidente` |
-| `governador` | `add governador uf MG` |
-| `senador` | `add senador uf SP` |
-| `deputado federal` | `add deputado federal uf SP busca PT` |
-| `deputado estadual` | `add deputado estadual uf RJ busca 12345` |
+| `presidente` | `add intervalo 5m inicio 0m` (ou `add presidente`) |
+| Presidente por Estado | `add uf MG intervalo 10m inicio 30m` |
+| Presidente por Município | `add uf MG municipio Belo Horizonte intervalo 5m inicio 0m` |
 
-> [!IMPORTANT]
-> Para monitorar **deputados** (federal ou estadual), é obrigatório informar
-> uma busca por nome, número ou partido com a opção `busca`.
+> [!NOTE]
+> Para consultar os resultados consolidados do **1º turno** (Presidente, Governador, Senador e Deputados), utilize o comando `!eleicao1`.
 
 ---
 
@@ -49,22 +49,18 @@ pelo prefixo configurado.
 
 ### 1. Adicionar consultas
 
-Cada `add` cria uma consulta independente com seus parâmetros:
+Cada `add` cria uma consulta independente com seus parâmetros de repetição:
 
 ```text
-!monitoreleicao add presidente intervalo 5m inicio 0m
+!monitoreleicao add intervalo 5m inicio 0m
 ```
 
 ```text
-!monitoreleicao add senador uf MG intervalo 10m inicio 30m
+!monitoreleicao add uf MG intervalo 10m inicio 30m
 ```
 
 ```text
-!monitoreleicao add governador uf MG municipio Belo Horizonte intervalo 5m inicio 0m
-```
-
-```text
-!monitoreleicao add deputado federal uf SP busca PT intervalo 15m inicio 0m
+!monitoreleicao add uf SP municipio Campinas intervalo 5m inicio 0m
 ```
 
 #### Opções disponíveis
@@ -73,9 +69,8 @@ Cada `add` cria uma consulta independente com seus parâmetros:
 | --- | --- | --- |
 | `intervalo <duração>` | Tempo entre envios (ex: `5m`, `2h`, `1h30m`) | Não (padrão: 5m) |
 | `inicio <duração>` | Atraso até o primeiro envio (ex: `0m`, `30m`) | Não (padrão: mesmo do intervalo) |
-| `uf <sigla>` | Estado (sigla UF). Necessário para governador, senador e deputados | Depende do cargo |
-| `municipio <nome>` | Município (requer UF) | Não |
-| `busca <termo>` | Busca por nome, número ou partido | Obrigatório para deputados |
+| `uf <sigla>` | Estado (sigla UF) para parcial estadual do Presidente | Não |
+| `municipio <nome>` | Município (requer UF) para parcial municipal do Presidente | Não |
 
 > [!NOTE]
 > O intervalo mínimo entre consultas é **1 minuto**. O atraso inicial máximo
@@ -139,18 +134,18 @@ Para remover **todas** as consultas:
 O bot exibirá:
 
 ```text
-🗳️ MONITOR ELEITORAL
+🗳️ MONITOR ELEITORAL (2º TURNO — PRESIDENTE)
 
 Status: ✅ Ativo
 Consultas: 2
 
-1. Presidente — Nacional (ID: abc123)
+1. Presidente — Brasil (ID: abc123)
    Início: 0m · repetição: a cada 5m
-   Próximo envio: 21/10/2026 15:35:00
+   Próximo envio: 25/10/2026 17:05:00
 
-2. Senador — MG (ID: def456)
+2. Presidente — MG (ID: def456)
    Início: 30m · repetição: a cada 10m
-   Próximo envio: 21/10/2026 16:05:00
+   Próximo envio: 25/10/2026 17:35:00
 ```
 
 ---
@@ -159,7 +154,7 @@ Consultas: 2
 
 | Comando | Descrição |
 | --- | --- |
-| `!monitoreleicao add <cargo> [opções]` | Adiciona uma consulta eleitoral |
+| `!monitoreleicao add [opções]` | Adiciona uma consulta eleitoral do 2º turno |
 | `!monitoreleicao on` | Ativa os envios de todas as consultas |
 | `!monitoreleicao off` | Pausa os envios sem remover consultas |
 | `!monitoreleicao status` | Exibe as consultas, IDs e próximos envios |
@@ -169,17 +164,19 @@ Consultas: 2
 
 ---
 
+## Comandos de consulta direta
+
+- `!eleicao` — Consulta direta da apuração oficial do **2º turno** (Presidente).
+- `!eleicao1` — Consulta direta dos resultados do **1º turno** (Presidente, Governador, Senador, Deputados).
+
+---
+
 ## Solução de problemas comuns
 
-1. **"Informe um cargo":** o cargo é obrigatório. Use presidente, governador,
-   senador, deputado federal ou deputado estadual.
-2. **"Para monitorar deputados, informe uma busca":** ao adicionar deputado
-   federal ou estadual, é necessário incluir `busca <termo>`.
-3. **"O intervalo mínimo entre consultas é 1 minuto":** reduza o valor
-   para no mínimo `1m`.
-4. **"Este chat já possui 20 consultas configuradas":** remova consultas
-   desnecessárias com `!monitoreleicao remove <ID>`.
-5. **Parciais não são enviadas:**
+1. **"No 2º turno está disponível apenas o cargo de Presidente":** no segundo turno, os outros cargos já foram decididos. Use `!eleicao1` para ver o 1º turno.
+2. **"O intervalo mínimo entre consultas é 1 minuto":** reduza o valor para no mínimo `1m`.
+3. **"Este chat já possui 20 consultas configuradas":** remova consultas desnecessárias com `!monitoreleicao remove <ID>`.
+4. **Parciais não são enviadas:**
    - Confirme que o monitor está ativo (`!monitoreleicao status`).
    - Verifique se há consultas cadastradas.
-   - O TSE pode estar fora do período de apuração.
+   - O TSE pode estar fora do período de apuração ou sem novas atualizações.

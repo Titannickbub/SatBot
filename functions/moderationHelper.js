@@ -220,6 +220,7 @@ async function muteMember(platform, message, durationMs = 10 * 60 * 1000, reason
         }
     } else if (platform === "telegram") {
         const ctx = message.raw;
+        if (!ctx?.telegram) throw new Error("Contexto do Telegram não disponível.");
         const untilDate = Math.floor(Date.now() / 1000) + Math.round(durationMs / 1000);
         await ctx.telegram.restrictChatMember(message.chatId, Number(message.userId), {
             permissions: {
@@ -233,7 +234,7 @@ async function muteMember(platform, message, durationMs = 10 * 60 * 1000, reason
                 can_pin_messages: false
             },
             until_date: untilDate
-        }).catch(() => {});
+        });
         return true;
     } else if (platform === "whatsapp") {
         return false;
@@ -246,10 +247,11 @@ async function unmuteMember(platform, message) {
         if (!guild) return false;
         const member = await guild.members.fetch(message.userId).catch(() => null);
         if (!member) return false;
-        await member.timeout(null).catch(() => {});
+        await member.timeout(null);
         return true;
     } else if (platform === "telegram") {
         const ctx = message.raw;
+        if (!ctx?.telegram) throw new Error("Contexto do Telegram não disponível.");
         await ctx.telegram.restrictChatMember(message.chatId, Number(message.userId), {
             permissions: {
                 can_send_messages: true,
@@ -261,7 +263,7 @@ async function unmuteMember(platform, message) {
                 can_invite_users: true,
                 can_pin_messages: false
             }
-        }).catch(() => {});
+        });
         return true;
     } else if (platform === "whatsapp") {
         return false;

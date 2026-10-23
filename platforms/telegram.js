@@ -14,6 +14,52 @@ const { detectBufferFormat } = require("../functions/gifAdapter");
 
 let bot = null;
 
+function isInvalidTelegramToken(error) {
+    return Number(error?.response?.error_code || error?.code) === 401;
+}
+
+function waitForTelegramReconnect(attempt) {
+    const delay = Math.min(5000 * (2 ** (attempt - 1)), 60000);
+    console.warn(`⚠️[TELEGRAM] Nova tentativa de conexão em ${Math.ceil(delay / 1000)}s.`);
+    return new Promise(resolve => setTimeout(resolve, delay));
+}
+
+async function runTelegramConnection(botInstance) {
+    let reconnectAttempts = 0;
+
+    while (true) {
+        const attemptStartedAt = Date.now();
+        try {
+            const me = await botInstance.telegram.getMe();
+            if (me && (me.first_name || me.username)) {
+                console.log(
+                    `🟩[TELEGRAM] Conectado como ${me.first_name || "bot"}${me.username ? ` (@${me.username})` : ""}`
+                );
+            }
+
+            if (global.__pendingAuthBootstrapPlatform === "telegram") {
+                global.__pendingAuthBootstrapPlatform = null;
+                setTimeout(() => process.exit(0), 1000);
+            }
+
+            await botInstance.launch();
+            console.warn("⚠️[TELEGRAM] O polling foi encerrado inesperadamente.");
+        } catch (error) {
+            if (isInvalidTelegramToken(error)) {
+                console.error("❌[TELEGRAM] Token inválido. Reconexão automática suspensa:", error.message || error);
+                return;
+            }
+            console.error("❌[TELEGRAM] Conexão interrompida:", error.message || error);
+        }
+
+        if (Date.now() - attemptStartedAt >= 60000) {
+            reconnectAttempts = 0;
+        }
+        reconnectAttempts += 1;
+        await waitForTelegramReconnect(reconnectAttempts);
+    }
+}
+
 function isTelegramGifImage(image) {
     if (Buffer.isBuffer(image)) return Boolean(detectBufferFormat(image).isRealGif);
     if (typeof image !== "string") return false;
@@ -610,36 +656,9 @@ async function start(onMessage) {
         });
 
     });
-    bot.launch().catch(err => {
-        console.error("❌[TELEGRAM] Erro no bot.launch():", err);
+    runTelegramConnection(bot).catch(error => {
+        console.error("❌[TELEGRAM] Falha inesperada no gerenciador de conexão:", error);
     });
-
-    try {
-        const me = await Promise.race([
-            bot.telegram.getMe(),
-            new Promise(resolve => setTimeout(() => resolve(null), 3000))
-        ]);
-
-        if (me && (me.first_name || me.username)) {
-            console.log(
-                `🟩[TELEGRAM] Conectado como ${me.first_name || "bot"}${me.username ? ` (@${me.username})` : ""}`
-            );
-        } else {
-            console.log("🟩[TELEGRAM] Cliente iniciado; o nome do bot não foi confirmado ainda, mas o bootstrap foi tratado como concluído.");
-        }
-
-        if (global.__pendingAuthBootstrapPlatform === "telegram") {
-            global.__pendingAuthBootstrapPlatform = null;
-            setTimeout(() => process.exit(0), 1000);
-        }
-    } catch (err) {
-        console.warn("⚠️[TELEGRAM] Não foi possível confirmar o nome do bot via getMe, mas o cliente foi iniciado.", err.message || err);
-        if (global.__pendingAuthBootstrapPlatform === "telegram") {
-            global.__pendingAuthBootstrapPlatform = null;
-            setTimeout(() => process.exit(0), 1000);
-        }
-        bot = null;
-    }
 
 }
 

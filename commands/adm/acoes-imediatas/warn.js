@@ -55,7 +55,13 @@ module.exports = {
             reason = message.args.slice(1).join(" ");
         }
 
-        const result = await addWarn(message, targetId, reason);
+        let result;
+        try {
+            result = await addWarn(message, targetId, reason);
+        } catch (error) {
+            console.error("[WARN] Não foi possível concluir a advertência:", error.message || error);
+            return message.reply({ text: `❌ ${error.message || "Não foi possível concluir a advertência."}` });
+        }
         if (!result) {
             return message.reply({ text: "❌ Não foi possível aplicar a advertência (falha ao ler configurações)." });
         }

@@ -393,16 +393,20 @@ function loadPlatforms() {
 
 async function handleMessage(message) {
 
-
-console.log(
-        `${_ts()} 📩[${message.platform}] ${message.username || "desconhecido"} (${message.userId}): ${message.text}`
-    );
-    
     const config =
         functions.config &&
         typeof functions.config.getConfig === "function"
             ? functions.config.getConfig()
             : {};
+    const configuredPrefix = config.prefix || "!";
+    const incomingText = String(message.text || "");
+    const incomingCommand = incomingText.trim().split(/\s+/, 1)[0].toLowerCase();
+    const isSensitiveCommand = incomingCommand === `${configuredPrefix}redefinir_senha`.toLowerCase();
+    message.isSensitiveCommand = isSensitiveCommand;
+
+console.log(
+        `${_ts()} 📩[${message.platform}] ${message.username || "desconhecido"} (${message.userId}): ${isSensitiveCommand ? `${configuredPrefix}redefinir_senha [credenciais ocultas]` : message.text}`
+    );
 
     const ignoreInitialSeconds = typeof config.ignoreInitialSeconds === "number" ? config.ignoreInitialSeconds : 30;
     const uptime = status.startedAt ? Date.now() - status.startedAt : 0;
@@ -415,7 +419,7 @@ console.log(
     }
 
     message.prefix =
-        config.prefix || "!";
+        configuredPrefix;
     const prefix = message.prefix;
     const originalText = message.text || "";
     const text = originalText.startsWith(prefix)
@@ -454,25 +458,27 @@ console.log(
         message.sender.canManageMessages = true;
     }
 
-    for (const middleware of middlewares) {
-        if (middleware.runOn === "all" || !middleware.runOn) {
-            try {
-                const continueExecution = await middleware.execute(message);
-                if (continueExecution === false) {
-                    return;
+    if (!isSensitiveCommand) {
+        for (const middleware of middlewares) {
+            if (middleware.runOn === "all" || !middleware.runOn) {
+                try {
+                    const continueExecution = await middleware.execute(message);
+                    if (continueExecution === false) {
+                        return;
+                    }
+                } catch (err) {
+                    console.error(`${_ts()} ❌[CORE] Erro ao executar middleware '${middleware.name}':`, err);
                 }
-            } catch (err) {
-                console.error(`${_ts()} ❌[CORE] Erro ao executar middleware '${middleware.name}':`, err);
             }
         }
-    }
 
-    const crossplayStore = functions.crossplay || global.crossplayStore;
-    if (crossplayStore && typeof crossplayStore.relayIncomingMessage === 'function') {
-        try {
-            await crossplayStore.relayIncomingMessage(message);
-        } catch (err) {
-            console.error('❌[CORE] Crossplay relay error:', err);
+        const crossplayStore = functions.crossplay || global.crossplayStore;
+        if (crossplayStore && typeof crossplayStore.relayIncomingMessage === 'function') {
+            try {
+                await crossplayStore.relayIncomingMessage(message);
+            } catch (err) {
+                console.error('❌[CORE] Crossplay relay error:', err);
+            }
         }
     }
 
@@ -591,15 +597,17 @@ message.core = {
         return;
     }
 
-    for (const middleware of middlewares) {
-        if (middleware.runOn === "command") {
-            try {
-                const continueExecution = await middleware.execute(message);
-                if (continueExecution === false) {
-                    return;
+    if (!isSensitiveCommand) {
+        for (const middleware of middlewares) {
+            if (middleware.runOn === "command") {
+                try {
+                    const continueExecution = await middleware.execute(message);
+                    if (continueExecution === false) {
+                        return;
+                    }
+                } catch (err) {
+                    console.error(`${_ts()} ❌[CORE] Erro ao executar middleware '${middleware.name}':`, err);
                 }
-            } catch (err) {
-                console.error(`${_ts()} ❌[CORE] Erro ao executar middleware '${middleware.name}':`, err);
             }
         }
     }
