@@ -16,6 +16,14 @@ O prefixo nos exemplos é `!`. Se o prefixo do bot foi alterado, substitua-o pel
 - **Onde funciona:** exclusivamente em grupos e servidores (WhatsApp, Telegram e Discord).
 - **Mensagens privadas (PV):** **não suportado** (o catálogo e os pedidos pertencem à comunidade local).
 
+## Gerenciar pelo dashboard
+
+Administradores também podem abrir o painel administrativo do grupo ou
+servidor, localizar o cartão **Economia** e selecionar o botão de configurações
+da **Loja 2** ao lado dele. Pelo painel é possível alterar o título e o aviso,
+cadastrar, editar e remover itens do catálogo e marcar pedidos pendentes como
+entregues ou cancelá-los com estorno.
+
 ---
 
 ## 1. Personalizar título e aviso da loja

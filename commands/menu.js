@@ -41,9 +41,11 @@ module.exports = {
 
         const formatCommand = (cmd) => {
             const indicator = getCommandPlatformIndicator(cmd, message.platform);
-            const commandUsage = typeof cmd.getUsage === "function"
-                ? cmd.getUsage()
-                : cmd.usage;
+            const commandUsage = typeof cmd.getMenuUsage === "function"
+                ? cmd.getMenuUsage(message)
+                : typeof cmd.getUsage === "function"
+                    ? cmd.getUsage()
+                    : cmd.usage;
             const usage = commandUsage
                 ? commandUsage.replace(/\{prefix\}/g, message.prefix)
                 : `${message.prefix}${cmd.name}`;

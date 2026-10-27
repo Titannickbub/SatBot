@@ -31,7 +31,7 @@ const electionMonitor = require("./electionMonitor");
 const schedulerHelper = require("./schedulerHelper");
 const { MARKET_ASSETS, normalizeMarketSymbols } = require("./mercado");
 const { PermissionFlagsBits, ChannelType } = require("discord.js");
-const { getUserWarns, getWarnConfig, getWarnTarget, getWarnData, getWarnHistory, addWarn, removeWarns } = require("./warnHelper");
+const { getUserWarns, getWarnConfig, getWarnTarget, getWarnData, getWarnHistory, addWarn, removeWarns, setWarnConfig } = require("./warnHelper");
 const { sameUserId, kickMember, banMember, muteMember, unmuteMember } = require("./moderationHelper");
 const { executeRoleChange } = require("./discordRoles");
 const { setWhatsAppAdmin } = require("./whatsappAdminHelper");
@@ -195,6 +195,7 @@ async function getLinkedPlatformGroups(platform, platformId) {
     const participatingGroups = await sock.groupFetchAllParticipating();
     const areJidsSameUser = baileysPkg.areJidsSameUser;
     return Object.entries(participatingGroups).flatMap(([groupId, metadata]) => {
+      if (metadata?.isCommunity && !metadata.isCommunityAnnounce) return [];
       const participants = Array.isArray(metadata?.participants) ? metadata.participants : [];
       const linkedParticipant = participants.find(participant => {
         const participantIds = [participant.id, participant.lid, participant.phoneNumber].filter(Boolean);
@@ -335,6 +336,7 @@ function getModerationWarnings(platform, groupId, actorId) {
     .slice(0, 50);
   return {
     max: Number(data.settings.warnConfig?.max) || 3,
+    action: data.settings.warnConfig?.action === "kick" ? "kick" : "ban",
     entries,
     total: Object.keys(counts).length,
     counts
@@ -2717,7 +2719,7 @@ function renderGroupAdmin(data) {
       const configButton = configurableSettings.includes(setting.key)
         ? `<button type="button" class="setting-icon-button" data-${setting.key.toLowerCase()}-config data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Configurar ${setting.key} neste escopo" title="Configurações do ${setting.key}">${ADMIN_SETTINGS_GEAR_ICON}</button>`
         : ["economy", "xp", "activity"].includes(setting.key)
-          ? `<button type="button" class="setting-icon-button" data-rp-config="${setting.key}" data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Gerenciar ${setting.label}" title="Gerenciar ${setting.label}">${ADMIN_SETTINGS_GEAR_ICON}</button>`
+          ? `<button type="button" class="setting-icon-button" data-rp-config="${setting.key}" data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Gerenciar ${setting.label}" title="Gerenciar ${setting.label}">${ADMIN_SETTINGS_GEAR_ICON}</button>${setting.key === "economy" ? `<button type="button" class="setting-icon-button setting-store2-button" data-store2-config><span aria-hidden="true">${ADMIN_SETTINGS_GEAR_ICON}</span><span>Configurar Loja 2</span></button>` : ""}`
         : setting.key === "agendar"
           ? `<button type="button" class="setting-icon-button" data-schedule-config data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Gerenciar agendamentos neste escopo" title="Gerenciar agendamentos">${ADMIN_SETTINGS_GEAR_ICON}</button>`
         : isMonitor
@@ -2739,6 +2741,7 @@ function renderGroupAdmin(data) {
   const autodownloadDialog = `<dialog class="antilink-dialog welcome-dialog" id="autodownloadDialog" aria-labelledby="autodownloadDialogTitle"><form id="autodownloadForm"><header class="antilink-dialog-heading"><div><h2 id="autodownloadDialogTitle">Configurações do download automático</h2><p id="autodownloadScopeLabel"></p></div><button type="button" class="dialog-close" data-close-autodownload aria-label="Fechar">×</button></header><label class="autorepo-global-toggle"><input type="checkbox" name="deletelink"><span><strong>Excluir a mensagem com o link original</strong><small>Depois que o bot enviar a mídia baixada, remove do chat a mensagem que contém o link.</small></span></label><p class="antilink-form-feedback" id="autodownloadFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-autodownload>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>`;
   const autoApproveDialog = `<dialog class="antilink-dialog welcome-dialog" id="autoApproveDialog" aria-labelledby="autoApproveDialogTitle"><form id="autoApproveForm"><header class="antilink-dialog-heading"><div><h2 id="autoApproveDialogTitle">Configurações da autoaprovação</h2><p id="autoApproveScopeLabel"></p></div><button type="button" class="dialog-close" data-close-autoApprove aria-label="Fechar">×</button></header><label>Intervalo entre aprovações (segundos)<input name="intervalSeconds" type="number" min="0" max="86400" step="1" required></label><label>Nomes bloqueados<textarea name="blockedNames" rows="3" placeholder="um texto por linha"></textarea></label><label>Símbolos bloqueados<textarea name="blockedSymbols" rows="3" placeholder="um símbolo por linha"></textarea></label><label>Horários permitidos (HH:MM-HH:MM, uma faixa por linha)<textarea name="schedules" rows="3" placeholder="08:00-18:00"></textarea><small>Sem faixas, a autoaprovação pode ocorrer a qualquer horário local.</small></label><p class="antilink-form-feedback" id="autoApproveFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-autoApprove>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>`;
   const rpManagerDialog = `<dialog class="antilink-dialog rp-manager-dialog" id="rpManagerDialog" aria-labelledby="rpManagerTitle"><header class="antilink-dialog-heading"><div><h2 id="rpManagerTitle">Gerenciar sistema</h2><p id="rpManagerScopeLabel"></p></div><button type="button" class="dialog-close" data-close-rp-manager aria-label="Fechar">×</button></header><section id="rpXpSettings" class="rp-xp-settings" hidden><h3>Mensagens de level-up</h3><label class="autorepo-global-toggle"><input id="rpXpMuted" type="checkbox"><span><strong>Silenciar avisos de level-up</strong><small>O ganho de XP continua ativo; somente os avisos serão silenciados.</small></span></label><label><span id="rpXpDestinationLabel">Canal para mensagens de level-up</span><select id="rpXpDestination"><option value="">Canal onde o XP foi ganho</option></select><small id="rpXpDestinationHint">Deixe o destino padrão para avisar onde o XP foi ganho.</small></label><button type="button" id="saveRpXpSettings">Salvar configurações de XP</button></section><div class="rp-manager-toolbar"><button type="button" id="resetRpSystem" class="moderation-action danger">Resetar sistema</button></div><form id="rpSearchForm" class="moderation-search"><input id="rpSearch" type="search" maxlength="100" autocomplete="off" placeholder="Buscar por nome, username ou ID"><button type="submit">Buscar</button></form><p class="moderation-help" id="rpManagerDescription"></p><div id="rpManagerUsers" class="rp-manager-users" aria-live="polite"></div><p class="antilink-form-feedback" id="rpManagerFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-rp-manager>Fechar</button></footer></dialog>`;
+  const store2Dialog = `<dialog class="antilink-dialog store2-dialog" id="store2Dialog" aria-labelledby="store2Title"><header class="antilink-dialog-heading"><div><h2 id="store2Title">Loja 2</h2><p id="store2ScopeLabel">Catálogo e pedidos deste grupo ou servidor.</p></div><button type="button" class="dialog-close" data-close-store2 aria-label="Fechar">×</button></header><form id="store2DetailsForm"><label>Título da loja<input name="title" maxlength="120" required></label><label>Aviso<textarea name="notice" maxlength="1000" rows="3" required></textarea></label><div class="antilink-dialog-actions"><button type="submit" class="primary">Salvar título e aviso</button></div></form><section><h3>Itens do catálogo</h3><form id="store2ItemForm"><input name="id" type="hidden"><label>Nome<input name="name" maxlength="120" required></label><div class="antilink-form-grid"><label>Preço em SatCoins<input name="price" type="text" inputmode="decimal" placeholder="250,00" required></label><label>Categoria<input name="category" maxlength="80" required></label></div><label>Quantidade (ou “infinito”)<input name="quantity" type="text" inputmode="numeric" placeholder="5 ou infinito" required></label><div class="antilink-dialog-actions"><button type="submit" class="primary" id="store2ItemSubmit">Adicionar item</button><button type="button" id="store2ItemCancel" hidden>Cancelar edição</button></div></form><div id="store2Items" class="store2-list" aria-live="polite"></div></section><section><h3>Pedidos pendentes</h3><div id="store2Orders" class="store2-list" aria-live="polite"></div></section><p class="antilink-form-feedback" id="store2Feedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-store2>Fechar</button></footer></dialog>`;
   const monitorDialog = `<dialog class="antilink-dialog monitor-dialog" id="monitorDialog" aria-labelledby="monitorDialogTitle"><form id="monitorForm"><header class="antilink-dialog-heading"><div><h2 id="monitorDialogTitle">Configurações do monitor</h2><p id="monitorScopeLabel"></p></div><button type="button" class="dialog-close" data-close-monitor aria-label="Fechar">×</button></header><div id="monitorFormFields" class="monitor-form-fields"></div><p class="antilink-form-feedback" id="monitorFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-monitor>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>`;
   const schedulesDialog = `<dialog class="antilink-dialog schedules-dialog" id="schedulesDialog" aria-labelledby="schedulesDialogTitle"><header class="antilink-dialog-heading"><div><h2 id="schedulesDialogTitle">Agendamentos</h2><p id="schedulesScopeLabel"></p></div><button type="button" class="dialog-close" data-close-schedules aria-label="Fechar">×</button></header><p class="monitor-field-caption">Gerencie mensagens automáticas para este chat ou tópico. Os horários seguem o fuso horário local do computador que executa o bot.</p><div id="scheduleList" class="schedule-list"></div><button type="button" id="addSchedule" class="schedule-add">Criar agendamento</button><form id="scheduleForm" hidden style="display:none"><input type="hidden" name="id"><div class="antilink-form-grid"><label>Nome<input name="name" type="text" maxlength="100" required></label><label>Gatilho<select name="triggerType"><option value="fixed">Horários fixos</option><option value="interval">Intervalo</option></select></label></div><div id="scheduleFixedFields"><label>Horários (HH:MM, separados por vírgula)<input name="times" type="text" placeholder="07:00, 12:00, 20:00"></label></div><div id="scheduleIntervalFields" hidden><label>Intervalo (por exemplo, 30m, 2h ou 1d2h)<input name="interval" type="text" placeholder="1h"></label></div><div class="antilink-form-grid"><label>Repetição<select name="repeatMode"><option value="once">Uma vez</option><option value="daily">Diariamente</option><option value="weekly">Semanalmente</option><option value="monthly">Mensalmente</option></select></label><label id="scheduleMonthDayField" hidden>Dia do mês<input name="monthDay" type="number" min="1" max="31"></label></div><fieldset class="antilink-options" id="scheduleWeekdayFields" hidden style="display:none"><legend>Dias da semana</legend><div class="monitor-check-list">${[["0","Domingo"],["1","Segunda"],["2","Terça"],["3","Quarta"],["4","Quinta"],["5","Sexta"],["6","Sábado"]].map(([day,label])=>`<label><input type="checkbox" name="days" value="${day}">${label}</label>`).join("")}</div></fieldset><label>Tipo de mensagem<select name="messageMode"><option value="text">Texto</option><option value="media">Mídia com legenda</option></select></label><label>Texto / legenda<textarea name="text" maxlength="4000" rows="4"></textarea></label><section class="schedule-media"><strong>Mídia: </strong><span id="scheduleMediaStatus">Nenhuma mídia configurada.</span><p class="monitor-field-caption">O upload é salvo imediatamente; os demais campos só são salvos pelo botão abaixo.</p><label>Enviar imagem ou vídeo (JPEG, PNG, WebP, GIF ou MP4; até 8 MB)<input type="file" name="mediaFile" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4"></label><div class="antilink-dialog-actions"><button type="button" id="uploadScheduleMedia">Enviar mídia</button><button type="button" id="removeScheduleMedia" hidden>Remover mídia</button></div></section><p class="antilink-form-feedback" id="scheduleFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" id="cancelScheduleEdit">Cancelar</button><button type="submit" class="primary">Salvar agendamento</button></footer></form></dialog>`;
 
@@ -2780,6 +2783,23 @@ function renderGroupAdmin(data) {
     .moderation-layout{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(320px,.8fr);gap:14px}.moderation-card{min-width:0;padding:18px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#171d2b,#131925)}.moderation-card h3{margin:0 0 7px;font-size:15px}.moderation-search{display:flex;gap:8px}.moderation-search input,.moderation-fields input,.moderation-fields textarea,.moderation-fields select{width:100%;min-width:0;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#0e121b;color:#f5f7fb;font:inherit}.moderation-fields textarea{min-height:74px;resize:vertical}.moderation-search button,.moderation-card button,.moderation-action{padding:9px 12px;border:1px solid #6f7fa5;border-radius:10px;background:#ffffff0b;color:#f5f7fb;font-weight:700;cursor:pointer}.moderation-card button:hover,.moderation-action:hover{border-color:#9b8cff;background:#8b7bff20}.moderation-card button:disabled,.moderation-action:disabled{opacity:.5;cursor:not-allowed}.moderation-help,.moderation-feedback{margin:9px 0 0;color:var(--muted);font-size:12px;line-height:1.5}.moderation-feedback.error{color:#ff9eaa}.moderation-results,.warning-list{display:grid;gap:8px;margin:14px 0 0;padding:0;list-style:none}.moderation-result,.warning-list li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:#ffffff05}.moderation-result span{min-width:0;overflow-wrap:anywhere;font-size:12px}.moderation-result small,.warning-identity small{display:block;margin-top:3px;color:var(--muted);font-size:11px;overflow-wrap:anywhere}.warning-list li{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 10px}.warning-identity{grid-column:1;min-width:0}.warning-identity strong{display:block;overflow-wrap:anywhere;font-size:12px}.warning-list li .warning-count{grid-column:2;white-space:nowrap}.warning-history{grid-column:1/-1;width:100%;color:var(--muted);font-size:11px}.warning-history summary{cursor:pointer}.warning-history ul{display:grid;gap:6px;margin:8px 0 0;padding-left:18px}.warning-history li{display:list-item;grid-column:auto;grid-template-columns:none;align-items:initial;justify-content:initial;gap:0;padding:0;border:0;border-radius:0;background:none;overflow-wrap:anywhere}.warning-history li small{display:block;color:var(--muted);font-size:10px}.warning-list li button{grid-column:1/-1;width:100%;min-width:0;white-space:normal}.moderation-fields{display:grid;gap:9px;margin-top:14px}.moderation-fields[hidden]{display:none}.moderation-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.moderation-actions[hidden],.moderation-role-select[hidden]{display:none}.moderation-actions button[aria-pressed=true]{border-color:#9b8cff;background:#8b7bff20}.moderation-action.danger{border-color:#b65b6a66;color:#ffb3bd}.member-admin{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.member-admin h4{margin:0;font-size:13px}.moderation-role-select{width:100%;margin-top:12px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#0e121b;color:#f5f7fb;font:inherit}.warning-list button{flex:none;font-size:11px}.warning-empty{margin:10px 0 0;color:var(--muted);font-size:12px}.permission-help{margin:12px 0 0;color:var(--muted);font-size:11px;line-height:1.5}@media(max-width:700px){.moderation-layout{grid-template-columns:1fr}.moderation-search{align-items:stretch;flex-direction:column}.moderation-result{align-items:flex-start;flex-direction:column}.moderation-result button,.warning-list button{width:100%}}
   .settings{gap:8px}.setting-card{gap:12px;padding:13px 15px}.setting-card h2{font-size:14px}.setting-card p{margin-top:4px;font-size:11px}.setting-controls{gap:8px}.state{min-width:82px;padding:6px 8px}.setting-controls button{min-width:88px;padding:8px 10px;font-size:12px}.setting-category{grid-column:1/-1;margin:10px 0 0}.setting-scope{display:inline-block;margin-bottom:5px;padding:3px 7px;border:1px solid #8195d344;border-radius:999px;background:#8297d014;color:#b9c6ff;font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}.setting-icon-button{display:grid;min-width:34px!important;width:34px;height:34px;padding:7px!important;place-items:center}.setting-icon-button svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.scope-list-label{grid-column:1/-1;margin:4px 0 -2px;color:#dce2f3;font-size:12px;font-weight:800}.scope-picker{display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin:10px 0}.scope-picker label{display:grid;gap:5px;color:#b9c6ff;font-size:11px;font-weight:700}.scope-picker select{min-width:min(260px,80vw);padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#171d2b;color:#f5f7fb}.scope-panel{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#ffffff04}.scope-panel[hidden]{display:none}.scope-panel-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px}.scope-panel h3{margin:0;font-size:14px}.scope-current{color:#b9c6ff;font-size:11px;font-weight:700}.scope-note{margin:5px 0 0;color:var(--muted);font-size:11px;line-height:1.45}.antilink-dialog{width:min(720px,calc(100vw - 24px));max-height:90vh;overflow:auto;padding:20px;border:1px solid #53668f;border-radius:16px;background:#151c2b;color:#f5f7fb;box-shadow:0 24px 90px #000a}.antilink-dialog::backdrop{background:#080b12bb;backdrop-filter:blur(3px)}.antilink-dialog form{display:grid;gap:14px}.antilink-dialog-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.antilink-dialog-heading h2{margin:0;font-size:18px}.antilink-dialog-heading p{margin:5px 0 0;color:#b9c6ff;font-size:12px}.dialog-close{width:32px;height:32px;border:1px solid var(--line);border-radius:9px;background:#ffffff08;color:#fff;font-size:21px;cursor:pointer}.antilink-form-grid,.antilink-list-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.antilink-dialog label{display:grid;gap:6px;color:#dce2f3;font-size:12px;font-weight:700}.antilink-dialog textarea,.antilink-dialog select{width:100%;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#0e121b;color:#f5f7fb;font:inherit;font-size:12px}.antilink-dialog textarea{resize:vertical}.antilink-dialog small{color:var(--muted);font-size:10px;font-weight:400;line-height:1.4}.antilink-options{display:grid;gap:8px;margin:0;padding:12px;border:1px solid var(--line);border-radius:10px}.antilink-options legend{padding:0 6px;color:#b9c6ff;font-size:12px;font-weight:700}.antilink-options label{display:flex;align-items:flex-start;gap:8px;font-weight:400}.antilink-options input{margin:2px 0 0;accent-color:#9b8cff}.antilink-form-feedback{min-height:16px;margin:0;color:#9cf0cf;font-size:12px}.antilink-form-feedback.error{color:#ff9eaa}.antilink-dialog-actions{display:flex;justify-content:flex-end;gap:8px}.antilink-dialog-actions button{padding:9px 12px;border:1px solid #6f7fa5;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font:inherit;font-size:12px;font-weight:700;cursor:pointer}.antilink-dialog-actions .primary{border-color:#9b8cff;background:#8b7bff20}.antilink-dialog-actions button:disabled{opacity:.55;cursor:wait}.monitor-form-fields{display:grid;gap:12px}.monitor-form-fields input[type="text"],.monitor-form-fields input[type="number"]{width:100%;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#0e121b;color:#f5f7fb;font:inherit;font-size:12px}.monitor-check-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}.monitor-check-list label{display:flex;align-items:center;gap:8px;padding:9px;border:1px solid var(--line);border-radius:9px;background:#ffffff05}.monitor-check-list input{accent-color:#9b8cff}.monitor-job{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#ffffff05}.monitor-job button{grid-column:1/-1;justify-self:end;padding:6px 9px;border:1px solid #b65b6a66;border-radius:8px;background:#ffffff08;color:#ffb3bd;cursor:pointer}.monitor-field-caption{margin:0;color:var(--muted);font-size:11px;line-height:1.45}@media(min-width:640px){#rootSettings{grid-template-columns:repeat(2,minmax(0,1fr))}.setting-card{align-items:flex-start;flex-direction:column;justify-content:flex-start}.setting-controls{width:100%;justify-content:space-between}}@media(max-width:520px){.antilink-form-grid,.antilink-list-grid{grid-template-columns:1fr}.antilink-dialog{padding:15px}.monitor-job{grid-template-columns:1fr}}
   </style><style>
+    .setting-controls .setting-store2-button{display:flex;width:auto;min-width:max-content!important;height:34px;padding:7px 10px!important;align-items:center;gap:6px;border-color:#9b8cff77;background:#8b7bff14;color:#d5ceff;font-size:11px;font-weight:700;white-space:nowrap}
+    .setting-controls .setting-store2-button:hover{border-color:#b3a8ff;background:#8b7bff30}
+    .setting-store2-button span{display:grid;place-items:center}
+    .setting-store2-button svg{width:15px;height:15px}
+    .store2-dialog{width:min(760px,calc(100vw - 24px))}
+    .store2-dialog input{width:100%;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#0e121b;color:#f5f7fb;font:inherit;font-size:12px}
+    .store2-dialog section{display:grid;gap:10px;padding-top:14px;border-top:1px solid var(--line)}
+    .store2-dialog section h3{margin:0;font-size:14px}
+    .store2-list{display:grid;gap:8px}
+    .store2-row{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#ffffff05}
+    .store2-row h4,.store2-row p{margin:0;overflow-wrap:anywhere}
+    .store2-row p{color:var(--muted);font-size:11px;line-height:1.45}
+    .store2-row-actions{display:flex;flex-wrap:wrap;gap:8px}
+    .store2-row-actions button{padding:8px 10px;border:1px solid #6f7fa5;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font:inherit;font-size:11px;font-weight:700;cursor:pointer}
+    .store2-row-actions .danger{border-color:#b65b6a66;color:#ffb3bd}
+    .store2-row-actions button:disabled{opacity:.55;cursor:wait}
+    .store2-empty{margin:0;padding:12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:12px;text-align:center}
     .rp-manager-dialog button:not(.dialog-close){min-height:38px;padding:9px 12px;border:1px solid #6f7fa5;border-radius:10px;background:#ffffff0b;color:#f5f7fb;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
     .rp-manager-dialog button:not(.dialog-close):hover{border-color:#9b8cff;background:#8b7bff20}
     .rp-manager-dialog button:not(.dialog-close):disabled{opacity:.55;cursor:wait}
@@ -2805,6 +2825,7 @@ function renderGroupAdmin(data) {
       <p class="section-intro">Gerencie advertências e aplique ações compatíveis com esta plataforma. Sua permissão e a do bot são verificadas ao executar cada ação.</p>
       <div class="moderation-layout">
         <article class="moderation-card"><h3>Buscar usuário</h3><form class="moderation-search" id="moderationSearch"><input id="moderationQuery" type="search" maxlength="100" autocomplete="off" placeholder="${data.platform === "whatsapp" ? "ID ou número" : "ID ou username"}" aria-label="ID ou username do usuário"><button type="submit">Buscar</button>${data.platform === "whatsapp" ? '<button type="button" id="loadMembers">Abrir lista de membros</button>' : ""}</form>${data.platform === "whatsapp" ? '<section id="memberPicker" class="member-picker-card" hidden style="margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#ffffff05"><h4 style="margin:0 0 5px;font-size:13px">Selecionar membro do grupo</h4><p class="moderation-help" style="margin:0 0 9px">Os participantes aparecem pelo nome e pelo ID. Selecione um cartão para abrir as ações de moderação.</p><div id="memberPickerList" class="member-picker-list" aria-live="polite"></div></section>' : ""}<p class="moderation-help">${data.platform === "telegram" ? "Informe o ID numérico ou um username já conhecido pelo bot. O Telegram não permite localizar qualquer usuário apenas pelo username." : data.platform === "whatsapp" ? "Informe o ID/número para buscar ou abra a lista personalizada de participantes." : "Informe o ID ou username do membro do Discord."}</p><div id="moderationResults" class="moderation-results" aria-live="polite"></div><div id="moderationSelected"></div><p class="moderation-feedback" id="moderationFeedback" role="status" aria-live="polite"></p></article>
+        <article class="moderation-card"><h3>Configuração de advertências</h3><p class="moderation-help">Defina o limite e a punição automática. Ao atingir o limite, o histórico de advertências do membro é zerado.</p><form id="warningConfigForm" class="moderation-fields"><label for="warningMax">Limite de advertências</label><input id="warningMax" name="max" type="number" min="1" max="1000000" step="1" value="${data.moderation.max}" required><label for="warningAction">Ação ao atingir o limite</label><select id="warningAction" name="action" required><option value="ban" ${data.moderation.action === "ban" ? "selected" : ""}>Banir</option><option value="kick" ${data.moderation.action === "kick" ? "selected" : ""}>Expulsar</option></select><button type="submit">Salvar configuração de warns</button><p class="moderation-feedback" id="warningConfigFeedback" role="status" aria-live="polite"></p></form></article>
         <article class="moderation-card"><h3>Usuários com advertências</h3><p class="moderation-help">Abra “Ver motivos” para consultar o histórico. Advertências anteriores à atualização aparecem sem motivo registrado. Remover pela lista apaga todas as advertências da pessoa.</p><ul class="warning-list" id="warningList">${warningRows || ""}</ul><p class="warning-empty" id="warningEmpty" ${warningRows ? "hidden" : ""}>Nenhum usuário com advertências registradas.</p><p class="warning-empty" id="warningMore" ${data.moderation.total > data.moderation.entries.length ? "" : "hidden"}>Mostrando ${data.moderation.entries.length} de ${data.moderation.total}. Pesquise pelo ID para localizar outros registros.</p></article>
       </div>
     </section>
@@ -2819,6 +2840,7 @@ function renderGroupAdmin(data) {
     ${autodownloadDialog}
     ${autoApproveDialog}
     ${rpManagerDialog}
+    ${store2Dialog}
     ${monitorDialog}
     ${schedulesDialog}
     <p class="feedback" id="adminFeedback" role="status" aria-live="polite"></p>
@@ -2832,6 +2854,7 @@ function renderGroupAdmin(data) {
       bot: Object.fromEntries(data.permissionSnapshot.botPermissions.map(item => [item.key, item.allowed]))
     })};
     const feedback=document.getElementById("adminFeedback");
+    const formatStoreMoney=amount=>(Number(amount||0)/100).toFixed(2)+"💷";
     const scopeFilter=document.getElementById("scopeFilter");
     async function requestAdminApi(path,payload={}){
       const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...context,...payload})});
@@ -2859,7 +2882,7 @@ function renderGroupAdmin(data) {
         const heading=item.category!==lastCategory?'<h3 class="setting-category" style="margin:12px 0 0;color:#b9c6ff;font-size:14px">'+item.category+'</h3>':"";
         lastCategory=item.category;
         const scopeAttr=JSON.stringify(scope).replace(/&/g,"&amp;").replace(/"/g,"&quot;");
-        const configButton=item.key==="agendar"?'<button type="button" class="setting-icon-button" data-schedule-config data-scope="'+scopeAttr+'" aria-label="Gerenciar agendamentos" title="Gerenciar agendamentos">'+gearIcon+'</button>':["antilink","antimedia","antipalavras","antiraid","blockcmd","welcome","goodbye","autorepo","autodownload","autoApprove"].includes(item.key)?'<button type="button" class="setting-icon-button" data-'+item.key.toLowerCase()+'-config data-scope="'+scopeAttr+'" aria-label="Configurar '+item.label+' neste escopo" title="Configurações do '+item.label+'">'+gearIcon+'</button>':["economy","xp","activity"].includes(item.key)?'<button type="button" class="setting-icon-button" data-rp-config="'+item.key+'" data-scope="'+scopeAttr+'" aria-label="Gerenciar '+item.label+'" title="Gerenciar '+item.label+'">'+gearIcon+'</button>':["monitorStock","monitorCafe","monitorWeather","monitorRandomWeather","monitorElection"].includes(item.key)?'<button type="button" class="setting-icon-button" data-monitor-config data-monitor-setting="'+item.key+'" data-scope="'+scopeAttr+'" aria-label="Configurar '+item.label+' neste escopo" title="Configurações do '+item.label+'">'+gearIcon+'</button>':"";
+        const configButton=item.key==="agendar"?'<button type="button" class="setting-icon-button" data-schedule-config data-scope="'+scopeAttr+'" aria-label="Gerenciar agendamentos" title="Gerenciar agendamentos">'+gearIcon+'</button>':["antilink","antimedia","antipalavras","antiraid","blockcmd","welcome","goodbye","autorepo","autodownload","autoApprove"].includes(item.key)?'<button type="button" class="setting-icon-button" data-'+item.key.toLowerCase()+'-config data-scope="'+scopeAttr+'" aria-label="Configurar '+item.label+' neste escopo" title="Configurações do '+item.label+'">'+gearIcon+'</button>':["economy","xp","activity"].includes(item.key)?'<button type="button" class="setting-icon-button" data-rp-config="'+item.key+'" data-scope="'+scopeAttr+'" aria-label="Gerenciar '+item.label+'" title="Gerenciar '+item.label+'">'+gearIcon+'</button>'+(item.key==="economy"?'<button type="button" class="setting-icon-button setting-store2-button" data-store2-config><span aria-hidden="true">'+gearIcon+'</span><span>Configurar Loja 2</span></button>':""):["monitorStock","monitorCafe","monitorWeather","monitorRandomWeather","monitorElection"].includes(item.key)?'<button type="button" class="setting-icon-button" data-monitor-config data-monitor-setting="'+item.key+'" data-scope="'+scopeAttr+'" aria-label="Configurar '+item.label+' neste escopo" title="Configurações do '+item.label+'">'+gearIcon+'</button>':"";
         const controls=item.key==="agendar"?'<span class="state '+(enabled?"on":"off")+'" data-state="'+item.key+'">'+(enabled?"Ativo":"Sem agendamentos ativos")+'</span>'+configButton:'<span class="state '+(enabled?"on":"off")+'" data-state="'+item.key+'">'+(enabled?"Ativado":"Desativado")+'</span><button type="button" data-setting="'+item.key+'" data-enabled="'+enabled+'" data-scope="'+scopeAttr+'">'+(enabled?"Desativar":"Ativar")+'</button>'+configButton;
         return heading+'<article class="setting-card"><div class="setting-info"><span class="setting-scope"></span><h2>'+item.label+'</h2><p>'+item.description+'</p></div><div class="setting-controls">'+controls+'</div></article>';
       }).join("");
@@ -3679,7 +3702,120 @@ function renderGroupAdmin(data) {
       }catch(error){autorepoFeedback.classList.add("error");autorepoFeedback.textContent=error.message}
       finally{submitButton.disabled=false}
     });
+    const store2Dialog=document.getElementById("store2Dialog");
+    const store2Feedback=document.getElementById("store2Feedback");
+    const store2DetailsForm=document.getElementById("store2DetailsForm");
+    const store2ItemForm=document.getElementById("store2ItemForm");
+    const store2ItemList=document.getElementById("store2Items");
+    const store2OrderList=document.getElementById("store2Orders");
+    const store2ItemSubmit=document.getElementById("store2ItemSubmit");
+    const store2ItemCancel=document.getElementById("store2ItemCancel");
+    let store2State=null;
+    function showStore2Feedback(message,isError=false){
+      store2Feedback.classList.toggle("error",isError);
+      store2Feedback.textContent=message;
+    }
+    function renderStore2State(result){
+      store2State=result;
+      store2DetailsForm.elements.title.value=result.store.title;
+      store2DetailsForm.elements.notice.value=result.store.notice;
+      store2ItemList.replaceChildren();
+      if(!result.store.items.length){
+        const empty=document.createElement("p");empty.className="store2-empty";empty.textContent="Nenhum item cadastrado.";store2ItemList.append(empty);
+      }
+      result.store.items.forEach(item=>{
+        const row=document.createElement("article"),title=document.createElement("h4"),detail=document.createElement("p"),actions=document.createElement("div"),edit=document.createElement("button"),remove=document.createElement("button");
+        row.className="store2-row";title.textContent=item.name;
+        detail.textContent="#"+item.id+" · "+item.category+" · "+formatStoreMoney(item.price)+" · Estoque: "+(item.quantity===null?"infinito":item.quantity);
+        actions.className="store2-row-actions";edit.type="button";edit.textContent="Editar";edit.dataset.store2Edit=String(item.id);
+        remove.type="button";remove.className="danger";remove.textContent="Remover";remove.dataset.store2Remove=String(item.id);
+        actions.append(edit,remove);row.append(title,detail,actions);store2ItemList.append(row);
+      });
+      store2OrderList.replaceChildren();
+      if(!result.orders.length){
+        const empty=document.createElement("p");empty.className="store2-empty";empty.textContent="Nenhum pedido pendente.";store2OrderList.append(empty);
+      }
+      result.orders.forEach(order=>{
+        const row=document.createElement("article"),title=document.createElement("h4"),detail=document.createElement("p"),actions=document.createElement("div"),deliver=document.createElement("button"),cancel=document.createElement("button");
+        row.className="store2-row";title.textContent="#"+order.id+" · "+order.itemName;
+        detail.textContent=(order.displayName||order.userId)+" · "+formatStoreMoney(order.price);
+        actions.className="store2-row-actions";deliver.type="button";deliver.textContent="Marcar entregue";deliver.dataset.store2Order="delivered";deliver.dataset.orderId=String(order.id);
+        cancel.type="button";cancel.className="danger";cancel.textContent="Cancelar e estornar";cancel.dataset.store2Order="cancelled";cancel.dataset.orderId=String(order.id);
+        actions.append(deliver,cancel);row.append(title,detail,actions);store2OrderList.append(row);
+      });
+    }
+    async function loadStore2State(){
+      showStore2Feedback("Carregando configurações...");
+      try{
+        renderStore2State(await requestAdminApi("/api/account/local/admin-store2-state"));
+        showStore2Feedback("");
+      }catch(error){showStore2Feedback(error.message,true)}
+    }
+    async function saveStore2Action(payload,successMessage){
+      showStore2Feedback("Salvando...");
+      try{
+        const result=await requestAdminApi("/api/account/local/admin-store2",payload);
+        renderStore2State(result);
+        showStore2Feedback(successMessage);
+        return true;
+      }catch(error){showStore2Feedback(error.message,true);return false}
+    }
+    function resetStore2ItemForm(){
+      store2ItemForm.reset();store2ItemForm.elements.id.value="";
+      store2ItemSubmit.textContent="Adicionar item";store2ItemCancel.hidden=true;
+    }
+    async function openStore2Dialog(button){
+      const scopeLabel=button.closest(".setting-card")?.querySelector(".setting-scope")?.textContent||"Grupo ou servidor";
+      document.getElementById("store2ScopeLabel").textContent=scopeLabel+" · catálogo e pedidos";
+      resetStore2ItemForm();store2Dialog.showModal();await loadStore2State();
+    }
+    store2Dialog.querySelectorAll("[data-close-store2]").forEach(button=>button.addEventListener("click",()=>store2Dialog.close()));
+    store2Dialog.addEventListener("click",event=>{if(event.target===store2Dialog)store2Dialog.close()});
+    store2DetailsForm.addEventListener("submit",async event=>{
+      event.preventDefault();
+      const button=store2DetailsForm.querySelector('[type="submit"]');button.disabled=true;
+      const saved=await saveStore2Action({action:"details",title:store2DetailsForm.elements.title.value,notice:store2DetailsForm.elements.notice.value},"Título e aviso da loja atualizados.");
+      if(!saved&&store2State){store2DetailsForm.elements.title.value=store2State.store.title;store2DetailsForm.elements.notice.value=store2State.store.notice}
+      button.disabled=false;
+    });
+    store2ItemForm.addEventListener("submit",async event=>{
+      event.preventDefault();
+      const button=store2ItemSubmit,id=store2ItemForm.elements.id.value;button.disabled=true;
+      const item={name:store2ItemForm.elements.name.value,price:store2ItemForm.elements.price.value,category:store2ItemForm.elements.category.value,quantity:store2ItemForm.elements.quantity.value};
+      const saved=await saveStore2Action({action:id?"edit":"add",itemId:id,item},id?"Item atualizado.":"Item cadastrado.");
+      if(saved)resetStore2ItemForm();
+      button.disabled=false;
+    });
+    store2ItemCancel.addEventListener("click",resetStore2ItemForm);
+    store2ItemList.addEventListener("click",async event=>{
+      const edit=event.target.closest("[data-store2-edit]");
+      if(edit){
+        const item=store2State?.store.items.find(candidate=>String(candidate.id)===edit.dataset.store2Edit);
+        if(!item)return;
+        store2ItemForm.elements.id.value=String(item.id);store2ItemForm.elements.name.value=item.name;
+        store2ItemForm.elements.price.value=(item.price/100).toFixed(2);store2ItemForm.elements.category.value=item.category;
+        store2ItemForm.elements.quantity.value=item.quantity===null?"infinito":String(item.quantity);
+        store2ItemSubmit.textContent="Salvar alterações";store2ItemCancel.hidden=false;store2ItemForm.elements.name.focus();return;
+      }
+      const remove=event.target.closest("[data-store2-remove]");
+      if(remove&&window.confirm("Remover este item do catálogo? Pedidos já realizados não serão alterados.")){
+        remove.disabled=true;
+        if(await saveStore2Action({action:"remove",itemId:remove.dataset.store2Remove},"Item removido do catálogo."))resetStore2ItemForm();
+        remove.disabled=false;
+      }
+    });
+    store2OrderList.addEventListener("click",async event=>{
+      const button=event.target.closest("[data-store2-order]");
+      if(!button)return;
+      if(button.dataset.store2Order==="cancelled"&&!window.confirm("Cancelar este pedido e devolver o valor ao comprador?"))return;
+      button.disabled=true;
+      const successMessage=button.dataset.store2Order==="delivered"?"Pedido marcado como entregue.":"Pedido cancelado e valor estornado.";
+      await saveStore2Action({action:button.dataset.store2Order,orderId:button.dataset.orderId},successMessage);
+      button.disabled=false;
+    });
     document.getElementById("rootSettings").addEventListener("click",event=>{
+      const store2Gear=event.target.closest("[data-store2-config]");
+      if(store2Gear){openStore2Dialog(store2Gear);return}
       const schedulesGear=event.target.closest("[data-schedule-config]");
       if(schedulesGear){openSchedulesDialog(schedulesGear);return}
       const monitorGear=event.target.closest("[data-monitor-config]");
@@ -3908,6 +4044,8 @@ function renderGroupAdmin(data) {
       scopeFilter.addEventListener("change",()=>loadScope({level:scopeFilter.value}));
     }
     const moderationFeedback=document.getElementById("moderationFeedback");
+    const warningConfigForm=document.getElementById("warningConfigForm");
+    const warningConfigFeedback=document.getElementById("warningConfigFeedback");
     const moderationResults=document.getElementById("moderationResults");
     const moderationSelected=document.getElementById("moderationSelected");
     const warningList=document.getElementById("warningList");
@@ -4106,6 +4244,23 @@ function renderGroupAdmin(data) {
       const result=await moderationRequest("moderation-data");
       renderWarningRows(result.entries,result.total,result.max);
     }
+    warningConfigForm.addEventListener("submit",async event=>{
+      event.preventDefault();
+      const button=warningConfigForm.querySelector('button[type="submit"]');
+      button.disabled=true;warningConfigFeedback.classList.remove("error");warningConfigFeedback.textContent="Salvando...";
+      try{
+        const result=await moderationRequest("moderation-config",{
+          max:Number(warningConfigForm.elements.max.value),
+          action:warningConfigForm.elements.action.value
+        });
+        warningConfigForm.elements.max.value=result.config.max;
+        warningConfigForm.elements.action.value=result.config.action;
+        warningConfigFeedback.textContent="Configuração de advertências salva.";
+        try{await refreshWarnings()}
+        catch(error){warningConfigFeedback.classList.add("error");warningConfigFeedback.textContent="Configuração salva, mas a lista de advertências não foi atualizada: "+error.message}
+      }catch(error){warningConfigFeedback.classList.add("error");warningConfigFeedback.textContent=error.message}
+      finally{button.disabled=false}
+    });
     async function removeWarningFromList(userId,button){
       if(!window.confirm("Remover todas as advertências registradas para "+userId+"?"))return;
       button.disabled=true;moderationFeedback.classList.remove("error");moderationFeedback.textContent="";
@@ -4345,7 +4500,10 @@ async function getSessionCentral(request) {
       return null;
     }
     const central = centralAccounts.getCentralById(session.centralId);
-    if (!isDashboardAccount(central)) {
+    if (!isDashboardAccount(central) ||
+        !central.webAuth?.username ||
+        !central.webAuth.passwordHash ||
+        session.authVersion !== (central.webAuth.authVersion || 0)) {
       webSessions.delete(match[1]);
       return null;
     }
@@ -4357,7 +4515,12 @@ async function getSessionCentral(request) {
 
 function createWebSession(centralId) {
   const sessionId = crypto.randomBytes(32).toString("hex");
-  webSessions.set(sessionId, { centralId, expiresAt: Date.now() + WEB_SESSION_TTL_MS });
+  const central = centralAccounts.getCentralById(centralId);
+  webSessions.set(sessionId, {
+    centralId,
+    authVersion: central?.webAuth?.authVersion || 0,
+    expiresAt: Date.now() + WEB_SESSION_TTL_MS
+  });
   return sessionId;
 }
 
@@ -4560,7 +4723,7 @@ function renderHome(botName, central = null, loginError = "") {
           <button class="button primary" type="submit">Atualizar senha</button>
         </form>
         <p class="account-feedback" id="passwordFeedback" role="status"></p>
-        <details class="password-recovery"><summary>Não lembro a senha atual</summary><p>Abra o privado do bot em uma plataforma vinculada à sua Conta Central — WhatsApp, Telegram ou Discord — e envie:<code>${escapeHtml(config.getPrefix())}redefinir_senha MinhaSenhaNova123 MinhaSenhaNova123</code>Esse comando redefine a senha sem pedir a senha antiga. Use-o somente no privado do bot.</p></details>
+        <details class="password-recovery"><summary>Não lembro a senha atual</summary><p>Abra o privado do bot em uma plataforma vinculada à sua Conta Central — WhatsApp, Telegram ou Discord — e envie:<code>${escapeHtml(config.getPrefix())}redefinir_senha</code>O bot enviará um link de uso único para definir um novo usuário e senha diretamente na página. Use o comando somente no privado e não compartilhe o link.</p></details>
     </section>
     <section class="account-panel" data-panel="merge" hidden>
         <p class="account-dialog-copy">Gere um código temporário desta Conta Central. Depois, no privado do bot pela outra plataforma que deseja vincular, use o comando abaixo. O código expira em 24 horas e só pode ser usado uma vez.</p>
@@ -4692,7 +4855,7 @@ function renderHome(botName, central = null, loginError = "") {
   }
 
   const usesHttp = config.getWebProtocol() !== "https";
-  const help = `Para criar ou redefinir a senha do dashboard, abra o privado do bot e envie:<br><code>${escapeHtml(config.getPrefix())}redefinir_senha MinhaSenhaNova123 MinhaSenhaNova123</code><br>Escreva a nova senha duas vezes, exatamente igual; o espaço separa a senha da confirmação, então não use espaços dentro da senha. Não precisa informar a senha antiga. O comando só funciona no privado para que sua senha não fique exposta no histórico de um grupo. O bot enviará seu ID central e um link temporário de login. Nunca compartilhe a senha nem o link.`;
+  const help = `Para criar ou redefinir seu usuário e senha, abra o privado do bot e envie:<br><code>${escapeHtml(config.getPrefix())}redefinir_senha</code><br>O bot enviará um link temporário e de uso único para você definir as credenciais diretamente nesta página. Depois, entre usando seu usuário ou ID central. O comando só funciona no privado para proteger o link.`;
   const securityNotice = usesHttp
     ? `<aside class="warning"><span class="warning-icon" aria-hidden="true">!</span><p><strong>Aviso de segurança: conexão HTTP sem criptografia</strong><br>Os dados enviados entre seu navegador e o painel — incluindo a senha no login e o link automático — não são criptografados no trajeto. Pessoas com acesso à rede ou ao caminho da conexão podem conseguir interceptá-los. Use uma senha exclusiva para o SatBot; nunca reutilize senhas de redes sociais, e-mail ou outros serviços. Não compartilhe o link temporário de login.</p></aside>`
     : "";
@@ -4790,8 +4953,8 @@ function renderHome(botName, central = null, loginError = "") {
   <dialog id="loginDialog">
     <div class="dialog-top"><h2 id="dialogTitle">Entrar no painel</h2><button class="icon-button" id="closeDialog" type="button" aria-label="Fechar">×</button></div>
     <form id="loginForm" class="login-form">
-      <label for="centralId">ID central</label>
-      <input id="centralId" name="centralId" autocomplete="username" placeholder="Seu ID central" required>
+      <label for="loginIdentifier">Usuário ou ID central</label>
+      <input id="loginIdentifier" name="login" autocomplete="username" placeholder="Seu usuário ou ID central" required>
       <label for="password">Senha</label>
       <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Sua senha" required>
       <label class="remember-row"><input id="rememberMe" name="rememberMe" type="checkbox"><span><strong>Manter logado</strong><small>Continuar conectado neste navegador por 30 dias, mesmo se o bot reiniciar.</small></span></label>
@@ -4815,7 +4978,7 @@ function renderHome(botName, central = null, loginError = "") {
       const error=document.getElementById("loginError");
       error.textContent="";
       try{
-        const response=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({centralId:document.getElementById("centralId").value,password:document.getElementById("password").value,rememberMe:document.getElementById("rememberMe").checked})});
+        const response=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({login:document.getElementById("loginIdentifier").value,password:document.getElementById("password").value,rememberMe:document.getElementById("rememberMe").checked})});
         const result=await response.json();
         if(!response.ok)throw new Error(result.error||"Falha no login.");
         location.href="/";
@@ -4828,6 +4991,36 @@ function renderHome(botName, central = null, loginError = "") {
 
 function formatMoney(cents) {
   return `${(Number(cents || 0) / 100).toFixed(2)}💷`;
+}
+
+function parseAdminStorePrice(value) {
+  let normalized = String(value ?? "").trim().replace(/(?:💷|satcoins?)/gi, "").replace(/\s/g, "");
+  if (normalized.includes(",") && normalized.includes(".")) {
+    normalized = normalized.replace(/\./g, "").replace(",", ".");
+  } else if (normalized.includes(",")) {
+    normalized = normalized.replace(",", ".");
+  } else if (/^\d{1,3}(?:\.\d{3})+$/.test(normalized)) {
+    normalized = normalized.replace(/\./g, "");
+  }
+  if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) return null;
+  const [whole, cents = ""] = normalized.split(".");
+  const amount = Number(whole) * 100 + Number(cents.padEnd(2, "0") || 0);
+  return Number.isSafeInteger(amount) && amount >= 0 ? amount : null;
+}
+
+function parseAdminStoreQuantity(value) {
+  const normalized = String(value ?? "").trim();
+  if (/^(?:infinito|infinite|∞)$/i.test(normalized)) return null;
+  if (!/^\d+$/.test(normalized)) return undefined;
+  const quantity = Number(normalized);
+  return Number.isSafeInteger(quantity) && quantity >= 0 ? quantity : undefined;
+}
+
+function getAdminStore2State(message) {
+  const store = economy.getCommunityStore(message);
+  const orders = economy.getCommunityStoreOrders(message, "pending");
+  if (!store || !orders) throw new Error("Não foi possível carregar a Loja 2 deste grupo ou servidor.");
+  return { store, orders };
 }
 
 function renderProfile(profile) {
@@ -5042,6 +5235,42 @@ function renderRankingEntry(ranking, entry, metrics) {
     : `<a class="rank-row" href="${profileUrl}" aria-label="Abrir perfil de ${escapeHtml(entry.name)}">${row}</a>`;
 }
 
+function renderCredentialSetupPage(botName, tokenIsValid) {
+  const title = tokenIsValid ? "Definir usuário e senha" : "Link inválido ou expirado";
+  const securityWarning = config.getWebProtocol() === "https"
+    ? ""
+    : `<aside class="security-warning"><strong>Conexão HTTP sem criptografia</strong><br>A senha e o link podem ser interceptados durante o trajeto pela rede. Use uma senha exclusiva para o SatBot.</aside>`;
+  const content = tokenIsValid
+    ? `${securityWarning}<p>Escolha o usuário e a senha que serão usados para entrar no dashboard. Você também poderá entrar com seu ID central.</p>
+      <form id="credentialForm">
+        <label for="username">Usuário</label><input id="username" name="username" minlength="3" maxlength="30" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,29}" autocomplete="username" required>
+        <small>De 3 a 30 caracteres: letras, números, ponto, hífen ou sublinhado.</small>
+        <label for="newPassword">Senha</label><input id="newPassword" name="password" type="password" minlength="8" maxlength="128" pattern="\\S*" autocomplete="new-password" required>
+        <small>De 8 a 128 caracteres, sem espaços.</small>
+        <label for="confirmPassword">Confirme a senha</label><input id="confirmPassword" name="confirmPassword" type="password" minlength="8" maxlength="128" pattern="\\S*" autocomplete="new-password" required>
+        <button type="submit">Salvar credenciais</button>
+      </form>
+      <p id="credentialFeedback" role="status" aria-live="polite"></p>`
+    : `<p>Esse link pode ter expirado ou já ter sido usado. Solicite outro pelo privado do bot com o comando <strong>${escapeHtml(config.getPrefix())}redefinir_senha</strong>.</p>`;
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${escapeHtml(title)} - ${escapeHtml(botName)}</title><style>
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{display:grid;min-height:100vh;place-items:center;margin:0;padding:20px;background:radial-gradient(circle at top,#27365d 0,#10131c 55%,#090b10 100%)}main{width:min(480px,100%);padding:28px;border:1px solid #334366;border-radius:20px;background:linear-gradient(145deg,#1c2438,#111521);box-shadow:0 24px 80px #0008}h1{margin:0;font-size:23px}p{color:#b9c4d9;font-size:13px;line-height:1.7}.security-warning{margin:14px 0;padding:12px;border:1px solid #f3b35d55;border-radius:10px;background:#f4a93612;color:#ffe0af;font-size:12px;line-height:1.6}label{display:block;margin:14px 0 6px;color:#cbd3e5;font-size:12px;font-weight:700}input{width:100%;min-height:44px;padding:10px 12px;border:1px solid #39445d;border-radius:10px;background:#0e1422;color:#fff;font:inherit}small{display:block;margin-top:5px;color:#9da8bd;font-size:11px}button{width:100%;min-height:44px;margin-top:18px;border:0;border-radius:10px;background:linear-gradient(120deg,#8877ff,#577cff);color:#fff;font:inherit;font-weight:700;cursor:pointer}button:disabled{opacity:.6;cursor:wait}#credentialFeedback{min-height:20px;color:#9cf0cf}#credentialFeedback.error{color:#ff9caa}a{color:#b9c6ff}
+  </style></head><body><main><h1>${escapeHtml(title)}</h1>${content}${tokenIsValid ? `<script>
+    const form=document.getElementById("credentialForm"),feedback=document.getElementById("credentialFeedback");
+    form.addEventListener("submit",async event=>{
+      event.preventDefault();
+      const password=form.elements.password.value,confirmPassword=form.elements.confirmPassword.value;
+      if(password!==confirmPassword){feedback.classList.add("error");feedback.textContent="As senhas não são iguais.";return}
+      const button=form.querySelector("button");button.disabled=true;feedback.classList.remove("error");feedback.textContent="Salvando...";
+      try{
+        const response=await fetch("/api/setup-credentials",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:new URLSearchParams(location.search).get("token"),username:form.elements.username.value,password,confirmPassword})});
+        const result=await response.json();
+        if(!response.ok)throw new Error(result.error||"Não foi possível salvar as credenciais.");
+        location.replace("/");
+      }catch(error){feedback.classList.add("error");feedback.textContent=error.message;button.disabled=false}
+    });
+  </script>` : `<p><a href="/">Voltar ao dashboard</a></p>`}</main></body></html>`;
+}
+
 function styles() {
   return `:root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}.card{width:min(860px,100%);padding:34px;border:1px solid #334366;border-radius:24px;background:linear-gradient(145deg,#1c2438ee,#111521f2);box-shadow:0 24px 80px #0008}.brand{letter-spacing:.18em;color:#7ea7ff;font-weight:800}.brand span{color:#9da8bd;font-weight:500;font-size:.75em}header{display:flex;align-items:center;gap:18px;margin:34px 0 18px}.avatar{position:relative;overflow:hidden;flex:none;width:72px;height:72px;border-radius:20px;display:grid;place-items:center;background:linear-gradient(135deg,#6d5dfc,#3aa8ff);font-size:32px;font-weight:800}.avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}h1{margin:0;font-size:clamp(28px,5vw,46px)}p{margin:8px 0}.muted,.hint{color:#9da8bd}.scope{padding:13px 16px;border-radius:12px;background:#0e1422;color:#b7c5e7;font-size:14px}.scope span{color:#536486;margin:0 8px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}.grid article{padding:22px;border-radius:16px;background:#202a40;border:1px solid #334566}.label{color:#9da8bd;font-size:12px;letter-spacing:.12em;font-weight:700}.value{font-size:32px;font-weight:800;margin:12px 0 8px}.value.small{font-size:22px}.money{color:#8ff0bf}.meta{color:#b8c3d9;font-size:14px}footer{margin-top:26px;color:#71809d;font-size:13px}.error{text-align:center}.error h1{margin-top:28px}@media(max-width:600px){.card{padding:24px}.grid{grid-template-columns:1fr}header{margin-top:26px}}`;
 }
@@ -5080,13 +5309,17 @@ function start() {
         return;
       }
 
-      const centralId = typeof credentials?.centralId === "string" ? credentials.centralId.trim() : "";
+      const login = typeof credentials?.login === "string"
+        ? credentials.login.trim()
+        : typeof credentials?.centralId === "string" ? credentials.centralId.trim() : "";
       const password = typeof credentials?.password === "string" ? credentials.password : "";
       const rememberMe = credentials?.rememberMe === true;
       let valid = false;
+      let central = null;
       try {
-        if (centralId && password) {
-          valid = await centralAccounts.verifyWebPassword(centralId, password);
+        if (login && password) {
+          central = centralAccounts.getCentralByLogin(login);
+          valid = Boolean(central && await centralAccounts.verifyWebPassword(central.id, password));
         }
       } catch (error) {
         console.error("[WEB] Falha ao validar credenciais do dashboard:", error.message || error);
@@ -5100,21 +5333,66 @@ function start() {
           : { count: 0, expiresAt: now + WEB_LOGIN_LIMIT_MS };
         attempt.count += 1;
         webLoginAttempts.set(remoteAddress, attempt);
-        sendJson(response, 401, { error: "ID central ou senha incorretos." });
+        sendJson(response, 401, { error: "Usuário/ID central ou senha incorretos." });
         return;
       }
 
       webLoginAttempts.delete(remoteAddress);
       try {
         const sessionId = rememberMe
-          ? await centralAccounts.createRememberedWebSession(centralId, REMEMBERED_WEB_SESSION_TTL_DAYS)
-          : createWebSession(centralId);
+          ? await centralAccounts.createRememberedWebSession(central.id, REMEMBERED_WEB_SESSION_TTL_DAYS)
+          : createWebSession(central.id);
         sendJson(response, 200, { success: true }, {
           "Set-Cookie": getSessionCookie(sessionId, requestIsSecure(request), rememberMe)
         });
       } catch (error) {
         console.error("[WEB] Falha ao criar sessão do dashboard:", error.message || error);
         sendJson(response, 500, { error: "Não foi possível iniciar a sessão agora." });
+      }
+      return;
+    }
+
+    if (request.method === "POST" && requestUrl.pathname === "/api/setup-credentials") {
+      if (!isSameOriginRequest(request)) {
+        sendJson(response, 403, { error: "Origem da solicitação inválida." });
+        return;
+      }
+
+      let payload;
+      try {
+        payload = await readJsonBody(request);
+      } catch (error) {
+        const statusCode = error.message === "request-too-large" ? 413 : 400;
+        sendJson(response, statusCode, { error: "Solicitação inválida." });
+        return;
+      }
+
+      try {
+        const password = typeof payload?.password === "string" ? payload.password : "";
+        const confirmPassword = typeof payload?.confirmPassword === "string" ? payload.confirmPassword : "";
+        if (password !== confirmPassword) {
+          sendJson(response, 400, { error: "As senhas não são iguais." });
+          return;
+        }
+        await centralAccounts.completeWebCredentialSetup(
+          typeof payload?.token === "string" ? payload.token : "",
+          typeof payload?.username === "string" ? payload.username : "",
+          password
+        );
+        sendJson(response, 200, { success: true });
+      } catch (error) {
+        const errors = {
+          "credential-setup-token-invalid": "Este link é inválido, expirou ou já foi usado. Gere um novo pelo privado do bot.",
+          "web-username-invalid": "O usuário deve ter de 3 a 30 caracteres: letras, números, ponto, hífen ou sublinhado.",
+          "web-password-invalid": "A senha deve ter de 8 a 128 caracteres e não pode conter espaços.",
+          "web-username-taken": "Este usuário já está sendo usado. Escolha outro."
+        };
+        if (errors[error.message]) {
+          sendJson(response, 400, { error: errors[error.message] });
+          return;
+        }
+        console.error("[WEB] Falha ao salvar credenciais da Conta Central:", error.message || error);
+        sendJson(response, 500, { error: "Não foi possível salvar as credenciais agora." });
       }
       return;
     }
@@ -5564,6 +5842,86 @@ function start() {
         return;
       }
 
+      if (requestUrl.pathname === "/api/account/local/admin-store2-state" ||
+          requestUrl.pathname === "/api/account/local/admin-store2") {
+        const platform = typeof payload?.platform === "string" ? payload.platform : "";
+        const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
+        const isStateRequest = requestUrl.pathname.endsWith("-state");
+        try {
+          await getGroupAdminData(central, platform, groupId);
+          const platformAccount = central.platformAccounts.find(account => account.platform === platform);
+          const message = getLocalGroupMessage(platform, groupId, String(platformAccount.platformId));
+          if (!isStateRequest) {
+            const action = typeof payload?.action === "string" ? payload.action : "";
+            if (action === "details") {
+              const title = payload?.title;
+              const notice = payload?.notice;
+              if (typeof title !== "string" || title.length > 120 ||
+                  typeof notice !== "string" || notice.length > 1000 ||
+                  !economy.updateCommunityStoreDetails(message, title, notice)) {
+                throw new Error("Informe um título e um aviso válidos para a loja.");
+              }
+            } else if (action === "add" || action === "edit") {
+              const item = payload?.item;
+              if (!item || typeof item !== "object" || Array.isArray(item) ||
+                  typeof item.name !== "string" || item.name.trim().length > 120 ||
+                  typeof item.category !== "string" || item.category.trim().length > 80) {
+                throw new Error("Informe nome e categoria válidos para o item.");
+              }
+              const price = parseAdminStorePrice(item.price);
+              const quantity = parseAdminStoreQuantity(item.quantity);
+              if (price === null || quantity === undefined) {
+                throw new Error("Informe um preço válido e uma quantidade inteira ou infinito.");
+              }
+              const itemData = {
+                name: item.name,
+                category: item.category,
+                price,
+                quantity
+              };
+              if (action === "add") {
+                if (!economy.addCommunityStoreItem(message, itemData)) {
+                  throw new Error("Não foi possível cadastrar o item da loja.");
+                }
+              } else {
+                const itemId = Number(payload.itemId);
+                if (!Number.isSafeInteger(itemId) || itemId < 1001 ||
+                    !economy.updateCommunityStoreItem(message, itemId, itemData)) {
+                  throw new Error("Item não encontrado ou dados inválidos.");
+                }
+              }
+            } else if (action === "remove") {
+              const itemId = Number(payload.itemId);
+              if (!Number.isSafeInteger(itemId) || itemId < 1001 ||
+                  !economy.removeCommunityStoreItem(message, itemId)) {
+                throw new Error("Item não encontrado no catálogo.");
+              }
+            } else if (action === "delivered" || action === "cancelled") {
+              const orderId = Number(payload.orderId);
+              if (!Number.isSafeInteger(orderId) || orderId < 1 ||
+                  !economy.updateCommunityStoreOrder(message, orderId, action)) {
+                throw new Error("Pedido pendente não encontrado.");
+              }
+            } else {
+              throw new Error("Ação da Loja 2 inválida.");
+            }
+          }
+          sendJson(response, 200, { success: true, ...getAdminStore2State(message) });
+        } catch (error) {
+          const reason = String(error?.message || "");
+          const statusCode = /não participa|não está vinculada|permissão administrativa/i.test(reason) ? 403
+            : /offline/i.test(reason) ? 503
+              : /inválid|informe|não encontrado|não foi possível cadastrar|ação da loja/i.test(reason) ? 400 : 500;
+          if (statusCode === 500) console.error("[WEB] Falha ao carregar ou atualizar Loja 2:", error.message || error);
+          sendJson(response, statusCode, {
+            error: statusCode === 403 || statusCode === 503 || statusCode === 400
+              ? reason
+              : "Não foi possível atualizar a Loja 2 deste grupo ou servidor."
+          });
+        }
+        return;
+      }
+
       if (requestUrl.pathname === "/api/account/local/admin-settings") {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
@@ -5634,7 +5992,8 @@ function start() {
         "/api/account/local/moderation-data",
         "/api/account/local/moderation-search",
         "/api/account/local/moderation-options",
-        "/api/account/local/moderation-action"
+        "/api/account/local/moderation-action",
+        "/api/account/local/moderation-config"
       ].includes(requestUrl.pathname)) {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
@@ -5643,6 +6002,29 @@ function start() {
           const platformAccount = central.platformAccounts.find(account => account.platform === platform);
           const actorId = String(platformAccount.platformId);
           const warnings = getModerationWarnings(platform, groupId, actorId);
+          if (requestUrl.pathname === "/api/account/local/moderation-config") {
+            const max = payload?.max;
+            const action = payload?.action;
+            if (!Number.isSafeInteger(max) || max < 1 || max > 1_000_000) {
+              sendJson(response, 400, { error: "O limite deve ser um número inteiro entre 1 e 1.000.000." });
+              return;
+            }
+            if (action !== "kick" && action !== "ban") {
+              sendJson(response, 400, { error: "A ação deve ser expulsar (kick) ou banir (ban)." });
+              return;
+            }
+            await assertModerationPermission(platform, groupId, actorId, "warn");
+            const message = getLocalGroupMessage(platform, groupId, actorId);
+            if (!setWarnConfig(message, max, action)) {
+              throw new Error("Não foi possível salvar a configuração de advertências.");
+            }
+            sendJson(response, 200, {
+              success: true,
+              config: { max, action },
+              message: "Configuração de advertências atualizada."
+            });
+            return;
+          }
           if (requestUrl.pathname === "/api/account/local/moderation-options") {
             if (platform === "discord") {
               const { guild, actor } = await assertModerationPermission(platform, groupId, actorId, "addRole");
@@ -5671,6 +6053,7 @@ function start() {
             const namedWarnings = await addModerationWarningNames(platform, groupId, warnings);
             sendJson(response, 200, {
               max: namedWarnings.max,
+              action: namedWarnings.action,
               entries: namedWarnings.entries,
               total: namedWarnings.total
             });
@@ -5990,28 +6373,25 @@ function start() {
       return;
     }
 
-    if (request.method === "GET" && requestUrl.pathname === "/autologin") {
+    if (request.method === "GET" && requestUrl.pathname === "/configurar-login") {
       const token = requestUrl.searchParams.get("token") || "";
-      try {
-        const central = token ? await centralAccounts.consumeWebLoginToken(token) : null;
-        if (!central) {
-          response.writeHead(400, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
-          response.end("Link inválido ou expirado. Gere um novo link pelo privado do bot.");
-          return;
-        }
-        const sessionId = createWebSession(central.id);
-        response.writeHead(303, {
-          "Location": "/",
-          "Cache-Control": "no-store",
-          "Referrer-Policy": "no-referrer",
-          "Set-Cookie": getSessionCookie(sessionId, requestIsSecure(request))
-        });
-        response.end();
-      } catch (error) {
-        console.error("[WEB] Falha ao processar link de login automático:", error.message || error);
-        response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
-        response.end("Não foi possível iniciar a sessão. Gere um novo link pelo privado do bot.");
-      }
+      const tokenIsValid = Boolean(centralAccounts.getCentralByCredentialSetupToken(token));
+      response.writeHead(tokenIsValid ? 200 : 400, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer"
+      });
+      response.end(renderCredentialSetupPage(config.getBotName(), tokenIsValid));
+      return;
+    }
+
+    if (request.method === "GET" && requestUrl.pathname === "/autologin") {
+      response.writeHead(410, {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer"
+      });
+      response.end("Links de login antigos foram desativados. Gere um novo link com o comando redefinir_senha no privado do bot.");
       return;
     }
 

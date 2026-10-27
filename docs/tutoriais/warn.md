@@ -134,7 +134,11 @@ teto máximo configurado para o grupo.
 ## Configuração do limite e punição (`!warnconfig`)
 
 Para definir quantas advertências são necessárias para punir e qual ação será
-tomada, os administradores utilizam o comando `!warnconfig`:
+tomada, os administradores podem usar o comando `!warnconfig` ou o **Painel de
+administração** do dashboard. No painel, abra a seção **Moderação**, escolha o
+limite e a ação (banir ou expulsar) em **Configuração de advertências** e salve.
+
+Pelo comando, a sintaxe é:
 
 ```text
 !warnconfig <quantidade> <kick|ban>

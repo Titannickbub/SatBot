@@ -43,6 +43,22 @@ Se o grupo tiver uma ação local com o mesmo nome ou alias de uma ação global
 
 O bot escolhe aleatoriamente uma frase e uma mídia (GIF, vídeo ou imagem) cadastrada para a ação selecionada.`,
     usage: "{prefix}act help",
+    getMenuUsage(message) {
+        const actionSets = actStorage.loadActionSets(message);
+        const actions = actStorage.mergeActions(actionSets.globalActions, actionSets.localActions);
+        const directActions = Object.entries(actions)
+            .filter(([, action]) => action && action.enabled !== false)
+            .flatMap(([name, action]) => [name, ...(Array.isArray(action.aliases) ? action.aliases : [])])
+            .map(name => String(name || "").trim())
+            .filter(Boolean);
+        const uniqueActions = [...new Map(
+            directActions.map(action => [normalizeActionName(action), action])
+        ).values()];
+        return [
+            "{prefix}act <ação> [@membro]",
+            ...uniqueActions.map(action => `{prefix}${action} [@membro]`)
+        ].join("\n");
+    },
     resolveAlias(commandName, message) {
         return resolveActionAlias(commandName, message);
     },

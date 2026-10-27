@@ -428,5 +428,125 @@
         "file": "cry_1792516980431_700.gif"
       }
     ]
+  },
+  "kill": {
+    "enabled": true,
+    "aliases": [
+      "matar"
+    ],
+    "messages": [
+      "{user1} Matou {user2} com violência 😳",
+      "{user2} foi eliminado por {user1}",
+      "{user1} Matou {user2} com frieza ❄️"
+    ],
+    "media": [
+      {
+        "type": "gif",
+        "file": "kill_1792806219474_552.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "kill_1792806288964_121.mp4"
+      }
+    ]
+  },
+  "explosion": {
+    "enabled": true,
+    "aliases": [
+      "explosão",
+      "explodir"
+    ],
+    "messages": [
+      "{user1} Lançou uma magia carmesim explosiva me {user2} 💥",
+      "{user1} gastou toda sua energia vital lançando uma explosão em {user2} 💥",
+      "{user2} virou farinha com a enorme explosão que {user1} causou"
+    ],
+    "media": [
+      {
+        "type": "gif",
+        "file": "explosion_1792806826183_845.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "explosion_1792806840923_991.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "explosion_1792806862654_429.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "explosion_1792806908161_325.mp4"
+      }
+    ]
+  },
+  "kon": {
+    "enabled": true,
+    "aliases": [],
+    "messages": [
+      "{user1} fez o sinal de raposa com as mãos, e a  Raposa engoliu {user2} de uma só vez!",
+      "{user1} invocou o Demônio da Raposa: a mandíbula gigante emergiu da penumbra e devorou {user2}.",
+      "{user1} sacrificou uma parte da pele para o contrato: *\"Kon\"*. O Demônio Raposa apareceu destruindo tudo e abocanhou {user2}.",
+      "{user1} disse *\"Kon\"* e mandou {user2} direto para o estômago do Demônio Raposa!",
+      "{user1} fez o sinal de mão e usou o Kon em {user2}! Sobrou nem os ossos.",
+      "{user1} fez o contrato valer a pena e usou o Kon para engolir {user2}."
+    ],
+    "media": [
+      {
+        "type": "gif",
+        "file": "kon_1792807335264_430.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "kon_1792807369919_628.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "kon_1792807489273_802.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "kon_1792807589174_378.mp4"
+      }
+    ]
+  },
+  "domain_expansion": {
+    "enabled": true,
+    "aliases": [
+      "de"
+    ],
+    "messages": [
+      "{user1} ativou o *Incalculável Vazio* e sobrecarregou a mente de {user2} com informação infinita!",
+      "{user1} fez o sinal com os dedos e deixou {user2} completamente paralisado no Vazio!",
+      "{user1} abriu o *Santuário Onipotente* e fatiou {user2} em milhares de pedaços!",
+      "{user1} abriu a *Encarnação da Perfeição* e tocou a alma de {user2} sem qualquer esforço!",
+      "{user1} envolveu {user2} com mãos gigantes e moldou sua alma no Domínio!",
+      "{user1} ativou a *Aposta da Morte*, tirou o Jackpot e atropelou {user2} com energia infinita!",
+      "{user1} abriu o *Tribunal Mortal*, acusou {user2} de crimes e confiscou seus poderes!",
+      "{user1} cobriu o chão de sombras e afundou {user2} no Jardim da Quimera!",
+      "{user1} expandiu seu domínio, levou {user2} para sua cidade natal e atingiu sua alma diretamente!"
+    ],
+    "media": [
+      {
+        "type": "gif",
+        "file": "domain_expansion_1792808136282_402.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "domain_expansion_1792808156373_738.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "domain_expansion_1792808171584_675.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "domain_expansion_1792808195108_715.mp4"
+      },
+      {
+        "type": "gif",
+        "file": "domain_expansion_1792808233463_350.mp4"
+      }
+    ]
   }
 }

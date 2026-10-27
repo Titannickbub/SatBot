@@ -1,6 +1,6 @@
 const path = require("path");
 const { cleanJid } = require("../../functions/moderationHelper");
-const { getTestInfo, getSavedMedia, resolveTestKey, TESTES_MEDIA_DIR, TESTES_FILE } = require("../../functions/testeHelper");
+const { getTestInfo, getSavedMedia, resolveTestKey, getSupportedTestKeys, TESTES_MEDIA_DIR, TESTES_FILE } = require("../../functions/testeHelper");
 const { renderCoupleTest } = require("../../functions/imageBanner");
 const actModule = require("./act");
 
@@ -27,6 +27,12 @@ module.exports = {
         "otaku"
     ],
     category: "diversão/Testes",
+    getMenuUsage() {
+        return [
+            "{prefix}testar <teste> [@membro]",
+            ...getSupportedTestKeys().map(test => `{prefix}${test} [@membro]`)
+        ].join("\n");
+    },
     description: `🧪 Executa testes aleatórios e divertidos com porcentagem, frases temáticas, GIFs e gerador de banner de casal com foto.
 
 📝 1. Faça um teste em si mesmo:

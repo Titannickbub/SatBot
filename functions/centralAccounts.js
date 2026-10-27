@@ -8,6 +8,7 @@ class CentralAccountsStore {
     this.data = { centralAccounts: {}, mergeCodes: {} };
     this.dirty = false;
     this.saving = false;
+    this.credentialSetupInFlight = new Set();
     this._autoSaveHandle = null;
     this._cleanupHandle = null;
   }
@@ -111,6 +112,8 @@ class CentralAccountsStore {
   async setWebPassword(centralId, password) {
     const central = this.getCentralById(centralId);
     if (!central) throw new Error('central not found');
+    const username = central.webAuth?.username;
+    if (!username) throw new Error('web username not configured');
     const salt = crypto.randomBytes(16);
     const passwordHash = await new Promise((resolve, reject) => {
       crypto.scrypt(password, salt, 64, (error, derivedKey) => {
@@ -119,19 +122,37 @@ class CentralAccountsStore {
       });
     });
     central.webAuth = {
+      ...central.webAuth,
+      username,
       passwordSalt: salt.toString('hex'),
-      passwordHash
+      passwordHash,
+      rememberedSessions: []
     };
+    delete central.webAuth.loginTokenHash;
+    delete central.webAuth.loginTokenExpiresAt;
     central.lastActivityAt = this._nowISO();
     this._markDirty();
     await this.saveNow();
+  }
+
+  findByWebUsername(username) {
+    const normalizedUsername = String(username || '').trim().toLowerCase();
+    if (!normalizedUsername) return null;
+    return Object.values(this.data.centralAccounts).find(central =>
+      central.webAuth?.username === normalizedUsername
+    ) || null;
+  }
+
+  getCentralByLogin(login) {
+    const normalizedLogin = String(login || '').trim();
+    return this.getCentralById(normalizedLogin) || this.findByWebUsername(normalizedLogin);
   }
 
   async verifyWebPassword(centralId, password) {
     const central = this.getCentralById(centralId);
     const saltHex = central?.webAuth?.passwordSalt;
     const passwordHash = central?.webAuth?.passwordHash;
-    if (!saltHex || !passwordHash) return false;
+    if (!central?.webAuth?.username || !saltHex || !passwordHash) return false;
 
     const salt = Buffer.from(saltHex, 'hex');
     const expectedHash = Buffer.from(passwordHash, 'hex');
@@ -146,9 +167,97 @@ class CentralAccountsStore {
     return crypto.timingSafeEqual(derivedKey, expectedHash);
   }
 
+  async createWebCredentialSetupToken(centralId, ttlMinutes = 15) {
+    const central = this.getCentralById(centralId);
+    if (!central) throw new Error('central not found');
+    const token = crypto.randomBytes(32).toString('base64url');
+    const authVersion = Number.isSafeInteger(central.webAuth?.authVersion)
+      ? central.webAuth.authVersion + 1
+      : 1;
+    central.webAuth = {
+      authVersion,
+      credentialSetupTokenHash: crypto.createHash('sha256').update(token).digest('hex'),
+      credentialSetupTokenExpiresAt: new Date(Date.now() + ttlMinutes * 60_000).toISOString()
+    };
+    central.lastActivityAt = this._nowISO();
+    this._markDirty();
+    await this.saveNow();
+    return token;
+  }
+
+  getCentralByCredentialSetupToken(token) {
+    if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{40,50}$/.test(token)) return null;
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    return Object.values(this.data.centralAccounts).find(central => {
+      const storedHash = central.webAuth?.credentialSetupTokenHash;
+      if (!storedHash || !/^[a-f0-9]{64}$/i.test(storedHash)) return false;
+      const storedBuffer = Buffer.from(storedHash, 'hex');
+      const expectedBuffer = Buffer.from(tokenHash, 'hex');
+      return storedBuffer.length === expectedBuffer.length &&
+        crypto.timingSafeEqual(storedBuffer, expectedBuffer) &&
+        Date.parse(central.webAuth.credentialSetupTokenExpiresAt || '') > Date.now();
+    }) || null;
+  }
+
+  async completeWebCredentialSetup(token, username, password) {
+    const central = this.getCentralByCredentialSetupToken(token);
+    if (!central) throw new Error('credential-setup-token-invalid');
+    const normalizedUsername = String(username || '').trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9._-]{2,29}$/.test(normalizedUsername)) {
+      throw new Error('web-username-invalid');
+    }
+    if (typeof password !== 'string' || password.length < 8 || password.length > 128 || /\s/.test(password)) {
+      throw new Error('web-password-invalid');
+    }
+    if (Object.values(this.data.centralAccounts).some(account =>
+      account.id !== central.id &&
+      (account.webAuth?.username === normalizedUsername || account.id.toLowerCase() === normalizedUsername)
+    )) {
+      throw new Error('web-username-taken');
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    if (this.credentialSetupInFlight.has(tokenHash)) {
+      throw new Error('credential-setup-token-invalid');
+    }
+    this.credentialSetupInFlight.add(tokenHash);
+    try {
+      const salt = crypto.randomBytes(16);
+      const passwordHash = await new Promise((resolve, reject) => {
+        crypto.scrypt(password, salt, 64, (error, derivedKey) => {
+          if (error) return reject(error);
+          resolve(derivedKey.toString('hex'));
+        });
+      });
+      if (this.getCentralByCredentialSetupToken(token)?.id !== central.id) {
+        throw new Error('credential-setup-token-invalid');
+      }
+      if (Object.values(this.data.centralAccounts).some(account =>
+        account.id !== central.id &&
+        (account.webAuth?.username === normalizedUsername || account.id.toLowerCase() === normalizedUsername)
+      )) {
+        throw new Error('web-username-taken');
+      }
+
+      central.webAuth = {
+        username: normalizedUsername,
+        passwordSalt: salt.toString('hex'),
+        passwordHash,
+        authVersion: central.webAuth.authVersion || 1,
+        rememberedSessions: []
+      };
+      central.lastActivityAt = this._nowISO();
+      this._markDirty();
+      await this.saveNow();
+      return central;
+    } finally {
+      this.credentialSetupInFlight.delete(tokenHash);
+    }
+  }
+
   async createWebLoginToken(centralId, ttlMinutes = 10) {
     const central = this.getCentralById(centralId);
-    if (!central?.webAuth?.passwordHash) throw new Error('web password not configured');
+    if (!central?.webAuth?.username || !central.webAuth.passwordHash) throw new Error('web credentials not configured');
     const token = crypto.randomBytes(32).toString('base64url');
     central.webAuth.loginTokenHash = crypto.createHash('sha256').update(token).digest('hex');
     central.webAuth.loginTokenExpiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
@@ -160,6 +269,7 @@ class CentralAccountsStore {
   async consumeWebLoginToken(token) {
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const central = Object.values(this.data.centralAccounts).find(account => {
+      if (!account.webAuth?.username || !account.webAuth.passwordHash) return false;
       const storedHash = account.webAuth?.loginTokenHash;
       if (!storedHash || storedHash.length !== tokenHash.length) return false;
       return crypto.timingSafeEqual(Buffer.from(storedHash), Buffer.from(tokenHash));
@@ -176,7 +286,7 @@ class CentralAccountsStore {
 
   async createRememberedWebSession(centralId, ttlDays = 30) {
     const central = this.getCentralById(centralId);
-    if (!central?.webAuth?.passwordHash) throw new Error('web password not configured');
+    if (!central?.webAuth?.username || !central.webAuth.passwordHash) throw new Error('web credentials not configured');
 
     const token = crypto.randomBytes(32).toString('hex');
     const now = Date.now();
@@ -185,7 +295,8 @@ class CentralAccountsStore {
       : [];
     sessions.push({
       tokenHash: crypto.createHash('sha256').update(token).digest('hex'),
-      expiresAt: new Date(now + ttlDays * 24 * 60 * 60 * 1000).toISOString()
+      expiresAt: new Date(now + ttlDays * 24 * 60 * 60 * 1000).toISOString(),
+      authVersion: central.webAuth.authVersion || 0
     });
     central.webAuth.rememberedSessions = sessions.slice(-10);
     this._markDirty();
@@ -200,6 +311,7 @@ class CentralAccountsStore {
     let removedExpiredSession = false;
 
     for (const central of Object.values(this.data.centralAccounts)) {
+      if (!central.webAuth?.username || !central.webAuth.passwordHash) continue;
       const sessions = central.webAuth?.rememberedSessions;
       if (!Array.isArray(sessions)) continue;
 
@@ -214,7 +326,8 @@ class CentralAccountsStore {
         if (!/^[a-f0-9]{64}$/i.test(session.tokenHash || "")) continue;
         const storedHash = Buffer.from(session.tokenHash, 'hex');
         const expectedHash = Buffer.from(tokenHash, 'hex');
-        if (storedHash.length === expectedHash.length && crypto.timingSafeEqual(storedHash, expectedHash)) {
+        if (session.authVersion === (central.webAuth.authVersion || 0) &&
+            storedHash.length === expectedHash.length && crypto.timingSafeEqual(storedHash, expectedHash)) {
           matched = true;
         }
       }

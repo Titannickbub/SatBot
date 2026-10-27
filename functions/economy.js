@@ -1016,6 +1016,18 @@ function setCommunityStoreText(message, field, value) {
     return true;
 }
 
+function updateCommunityStoreDetails(message, title, notice) {
+    if (typeof title !== "string" || !title.trim() ||
+        typeof notice !== "string" || !notice.trim()) return false;
+    const scope = getScope(message);
+    if (!scope) return false;
+    const data = loadScope(scope);
+    data.communityStore.title = title.trim();
+    data.communityStore.notice = notice.trim();
+    saveScope(scope, data);
+    return true;
+}
+
 function addCommunityStoreItem(message, item) {
     const scope = getScope(message);
     if (!scope || !item || typeof item.name !== "string" || !item.name.trim() ||
@@ -1057,6 +1069,37 @@ function editCommunityStoreItem(message, itemId, field, value) {
     } else {
         return null;
     }
+    saveScope(scope, data);
+    return { ...item };
+}
+
+function updateCommunityStoreItem(message, itemId, updates) {
+    const scope = getScope(message);
+    if (!scope || !updates || typeof updates !== "object" || Array.isArray(updates)) return null;
+    const data = loadScope(scope);
+    const item = data.communityStore.items.find(candidate => candidate.id === Number(itemId));
+    if (!item) return null;
+
+    const updatedItem = {
+        name: updates.name,
+        category: updates.category,
+        price: updates.price,
+        quantity: updates.quantity
+    };
+    if (typeof updatedItem.name !== "string" || !updatedItem.name.trim() ||
+        typeof updatedItem.category !== "string" || !updatedItem.category.trim() ||
+        !Number.isSafeInteger(updatedItem.price) || updatedItem.price < 0 ||
+        !(updatedItem.quantity === null ||
+            (Number.isSafeInteger(updatedItem.quantity) && updatedItem.quantity >= 0))) {
+        return null;
+    }
+
+    Object.assign(item, {
+        name: updatedItem.name.trim(),
+        category: updatedItem.category.trim(),
+        price: updatedItem.price,
+        quantity: updatedItem.quantity
+    });
     saveScope(scope, data);
     return { ...item };
 }
@@ -1387,8 +1430,10 @@ module.exports = {
     buyStoreItem,
     getCommunityStore,
     setCommunityStoreText,
+    updateCommunityStoreDetails,
     addCommunityStoreItem,
     editCommunityStoreItem,
+    updateCommunityStoreItem,
     removeCommunityStoreItem,
     buyCommunityStoreItem,
     getCommunityStoreOrders,
