@@ -1,6 +1,6 @@
 {
   "name": "SatBot",
-  "version": "1.2.64",
+  "version": "1.2.65",
   "description": "format, warn_name",
   "main": "index.js",
   "scripts": {
