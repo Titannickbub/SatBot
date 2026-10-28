@@ -1370,7 +1370,7 @@ function pickRandom(items) {
 
 function formatMoney(satcoins) {
     const value = Number(satcoins) / 100;
-    return `${value.toFixed(2)}${SATCOIN_SYMBOL}`;
+    return `${value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, " ")}${SATCOIN_SYMBOL}`;
 }
 
 function getLocalDate() {

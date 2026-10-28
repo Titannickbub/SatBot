@@ -213,6 +213,20 @@ async function applyChatState(target, isOpen) {
     return changed !== false;
 }
 
+async function getChatState(message) {
+    const target = getTarget(message);
+    await assertSupported(target);
+    const adapter = getAdapter(target.platform);
+    if (typeof adapter.getChatOpen !== "function") {
+        throw new Error(`Não foi possível consultar o estado do chat na plataforma ${target.platform}.`);
+    }
+    const isOpen = await adapter.getChatOpen(target.chatId);
+    if (typeof isOpen !== "boolean") {
+        throw new Error(`A plataforma ${target.platform} retornou um estado de chat inválido.`);
+    }
+    return isOpen;
+}
+
 function cancelSchedules(ids) {
     const scheduler = require("./schedulerHelper");
     for (const id of ids || []) scheduler.removeSchedule(id);
@@ -441,6 +455,7 @@ module.exports = {
     getConfig,
     assertSupported,
     setChatState,
+    getChatState,
     applyChatState,
     fireSchedule,
     addProfile,

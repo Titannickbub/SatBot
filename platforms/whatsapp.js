@@ -1110,6 +1110,19 @@ async function setChatOpen(chatId, isOpen) {
   return true;
 }
 
+async function getChatOpen(chatId) {
+  const sock = global.whatsappSock;
+  if (!sock) throw new Error("[WHATSAPP] Socket não iniciado.");
+  if (!String(chatId).endsWith("@g.us")) {
+    throw new Error("[WHATSAPP] A consulta do estado só funciona em grupos.");
+  }
+  const metadata = await sock.groupMetadata(chatId);
+  if (metadata.isCommunity || metadata.isCommunityAnnounce) {
+    throw new Error("[WHATSAPP] O controle de abertura não está disponível em comunidades.");
+  }
+  return !metadata.announce;
+}
+
 async function checkChatControlSupport(chatId) {
   const sock = global.whatsappSock;
   if (!sock || !String(chatId).endsWith("@g.us")) return false;
@@ -1187,6 +1200,7 @@ module.exports = {
   checkChatControlSupport,
 
   setChatOpen,
+  getChatOpen,
 
   checkBotPermission,
 

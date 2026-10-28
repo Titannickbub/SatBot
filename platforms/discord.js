@@ -1267,6 +1267,18 @@ async function setChatOpen(chatId, isOpen) {
     return true;
 }
 
+async function getChatOpen(chatId) {
+    const channel = await getDiscordChannel(chatId);
+    if (!channel || !channel.guild || channel.isThread?.() ||
+        typeof channel.isTextBased !== "function" || !channel.isTextBased()) {
+        throw new Error("[DISCORD] Não foi possível consultar o estado deste canal.");
+    }
+    const everyoneRole = channel.guild.roles?.everyone || channel.guild.id;
+    const permissions = channel.permissionsFor(everyoneRole);
+    if (!permissions) throw new Error("[DISCORD] Não foi possível ler as permissões do canal.");
+    return permissions.has(PermissionFlagsBits.SendMessages);
+}
+
 async function checkChatControlSupport(chatId) {
     const channel = await getDiscordChannel(chatId);
     return Boolean(channel?.guild && !channel.isThread?.() &&
@@ -1293,6 +1305,7 @@ module.exports = {
     checkChatControlSupport,
 
     setChatOpen,
+    getChatOpen,
 
     checkBotPermission,
 

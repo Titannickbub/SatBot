@@ -37,6 +37,7 @@ const { executeRoleChange } = require("./discordRoles");
 const { setWhatsAppAdmin } = require("./whatsappAdminHelper");
 const { executeTelegramPromotion, executeTelegramDemotion, LEVELS: telegramAdminLevels } = require("./telegramAdminHelper");
 const baileysPkg = require("@whiskeysockets/baileys");
+const chatControl = require("./chatControl");
 
 const DEFAULT_PORT = 32013;
 const WEB_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -359,22 +360,47 @@ async function addModerationWarningNames(platform, groupId, warnings) {
       throw new Error("O WhatsApp está offline no momento.");
     }
     const metadata = await sock.groupMetadata(String(groupId));
-    const namedEntries = entries.map(entry => {
+    const namedEntries = await Promise.all(entries.map(async entry => {
       const participant = (metadata.participants || []).find(candidate =>
         [candidate.id, candidate.lid, candidate.phoneNumber].filter(Boolean)
           .some(id => sameUserId(id, entry.userId))
       );
+      const identity = participant || { id: entry.userId };
+      const ids = [
+        entry.userId,
+        participant?.id,
+        participant?.lid,
+        participant?.phoneNumber
+      ].filter(Boolean).map(String);
+      const name = await getWhatsAppParticipantName(identity, sock, ids);
       return {
         ...entry,
-        name: participant?.name || participant?.notify || participant?.phoneNumber || entry.userId
+        name: name || (participant ? getWhatsAppParticipantPhoneNumber(participant) : "") || entry.userId
       };
-    });
+    }));
     return { ...warnings, entries: namedEntries };
   }
 
   const namedEntries = await Promise.all(entries.map(async entry => {
     const [user] = await searchModerationUsers(platform, groupId, entry.userId, warnings);
-    return { ...entry, name: user?.label || entry.userId };
+    if (user?.label && user.label !== entry.userId) {
+      return { ...entry, name: user.label };
+    }
+    if (platform === "discord") {
+      const client = global.discordClient;
+      try {
+        const discordUser = await client.users.fetch(String(entry.userId));
+        return {
+          ...entry,
+          name: discordUser.globalName || discordUser.username || entry.userId
+        };
+      } catch (error) {
+        if (Number(error?.code) !== 10013 && Number(error?.status) !== 404) {
+          throw error;
+        }
+      }
+    }
+    return { ...entry, name: entry.userId };
   }));
   return { ...warnings, entries: namedEntries };
 }
@@ -1294,6 +1320,10 @@ async function getAdminSystemsOptions(platform, groupId) {
           .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
       }))
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+    const chatChannels = [...channels.values()]
+      .filter(channel => [ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type))
+      .map(channel => ({ id: String(channel.id), name: `#${channel.name || channel.id}` }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
     const logChannels = [...channels.values()]
       .filter(channel => [ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type))
       .map(channel => ({ id: String(channel.id), name: `#${channel.name || channel.id}` }))
@@ -1301,6 +1331,7 @@ async function getAdminSystemsOptions(platform, groupId) {
     const serverSettings = groupSettings.loadSettings("discord", String(groupId), "server");
     return {
       categories,
+      chatChannels,
       topics: [],
       logChannels,
       logChannelId: serverSettings.settings?.logsChannelId || ""
@@ -2854,13 +2885,88 @@ function renderGroupAdmin(data) {
       bot: Object.fromEntries(data.permissionSnapshot.botPermissions.map(item => [item.key, item.allowed]))
     })};
     const feedback=document.getElementById("adminFeedback");
-    const formatStoreMoney=amount=>(Number(amount||0)/100).toFixed(2)+"💷";
+    const formatStoreMoney=amount=>((Number(amount||0)/100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g," "))+"💷";
     const scopeFilter=document.getElementById("scopeFilter");
     async function requestAdminApi(path,payload={}){
       const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...context,...payload})});
       const result=await response.json();
       if(!response.ok)throw new Error(result.error||"Não foi possível carregar as configurações.");
       return result;
+    }
+    let chatControlChannel=null;
+    if(context.platform==="discord"||context.platform==="whatsapp"){
+      const chatControlPanel=document.createElement("section");chatControlPanel.className="moderation-card";chatControlPanel.style.marginBottom="12px";
+      const chatControlTitle=document.createElement("h3");chatControlTitle.textContent="Abrir ou fechar chat";
+      const chatControlDescription=document.createElement("p");chatControlDescription.className="moderation-help";chatControlDescription.textContent=context.platform==="discord"?"Selecione um canal de texto ou anúncios do servidor.":"A ação será aplicada ao grupo aberto neste painel.";
+      const chatControlStatus=document.createElement("p");chatControlStatus.className="moderation-feedback";chatControlStatus.setAttribute("role","status");chatControlStatus.setAttribute("aria-live","polite");chatControlStatus.textContent=context.platform==="discord"?"Selecione um canal para consultar o estado.":"Consultando o estado do grupo...";
+      chatControlPanel.append(chatControlTitle,chatControlDescription,chatControlStatus);
+      if(context.platform==="discord"){
+        const channelLabel=document.createElement("label");channelLabel.className="moderation-fields";channelLabel.style.marginTop="12px";channelLabel.textContent="Canal";
+        chatControlChannel=document.createElement("select");chatControlChannel.innerHTML='<option value="">Carregando canais...</option>';channelLabel.append(chatControlChannel);chatControlPanel.append(channelLabel);
+      }
+      const chatControlActions=document.createElement("div");chatControlActions.className="moderation-actions";
+      const openChatButton=document.createElement("button");openChatButton.type="button";openChatButton.className="moderation-action";openChatButton.textContent="Abrir chat";
+      const closeChatButton=document.createElement("button");closeChatButton.type="button";closeChatButton.className="moderation-action danger";closeChatButton.textContent="Fechar chat";
+      openChatButton.hidden=true;closeChatButton.hidden=true;
+      let chatIsOpen=null;
+      let chatStateRequest=0;
+      function showChatState(isOpen){
+        chatIsOpen=isOpen;
+        chatControlStatus.classList.remove("error");
+        chatControlStatus.textContent="Estado atual: chat "+(isOpen?"aberto.":"fechado.");
+        openChatButton.hidden=isOpen;
+        closeChatButton.hidden=!isOpen;
+        openChatButton.disabled=false;closeChatButton.disabled=false;
+      }
+      async function loadChatState(){
+        const requestId=++chatStateRequest;
+        const channelId=chatControlChannel?.value;
+        if(chatControlChannel&&!channelId){
+          chatIsOpen=null;openChatButton.hidden=true;closeChatButton.hidden=true;
+          chatControlStatus.classList.remove("error");chatControlStatus.textContent="Selecione um canal para consultar o estado.";
+          return;
+        }
+        openChatButton.hidden=true;closeChatButton.hidden=true;
+        openChatButton.disabled=true;closeChatButton.disabled=true;
+        chatControlStatus.classList.remove("error");chatControlStatus.textContent="Consultando o estado do chat...";
+        try{
+          const result=await requestAdminApi("/api/account/local/admin-chat-control",{action:"status",channelId});
+          if(requestId!==chatStateRequest)return;
+          showChatState(result.isOpen);
+        }catch(error){
+          if(requestId!==chatStateRequest)return;
+          chatIsOpen=null;chatControlStatus.classList.add("error");chatControlStatus.textContent=error.message;
+        }finally{
+          if(requestId===chatStateRequest&&chatIsOpen===null){openChatButton.disabled=false;closeChatButton.disabled=false}
+        }
+      }
+      if(chatControlChannel)chatControlChannel.addEventListener("change",loadChatState);
+      async function changeChatState(isOpen){
+        if(chatControlChannel&&!chatControlChannel.value){feedback.classList.add("error");feedback.textContent="Selecione um canal para continuar.";return}
+        chatStateRequest++;
+        openChatButton.disabled=true;closeChatButton.disabled=true;feedback.classList.remove("error");feedback.textContent="Atualizando permissões do chat...";
+        if(chatControlChannel)chatControlChannel.disabled=true;
+        chatControlStatus.classList.remove("error");chatControlStatus.textContent="Aplicando alteração...";
+        try{
+          const result=await requestAdminApi("/api/account/local/admin-chat-control",{action:isOpen?"open":"close",channelId:chatControlChannel?.value});
+          feedback.textContent="";
+          showChatState(result.isOpen);
+          chatControlStatus.textContent=result.message+" Estado atual: chat "+(result.isOpen?"aberto.":"fechado.");
+        }catch(error){
+          feedback.classList.add("error");feedback.textContent=error.message;
+          chatControlStatus.classList.add("error");chatControlStatus.textContent=error.message;
+          await loadChatState();
+        }
+        finally{
+          if(chatControlChannel){chatControlChannel.disabled=false;const disabled=!chatControlChannel.value||chatIsOpen===null;openChatButton.disabled=disabled;closeChatButton.disabled=disabled}
+          else if(chatIsOpen!==null){openChatButton.disabled=false;closeChatButton.disabled=false}
+        }
+      }
+      openChatButton.addEventListener("click",()=>changeChatState(true));
+      closeChatButton.addEventListener("click",()=>changeChatState(false));
+      chatControlActions.append(openChatButton,closeChatButton);chatControlPanel.append(chatControlActions);
+      document.querySelector(".scope-panel.scope-toolbar")?.before(chatControlPanel);
+      if(!chatControlChannel)loadChatState();
     }
     function renderScopedSettings(target,scope,settings){
       const definitions=${JSON.stringify(ADMIN_SYSTEM_SETTINGS.map(({key,label,description,category,scopes})=>({key,label,description,category,scopes})))};
@@ -3976,12 +4082,16 @@ function renderGroupAdmin(data) {
       const categorySelect=document.getElementById("categorySelect"),channelSelect=document.getElementById("channelSelect"),channelPicker=document.getElementById("channelPicker");
       let discordCategories=[];
       const logsChannelSelect=document.getElementById("logsChannelSelect");
-      requestAdminApi("/api/account/local/admin-systems-options").then(({categories,logChannels,logChannelId})=>{
+      requestAdminApi("/api/account/local/admin-systems-options").then(({categories,chatChannels,logChannels,logChannelId})=>{
         discordCategories=categories;
         for(const category of discordCategories){const option=document.createElement("option");option.value=category.id;option.textContent=category.name;categorySelect.append(option)}
+        if(chatControlChannel){
+          chatControlChannel.innerHTML='<option value="">Selecione um canal</option>';
+          for(const channel of chatChannels||[]){const option=document.createElement("option");option.value=channel.id;option.textContent=channel.name;chatControlChannel.append(option)}
+        }
         for(const channel of logChannels||[]){const option=document.createElement("option");option.value=channel.id;option.textContent=channel.name;logsChannelSelect.append(option)}
         logsChannelSelect.value=logChannelId||"";
-      }).catch(error=>{feedback.classList.add("error");feedback.textContent=error.message});
+      }).catch(error=>{feedback.classList.add("error");feedback.textContent=error.message;if(chatControlChannel)chatControlChannel.innerHTML='<option value="">Não foi possível carregar os canais</option>'});
       logsChannelSelect.addEventListener("change",async()=>{
         logsChannelSelect.disabled=true;feedback.classList.remove("error");feedback.textContent="";
         try{
@@ -4990,7 +5100,7 @@ function renderHome(botName, central = null, loginError = "") {
 }
 
 function formatMoney(cents) {
-  return `${(Number(cents || 0) / 100).toFixed(2)}💷`;
+  return `${(Number(cents || 0) / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, " ")}💷`;
 }
 
 function parseAdminStorePrice(value) {
@@ -5446,6 +5556,80 @@ function start() {
         } catch (error) {
           console.error(`[WEB] Falha ao listar grupos da plataforma ${platform}:`, error.message || error);
           sendJson(response, 503, { error: "Não foi possível consultar os grupos desta plataforma agora." });
+        }
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/account/local/admin-chat-control") {
+        const platform = typeof payload?.platform === "string" ? payload.platform : "";
+        const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
+        const action = payload?.action;
+        const requestedChannelId = typeof payload?.channelId === "string" ? payload.channelId.trim() : "";
+        if (!["discord", "whatsapp"].includes(platform) ||
+            !["open", "close", "status"].includes(action) ||
+            (platform === "discord" && !/^\d{15,25}$/.test(requestedChannelId))) {
+          sendJson(response, 400, { error: "Plataforma, ação ou canal inválido." });
+          return;
+        }
+        try {
+          await getGroupAdminData(central, platform, groupId);
+          const platformAccount = central.platformAccounts.find(account => account.platform === platform);
+          let chatId = String(groupId);
+          let raw = {};
+          if (platform === "discord") {
+            const client = global.discordClient;
+            if (!client?.isReady?.()) throw new Error("O Discord está offline no momento.");
+            const guild = await client.guilds.fetch(String(groupId));
+            const channel = await guild.channels.fetch(requestedChannelId);
+            if (!channel || ![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type)) {
+              throw new Error("Escolha um canal de texto ou anúncios deste servidor.");
+            }
+            chatId = String(channel.id);
+            raw = { guild, channel };
+          }
+          const adapter = global.platformRegistry?.[platform];
+          if (!await adapter?.checkUserPermission?.(chatId, String(platformAccount.platformId), "manageChat")) {
+            throw new Error("Sua conta vinculada não tem permissão para gerenciar este chat.");
+          }
+          if (!await adapter?.checkBotPermission?.(chatId, "manageChat")) {
+            throw new Error("O bot não tem permissão para alterar as configurações deste chat.");
+          }
+          const message = {
+            ...getLocalGroupMessage(platform, groupId, String(platformAccount.platformId)),
+            chatId,
+            raw
+          };
+          let changed = false;
+          if (action !== "status") {
+            const result = await chatControl.setChatState(message, action === "open");
+            changed = result.changed;
+          }
+          const isOpen = await chatControl.getChatState(message);
+          if (action !== "status" && isOpen !== (action === "open")) {
+            throw new Error("A plataforma não confirmou a alteração do estado deste chat.");
+          }
+          const state = isOpen ? "aberto" : "fechado";
+          sendJson(response, 200, {
+            success: true,
+            isOpen,
+            changed,
+            message: action === "status"
+              ? `Estado atual do chat: ${state}.`
+              : changed
+                ? `Chat ${state}. A alteração foi aplicada.`
+                : `O chat já estava ${state}. Nenhuma alteração necessária.`
+          });
+        } catch (error) {
+          const reason = String(error?.message || "");
+          const statusCode = /não participa|não está vinculada|permissão|tem permissão/i.test(reason) ? 403
+            : /offline|não está disponível/i.test(reason) ? 503
+              : /inválido|escolha um canal|não encontrado|não funciona|não aceita|comunidades/i.test(reason) ? 400 : 500;
+          if (statusCode === 500) console.error("[WEB] Falha ao alterar abertura do chat:", error.message || error);
+          sendJson(response, statusCode, {
+            error: statusCode === 403 || statusCode === 503 || statusCode === 400
+              ? reason
+              : "Não foi possível alterar a abertura deste chat."
+          });
         }
         return;
       }

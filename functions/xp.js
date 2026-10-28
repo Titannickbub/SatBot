@@ -220,16 +220,12 @@ async function notifyLevelUp(message, level, config, reward = null) {
     const chatId = config.chatId || message.chatId;
     const threadId = config.chatId ? config.threadId : message.threadId;
     const name = message.displayName || message.username || message.name || message.userId;
-    const rewardText = reward ? `\n💷 Recompensa: ${formatMoney(reward.amount)}` : "";
+    const rewardText = reward ? `\n💷 Recompensa: ${economy.formatMoney(reward.amount)}` : "";
     const text = `🎉 ${name} alcançou o nível ${level} no rank XP!${rewardText}`;
     try {
         await send.text(message.platform, chatId, threadId, text);
     } catch (error) {
         console.error("[xp] Não foi possível enviar aviso de level-up:", error);
-    }
-
-    function formatMoney(amount) {
-        return `${(Number(amount) / 100).toFixed(2)}💷`;
     }
 }
 

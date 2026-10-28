@@ -21,7 +21,7 @@ function escapeXml(value) {
 }
 
 function formatMoney(cents) {
-    return `${(Number(cents || 0) / 100).toFixed(2)}💷`;
+    return `${(Number(cents || 0) / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, " ")}💷`;
 }
 
 function createQuery(values) {

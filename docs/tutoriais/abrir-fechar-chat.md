@@ -23,6 +23,22 @@ Os comandos funcionam em:
 Eles não funcionam em conversas privadas. A plataforma também precisa permitir
 que o bot controle o estado do chat.
 
+## Usar o painel web
+
+No painel administrativo, use os botões **Abrir chat** e **Fechar chat**:
+
+- **WhatsApp:** a ação é aplicada diretamente ao grupo aberto no painel; não
+  é necessário selecionar o grupo novamente.
+- **Discord:** selecione um canal de texto ou anúncios antes de executar a
+  ação. Threads não são aceitas.
+
+O painel mostra se o chat está aberto ou fechado e exibe somente o botão da
+ação oposta. Depois da tentativa, informa se a alteração foi aplicada ou se o
+chat já estava no estado solicitado.
+
+As alterações feitas pelo painel não têm prazo automático. Para programar uma
+reversão, use os comandos no chat com uma duração ou horário.
+
 ## Abrir ou fechar sem prazo
 
 Sem informar um horário ou duração, a alteração permanece até alguém executar
@@ -83,4 +99,3 @@ seguinte. O horário usa a hora local do servidor e precisa estar a pelo menos
   `!autoabrir ajuda` para ver a configuração da programação.
 - Também é possível consultar a ajuda diretamente no chat com
   `!abrirchat ajuda` ou `!fecharchat ajuda`.
-
