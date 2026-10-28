@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const centralAccounts = require("./centralAccounts");
+const profileCosmetics = require("./profileCosmetics");
 
 const economyDir = path.join(__dirname, "..", "settings", "economy");
 const DAILY_REWARD = 2000;
@@ -359,6 +360,72 @@ function getAccountByUser(message, userId) {
     const store = loadScope(scope);
     const account = store.accounts[String(userId)];
     return account && typeof account === "object" ? account : null;
+}
+
+function getProfileCosmetics(message, userId = message?.userId) {
+    const scope = getScope(message);
+    if (!scope || userId === null || userId === undefined) {
+        return { background: null, ownedBackgrounds: [] };
+    }
+    const account = loadScope(scope).accounts[String(userId)];
+    const cosmetics = account?.cosmetics;
+    const ownedBackgrounds = Array.isArray(cosmetics?.backgrounds)
+        ? [...new Set(cosmetics.backgrounds.map(profileCosmetics.normalizeProfileBackground).filter(Boolean))]
+        : [];
+    const selected = profileCosmetics.normalizeProfileBackground(cosmetics?.background);
+    return {
+        background: selected && ownedBackgrounds.includes(selected) ? selected : null,
+        ownedBackgrounds
+    };
+}
+
+function setProfileBackground(message, background) {
+    const backgroundKey = profileCosmetics.normalizeProfileBackground(background);
+    if (!backgroundKey) return { purchased: false, reason: "invalid-background" };
+    const { account, scope } = getAccount(message);
+    const cosmetics = account.cosmetics && typeof account.cosmetics === "object"
+        ? account.cosmetics
+        : { backgrounds: [], background: null };
+    const ownedBackgrounds = Array.isArray(cosmetics.backgrounds)
+        ? cosmetics.backgrounds.map(profileCosmetics.normalizeProfileBackground).filter(Boolean)
+        : [];
+    const alreadyOwned = ownedBackgrounds.includes(backgroundKey);
+    if (!alreadyOwned && account.balance < profileCosmetics.PROFILE_BACKGROUND_PRICE) {
+        return {
+            purchased: false,
+            reason: "insufficient-balance",
+            price: profileCosmetics.PROFILE_BACKGROUND_PRICE,
+            balance: account.balance
+        };
+    }
+    if (!alreadyOwned) {
+        account.balance -= profileCosmetics.PROFILE_BACKGROUND_PRICE;
+        ownedBackgrounds.push(backgroundKey);
+    }
+    account.cosmetics = {
+        ...cosmetics,
+        backgrounds: [...new Set(ownedBackgrounds)],
+        background: backgroundKey
+    };
+    saveScope(scope, loadScope(scope));
+    return {
+        purchased: true,
+        boughtNow: !alreadyOwned,
+        background: backgroundKey,
+        balance: account.balance
+    };
+}
+
+function resetProfileBackground(message) {
+    const { account, scope } = getAccount(message);
+    const cosmetics = account.cosmetics;
+    if (!cosmetics || typeof cosmetics !== "object") {
+        return { changed: false };
+    }
+    const changed = Boolean(cosmetics.background);
+    cosmetics.background = null;
+    saveScope(scope, loadScope(scope));
+    return { changed };
 }
 
 function listAccounts(message) {
@@ -1396,6 +1463,11 @@ module.exports = {
     listAccounts,
     getBalance,
     getAccountByUser,
+    getProfileCosmetics,
+    setProfileBackground,
+    resetProfileBackground,
+    PROFILE_BACKGROUNDS: profileCosmetics.PROFILE_BACKGROUNDS,
+    PROFILE_BACKGROUND_PRICE: profileCosmetics.PROFILE_BACKGROUND_PRICE,
     resetBalance,
     resetAllBalances,
     getBalancePosition,

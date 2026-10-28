@@ -38,6 +38,7 @@ const { setWhatsAppAdmin } = require("./whatsappAdminHelper");
 const { executeTelegramPromotion, executeTelegramDemotion, LEVELS: telegramAdminLevels } = require("./telegramAdminHelper");
 const baileysPkg = require("@whiskeysockets/baileys");
 const chatControl = require("./chatControl");
+const profileCosmetics = require("./profileCosmetics");
 
 const DEFAULT_PORT = 32013;
 const WEB_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -1457,6 +1458,7 @@ async function getGroupAdminData(central, platform, groupId) {
   }
 
   const message = getLocalGroupMessage(platform, groupId, platformId);
+  const cosmetics = economy.getProfileCosmetics(message, platformId);
   const profileUrl = new URL("http://localhost/perfil");
   profileUrl.searchParams.set("plataforma", platform);
   profileUrl.searchParams.set("grupo", groupId);
@@ -1467,6 +1469,7 @@ async function getGroupAdminData(central, platform, groupId) {
     groupId,
     groupName: profile.groupName || `Grupo ${groupId}`,
     userName: profile.name || platformAccount.displayName || platformAccount.username || "Sua conta",
+    profileBackground: cosmetics.background,
     avatarUrl: await getProfileAvatar(platform, groupId, platformId),
     settings: getAdminSettings(message),
     moderation: getModerationWarnings(platform, groupId, platformId),
@@ -2458,6 +2461,7 @@ async function getLocalAccountData(central, platform, groupId) {
     canManage: await canManagePlatformGroup(platform, groupId, platformId),
     groupName: profile.groupName || `Grupo ${groupId}`,
     userName: profile.name || platformAccount.displayName || platformAccount.username || "Sua conta",
+    profileBackground: economy.getProfileCosmetics(message, platformId).background,
     avatarUrl: await getProfileAvatar(platform, groupId, platformId),
     warnings: getUserWarns(message, platformId),
     maxWarnings: warnConfig?.max || 3,
@@ -2528,6 +2532,7 @@ async function getLocalAccountData(central, platform, groupId) {
 
 function renderLocalAccount(data) {
   const safeBotName = escapeHtml(config.getBotName());
+  const cosmeticThemeStyles = getCosmeticPanelStyles(data.profileBackground, "local");
   const groupType = data.platform === "discord" ? "Servidor" : "Grupo";
   const currency = amount => `${economy.formatMoney(Number(amount) || 0)} ${economy.SATCOIN_SYMBOL}`;
   const dailyLabels = [
@@ -2602,8 +2607,11 @@ function renderLocalAccount(data) {
     .local-hero{display:flex;align-items:center;gap:20px;margin:26px 0;padding:26px;border:1px solid #6378c444;border-radius:22px;background:linear-gradient(115deg,#202a46,#302654)}
     .local-hero-main{display:flex;align-items:center;gap:20px;min-width:0}
     .local-hero-actions{display:flex;flex:none;align-items:center}
+    .local-hero-action-links{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:9px}
     .admin-panel-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:10px 15px;border:1px solid #a99dff66;border-radius:12px;background:linear-gradient(120deg,#8877ff35,#577cff28);color:#e2deff;font-size:13px;font-weight:750;text-decoration:none;box-shadow:0 8px 22px #635bff1a;transition:transform .16s ease,border-color .16s ease,background .16s ease}
     .admin-panel-button:hover,.admin-panel-button:focus-visible{transform:translateY(-2px);border-color:#b8adff;background:linear-gradient(120deg,#8877ff50,#577cff40);outline:2px solid #a99dff55;outline-offset:2px}
+    .cosmetics-store-button{border-color:#f0a8c666;background:linear-gradient(120deg,#f076a535,#bd72ff28);color:#ffe0ef}
+    .cosmetics-store-button:hover,.cosmetics-store-button:focus-visible{border-color:#f0a8c6;background:linear-gradient(120deg,#f076a550,#bd72ff40)}
     .local-avatar{width:82px;height:82px;flex:none;border:3px solid #a99dff66;border-radius:24px;object-fit:cover;background:#171d2b}
     .local-hero h1{margin:0;font-size:clamp(25px,4vw,38px);overflow-wrap:anywhere}
     .local-hero p{margin:7px 0 0;color:#c1c9df}
@@ -2654,11 +2662,12 @@ function renderLocalAccount(data) {
     .daily-total strong{color:#c6bdff;text-align:right}
     .local-footer{margin-top:20px;color:#71809d;font-size:12px}
     @media(max-width:760px){.local-layout,.local-functions{grid-template-columns:1fr}}
-    @media(max-width:640px){.local-hero{align-items:flex-start;flex-direction:column}.local-hero-main{align-items:flex-start}.local-hero-actions{width:100%}.admin-panel-button{width:100%}}
+    @media(max-width:640px){.local-hero{align-items:flex-start;flex-direction:column}.local-hero-main{align-items:flex-start}.local-hero-actions{width:100%}.local-hero-action-links{width:100%}.admin-panel-button{width:100%}}
     @media(max-width:480px){.local-page{padding:20px 0 38px}.local-hero{padding:20px}.local-avatar{width:62px;height:62px;border-radius:18px}.local-panel{padding:18px}.local-stats{grid-template-columns:1fr}.daily-list{grid-template-columns:1fr}}
+    ${cosmeticThemeStyles}
   </style></head><body><main class="local-page">
     <nav class="local-topbar"><a href="/dashboard">← Conta Central</a><span>${safeBotName} · Painel local</span></nav>
-    <header class="local-hero"><div class="local-hero-main"><img class="local-avatar" src="${escapeHtml(data.avatarUrl || "/semfoto.jpg")}" alt="Foto de perfil de ${escapeHtml(data.userName)}" onerror="this.onerror=null;this.src='/semfoto.jpg'"><div><div class="eyebrow">Painel da conta local</div><h1>${escapeHtml(data.userName)}</h1><p>${groupType}: ${escapeHtml(data.groupName)} · ${escapeHtml(data.platform)}</p></div></div>${data.canManage ? `<div class="local-hero-actions"><a class="admin-panel-button" href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">⚙ Painel de administração</a></div>` : ""}</header>
+    <header class="local-hero"><div class="local-hero-main"><img class="local-avatar" src="${escapeHtml(data.avatarUrl || "/semfoto.jpg")}" alt="Foto de perfil de ${escapeHtml(data.userName)}" onerror="this.onerror=null;this.src='/semfoto.jpg'"><div><div class="eyebrow">Painel da conta local</div><h1>${escapeHtml(data.userName)}</h1><p>${groupType}: ${escapeHtml(data.groupName)} · ${escapeHtml(data.platform)}</p></div></div><div class="local-hero-actions"><div class="local-hero-action-links"><a class="admin-panel-button cosmetics-store-button" href="/loja-cosmeticos?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">🎨 Loja de cosméticos</a>${data.canManage ? `<a class="admin-panel-button" href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">⚙ Painel de administração</a>` : ""}</div></div></header>
     <section class="local-section" aria-labelledby="displaySectionTitle">
       <header class="local-section-heading"><div><h2 id="displaySectionTitle">Exibição</h2><p>Consulte seus dados e posições neste grupo ou servidor.</p></div></header>
       <div class="local-layout">
@@ -2708,7 +2717,135 @@ function renderLocalAccount(data) {
   </script></body></html>`;
 }
 
+function renderCosmeticsStore(data) {
+  const backgrounds = economy.PROFILE_BACKGROUNDS;
+  const selectedBackground = data.cosmetics.background;
+  const selected = selectedBackground ? backgrounds[selectedBackground] : null;
+  const previewStops = selected?.stops || ["#27365d", "#111827", "#090b10"];
+  const previewAccent = selected?.accent || "#7ea7ff";
+  const currency = economy.formatMoney(data.balance);
+  const price = economy.formatMoney(economy.PROFILE_BACKGROUND_PRICE);
+  const cards = Object.entries(backgrounds).map(([key, background]) => {
+    const owned = data.cosmetics.ownedBackgrounds.includes(key);
+    const active = data.cosmetics.background === key;
+    return `<article class="color-card${active ? " active" : ""}" data-color-card="${key}">
+      <button class="color-swatch" type="button" data-preview-color="${key}" aria-label="Visualizar ${escapeHtml(background.label)}" style="background:linear-gradient(145deg,${background.stops[0]},${background.stops[1]} 55%,${background.stops[2]});--swatch-accent:${background.accent}"></button>
+      <div class="color-card-info"><div><h3>${escapeHtml(background.label)}</h3><p>${active ? "Aplicada no seu perfil" : owned ? "Já comprada" : `Preço: ${price}`}</p></div><button class="color-action" type="button" data-set-color="${key}">${active ? "Em uso" : owned ? "Aplicar" : "Comprar e aplicar"}</button></div>
+    </article>`;
+  }).join("");
+  const pageContext = {
+    platform: data.platform,
+    groupId: data.groupId,
+    balance: currency,
+    price,
+    backgrounds: Object.fromEntries(Object.entries(backgrounds).map(([key, background]) => [
+      key,
+      { label: background.label, stops: background.stops, accent: background.accent }
+    ])),
+    ownedBackgrounds: data.cosmetics.ownedBackgrounds,
+  };
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Loja de cosméticos · ${escapeHtml(data.groupName)}</title><style>
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;background:radial-gradient(circle at 15% 0,#312344 0,#10131c 48%,#090b10 100%)}button,a{font:inherit}.store-page{width:min(1080px,100%);margin:0 auto}.store-topbar{display:flex;justify-content:space-between;gap:12px;padding:8px 0 20px;border-bottom:1px solid #ffffff16}.store-topbar a{color:#d6b5ff;text-decoration:none;font-weight:700}.store-topbar span,.store-muted{color:#aab3c8}.store-hero{margin:24px 0;padding:26px;border:1px solid #f0a8c633;border-radius:20px;background:linear-gradient(120deg,#452b4a,#24263d 70%,#1b2435)}.store-hero h1{margin:4px 0 8px;font-size:clamp(28px,5vw,40px)}.store-hero p{margin:0;color:#d0c8dc;line-height:1.6}.store-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(280px,.85fr);gap:18px;align-items:start}.store-panel{padding:22px;border:1px solid #ffffff14;border-radius:18px;background:linear-gradient(145deg,#191e2d,#131824)}.store-panel h2{margin:0 0 7px;font-size:19px}.store-colors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:18px}.color-card{overflow:hidden;border:1px solid #ffffff16;border-radius:14px;background:#ffffff05;transition:border-color .15s,transform .15s}.color-card.active{border-color:#f0a8c6aa;box-shadow:0 0 0 1px #f0a8c633}.color-card:hover{transform:translateY(-2px)}.color-swatch{display:block;width:100%;height:78px;border:0;border-bottom:1px solid #ffffff12;cursor:pointer}.color-swatch:focus-visible,.color-action:focus-visible{outline:2px solid #f0a8c6;outline-offset:2px}.color-card-info{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px}.color-card-info h3{margin:0;font-size:14px}.color-card-info p{margin:5px 0 0;color:#aab3c8;font-size:11px}.color-action{min-height:34px;padding:7px 10px;border:1px solid #f0a8c644;border-radius:9px;background:#f076a51a;color:#ffe0ef;font-size:11px;font-weight:750;cursor:pointer;white-space:nowrap}.color-action:disabled{opacity:.55;cursor:wait}.preview-card{min-height:270px;padding:20px;border:1px solid #ffffff30;border-radius:16px;background:linear-gradient(145deg,${previewStops[0]},${previewStops[1]} 55%,${previewStops[2]});transition:background .25s ease;box-shadow:0 18px 45px #0004}.preview-label{display:inline-block;padding:6px 9px;border:1px solid #ffffff32;border-radius:20px;background:#0003;color:#fff;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.preview-user{display:flex;align-items:center;gap:12px;margin-top:36px}.preview-avatar{display:grid;width:54px;height:54px;place-items:center;border:2px solid var(--preview-accent);border-radius:17px;background:#ffffff18;color:#fff;font-size:21px;font-weight:800}.preview-user strong{display:block;font-size:17px}.preview-user small{display:block;margin-top:4px;color:#ffffffb8}.preview-profile{margin-top:16px;padding:14px;border:1px solid #ffffff2a;border-radius:12px;background:#080b1280}.preview-profile strong{color:var(--preview-accent)}.preview-profile p{margin:6px 0 0;color:#ffffffbb;font-size:12px;line-height:1.5}.store-balance{margin-top:15px;padding:13px;border:1px solid #ffffff14;border-radius:12px;background:#ffffff06}.store-balance span{color:#aab3c8;font-size:11px}.store-balance strong{display:block;margin-top:4px;font-size:20px}.store-feedback{min-height:25px;margin:12px 0 0;color:#9cf0cf;font-size:13px;line-height:1.5}.store-feedback.error{color:#ff9caa}.reset-button{min-height:40px;margin-top:12px;padding:8px 12px;border:1px solid #ffffff25;border-radius:10px;background:#ffffff08;color:#e8ebf5;font-weight:700;cursor:pointer}.store-footer{margin:18px 0;color:#8390a9;font-size:12px}@media(max-width:760px){.store-layout{grid-template-columns:1fr}}@media(max-width:500px){body{padding:16px}.store-hero,.store-panel{padding:18px}.store-colors{grid-template-columns:1fr}.color-swatch{height:60px}}
+  </style></head><body><main class="store-page">
+    <nav class="store-topbar"><a href="/painel-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">← Voltar ao perfil</a><span>Loja de cosméticos · ${escapeHtml(data.groupName)}</span></nav>
+    <header class="store-hero"><h1>🎨 Loja de cosméticos</h1><p>Escolha uma cor e veja ao vivo como ela fica no seu perfil deste grupo. Cada cor comprada fica disponível para trocar sem custo.</p></header>
+    <div class="store-layout"><section class="store-panel"><h2>Cores disponíveis</h2><p class="store-muted">A prévia muda ao selecionar uma cor. A compra só é confirmada depois da sua autorização.</p><div class="store-colors">${cards}</div></section>
+      <aside class="store-panel"><h2>Prévia ao vivo</h2><p class="store-muted">Assim seu perfil ficará com a cor selecionada.</p><div id="previewCard" class="preview-card" style="background:linear-gradient(145deg,${previewStops[0]},${previewStops[1]} 55%,${previewStops[2]});--preview-accent:${previewAccent}"><span class="preview-label">Perfil neste grupo</span><div class="preview-user"><div class="preview-avatar">U</div><div><strong>${escapeHtml(data.userName)}</strong><small>${escapeHtml(data.groupName)}</small></div></div><div class="preview-profile"><strong id="previewColorName">${escapeHtml(selected?.label || "Original")}</strong><p>Este fundo será aplicado ao seu perfil neste grupo.</p></div></div><div class="store-balance"><span>Seu saldo local</span><strong id="storeBalance">${currency}</strong></div><button id="resetBackground" class="reset-button" type="button">Restaurar fundo original</button><p id="storeFeedback" class="store-feedback" role="status" aria-live="polite"></p></aside>
+    </div><p class="store-footer">As cores e o saldo são individuais desta plataforma e deste grupo.</p>
+  </main><script>
+    const storeContext=${JSON.stringify(pageContext)};
+    const backgroundUrl="/api/account/local/cosmetics";
+    let previewSelection=${JSON.stringify(selectedBackground)};
+    let appliedBackground=${JSON.stringify(data.cosmetics.background)};
+    const feedbackElement=document.getElementById("storeFeedback");
+    function showFeedback(message,isError){feedbackElement.textContent=message;feedbackElement.classList.toggle("error",Boolean(isError))}
+    function updatePreview(key){
+      const background=key?storeContext.backgrounds[key]:{label:"Original",stops:["#27365d","#111827","#090b10"],accent:"#7ea7ff"};
+      if(!background)return;
+      previewSelection=key;
+      const card=document.getElementById("previewCard");
+      card.style.background="linear-gradient(145deg,"+background.stops[0]+","+background.stops[1]+" 55%,"+background.stops[2]+")";
+      card.style.setProperty("--preview-accent",background.accent);
+      document.getElementById("previewColorName").textContent=background.label;
+    }
+    function refreshColorCards(){
+      document.querySelectorAll("[data-color-card]").forEach(card=>{
+        const key=card.dataset.colorCard,button=card.querySelector("[data-set-color]");
+        const owned=storeContext.ownedBackgrounds.includes(key),active=appliedBackground===key;
+        card.classList.toggle("active",active);
+        card.querySelector(".color-card-info p").textContent=active?"Aplicada no seu perfil":owned?"Já comprada":"Preço: "+storeContext.price;
+        button.textContent=active?"Em uso":owned?"Aplicar":"Comprar e aplicar";
+      });
+    }
+    async function submitBackground(payload){
+      const response=await fetch(backgroundUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...storeContext,...payload})});
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.error||"Não foi possível atualizar seu perfil.");
+      return result;
+    }
+    document.querySelectorAll("[data-preview-color]").forEach(button=>button.addEventListener("click",()=>{updatePreview(button.dataset.previewColor);showFeedback("",false)}));
+    document.querySelectorAll("[data-set-color]").forEach(button=>button.addEventListener("click",async()=>{
+      const key=button.dataset.setColor,owned=storeContext.ownedBackgrounds.includes(key);
+      if(appliedBackground===key){updatePreview(key);return}
+      if(!owned&&!window.confirm("Confirmar a compra da cor "+storeContext.backgrounds[key].label+" por "+storeContext.price+" SatCoins?"))return;
+      button.disabled=true;showFeedback(owned?"Aplicando cor...":"Confirmando compra...",false);
+      try{
+        const result=await submitBackground({action:"set",background:key});
+        appliedBackground=result.background;
+        storeContext.balance=result.balance;
+        document.getElementById("storeBalance").textContent=result.balance;
+        if(result.boughtNow)storeContext.ownedBackgrounds.push(key);
+        updatePreview(key);refreshColorCards();
+        showFeedback(result.boughtNow?"Compra confirmada! A cor foi aplicada ao seu perfil.":"Cor aplicada ao seu perfil, sem cobrança.",false);
+      }catch(error){showFeedback(error.message,true)}finally{button.disabled=false}
+    }));
+    document.getElementById("resetBackground").addEventListener("click",async()=>{
+      if(!appliedBackground){showFeedback("Seu perfil já está usando o fundo original.",false);return}
+      const button=document.getElementById("resetBackground");button.disabled=true;showFeedback("Restaurando fundo original...",false);
+      try{
+        const result=await submitBackground({action:"reset"});
+        appliedBackground=null;updatePreview(null);refreshColorCards();
+        showFeedback("Fundo original restaurado. Suas cores compradas continuam disponíveis.",false);
+      }catch(error){showFeedback(error.message,true)}finally{button.disabled=false}
+    });
+    refreshColorCards();
+  </script></body></html>`;
+}
+
+function getCosmeticPanelStyles(backgroundKey, panelType) {
+  const background = economy.PROFILE_BACKGROUNDS[backgroundKey];
+  if (!background) return "";
+  const [start, middle, end] = background.stops;
+  const accent = background.accent;
+  const pageBackground = `radial-gradient(circle at top,${start} 0,${middle} 48%,${end} 100%)`;
+  const heroBackground = `linear-gradient(145deg,${start},${middle} 55%,${end})`;
+  const panelBackground = `linear-gradient(145deg,${middle} 0%,${end} 100%)`;
+  if (panelType === "local") {
+    return `body{background:${pageBackground}}.local-hero{border-color:${accent}88;background:${heroBackground}}.local-panel{border-color:${accent}66;background:${panelBackground}}.local-stat,.rank-link{border-color:${accent}44;background:${middle}88}.local-topbar a,.local-section-heading h2,.rank-link span{color:${accent}}.rank-link:hover{border-color:${accent};background:${start}88}`;
+  }
+  return `body{background:${pageBackground}}
+    .admin-page .topbar a,.admin-page .eyebrow,.admin-page .permission-count,.admin-page .shortcut-card code,.admin-page .scope-picker label,.admin-page .scope-current{color:${accent}}
+    .admin-page .hero{border-color:${accent}88;background:${heroBackground}}
+    .admin-page .overview-card,.admin-page .setting-card,.admin-page .moderation-card{border-color:${accent}66;background:${panelBackground}}
+    .admin-page .shortcut-card,.admin-page .overview-nav a,.admin-page .scope-panel,.admin-page .moderation-result,.admin-page .warning-list>li,.admin-page .resource-card{border-color:${accent}44;background:${middle}88}
+    .admin-page .member-picker-card{border-color:${accent}55!important;background:${middle}88!important}
+    .admin-page .setting-scope{border-color:${accent}66;background:${accent}20;color:${accent}}
+    .admin-page .moderation-search input,.admin-page .moderation-fields input,.admin-page .moderation-fields textarea,.admin-page .moderation-fields select,.admin-page .moderation-role-select,.admin-page .scope-picker select{border-color:${accent}55;background:${end};color:#f5f7fb}
+    .admin-page .moderation-search button,.admin-page .moderation-card button:not(.danger),.admin-page .moderation-action:not(.danger),.admin-page .setting-controls button,.admin-page .copy-command,.admin-page .overview-nav a{border-color:${accent}66}
+    .admin-page .overview-nav a:hover,.admin-page .copy-command:hover,.admin-page .setting-controls button:hover,.admin-page .moderation-card button:not(.danger):hover,.admin-page .moderation-action:not(.danger):hover{border-color:${accent};background:${start}88}
+    .admin-page .antilink-dialog{border-color:${accent}88;background:linear-gradient(145deg,${middle},${end});}
+    .admin-page .antilink-dialog-heading p{color:${accent}}
+    .admin-page .antilink-dialog input:not([type="checkbox"]):not([type="radio"]),.admin-page .antilink-dialog select,.admin-page .antilink-dialog textarea{border-color:${accent}55;background:${end};color:#f5f7fb}
+    .admin-page .antilink-dialog .autorepo-global-toggle,.admin-page .antilink-dialog .autorepo-response-card,.admin-page .antilink-dialog .store2-row,.admin-page .antilink-dialog .rp-xp-settings,.admin-page .antilink-dialog .scope-panel,.admin-page .antilink-dialog .monitor-check-list label{border-color:${accent}44;background:${middle}88}
+    .admin-page .antilink-dialog .rp-user-card,.admin-page .antilink-dialog .schedule-card{border-color:${accent}55!important;background:${middle}88!important}
+    .admin-page .antilink-dialog .schedule-card button:not(.danger){border-color:${accent}66!important;background:${accent}20!important}
+    .admin-page .antilink-dialog .monitor-job{border-color:${accent}55;background:${middle}88}
+    .admin-page .antilink-dialog button:not(.danger):not(.primary):not(.dialog-close):hover{border-color:${accent};background:${start}88}
+    .admin-page .antilink-dialog .primary{border-color:${accent};background:${accent}33}`;
+}
+
 function renderGroupAdmin(data) {
+  const cosmeticThemeStyles = getCosmeticPanelStyles(data.profileBackground, "admin");
   const groupType = data.platform === "discord" ? "Servidor" : "Grupo";
   const warningRows = data.moderation.entries.map(item =>
     `<li><div class="warning-identity"><strong>${escapeHtml(item.name || item.userId)}</strong><small>ID: ${escapeHtml(item.userId)}</small></div><strong class="warning-count">${item.count}/${data.moderation.max}</strong><details class="warning-history"><summary>Motivos das advertências (${item.count})</summary><ul>${item.legacyCount ? `<li>${item.legacyCount} advertência(s) antiga(s) sem motivo registrado</li>` : ""}${(item.records || []).map(record => `<li>${escapeHtml(record.reason || "Motivo não informado")}<small>${escapeHtml(formatWarningDate(record.createdAt))}</small></li>`).join("")}</ul></details><button type="button" class="moderation-action danger" data-warning-user="${escapeHtml(item.userId)}">Remover advertências</button></li>`
@@ -2847,6 +2984,7 @@ function renderGroupAdmin(data) {
     .rp-user-actions .moderation-action:only-child{grid-column:1/-1}
     .rp-manager-dialog .antilink-dialog-actions button{min-width:108px}
     @media(max-width:480px){.rp-user-actions{grid-template-columns:1fr}}
+    ${cosmeticThemeStyles}
   </style></head><body><main class="admin-page">
     <nav class="topbar"><a href="/painel-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">← Painel do membro</a><span>${escapeHtml(config.getBotName())} · Administração</span></nav>
     <header class="hero"><img class="avatar" src="${escapeHtml(data.avatarUrl || "/semfoto.jpg")}" alt="Foto de ${escapeHtml(data.userName)}" onerror="this.onerror=null;this.src='/semfoto.jpg'"><div><div class="eyebrow">Painel de administração</div><h1>${escapeHtml(data.groupName)}</h1><p>${groupType} · ${escapeHtml(data.platform)} · Acesso verificado para ${escapeHtml(data.userName)}</p></div></header>
@@ -3987,7 +4125,7 @@ function renderGroupAdmin(data) {
         }).catch(error=>{antimediaFormFeedback.classList.add("error");antimediaFormFeedback.textContent=error.message});
         return;
       }
-      const gear=event.target.closest("[data-antlink-config]");
+      const gear=event.target.closest("[data-antilink-config]");
       if(gear){
         activeAntilinkScope=JSON.parse(gear.dataset.scope);
         antilinkFormFeedback.classList.remove("error");antilinkFormFeedback.textContent="Carregando configurações...";
@@ -4518,7 +4656,8 @@ async function readProfile(url, { allowEmpty = false } = {}) {
     economy: {
       exists: Boolean(account),
       balance: Number(account?.balance) || 0,
-      position: account ? economy.getBalancePosition(message, userId) : null
+      position: account ? economy.getBalancePosition(message, userId) : null,
+      background: economy.getProfileCosmetics(message, userId).background
     },
     xp: {
       exists: Boolean(xpUser),
@@ -5163,11 +5302,18 @@ function renderProfile(profile) {
   const avatarUrl = profile.avatarUrl || "/semfoto.jpg";
   const avatarContent = `<img src="${escapeHtml(avatarUrl)}" alt="" onerror="this.onerror=null;this.src='/semfoto.jpg'">`;
 
+  const profileTheme = profileCosmetics.getProfileBackground(profile.economy.background);
+  const profileBackground = profileTheme
+    ? `--profile-surface:${profileTheme.stops[1]}ee;--profile-deep:${profileTheme.stops[2]}f2;--profile-accent:${profileTheme.accent};--profile-border:${profileTheme.stops[0]};background:${profileCosmetics.getProfileBackgroundCss(profileTheme.key)}`
+    : "";
+  const pageBackground = profileTheme
+    ? `style="background:radial-gradient(circle at top, ${profileTheme.stops[0]} 0, ${profileTheme.stops[2]} 55%, #090b10 100%)"`
+    : "";
   return `<!doctype html>
 <html lang="pt-BR">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Perfil de ${escapeHtml(profile.name)} - ${escapeHtml(botName)}</title><style>${styles()}</style></head>
-<body>
-  <main class="card">
+<body ${pageBackground}>
+  <main class="card" ${profileBackground ? `style="${profileBackground}"` : ""}>
     <div class="brand">${escapeHtml(botName)} <span>PERFIL</span></div>
     <header><div class="avatar">${escapeHtml(profile.name.charAt(0).toUpperCase())}${avatarContent}</div><div><h1>${escapeHtml(profile.name)}</h1><p class="muted">ID: ${escapeHtml(profile.userId)}</p></div></header>
     <div class="scope">Plataforma: ${escapeHtml(profile.platform)} <span>•</span> ${escapeHtml(profile.groupName)} <span>•</span> ID: ${escapeHtml(profile.groupId)}</div>
@@ -5212,7 +5358,8 @@ async function readRanking(url, type, order = "rich") {
         name: user.displayName || user.username || user.userId,
         userId: user.userId,
         xp: Number(user.xp) || 0,
-        level: xp.levelForXp(user.xp).level
+        level: xp.levelForXp(user.xp).level,
+        background: economy.getProfileCosmetics(message, user.userId).background
       }))
     };
   }
@@ -5227,7 +5374,8 @@ async function readRanking(url, type, order = "rich") {
       position: index + 1,
       name: account.name || account.username || account.userId,
       userId: account.userId,
-      balance: Number(account.balance) || 0
+      balance: Number(account.balance) || 0,
+      background: economy.getProfileCosmetics(message, account.userId).background
     }))
   };
 }
@@ -5309,6 +5457,7 @@ async function readActivityRanking(url, includeAll = false, order = "rich") {
       commands: user.commands,
       stickers: user.stickers,
       files: user.files,
+      background: economy.getProfileCosmetics(message, user.userId).background,
       profileAvailable: user.profileAvailable !== false
     })).sort((a, b) => (order === "poor" ? a.total - b.total : b.total - a.total) ||
       String(a.name).localeCompare(String(b.name)))
@@ -5334,15 +5483,18 @@ function renderRanking(ranking) {
     ).join("")
     : `<p class="muted">Ainda não há usuários neste ranking.</p>`;
 
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)} - ${escapeHtml(botName)}</title><style>${styles()} .ranking{margin-top:22px;display:grid;gap:10px}.rank-row{display:grid;grid-template-columns:60px 1fr auto auto;align-items:center;gap:14px;padding:17px 18px;border:1px solid #334566;border-radius:14px;background:#202a40;color:inherit;text-decoration:none;transition:transform .15s ease,border-color .15s ease,background .15s ease}.rank-row:hover,.rank-row:focus-visible{transform:translateY(-2px);border-color:#7ea7ff;background:#273653;outline:none}.rank-row strong{font-size:22px;color:#8eaaff}.rank-row span{font-weight:700}.rank-row small{display:block;color:#8998b3;font-weight:400;font-size:11px;margin-top:4px}.rank-row b{white-space:nowrap}.rank-row em{font-style:normal;color:#b8c3d9;font-size:13px}@media(max-width:600px){.rank-row{grid-template-columns:42px 1fr auto}.rank-row em{grid-column:2}.rank-row b{font-size:13px}}</style></head><body><main class="card"><div class="brand">${escapeHtml(botName)} <span>RANKING</span></div><header><div><h1>${escapeHtml(title)}</h1><p class="muted">${escapeHtml(ranking.groupName)}</p></div></header><div class="scope">Plataforma: ${escapeHtml(ranking.platform)} <span>•</span> ID: ${escapeHtml(ranking.groupId)}</div><section class="ranking">${rows}</section><footer>Ranking local do grupo/servidor • ${escapeHtml(botName)}</footer></main></body></html>`;
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)} - ${escapeHtml(botName)}</title><style>${styles()} .ranking{margin-top:22px;display:grid;gap:10px}.rank-row{display:grid;grid-template-columns:60px 1fr auto auto;align-items:center;gap:14px;padding:17px 18px;border:1px solid #334566;border-radius:14px;background:#202a40;color:inherit;text-decoration:none;transition:transform .15s ease,border-color .15s ease,filter .15s ease}.rank-row:hover,.rank-row:focus-visible{transform:translateY(-2px);border-color:#7ea7ff;filter:brightness(1.12);outline:none}.rank-row strong{font-size:22px;color:#8eaaff}.rank-row span{font-weight:700}.rank-row small{display:block;color:#8998b3;font-weight:400;font-size:11px;margin-top:4px}.rank-row b{white-space:nowrap}.rank-row em{font-style:normal;color:#b8c3d9;font-size:13px}@media(max-width:600px){.rank-row{grid-template-columns:42px 1fr auto}.rank-row em{grid-column:2}.rank-row b{font-size:13px}}</style></head><body><main class="card"><div class="brand">${escapeHtml(botName)} <span>RANKING</span></div><header><div><h1>${escapeHtml(title)}</h1><p class="muted">${escapeHtml(ranking.groupName)}</p></div></header><div class="scope">Plataforma: ${escapeHtml(ranking.platform)} <span>•</span> ID: ${escapeHtml(ranking.groupId)}</div><section class="ranking">${rows}</section><footer>Ranking local do grupo/servidor • ${escapeHtml(botName)}</footer></main></body></html>`;
 }
 
 function renderRankingEntry(ranking, entry, metrics) {
   const profileUrl = `/perfil?grupo=${encodeURIComponent(ranking.groupId)}&plataforma=${encodeURIComponent(ranking.platform)}&usuario=${encodeURIComponent(entry.userId)}`;
+  const background = entry.background
+    ? `style="background:${profileCosmetics.getProfileBackgroundCss(entry.background)}"`
+    : "";
   const row = `<strong>#${entry.position}</strong><span>${escapeHtml(entry.name)}<small>ID: ${escapeHtml(entry.userId)}</small></span>${metrics}`;
   return entry.profileAvailable === false
-    ? `<div class="rank-row">${row}</div>`
-    : `<a class="rank-row" href="${profileUrl}" aria-label="Abrir perfil de ${escapeHtml(entry.name)}">${row}</a>`;
+    ? `<div class="rank-row" ${background}>${row}</div>`
+    : `<a class="rank-row" ${background} href="${profileUrl}" aria-label="Abrir perfil de ${escapeHtml(entry.name)}">${row}</a>`;
 }
 
 function renderCredentialSetupPage(botName, tokenIsValid) {
@@ -5382,7 +5534,7 @@ function renderCredentialSetupPage(botName, tokenIsValid) {
 }
 
 function styles() {
-  return `:root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}.card{width:min(860px,100%);padding:34px;border:1px solid #334366;border-radius:24px;background:linear-gradient(145deg,#1c2438ee,#111521f2);box-shadow:0 24px 80px #0008}.brand{letter-spacing:.18em;color:#7ea7ff;font-weight:800}.brand span{color:#9da8bd;font-weight:500;font-size:.75em}header{display:flex;align-items:center;gap:18px;margin:34px 0 18px}.avatar{position:relative;overflow:hidden;flex:none;width:72px;height:72px;border-radius:20px;display:grid;place-items:center;background:linear-gradient(135deg,#6d5dfc,#3aa8ff);font-size:32px;font-weight:800}.avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}h1{margin:0;font-size:clamp(28px,5vw,46px)}p{margin:8px 0}.muted,.hint{color:#9da8bd}.scope{padding:13px 16px;border-radius:12px;background:#0e1422;color:#b7c5e7;font-size:14px}.scope span{color:#536486;margin:0 8px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}.grid article{padding:22px;border-radius:16px;background:#202a40;border:1px solid #334566}.label{color:#9da8bd;font-size:12px;letter-spacing:.12em;font-weight:700}.value{font-size:32px;font-weight:800;margin:12px 0 8px}.value.small{font-size:22px}.money{color:#8ff0bf}.meta{color:#b8c3d9;font-size:14px}footer{margin-top:26px;color:#71809d;font-size:13px}.error{text-align:center}.error h1{margin-top:28px}@media(max-width:600px){.card{padding:24px}.grid{grid-template-columns:1fr}header{margin-top:26px}}`;
+  return `:root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}.card{width:min(860px,100%);padding:34px;border:1px solid var(--profile-border,#334366);border-radius:24px;background:linear-gradient(145deg,var(--profile-surface,#1c2438ee),var(--profile-deep,#111521f2));box-shadow:0 24px 80px #0008}.brand{letter-spacing:.18em;color:var(--profile-accent,#7ea7ff);font-weight:800}.brand span{color:#9da8bd;font-weight:500;font-size:.75em}header{display:flex;align-items:center;gap:18px;margin:34px 0 18px}.avatar{position:relative;overflow:hidden;flex:none;width:72px;height:72px;border-radius:20px;display:grid;place-items:center;background:linear-gradient(135deg,var(--profile-accent,#6d5dfc),var(--profile-border,#3aa8ff));font-size:32px;font-weight:800}.avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}h1{margin:0;font-size:clamp(28px,5vw,46px)}p{margin:8px 0}.muted,.hint{color:#9da8bd}.scope{padding:13px 16px;border-radius:12px;background:var(--profile-deep,#0e1422);color:#b7c5e7;font-size:14px}.scope span{color:var(--profile-accent,#536486);margin:0 8px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}.grid article{padding:22px;border-radius:16px;background:var(--profile-surface,#202a40);border:1px solid var(--profile-border,#334566)}.label{color:#9da8bd;font-size:12px;letter-spacing:.12em;font-weight:700}.value{font-size:32px;font-weight:800;margin:12px 0 8px}.value.small{font-size:22px}.money{color:#8ff0bf}.meta{color:#b8c3d9;font-size:14px}footer{margin-top:26px;color:#71809d;font-size:13px}.error{text-align:center}.error h1{margin-top:28px}@media(max-width:600px){.card{padding:24px}.grid{grid-template-columns:1fr}header{margin-top:26px}}`;
 }
 
 function start() {
@@ -6365,7 +6517,8 @@ function start() {
       }
 
       if (requestUrl.pathname === "/api/account/local/merge" ||
-          requestUrl.pathname === "/api/account/local/transfer") {
+          requestUrl.pathname === "/api/account/local/transfer" ||
+          requestUrl.pathname === "/api/account/local/cosmetics") {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
         const platformAccount = central.platformAccounts.find(account => account.platform === platform);
@@ -6381,6 +6534,39 @@ function start() {
         try {
           if (!await isPlatformGroupMember(platform, groupId, String(platformAccount.platformId))) {
             sendJson(response, 403, { error: "Sua conta vinculada não participa mais deste grupo ou servidor." });
+            return;
+          }
+
+          if (requestUrl.pathname === "/api/account/local/cosmetics") {
+            const message = getLocalGroupMessage(platform, groupId, String(platformAccount.platformId));
+            if (payload?.action === "set") {
+              const result = economy.setProfileBackground(message, payload?.background);
+              if (!result.purchased) {
+                sendJson(response, 400, {
+                  error: result.reason === "insufficient-balance"
+                    ? `Saldo insuficiente. Você precisa de ${economy.formatMoney(result.price)} e tem ${economy.formatMoney(result.balance)}.`
+                    : "A cor selecionada não é válida."
+                });
+                return;
+              }
+              sendJson(response, 200, {
+                success: true,
+                background: result.background,
+                boughtNow: result.boughtNow,
+                balance: economy.formatMoney(result.balance)
+              });
+              return;
+            }
+            if (payload?.action === "reset") {
+              const result = economy.resetProfileBackground(message);
+              sendJson(response, 200, {
+                success: true,
+                changed: result.changed,
+                balance: economy.formatMoney(economy.getBalance(message))
+              });
+              return;
+            }
+            sendJson(response, 400, { error: "Ação de cosmético inválida." });
             return;
           }
 
@@ -6739,6 +6925,50 @@ function start() {
       return;
     }
 
+    if (request.method === "GET" && requestUrl.pathname === "/loja-cosmeticos") {
+      const central = await getSessionCentral(request);
+      if (!central) {
+        response.writeHead(302, { Location: "/dashboard", "Cache-Control": "no-store" });
+        response.end();
+        return;
+      }
+      const platform = String(requestUrl.searchParams.get("plataforma") || "").toLowerCase();
+      const groupId = String(requestUrl.searchParams.get("grupo") || "");
+      try {
+        const accountData = await getLocalAccountData(central, platform, groupId);
+        const message = getLocalGroupMessage(platform, groupId, accountData.platformId);
+        const cosmetics = economy.getProfileCosmetics(message, accountData.platformId);
+        response.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Referrer-Policy": "no-referrer",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(renderCosmeticsStore({
+          platform,
+          groupId,
+          groupName: accountData.groupName,
+          userName: accountData.userName,
+          balance: accountData.account.balance,
+          cosmetics
+        }));
+      } catch (error) {
+        const reason = String(error?.message || "");
+        const statusCode = /não participa|não está vinculada/i.test(reason) ? 403
+          : /offline/i.test(reason) ? 503 : 400;
+        if (statusCode === 503) {
+          console.error("[WEB] Falha ao abrir a loja de cosméticos:", error.message || error);
+        }
+        response.writeHead(statusCode, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Loja indisponível</title><body style="font-family:Segoe UI,Arial;background:#10131c;color:#f5f7fb;padding:40px"><h1>Loja de cosméticos indisponível</h1><p>${escapeHtml(reason)}</p><a href="/dashboard" style="color:#b9c6ff">Voltar à Conta Central</a></body></html>`);
+      }
+      return;
+    }
+
     if (request.method === "GET" && requestUrl.pathname === "/painel-admin") {
       const central = await getSessionCentral(request);
       if (!central) {
@@ -6784,4 +7014,4 @@ function start() {
   return server;
 }
 
-module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking, renderLocalAccount, renderGroupAdmin, canManagePlatformGroup };
+module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking, renderLocalAccount, renderCosmeticsStore, renderGroupAdmin, canManagePlatformGroup };

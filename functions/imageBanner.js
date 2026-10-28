@@ -10,6 +10,7 @@ const marriage = require("./marriageService");
 const activity = require("./activity");
 const economy = require("./economy");
 const xp = require("./xp");
+const profileCosmetics = require("./profileCosmetics");
 
 function escapeXml(value) {
     return String(value ?? "")
@@ -33,22 +34,26 @@ function text(value, x, y, size, color = "#f5f7fb", weight = 400, anchor = "star
     return `<text x="${x}" y="${y}" fill="${color}" font-family="Arial,Segoe UI,sans-serif" font-size="${size}px" font-weight="${weight}" text-anchor="${anchor}">${escapeXml(value)}</text>`;
 }
 
-function card(x, y, width, label, value, detail, valueColor = "#f5f7fb") {
+function card(x, y, width, label, value, detail, valueColor = "#f5f7fb", theme) {
     return [
-        `<rect x="${x}" y="${y}" width="${width}" height="130" rx="18" fill="#202a40" stroke="#334566"/>`,
+        `<rect x="${x}" y="${y}" width="${width}" height="130" rx="18" fill="${theme?.stops[1] || "#202a40"}" stroke="${theme?.accent || "#334566"}"/>`,
         text(label, x + 22, y + 32, 14, "#9da8bd", 700),
         text(value, x + 22, y + 76, 28, valueColor, 800),
         text(detail, x + 22, y + 108, 14, "#b8c3d9")
     ].join("");
 }
 
-function baseSvg(width, height, title, subtitle, body, titleX = 70) {
+function baseSvg(width, height, title, subtitle, body, titleX = 70, theme) {
     const botName = config.getBotName();
+    const stops = theme?.stops || ["#27365d", "#111827", "#090b10"];
+    const panelFill = theme ? `${stops[2]}dd` : "#111521dd";
+    const panelStroke = theme?.accent || "#334366";
+    const brandColor = theme?.accent || "#7ea7ff";
     return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
-<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#27365d"/><stop offset="0.55" stop-color="#111827"/><stop offset="1" stop-color="#090b10"/></linearGradient></defs>
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${stops[0]}"/><stop offset="0.55" stop-color="${stops[1]}"/><stop offset="1" stop-color="${stops[2]}"/></linearGradient></defs>
 <rect width="${width}" height="${height}" fill="url(#bg)"/>
-<rect x="28" y="28" width="${width - 56}" height="${height - 56}" rx="26" fill="#111521dd" stroke="#334366"/>
-${text(botName, 70, 88, 24, "#7ea7ff", 800)}
+<rect x="28" y="28" width="${width - 56}" height="${height - 56}" rx="26" fill="${panelFill}" stroke="${panelStroke}"/>
+${text(botName, 70, 88, 24, brandColor, 800)}
     ${text(title, titleX, 140, 38, "#f5f7fb", 800)}
     ${text(subtitle, titleX, 174, 16, "#9da8bd")}
 ${body}
@@ -80,6 +85,7 @@ async function renderProfile(message) {
     const marriageDetail = currentMarriage
         ? `Há ${currentMarriage.duration} • desde ${new Date(currentMarriage.marriedAt).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}`
         : "Sem casamento neste grupo/servidor";
+    const backgroundTheme = profileCosmetics.getProfileBackground(profile.economy.background);
     let avatarBuffer = null;
     let avatarUrl = profile.platform === "discord" ? profile.avatarUrl : null;
     if (profile.platform !== "discord" || !avatarUrl) {
@@ -140,24 +146,24 @@ async function renderProfile(message) {
     }
     const marriageCard = marriages.length > 1
         ? [
-            `<rect x="600" y="445" width="530" height="130" rx="18" fill="#202a40" stroke="#334566"/>`,
+            `<rect x="600" y="445" width="530" height="130" rx="18" fill="${backgroundTheme?.stops[1] || "#202a40"}" stroke="${backgroundTheme?.accent || "#334566"}"/>`,
             text("CASAMENTO", 622, 477, 14, "#9da8bd", 700)
         ].join("")
         : currentMarriage && !currentMarriage.selfMarriage
             ? [
-                `<rect x="600" y="445" width="530" height="130" rx="18" fill="#202a40" stroke="#334566"/>`,
+                `<rect x="600" y="445" width="530" height="130" rx="18" fill="${backgroundTheme?.stops[1] || "#202a40"}" stroke="${backgroundTheme?.accent || "#334566"}"/>`,
                 text("CASAMENTO", 622, 477, 14, "#9da8bd", 700),
-                `<circle cx="660" cy="526" r="42" fill="#0e1422" stroke="#e9a8c6" stroke-width="3"/>`,
+                `<circle cx="660" cy="526" r="42" fill="${backgroundTheme?.stops[2] || "#0e1422"}" stroke="${backgroundTheme?.accent || "#e9a8c6"}" stroke-width="3"/>`,
                 text(fitCoupleName(currentMarriage.partnerName, 22), 716, 530, 19, "#f5f7fb", 800),
                 text(marriageDetail, 716, 557, 12, "#b8c3d9")
             ].join("")
-            : card(600, 445, 530, "CASAMENTO", marriageValue, marriageDetail);
+            : card(600, 445, 530, "CASAMENTO", marriageValue, marriageDetail, "#f5f7fb", backgroundTheme);
     const body = [
-        `<rect x="70" y="205" width="1060" height="64" rx="14" fill="#0e1422"/>`,
+        `<rect x="70" y="205" width="1060" height="64" rx="14" fill="${backgroundTheme?.stops[2] || "#0e1422"}"/>`,
         text(`${profile.groupName} • ${profile.platform} • ID ${profile.userId}`, 94, 245, 16, "#b7c5e7"),
-        card(70, 295, 510, "SATCOINS", formatMoney(profile.economy.balance), `Posição no dinheiro: ${moneyPosition}`, "#8ff0bf"),
-        card(600, 295, 530, "XP • NÍVEL", `${profile.xp.value} XP • Nível ${profile.xp.level}`, `Posição no XP: ${xpPosition}`),
-        card(70, 445, 510, "ATIVIDADE", profile.activity.total, `Posição no ranking: ${profile.activity.position ? `#${profile.activity.position}` : "Não classificado"}`),
+        card(70, 295, 510, "SATCOINS", formatMoney(profile.economy.balance), `Posição no dinheiro: ${moneyPosition}`, "#8ff0bf", backgroundTheme),
+        card(600, 295, 530, "XP • NÍVEL", `${profile.xp.value} XP • Nível ${profile.xp.level}`, `Posição no XP: ${xpPosition}`, "#f5f7fb", backgroundTheme),
+        card(70, 445, 510, "ATIVIDADE", profile.activity.total, `Posição no ranking: ${profile.activity.position ? `#${profile.activity.position}` : "Não classificado"}`, "#f5f7fb", backgroundTheme),
         marriageCard
     ].join("");
     const image = sharp(Buffer.from(baseSvg(
@@ -166,7 +172,8 @@ async function renderProfile(message) {
         profile.name,
         `Perfil de ${profile.name}`,
         body,
-        avatarBuffer ? 190 : 70
+        avatarBuffer ? 190 : 70,
+        backgroundTheme
     )));
     const composites = [];
     if (avatarBuffer) composites.push({ input: avatarBuffer, left: 70, top: 102 });
@@ -202,6 +209,39 @@ async function renderProfile(message) {
     };
 }
 
+async function renderProfileBackgroundPreview(backgroundKey) {
+    const background = profileCosmetics.getProfileBackground(backgroundKey);
+    if (!background) return { error: "Cor inválida." };
+
+    const body = [
+        `<rect x="70" y="215" width="1060" height="340" rx="24" fill="${background.stops[2]}" stroke="${background.accent}" stroke-width="2"/>`,
+        text("PRÉVIA DO FUNDO", 105, 270, 16, background.accent, 800),
+        text("Seu perfil com este visual", 105, 323, 30, "#f5f7fb", 800),
+        `<rect x="105" y="355" width="990" height="150" rx="18" fill="${background.stops[1]}" stroke="${background.accent}" stroke-opacity=".55"/>`,
+        `<circle cx="170" cy="430" r="36" fill="${background.stops[0]}" stroke="${background.accent}" stroke-width="3"/>`,
+        text("U", 170, 439, 25, "#f5f7fb", 800, "middle"),
+        text("Seu nome", 230, 415, 22, "#f5f7fb", 800),
+        text("Destaques e cartões usam esta paleta", 230, 449, 16, "#b8c3d9"),
+        `<rect x="820" y="390" width="235" height="70" rx="14" fill="${background.stops[2]}" stroke="${background.accent}"/>`,
+        text(background.label, 937, 433, 21, background.accent, 800, "middle"),
+        text("A imagem é apenas uma prévia; nada será comprado ou alterado.", 105, 535, 15, "#b8c3d9")
+    ].join("");
+    const buffer = await sharp(Buffer.from(baseSvg(
+        1200,
+        650,
+        `Fundo ${background.label}`,
+        "Prévia do cosmético • não altera seu perfil",
+        body,
+        70,
+        background
+    ))).png().toBuffer();
+
+    return {
+        buffer,
+        caption: `🎨 Prévia do fundo ${background.label}. Esta imagem é demonstrativa e não compra nem aplica a cor.`
+    };
+}
+
 async function renderMarriageBanner(message, currentMarriage = marriage.getMarriage(message)) {
     if (!currentMarriage) return { error: "Você não está casado(a) neste grupo/servidor." };
 
@@ -218,7 +258,8 @@ async function renderMarriageBanner(message, currentMarriage = marriage.getMarri
             : { raw: isAuthor ? message.raw : undefined, username: person.name });
         return {
             name: resolveCoupleDisplayName(person.name, profile?.name, index),
-            avatar: await loadCoupleAvatar(profile?.avatarUrl, person.id)
+            avatar: await loadCoupleAvatar(profile?.avatarUrl, person.id),
+            background: economy.getProfileCosmetics(message, person.id).background
         };
     }));
 
@@ -234,10 +275,16 @@ async function renderMarriageBanner(message, currentMarriage = marriage.getMarri
     const subtitle = selfMarriage
         ? "Um compromisso especial consigo mesmo(a)"
         : "Uma história escrita a dois";
+    const defaultWeddingStops = ["#352044", "#171827", "#10131c"];
+    const primaryBackground = profileCosmetics.getProfileBackground(people[0].background);
+    const partnerBackground = profileCosmetics.getProfileBackground(people[1].background);
+    const leftStops = primaryBackground?.stops || defaultWeddingStops;
+    const rightStops = partnerBackground?.stops || defaultWeddingStops;
+    const weddingGlow = primaryBackground?.accent || partnerBackground?.accent || "#d18aab";
     const svg = `<svg width="1200" height="680" viewBox="0 0 1200 680" xmlns="http://www.w3.org/2000/svg">
 <defs>
-  <linearGradient id="wedding-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#352044"/><stop offset=".55" stop-color="#171827"/><stop offset="1" stop-color="#10131c"/></linearGradient>
-  <radialGradient id="wedding-glow"><stop offset="0" stop-color="#d18aab" stop-opacity=".32"/><stop offset="1" stop-color="#d18aab" stop-opacity="0"/></radialGradient>
+  <linearGradient id="wedding-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${leftStops[0]}"/><stop offset=".5" stop-color="${leftStops[1]}"/><stop offset=".5001" stop-color="${rightStops[1]}"/><stop offset="1" stop-color="${rightStops[2]}"/></linearGradient>
+  <radialGradient id="wedding-glow"><stop offset="0" stop-color="${weddingGlow}" stop-opacity=".32"/><stop offset="1" stop-color="${weddingGlow}" stop-opacity="0"/></radialGradient>
 </defs>
 <rect width="1200" height="680" fill="url(#wedding-bg)"/>
 <circle cx="190" cy="250" r="280" fill="url(#wedding-glow)"/><circle cx="1010" cy="360" r="300" fill="url(#wedding-glow)"/>
@@ -305,7 +352,8 @@ async function renderRanking(message, type, order = "rich") {
             const avatar = await loadCoupleAvatar(null, entry.userId);
             return {
                 entry,
-                avatar: avatar ? await sharp(avatar).resize(136, 136).png().toBuffer() : null
+                avatar: avatar ? await sharp(avatar).resize(136, 136).png().toBuffer() : null,
+                background: economy.getProfileCosmetics(message, entry.userId).background
             };
         }
 
@@ -318,7 +366,8 @@ async function renderRanking(message, type, order = "rich") {
         const avatar = await loadCoupleAvatar(profile?.avatarUrl, entry.userId);
         return {
             entry,
-            avatar: avatar ? await sharp(avatar).resize(136, 136).png().toBuffer() : null
+            avatar: avatar ? await sharp(avatar).resize(136, 136).png().toBuffer() : null,
+            background: economy.getProfileCosmetics(message, entry.userId).background
         };
     }));
 
@@ -332,10 +381,11 @@ async function renderRanking(message, type, order = "rich") {
         : isActivity
             ? "RANKING DE ATIVIDADE"
             : "RANKING DE SATCOINS";
-    const cardSvg = cards.map(({ entry }, index) => {
+    const cardSvg = cards.map(({ entry, background }, index) => {
         const x = startX + index * (cardWidth + cardGap);
         const colors = ["#667c27", "#a9345c", "#9b4939", "#315d83", "#6d4c8d"];
         const color = colors[index];
+        const theme = profileCosmetics.getProfileBackground(background);
         const name = entry?.name || "Perfil não encontrado";
         const clippedName = Array.from(String(name)).slice(0, 20).join("");
         const position = entry?.position === "—" ? "—" : `#${entry?.position || index + 1}`;
@@ -358,8 +408,8 @@ async function renderRanking(message, type, order = "rich") {
                         ? "MENOR SALDO"
                         : "SALDO";
         return [
-            `<rect x="${x}" y="${cardY}" width="${cardWidth}" height="${cardHeight}" rx="22" fill="#161b24" stroke="${color}" stroke-width="4"/>`,
-            `<path d="M${x + 2} ${cardY + 22} Q${x + 2} ${cardY + 2} ${x + 22} ${cardY + 2} H${x + cardWidth - 22} Q${x + cardWidth - 2} ${cardY + 2} ${x + cardWidth - 2} ${cardY + 22} V${cardY + 178} H${x + 2} Z" fill="${color}" opacity="0.76"/>`,
+            `<rect x="${x}" y="${cardY}" width="${cardWidth}" height="${cardHeight}" rx="22" fill="${theme?.stops[1] || "#161b24"}" stroke="${color}" stroke-width="4"/>`,
+            `<path d="M${x + 2} ${cardY + 22} Q${x + 2} ${cardY + 2} ${x + 22} ${cardY + 2} H${x + cardWidth - 22} Q${x + cardWidth - 2} ${cardY + 2} ${x + cardWidth - 2} ${cardY + 22} V${cardY + 178} H${x + 2} Z" fill="${theme?.stops[0] || color}" opacity="0.76"/>`,
             `<circle cx="${x + cardWidth / 2}" cy="${cardY + 91}" r="68" fill="#0c1018" stroke="#f4f1e9" stroke-width="4"/>`,
             text(entry ? position : `#${index + 1}`, x + 18, cardY + 220, 20, "#f4d66b", 800),
             text(clippedName, x + cardWidth / 2, cardY + 265, 20, "#f5f7fb", 800, "middle"),
@@ -513,6 +563,119 @@ ${body}
     };
 }
 
+async function renderShieldBanner(message) {
+    const scope = messageScope(message);
+    if (!scope) return { error: "Este comando só pode ser usado em grupo ou servidor." };
+    const scopeType = scope.platform === "discord" ? "SERVIDOR" : "GRUPO";
+    const scopeName = message.groupName || message.chatName ||
+        message.raw?.guild?.name || message.raw?.chat?.name ||
+        message.raw?.chat?.title || scope.id;
+    const prefix = message.prefix || config.getPrefix() || "!";
+
+    const account = economy.getAccountByUser(message, String(message.userId));
+    const shieldCharges = Math.max(0, Math.min(
+        economy.SHIELD_DURABILITY,
+        Number(account?.shieldCharges) || 0
+    ));
+    const shieldActive = shieldCharges > 0;
+    const background = profileCosmetics.getProfileBackground(
+        economy.getProfileCosmetics(message, String(message.userId)).background
+    ) || { stops: ["#27365d", "#111827", "#090b10"], accent: "#7ea7ff" };
+    const displayName = fitCoupleName(
+        account?.displayName || account?.username || message.displayName || message.username || message.userId,
+        30
+    );
+    const status = shieldActive ? "ESCUDO ATIVO" : "SEM PROTECAO";
+    const statusColor = shieldActive ? "#80e9c3" : "#ffae91";
+    const chargeBars = Array.from({ length: economy.SHIELD_DURABILITY }, (_, index) => {
+        const charged = index < shieldCharges;
+        const x = 132 + index * 90;
+        return [
+            `<rect x="${x}" y="405" width="70" height="14" rx="7" fill="${charged ? background.accent : "#ffffff"}" opacity="${charged ? 0.95 : 0.16}"/>`,
+            text(charged ? "●" : "○", x + 35, 457, 22, charged ? background.accent : "#748097", 800, "middle")
+        ].join("");
+    }).join("");
+    const shieldGraphic = `<g transform="translate(832 190)">
+      <path d="M142 0 270 44v101c0 104-64 176-128 210C78 321 14 249 14 145V44L142 0Z" fill="${background.stops[2]}" stroke="${background.accent}" stroke-width="8"/>
+      <path d="M142 25 245 60v85c0 82-45 143-103 179-58-36-103-97-103-179V60l103-35Z" fill="${background.stops[1]}" stroke="${background.accent}" stroke-width="3"/>
+      ${shieldActive
+        ? `<path d="m93 161 33 34 67-77" fill="none" stroke="${background.accent}" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>`
+        : `<path d="m111 130 62 62m0-62-62 62" fill="none" stroke="${statusColor}" stroke-width="14" stroke-linecap="round"/>`}
+      <circle cx="142" cy="145" r="118" fill="none" stroke="${background.accent}" stroke-width="2" opacity=".18"/>
+    </g>`;
+    const svg = `<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="shield-bg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="${background.stops[0]}"/><stop offset=".56" stop-color="${background.stops[1]}"/><stop offset="1" stop-color="${background.stops[2]}"/>
+        </linearGradient>
+        <linearGradient id="shield-panel" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="${background.stops[1]}" stop-opacity=".92"/><stop offset="1" stop-color="${background.stops[2]}" stop-opacity=".96"/>
+        </linearGradient>
+        <radialGradient id="shield-glow">
+          <stop offset="0" stop-color="${background.accent}" stop-opacity=".24"/><stop offset="1" stop-color="${background.accent}" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <rect width="1200" height="630" fill="url(#shield-bg)"/>
+      <circle cx="1010" cy="250" r="330" fill="url(#shield-glow)"/>
+      <circle cx="105" cy="540" r="210" fill="${background.accent}" opacity=".06"/>
+      <rect x="34" y="32" width="1132" height="566" rx="32" fill="#070b13" opacity=".48"/>
+      <rect x="48" y="44" width="1104" height="542" rx="28" fill="url(#shield-panel)" stroke="${background.accent}" stroke-opacity=".55" stroke-width="2"/>
+      <rect x="88" y="88" width="7" height="40" rx="3.5" fill="${background.accent}"/>
+      ${text(config.getBotName(), 116, 105, 17, background.accent, 800)}
+      ${text("PROTECAO DA ECONOMIA LOCAL", 116, 129, 12, "#aab7ca", 700)}
+      <rect x="88" y="152" width="1024" height="1" fill="#ffffff" opacity=".14"/>
+      ${text("ESCUDO ANTI-ROUBO", 104, 214, 34, "#f5f7fb", 800)}
+      ${text(fitCoupleName(`${scopeType} • ${scopeName}`, 48), 104, 245, 15, "#b8c3d9", 500)}
+      <rect x="104" y="270" width="324" height="48" rx="24" fill="${statusColor}" fill-opacity=".12" stroke="${statusColor}" stroke-opacity=".65"/>
+      <circle cx="130" cy="294" r="6" fill="${statusColor}"/>
+      ${text(status, 148, 300, 14, statusColor, 800)}
+      ${shieldGraphic}
+      ${text(shieldActive ? "CARGAS DE PROTECAO" : "PROTECAO ESGOTADA", 104, 375, 12, "#aab7ca", 800)}
+      ${text(`${shieldCharges}/${economy.SHIELD_DURABILITY}`, 582, 376, 20, shieldActive ? background.accent : statusColor, 800, "end")}
+      ${chargeBars}
+      <rect x="104" y="489" width="992" height="1" fill="#ffffff" opacity=".14"/>
+      ${shieldActive
+        ? text("Cada tentativa de roubo bloqueada consome 1 carga.", 104, 530, 16, "#dce5ef", 600)
+        : text(`Compre outro em ${prefix}comprar escudo (saldo minimo: ${economy.formatMoney(economy.MIN_SHIELD_BALANCE)}).`, 104, 530, 16, "#dce5ef", 600)}
+      ${text(displayName, 1096, 565, 14, "#f5f7fb", 700, "end")}
+      ${text(`${scope.platform.toUpperCase()} • ${message.userId}`, 1096, 584, 10, "#8997ad", 500, "end")}
+    </svg>`;
+
+    const layers = [];
+    const avatarProfile = await resolvePlatformProfile(message.platform, message.userId, {
+        raw: message.raw,
+        username: message.username
+    });
+    if (avatarProfile?.avatarUrl) {
+        try {
+            const avatar = await fetchBuffer(avatarProfile.avatarUrl, { timeout: 12000 });
+            const mask = Buffer.from(
+                '<svg width="104" height="104" xmlns="http://www.w3.org/2000/svg"><circle cx="52" cy="52" r="52" fill="white"/></svg>'
+            );
+            const avatarBuffer = await sharp(avatar)
+                .resize(104, 104, { fit: "cover" })
+                .composite([{ input: mask, blend: "dest-in" }])
+                .png()
+                .toBuffer();
+            layers.push({ input: avatarBuffer, left: 990, top: 76 });
+            layers.push({
+                input: Buffer.from(`<svg width="116" height="116" xmlns="http://www.w3.org/2000/svg"><circle cx="58" cy="58" r="55" fill="none" stroke="${background.accent}" stroke-width="3"/></svg>`),
+                left: 984,
+                top: 70
+            });
+        } catch (error) {
+            console.warn(`[IMG_ESCUDO] Nao foi possivel carregar o avatar de ${message.userId}:`, error.message || error);
+        }
+    }
+
+    return {
+        buffer: await sharp(Buffer.from(svg)).composite(layers).png().toBuffer(),
+        caption: shieldActive
+            ? `🛡️ Seu escudo está ativo com ${shieldCharges}/${economy.SHIELD_DURABILITY} cargas. Cada roubo bloqueado consome uma carga.`
+            : `🛡️ Você está sem proteção. Use ${prefix}comprar escudo para ativar um novo escudo.`
+    };
+}
+
 async function loadCoupleAvatar(avatarUrl, userId) {
     if (avatarUrl) {
         try {
@@ -600,4 +763,11 @@ function messageScope(message) {
     return platform && groupId ? { platform, id: String(groupId) } : null;
 }
 
-module.exports = { renderProfile, renderRanking, renderCoupleTest, renderMarriageBanner };
+module.exports = {
+    renderProfile,
+    renderProfileBackgroundPreview,
+    renderRanking,
+    renderCoupleTest,
+    renderMarriageBanner,
+    renderShieldBanner
+};

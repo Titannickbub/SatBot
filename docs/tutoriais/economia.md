@@ -79,6 +79,35 @@ Exibe as instruções de uso e opções disponíveis diretamente no chat:
 
 ---
 
+## Cosméticos de perfil
+
+Cada usuário pode personalizar o fundo do perfil separadamente em cada grupo ou servidor:
+
+**WhatsApp, Telegram e Discord**
+
+```text
+!cosmeticos fundo
+!cosmeticos fundo oceano
+!cosmeticos fundo padrao
+!cosmeticos previa fundo oceano
+```
+
+O primeiro comando abre a loja e lista as cores, o fundo atual e quais cores já foram compradas. Cada cor custa **1.000,00 satcoins**; depois da compra, pode ser equipada novamente sem custo. O fundo escolhido aparece nos banners de perfil e de casamento, nos rankings e nos perfis web. A opção `padrao` restaura o visual original sem apagar as cores compradas. Contas antigas sem cosméticos continuam usando os fundos originais.
+
+Para ver uma imagem antes de escolher, use `!cosmeticos previa fundo <cor>` (por exemplo, `!cosmeticos previa fundo oceano`). A prévia não compra nem aplica a cor. Também é possível abrir a **Loja de cosméticos** pelo perfil da Conta Central em um grupo: a página mostra a prévia ao vivo, permite reaplicar cores compradas e pede confirmação antes de descontar o saldo. A cor escolhida também personaliza o cabeçalho, o fundo e os destaques dos painéis local e administrativo daquele grupo.
+
+## Escudo anti-roubo
+
+Consulte o estado da sua proteção com um banner personalizado:
+
+```text
+!escudo
+```
+
+O escudo começa com cinco cargas. Cada tentativa de roubo bloqueada consome uma carga; ao zerar, você fica sem proteção até comprar outro com `!comprar escudo`. A compra custa **200,00 satcoins** e exige saldo mínimo de **500,00 satcoins**. O banner usa o fundo cosmético selecionado para seu perfil neste grupo ou servidor.
+
+---
+
 ## Solução de problemas comuns
 
 ### 1. "❌ Apenas administradores podem configurar a economia."

@@ -38,7 +38,8 @@ O bot lista todos os resets (trabalho, pesca, mineração, roubo, cassino) e ite
         const purchaseInstructions = [
             "⏳ Resets só podem ser comprados quando o limite correspondente acabar.",
             "🔄 O reset todos exige que trabalho, pesca, mineração e roubo estejam no limite.",
-            "🛡️ O escudo exige saldo mínimo de 500,00💷 e só pode ser comprado sem outro escudo ativo."
+            "🛡️ O escudo exige saldo mínimo de 500,00💷 e só pode ser comprado sem outro escudo ativo.",
+            `🎨 Cosméticos: personalize o fundo do perfil com ${prefix}cosmeticos fundo. Cada cor custa ${economy.formatMoney(economy.PROFILE_BACKGROUND_PRICE)}.`
         ];
 
         if (message.platform === "discord") {
