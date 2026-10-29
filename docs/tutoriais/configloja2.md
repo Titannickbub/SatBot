@@ -21,8 +21,9 @@ O prefixo nos exemplos é `!`. Se o prefixo do bot foi alterado, substitua-o pel
 Administradores também podem abrir o painel administrativo do grupo ou
 servidor, localizar o cartão **Economia** e selecionar o botão de configurações
 da **Loja 2** ao lado dele. Pelo painel é possível alterar o título e o aviso,
-cadastrar, editar e remover itens do catálogo e marcar pedidos pendentes como
-entregues ou cancelá-los com estorno.
+cadastrar, editar e remover itens do catálogo, definir uma importância opcional
+para cada item e marcar pedidos pendentes como entregues ou cancelá-los com
+estorno.
 
 ---
 
@@ -80,7 +81,9 @@ Você pode alterar qualquer propriedade de um produto pelo seu ID:
 !configloja2 editar <ID> <campo> <novo valor>
 ```
 
-Campos editáveis: `nome`, `preço` (ou `preco`), `categoria` e `quantidade` (ou `estoque`).
+Campos editáveis: `nome`, `preço` (ou `preco`), `categoria`, `quantidade` (ou `estoque`) e `importância` (ou `raridade`).
+A importância é opcional e aceita `comum`, `incomum`, `raro`, `épico` ou
+`lendário`. Use `nenhuma` para remover uma importância já definida.
 
 ### Exemplos:
 ```text
@@ -88,6 +91,8 @@ Campos editáveis: `nome`, `preço` (ou `preco`), `categoria` e `quantidade` (ou
 !configloja2 editar 1001 quantidade 15
 !configloja2 editar 1001 quantidade infinito
 !configloja2 editar 1001 categoria Especial
+!configloja2 editar 1001 importancia raro
+!configloja2 editar 1001 importancia nenhuma
 ```
 
 ---
@@ -163,7 +168,7 @@ Caso não seja possível entregar o item, ou a pedido do membro:
 | Definir Título | `!configloja2 titulo <texto>` | — | Altera o título da loja comunitária |
 | Definir Aviso | `!configloja2 aviso <texto>` | — | Altera a descrição/aviso exibido no catálogo |
 | Cadastrar Item | `!configloja2 adicionar <dados>` | `!configloja2 add` | Adiciona item: `nome \| preço \| categoria \| estoque` |
-| Editar Item | `!configloja2 editar <id> <campo> <valor>` | `!configloja2 edit` | Atualiza nome, preço, categoria ou estoque do item |
+| Editar Item | `!configloja2 editar <id> <campo> <valor>` | `!configloja2 edit` | Atualiza nome, preço, categoria, estoque ou importância do item |
 | Remover Item | `!configloja2 remover <id>` | `!configloja2 excluir` | Deleta um item da loja pelo seu ID |
 | Ver Pedidos | `!configloja2 pedidos` | `!pedidos` | Lista os pedidos pendentes de entrega |
 | Entregar Pedido | `!configloja2 entregar <id>` | `!entregar <id>` | Conclui o pedido e confirma o pagamento |

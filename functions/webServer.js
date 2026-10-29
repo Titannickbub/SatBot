@@ -2640,6 +2640,14 @@ function renderLocalAccount(data) {
     .rank-link small{display:block;margin-top:4px;color:var(--muted);font-size:10px;font-weight:500}
     .rank-link:hover{border-color:#8599ff88;background:#8599ff12}
     .rank-link span{color:#a99dff}
+    .local-store-links{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    .local-store-link{display:grid;grid-template-columns:auto 1fr;align-items:center;column-gap:11px;min-height:84px;padding:14px;border:1px solid var(--line);border-radius:14px;background:#ffffff05;color:#e8ebf5;text-decoration:none;transition:transform .16s ease,border-color .16s ease,background .16s ease}
+    .local-store-link:hover,.local-store-link:focus-visible{transform:translateY(-2px);border-color:#a99dff88;background:#a99dff0d;outline:2px solid #a99dff44;outline-offset:2px}
+    .local-store-link>span{grid-row:span 2;font-size:23px}
+    .local-store-link strong{font-size:13px}
+    .local-store-link small{margin-top:4px;color:var(--muted);font-size:10px;line-height:1.4}
+    .cosmetics-store-link{border-color:#f0a8c633}
+    .cosmetics-store-link:hover,.cosmetics-store-link:focus-visible{border-color:#f0a8c6aa;background:#f0a8c60d}
     .local-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
     .local-stat{display:flex;min-height:92px;flex-direction:column;justify-content:center;gap:5px;padding:13px;border:1px solid #ffffff0c;border-radius:12px;background:#ffffff05}
     .local-stat small,.local-stat span{color:var(--muted);font-size:11px}
@@ -2661,13 +2669,13 @@ function renderLocalAccount(data) {
     .daily-total{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:10px;padding:12px 13px;border:1px solid #8b7bff44;border-radius:11px;background:#8877ff12;font-size:12px;font-weight:700}
     .daily-total strong{color:#c6bdff;text-align:right}
     .local-footer{margin-top:20px;color:#71809d;font-size:12px}
-    @media(max-width:760px){.local-layout,.local-functions{grid-template-columns:1fr}}
+    @media(max-width:760px){.local-layout,.local-functions,.local-store-links{grid-template-columns:1fr}}
     @media(max-width:640px){.local-hero{align-items:flex-start;flex-direction:column}.local-hero-main{align-items:flex-start}.local-hero-actions{width:100%}.local-hero-action-links{width:100%}.admin-panel-button{width:100%}}
     @media(max-width:480px){.local-page{padding:20px 0 38px}.local-hero{padding:20px}.local-avatar{width:62px;height:62px;border-radius:18px}.local-panel{padding:18px}.local-stats{grid-template-columns:1fr}.daily-list{grid-template-columns:1fr}}
     ${cosmeticThemeStyles}
   </style></head><body><main class="local-page">
     <nav class="local-topbar"><a href="/dashboard">← Conta Central</a><span>${safeBotName} · Painel local</span></nav>
-    <header class="local-hero"><div class="local-hero-main"><img class="local-avatar" src="${escapeHtml(data.avatarUrl || "/semfoto.jpg")}" alt="Foto de perfil de ${escapeHtml(data.userName)}" onerror="this.onerror=null;this.src='/semfoto.jpg'"><div><div class="eyebrow">Painel da conta local</div><h1>${escapeHtml(data.userName)}</h1><p>${groupType}: ${escapeHtml(data.groupName)} · ${escapeHtml(data.platform)}</p></div></div><div class="local-hero-actions"><div class="local-hero-action-links"><a class="admin-panel-button cosmetics-store-button" href="/loja-cosmeticos?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">🎨 Loja de cosméticos</a>${data.canManage ? `<a class="admin-panel-button" href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">⚙ Painel de administração</a>` : ""}</div></div></header>
+    <header class="local-hero"><div class="local-hero-main"><img class="local-avatar" src="${escapeHtml(data.avatarUrl || "/semfoto.jpg")}" alt="Foto de perfil de ${escapeHtml(data.userName)}" onerror="this.onerror=null;this.src='/semfoto.jpg'"><div><div class="eyebrow">Painel da conta local</div><h1>${escapeHtml(data.userName)}</h1><p>${groupType}: ${escapeHtml(data.groupName)} · ${escapeHtml(data.platform)}</p></div></div><div class="local-hero-actions"><div class="local-hero-action-links">${data.canManage ? `<a class="admin-panel-button" href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">⚙ Painel de administração</a>` : ""}</div></div></header>
     <section class="local-section" aria-labelledby="displaySectionTitle">
       <header class="local-section-heading"><div><h2 id="displaySectionTitle">Exibição</h2><p>Consulte seus dados e posições neste grupo ou servidor.</p></div></header>
       <div class="local-layout">
@@ -2680,6 +2688,14 @@ function renderLocalAccount(data) {
           <section class="local-panel"><h2>Minha economia local</h2><p class="muted">Saldo, ações e movimentações vinculadas somente a este grupo ou servidor.</p>${accountStats}</section>
         </div>
       </div>
+    </section>
+    <section class="local-section" aria-labelledby="storesSectionTitle">
+      <header class="local-section-heading"><div><h2 id="storesSectionTitle">Lojas</h2><p>Consulte os itens disponíveis para este grupo ou servidor.</p></div></header>
+      <section class="local-panel"><div class="local-store-links">
+        <a class="local-store-link bot-store-link" href="/loja-bot?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}"><span>🛒</span><strong>Loja do Bot</strong><small>Resets e itens da economia</small></a>
+        <a class="local-store-link market-store-link" href="/mercado-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}"><span>🏪</span><strong>Mercado Local</strong><small>Itens cadastrados pelos administradores</small></a>
+        <a class="local-store-link cosmetics-store-link" href="/loja-cosmeticos?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}"><span>🎨</span><strong>Loja de cosméticos</strong><small>Personalize seu perfil</small></a>
+      </div></section>
     </section>
     <section class="local-section" aria-labelledby="functionsSectionTitle">
       <header class="local-section-heading"><div><h2 id="functionsSectionTitle">Funções</h2><p>Ações disponíveis para sua conta neste grupo ou servidor.</p></div></header>
@@ -2719,97 +2735,158 @@ function renderLocalAccount(data) {
 
 function renderCosmeticsStore(data) {
   const backgrounds = economy.PROFILE_BACKGROUNDS;
-  const selectedBackground = data.cosmetics.background;
-  const selected = selectedBackground ? backgrounds[selectedBackground] : null;
-  const previewStops = selected?.stops || ["#27365d", "#111827", "#090b10"];
-  const previewAccent = selected?.accent || "#7ea7ff";
-  const currency = economy.formatMoney(data.balance);
-  const price = economy.formatMoney(economy.PROFILE_BACKGROUND_PRICE);
-  const cards = Object.entries(backgrounds).map(([key, background]) => {
-    const owned = data.cosmetics.ownedBackgrounds.includes(key);
-    const active = data.cosmetics.background === key;
-    return `<article class="color-card${active ? " active" : ""}" data-color-card="${key}">
-      <button class="color-swatch" type="button" data-preview-color="${key}" aria-label="Visualizar ${escapeHtml(background.label)}" style="background:linear-gradient(145deg,${background.stops[0]},${background.stops[1]} 55%,${background.stops[2]});--swatch-accent:${background.accent}"></button>
-      <div class="color-card-info"><div><h3>${escapeHtml(background.label)}</h3><p>${active ? "Aplicada no seu perfil" : owned ? "Já comprada" : `Preço: ${price}`}</p></div><button class="color-action" type="button" data-set-color="${key}">${active ? "Em uso" : owned ? "Aplicar" : "Comprar e aplicar"}</button></div>
-    </article>`;
-  }).join("");
+  const rarityLabels = {
+    [economy.ITEM_RARITY.COMMON]: "Comum",
+    [economy.ITEM_RARITY.UNCOMMON]: "Incomum",
+    [economy.ITEM_RARITY.RARE]: "Raro",
+    [economy.ITEM_RARITY.EPIC]: "Épico",
+    [economy.ITEM_RARITY.LEGENDARY]: "Lendário"
+  };
+  const ownedBackgrounds = data.cosmetics.ownedBackgrounds || [];
+  const groups = new Map();
+  for (const [key, background] of Object.entries(backgrounds)) {
+    if (!groups.has(background.rarity)) groups.set(background.rarity, []);
+    groups.get(background.rarity).push({ key, ...background });
+  }
+  const categories = [...groups].map(([rarity, items]) => `
+    <section class="store-panel category-panel">
+      <header class="category-heading"><div><h2>Fundos · ${escapeHtml(rarityLabels[rarity] || rarity)}</h2><p class="store-muted">${items.length} opções</p></div></header>
+      <div class="store-items">${items.map(background => {
+        const owned = ownedBackgrounds.includes(background.key);
+        const active = data.cosmetics.background === background.key;
+        return `<article class="color-card${active ? " active" : ""}" data-color-card="${escapeHtml(background.key)}">
+          <div class="color-swatch" aria-hidden="true" style="background:linear-gradient(145deg,${background.stops[0]},${background.stops[1]} 55%,${background.stops[2]})"></div>
+          <div class="color-card-info"><div><h3>${escapeHtml(background.label)}</h3><p>ID ${background.id} · ${active ? "Em uso" : owned ? "Comprado" : `Preço: ${economy.formatMoney(economy.PROFILE_BACKGROUND_PRICE)}`}</p></div><button class="color-action" type="button" data-preview-color="${escapeHtml(background.key)}">Mostrar prévia</button></div>
+        </article>`;
+      }).join("")}</div>
+    </section>`).join("");
   const pageContext = {
     platform: data.platform,
     groupId: data.groupId,
-    balance: currency,
-    price,
+    balance: economy.formatMoney(data.balance),
+    price: economy.formatMoney(economy.PROFILE_BACKGROUND_PRICE),
     backgrounds: Object.fromEntries(Object.entries(backgrounds).map(([key, background]) => [
       key,
-      { label: background.label, stops: background.stops, accent: background.accent }
+      {
+        id: background.id,
+        label: background.label,
+        rarity: background.rarity,
+        stops: background.stops,
+        accent: background.accent
+      }
     ])),
-    ownedBackgrounds: data.cosmetics.ownedBackgrounds,
+    ownedBackgrounds,
+    appliedBackground: data.cosmetics.background
   };
+  const profileLink = `/painel-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}`;
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Loja de cosméticos · ${escapeHtml(data.groupName)}</title><style>
-    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;background:radial-gradient(circle at 15% 0,#312344 0,#10131c 48%,#090b10 100%)}button,a{font:inherit}.store-page{width:min(1080px,100%);margin:0 auto}.store-topbar{display:flex;justify-content:space-between;gap:12px;padding:8px 0 20px;border-bottom:1px solid #ffffff16}.store-topbar a{color:#d6b5ff;text-decoration:none;font-weight:700}.store-topbar span,.store-muted{color:#aab3c8}.store-hero{margin:24px 0;padding:26px;border:1px solid #f0a8c633;border-radius:20px;background:linear-gradient(120deg,#452b4a,#24263d 70%,#1b2435)}.store-hero h1{margin:4px 0 8px;font-size:clamp(28px,5vw,40px)}.store-hero p{margin:0;color:#d0c8dc;line-height:1.6}.store-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(280px,.85fr);gap:18px;align-items:start}.store-panel{padding:22px;border:1px solid #ffffff14;border-radius:18px;background:linear-gradient(145deg,#191e2d,#131824)}.store-panel h2{margin:0 0 7px;font-size:19px}.store-colors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:18px}.color-card{overflow:hidden;border:1px solid #ffffff16;border-radius:14px;background:#ffffff05;transition:border-color .15s,transform .15s}.color-card.active{border-color:#f0a8c6aa;box-shadow:0 0 0 1px #f0a8c633}.color-card:hover{transform:translateY(-2px)}.color-swatch{display:block;width:100%;height:78px;border:0;border-bottom:1px solid #ffffff12;cursor:pointer}.color-swatch:focus-visible,.color-action:focus-visible{outline:2px solid #f0a8c6;outline-offset:2px}.color-card-info{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px}.color-card-info h3{margin:0;font-size:14px}.color-card-info p{margin:5px 0 0;color:#aab3c8;font-size:11px}.color-action{min-height:34px;padding:7px 10px;border:1px solid #f0a8c644;border-radius:9px;background:#f076a51a;color:#ffe0ef;font-size:11px;font-weight:750;cursor:pointer;white-space:nowrap}.color-action:disabled{opacity:.55;cursor:wait}.preview-card{min-height:270px;padding:20px;border:1px solid #ffffff30;border-radius:16px;background:linear-gradient(145deg,${previewStops[0]},${previewStops[1]} 55%,${previewStops[2]});transition:background .25s ease;box-shadow:0 18px 45px #0004}.preview-label{display:inline-block;padding:6px 9px;border:1px solid #ffffff32;border-radius:20px;background:#0003;color:#fff;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.preview-user{display:flex;align-items:center;gap:12px;margin-top:36px}.preview-avatar{display:grid;width:54px;height:54px;place-items:center;border:2px solid var(--preview-accent);border-radius:17px;background:#ffffff18;color:#fff;font-size:21px;font-weight:800}.preview-user strong{display:block;font-size:17px}.preview-user small{display:block;margin-top:4px;color:#ffffffb8}.preview-profile{margin-top:16px;padding:14px;border:1px solid #ffffff2a;border-radius:12px;background:#080b1280}.preview-profile strong{color:var(--preview-accent)}.preview-profile p{margin:6px 0 0;color:#ffffffbb;font-size:12px;line-height:1.5}.store-balance{margin-top:15px;padding:13px;border:1px solid #ffffff14;border-radius:12px;background:#ffffff06}.store-balance span{color:#aab3c8;font-size:11px}.store-balance strong{display:block;margin-top:4px;font-size:20px}.store-feedback{min-height:25px;margin:12px 0 0;color:#9cf0cf;font-size:13px;line-height:1.5}.store-feedback.error{color:#ff9caa}.reset-button{min-height:40px;margin-top:12px;padding:8px 12px;border:1px solid #ffffff25;border-radius:10px;background:#ffffff08;color:#e8ebf5;font-weight:700;cursor:pointer}.store-footer{margin:18px 0;color:#8390a9;font-size:12px}@media(max-width:760px){.store-layout{grid-template-columns:1fr}}@media(max-width:500px){body{padding:16px}.store-hero,.store-panel{padding:18px}.store-colors{grid-template-columns:1fr}.color-swatch{height:60px}}
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;background:radial-gradient(circle at 15% 0,#312344 0,#10131c 48%,#090b10 100%)}button,a{font:inherit}.store-page{width:min(980px,100%);margin:0 auto}.store-topbar{display:flex;justify-content:space-between;gap:12px;padding:8px 0 20px;border-bottom:1px solid #ffffff16}.store-topbar a{color:#d6b5ff;text-decoration:none;font-weight:700}.store-topbar span,.store-muted{color:#aab3c8}.store-hero{margin:24px 0;padding:26px;border:1px solid #f0a8c633;border-radius:20px;background:linear-gradient(120deg,#452b4a,#24263d 70%,#1b2435)}.store-hero h1{margin:4px 0 8px;font-size:clamp(28px,5vw,40px)}.store-hero p{margin:0;color:#d0c8dc;line-height:1.6}    .store-panel{margin-top:16px;padding:22px;border:1px solid #ffffff14;border-radius:18px;background:linear-gradient(145deg,#191e2d,#131824)}.category-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.category-heading h2{margin:0;font-size:19px}.category-heading p{margin:5px 0 0}.category-picker{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;margin-top:16px;padding:17px;border:1px solid #f0a8c644;border-radius:14px;background:#f0a8c60a;color:#f5f7fb;text-align:left;cursor:pointer}.category-picker:hover,.category-picker:focus-visible{border-color:#f0a8c6;outline:2px solid #f0a8c644;outline-offset:2px}.category-picker strong,.category-picker small{display:block}.category-picker small{margin-top:5px;color:#aab3c8;font-size:12px}.category-picker>span:last-child{font-size:22px;color:#f0a8c6}.store-items{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:18px}.color-card{overflow:hidden;border:1px solid #ffffff16;border-radius:14px;background:#ffffff05}.color-card.active{border-color:#f0a8c6aa;box-shadow:0 0 0 1px #f0a8c633}.color-swatch{height:64px;border-bottom:1px solid #ffffff12}.color-card-info{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px}.color-card-info h3{margin:0;font-size:14px}.color-card-info p{margin:5px 0 0;color:#aab3c8;font-size:11px}.color-action,.reset-button,.modal-button{min-height:38px;padding:8px 12px;border:1px solid #f0a8c655;border-radius:10px;background:#f076a51a;color:#ffe0ef;font-size:12px;font-weight:750;cursor:pointer;white-space:nowrap}.color-action:hover,.modal-button:hover{background:#f076a532}.store-balance{display:flex;justify-content:space-between;gap:12px;margin-top:14px;padding:13px;border:1px solid #ffffff14;border-radius:12px;background:#ffffff06;color:#aab3c8;font-size:12px}.store-balance strong{color:#f5f7fb}.store-feedback{min-height:22px;margin:12px 0 0;color:#9cf0cf;font-size:13px}.store-feedback.error{color:#ff9caa}.reset-button{margin-top:14px;border-color:#ffffff30;background:#ffffff08;color:#e8ebf5}.preview-dialog{width:min(560px,calc(100% - 28px));padding:0;border:1px solid #f0a8c655;border-radius:20px;background:#151a27;color:#f5f7fb;box-shadow:0 24px 90px #000b}.preview-dialog::backdrop{background:#05070bcc;backdrop-filter:blur(4px)}.dialog-content{padding:22px}.dialog-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.dialog-header h2{margin:0}.dialog-header p{margin:5px 0 0;color:#aab3c8;font-size:13px}.dialog-close{width:38px;height:38px;border:1px solid #ffffff25;border-radius:10px;background:#ffffff08;color:#f5f7fb;font-size:20px;cursor:pointer}.preview-card{min-height:240px;margin-top:18px;padding:20px;border:1px solid #ffffff30;border-radius:16px;box-shadow:0 18px 45px #0004}.preview-label{display:inline-block;padding:6px 9px;border:1px solid #ffffff32;border-radius:20px;background:#0003;color:#fff;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.preview-user{display:flex;align-items:center;gap:12px;margin-top:30px}.preview-avatar{display:grid;width:54px;height:54px;place-items:center;border:2px solid var(--preview-accent);border-radius:17px;background:#ffffff18;color:#fff;font-size:21px;font-weight:800}.preview-user strong,.preview-user small{display:block}.preview-user small{margin-top:4px;color:#ffffffb8}.preview-profile{margin-top:16px;padding:14px;border:1px solid #ffffff2a;border-radius:12px;background:#080b1280}.preview-profile strong{color:var(--preview-accent)}.preview-profile p{margin:6px 0 0;color:#ffffffbb;font-size:12px;line-height:1.5}.dialog-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}.dialog-actions .secondary{border-color:#ffffff30;background:#ffffff08;color:#e8ebf5}.dialog-actions button:disabled,.reset-button:disabled{opacity:.55;cursor:wait}.store-footer{margin:18px 0;color:#8390a9}@media(max-width:600px){body{padding:16px}.store-hero,.store-panel,.dialog-content{padding:18px}.store-items{grid-template-columns:1fr}.color-card-info{align-items:flex-start}.dialog-actions{flex-direction:column-reverse}.dialog-actions button{width:100%}}
+    .category-catalog[hidden]{display:none}
   </style></head><body><main class="store-page">
-    <nav class="store-topbar"><a href="/painel-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">← Voltar ao perfil</a><span>Loja de cosméticos · ${escapeHtml(data.groupName)}</span></nav>
-    <header class="store-hero"><h1>🎨 Loja de cosméticos</h1><p>Escolha uma cor e veja ao vivo como ela fica no seu perfil deste grupo. Cada cor comprada fica disponível para trocar sem custo.</p></header>
-    <div class="store-layout"><section class="store-panel"><h2>Cores disponíveis</h2><p class="store-muted">A prévia muda ao selecionar uma cor. A compra só é confirmada depois da sua autorização.</p><div class="store-colors">${cards}</div></section>
-      <aside class="store-panel"><h2>Prévia ao vivo</h2><p class="store-muted">Assim seu perfil ficará com a cor selecionada.</p><div id="previewCard" class="preview-card" style="background:linear-gradient(145deg,${previewStops[0]},${previewStops[1]} 55%,${previewStops[2]});--preview-accent:${previewAccent}"><span class="preview-label">Perfil neste grupo</span><div class="preview-user"><div class="preview-avatar">U</div><div><strong>${escapeHtml(data.userName)}</strong><small>${escapeHtml(data.groupName)}</small></div></div><div class="preview-profile"><strong id="previewColorName">${escapeHtml(selected?.label || "Original")}</strong><p>Este fundo será aplicado ao seu perfil neste grupo.</p></div></div><div class="store-balance"><span>Seu saldo local</span><strong id="storeBalance">${currency}</strong></div><button id="resetBackground" class="reset-button" type="button">Restaurar fundo original</button><p id="storeFeedback" class="store-feedback" role="status" aria-live="polite"></p></aside>
-    </div><p class="store-footer">As cores e o saldo são individuais desta plataforma e deste grupo.</p>
-  </main><script>
+    <nav class="store-topbar"><a href="${profileLink}">← Voltar ao perfil</a><span>Loja de cosméticos · ${escapeHtml(data.groupName)}</span></nav>
+    <header class="store-hero"><h1>🎨 Loja de cosméticos</h1><p>Escolha uma categoria e abra a prévia de um fundo para comprar ou equipar. Os fundos comprados podem ser trocados sem custo.</p></header>
+    <section id="cosmeticCategories" class="store-panel"><h2>Categorias de cosméticos</h2><button id="showBackgrounds" class="category-picker" type="button"><span><strong>Fundos</strong><small>Confira os fundos disponíveis e suas categorias de raridade</small></span><span aria-hidden="true">→</span></button></section>
+    <div id="backgroundCatalog" class="category-catalog" hidden><section class="store-panel"><button id="backToCategories" class="reset-button" type="button">← Categorias de cosméticos</button></section>${categories}
+      <section class="store-panel"><div class="store-balance"><span>Seu saldo local</span><strong id="storeBalance">${pageContext.balance}</strong></div><button id="resetBackground" class="reset-button" type="button">Restaurar fundo original</button><p id="storeFeedback" class="store-feedback" role="status" aria-live="polite"></p></section>
+    </div>
+    <p class="store-footer">Os cosméticos e o saldo são individuais desta plataforma e deste grupo.</p>
+  </main>
+  <dialog id="previewDialog" class="preview-dialog" aria-labelledby="dialogTitle"><div class="dialog-content"><header class="dialog-header"><div><h2 id="dialogTitle">Prévia do fundo</h2><p id="dialogDescription"></p></div><button class="dialog-close" type="button" data-close-dialog aria-label="Fechar">×</button></header><div id="previewCard" class="preview-card"><span class="preview-label">Perfil neste grupo</span><div class="preview-user"><div class="preview-avatar">U</div><div><strong>${escapeHtml(data.userName)}</strong><small>${escapeHtml(data.groupName)}</small></div></div><div class="preview-profile"><strong id="previewColorName"></strong><p>Esta é uma prévia do fundo no perfil local.</p></div></div><p id="dialogFeedback" class="store-feedback" role="status" aria-live="polite"></p><footer class="dialog-actions"><button class="modal-button secondary" type="button" data-close-dialog>Fechar</button><button id="previewAction" class="modal-button" type="button">Comprar e equipar</button></footer></div></dialog>
+  <script>
     const storeContext=${JSON.stringify(pageContext)};
     const backgroundUrl="/api/account/local/cosmetics";
-    let previewSelection=${JSON.stringify(selectedBackground)};
-    let appliedBackground=${JSON.stringify(data.cosmetics.background)};
-    const feedbackElement=document.getElementById("storeFeedback");
-    function showFeedback(message,isError){feedbackElement.textContent=message;feedbackElement.classList.toggle("error",Boolean(isError))}
-    function updatePreview(key){
-      const background=key?storeContext.backgrounds[key]:{label:"Original",stops:["#27365d","#111827","#090b10"],accent:"#7ea7ff"};
-      if(!background)return;
-      previewSelection=key;
+    let appliedBackground=storeContext.appliedBackground;
+    let previewKey=null;
+    const dialog=document.getElementById("previewDialog");
+    const dialogFeedback=document.getElementById("dialogFeedback");
+    document.getElementById("showBackgrounds").addEventListener("click",()=>{document.getElementById("cosmeticCategories").hidden=true;document.getElementById("backgroundCatalog").hidden=false});
+    document.getElementById("backToCategories").addEventListener("click",()=>{document.getElementById("backgroundCatalog").hidden=true;document.getElementById("cosmeticCategories").hidden=false});
+    function showFeedback(element,message,isError){element.textContent=message;element.classList.toggle("error",Boolean(isError))}
+    function actionLabel(key){return appliedBackground===key?"Em uso":storeContext.ownedBackgrounds.includes(key)?"Equipar":"Comprar e equipar"}
+    function openPreview(key){
+      const background=storeContext.backgrounds[key];if(!background)return;
+      previewKey=key;
+      document.getElementById("dialogTitle").textContent="Prévia · "+background.label;
+      document.getElementById("dialogDescription").textContent="ID "+background.id+" · "+background.rarity+" · "+(storeContext.ownedBackgrounds.includes(key)?"Já comprado":"Preço: "+storeContext.price);
+      document.getElementById("previewColorName").textContent=background.label;
       const card=document.getElementById("previewCard");
       card.style.background="linear-gradient(145deg,"+background.stops[0]+","+background.stops[1]+" 55%,"+background.stops[2]+")";
       card.style.setProperty("--preview-accent",background.accent);
-      document.getElementById("previewColorName").textContent=background.label;
+      const action=document.getElementById("previewAction");action.textContent=actionLabel(key);action.disabled=appliedBackground===key;
+      showFeedback(dialogFeedback,"",false);
+      if(!dialog.open)dialog.showModal();
     }
-    function refreshColorCards(){
+    function refreshCards(){
       document.querySelectorAll("[data-color-card]").forEach(card=>{
-        const key=card.dataset.colorCard,button=card.querySelector("[data-set-color]");
-        const owned=storeContext.ownedBackgrounds.includes(key),active=appliedBackground===key;
+        const key=card.dataset.colorCard,background=storeContext.backgrounds[key];
+        const active=appliedBackground===key,owned=storeContext.ownedBackgrounds.includes(key);
         card.classList.toggle("active",active);
-        card.querySelector(".color-card-info p").textContent=active?"Aplicada no seu perfil":owned?"Já comprada":"Preço: "+storeContext.price;
-        button.textContent=active?"Em uso":owned?"Aplicar":"Comprar e aplicar";
+        card.querySelector(".color-card-info p").textContent="ID "+background.id+" · "+(active?"Em uso":owned?"Comprado":"Preço: "+storeContext.price);
       });
+      if(previewKey){const action=document.getElementById("previewAction");action.textContent=actionLabel(previewKey);action.disabled=appliedBackground===previewKey;}
     }
     async function submitBackground(payload){
       const response=await fetch(backgroundUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...storeContext,...payload})});
-      const result=await response.json();
-      if(!response.ok)throw new Error(result.error||"Não foi possível atualizar seu perfil.");
-      return result;
+      const result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível atualizar seu perfil.");return result;
     }
-    document.querySelectorAll("[data-preview-color]").forEach(button=>button.addEventListener("click",()=>{updatePreview(button.dataset.previewColor);showFeedback("",false)}));
-    document.querySelectorAll("[data-set-color]").forEach(button=>button.addEventListener("click",async()=>{
-      const key=button.dataset.setColor,owned=storeContext.ownedBackgrounds.includes(key);
-      if(appliedBackground===key){updatePreview(key);return}
-      if(!owned&&!window.confirm("Confirmar a compra da cor "+storeContext.backgrounds[key].label+" por "+storeContext.price+" SatCoins?"))return;
-      button.disabled=true;showFeedback(owned?"Aplicando cor...":"Confirmando compra...",false);
+    document.querySelectorAll("[data-preview-color]").forEach(button=>button.addEventListener("click",()=>openPreview(button.dataset.previewColor)));
+    document.querySelectorAll("[data-close-dialog]").forEach(button=>button.addEventListener("click",()=>dialog.close()));
+    dialog.addEventListener("click",event=>{if(event.target===dialog)dialog.close()});
+    document.getElementById("previewAction").addEventListener("click",async()=>{
+      const key=previewKey;if(!key||appliedBackground===key)return;
+      const button=document.getElementById("previewAction"),wasOwned=storeContext.ownedBackgrounds.includes(key);
+      button.disabled=true;showFeedback(dialogFeedback,wasOwned?"Equipando fundo...":"Comprando e equipando fundo...",false);
       try{
         const result=await submitBackground({action:"set",background:key});
-        appliedBackground=result.background;
-        storeContext.balance=result.balance;
+        appliedBackground=result.background;storeContext.balance=result.balance;
         document.getElementById("storeBalance").textContent=result.balance;
-        if(result.boughtNow)storeContext.ownedBackgrounds.push(key);
-        updatePreview(key);refreshColorCards();
-        showFeedback(result.boughtNow?"Compra confirmada! A cor foi aplicada ao seu perfil.":"Cor aplicada ao seu perfil, sem cobrança.",false);
-      }catch(error){showFeedback(error.message,true)}finally{button.disabled=false}
-    }));
-    document.getElementById("resetBackground").addEventListener("click",async()=>{
-      if(!appliedBackground){showFeedback("Seu perfil já está usando o fundo original.",false);return}
-      const button=document.getElementById("resetBackground");button.disabled=true;showFeedback("Restaurando fundo original...",false);
-      try{
-        const result=await submitBackground({action:"reset"});
-        appliedBackground=null;updatePreview(null);refreshColorCards();
-        showFeedback("Fundo original restaurado. Suas cores compradas continuam disponíveis.",false);
-      }catch(error){showFeedback(error.message,true)}finally{button.disabled=false}
+        if(result.boughtNow&&!storeContext.ownedBackgrounds.includes(key))storeContext.ownedBackgrounds.push(key);
+        refreshCards();
+        showFeedback(dialogFeedback,result.boughtNow?"Fundo comprado e equipado!":"Fundo equipado sem cobrança.",false);
+        showFeedback(document.getElementById("storeFeedback"),result.boughtNow?"Compra confirmada e aplicada ao seu perfil.":"Fundo aplicado ao seu perfil.",false);
+      }catch(error){showFeedback(dialogFeedback,error.message,true)}
+      finally{button.disabled=appliedBackground===key}
     });
-    refreshColorCards();
+    document.getElementById("resetBackground").addEventListener("click",async()=>{
+      const button=document.getElementById("resetBackground");if(!appliedBackground){showFeedback(document.getElementById("storeFeedback"),"Seu perfil já está usando o fundo original.",false);return}
+      button.disabled=true;
+      try{await submitBackground({action:"reset"});appliedBackground=null;refreshCards();showFeedback(document.getElementById("storeFeedback"),"Fundo original restaurado. Suas cores compradas continuam disponíveis.",false)}
+      catch(error){showFeedback(document.getElementById("storeFeedback"),error.message,true)}
+      finally{button.disabled=false}
+    });
+    refreshCards();
   </script></body></html>`;
+}
+
+function renderShopCatalog(data, shopType) {
+  const botShop = shopType === "bot";
+  const title = botShop ? "Loja do Bot" : data.store.title || "Mercado Local";
+  const items = botShop ? data.items : data.store.items;
+  const groups = new Map();
+  for (const item of items) {
+    const category = botShop
+      ? item.product ? "Proteção" : "Resets"
+      : String(item.category || "Geral").trim() || "Geral";
+    if (!groups.has(category)) groups.set(category, []);
+    groups.get(category).push(item);
+  }
+  const notice = botShop
+    ? "Catálogo informativo dos resets e produtos do Bot. A compra, quando disponível, é feita pelo comando comprar no grupo."
+    : data.store.notice;
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${escapeHtml(title)} · ${escapeHtml(data.groupName)}</title><style>
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;background:radial-gradient(circle at 15% 0,#252b48 0,#10131c 48%,#090b10 100%)}.catalog-page{width:min(900px,100%);margin:0 auto}.catalog-topbar{padding:8px 0 20px;border-bottom:1px solid #ffffff16}.catalog-topbar a{color:#b9c6ff;text-decoration:none;font-weight:700}.catalog-hero{margin:24px 0;padding:25px;border:1px solid #8797ff33;border-radius:20px;background:linear-gradient(120deg,#293454,#22263d 70%,#1b2435)}.catalog-hero h1{margin:0 0 9px;font-size:clamp(26px,5vw,38px)}.catalog-hero p{margin:0;color:#c1c9df;line-height:1.6}.catalog-category{margin-top:16px;padding:21px;border:1px solid #ffffff14;border-radius:17px;background:linear-gradient(145deg,#191e2d,#131824)}.catalog-category h2{margin:0 0 13px;font-size:18px}.catalog-items{display:grid;gap:8px}.catalog-item{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px;border:1px solid #ffffff0f;border-radius:12px;background:#ffffff05}.catalog-item h3{margin:0;font-size:14px}.catalog-item p{margin:5px 0 0;color:#aab3c8;font-size:11px}.catalog-item>strong{white-space:nowrap;color:#c6bdff;font-size:13px}.catalog-empty{padding:18px;border:1px dashed #ffffff25;border-radius:12px;color:#aab3c8}.catalog-footer{margin:18px 0;color:#8390a9;font-size:12px}@media(max-width:540px){body{padding:16px}.catalog-hero,.catalog-category{padding:18px}.catalog-item{align-items:flex-start;flex-direction:column}}
+  </style></head><body><main class="catalog-page">
+    <nav class="catalog-topbar"><a href="/painel-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">← Voltar ao perfil</a></nav>
+    <header class="catalog-hero"><h1>${botShop ? "🛒 " : "🏪 "}${escapeHtml(title)}</h1><p>${escapeHtml(notice)}</p></header>
+    ${items.length ? [...groups].map(([category, entries]) => `
+      <section class="catalog-category"><h2>${escapeHtml(category)}</h2>
+        <div class="catalog-items">${entries.map(item => `<article class="catalog-item">
+          <div><h3>${escapeHtml(item.name)}</h3><p>${botShop ? "Item informativo" : `ID ${item.id} · ${item.quantity === null ? "Estoque ilimitado" : `Estoque: ${item.quantity}`}`}</p></div>
+          <strong>${economy.formatMoney(item.price)}</strong>
+        </article>`).join("")}</div>
+      </section>`).join("") : `<section class="catalog-category"><p class="catalog-empty">${botShop ? "Não há itens disponíveis." : "O Mercado Local ainda não tem itens cadastrados."}</p></section>`}
+    <p class="catalog-footer">${botShop ? "Esta página é apenas informativa. Use os comandos do Bot para realizar compras." : "Compras do Mercado Local são realizadas pelo comando comprar no grupo; a entrega é feita pelos administradores."}</p>
+  </main></body></html>`;
 }
 
 function getCosmeticPanelStyles(backgroundKey, panelType) {
@@ -2909,7 +2986,7 @@ function renderGroupAdmin(data) {
   const autodownloadDialog = `<dialog class="antilink-dialog welcome-dialog" id="autodownloadDialog" aria-labelledby="autodownloadDialogTitle"><form id="autodownloadForm"><header class="antilink-dialog-heading"><div><h2 id="autodownloadDialogTitle">Configurações do download automático</h2><p id="autodownloadScopeLabel"></p></div><button type="button" class="dialog-close" data-close-autodownload aria-label="Fechar">×</button></header><label class="autorepo-global-toggle"><input type="checkbox" name="deletelink"><span><strong>Excluir a mensagem com o link original</strong><small>Depois que o bot enviar a mídia baixada, remove do chat a mensagem que contém o link.</small></span></label><p class="antilink-form-feedback" id="autodownloadFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-autodownload>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>`;
   const autoApproveDialog = `<dialog class="antilink-dialog welcome-dialog" id="autoApproveDialog" aria-labelledby="autoApproveDialogTitle"><form id="autoApproveForm"><header class="antilink-dialog-heading"><div><h2 id="autoApproveDialogTitle">Configurações da autoaprovação</h2><p id="autoApproveScopeLabel"></p></div><button type="button" class="dialog-close" data-close-autoApprove aria-label="Fechar">×</button></header><label>Intervalo entre aprovações (segundos)<input name="intervalSeconds" type="number" min="0" max="86400" step="1" required></label><label>Nomes bloqueados<textarea name="blockedNames" rows="3" placeholder="um texto por linha"></textarea></label><label>Símbolos bloqueados<textarea name="blockedSymbols" rows="3" placeholder="um símbolo por linha"></textarea></label><label>Horários permitidos (HH:MM-HH:MM, uma faixa por linha)<textarea name="schedules" rows="3" placeholder="08:00-18:00"></textarea><small>Sem faixas, a autoaprovação pode ocorrer a qualquer horário local.</small></label><p class="antilink-form-feedback" id="autoApproveFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-autoApprove>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>`;
   const rpManagerDialog = `<dialog class="antilink-dialog rp-manager-dialog" id="rpManagerDialog" aria-labelledby="rpManagerTitle"><header class="antilink-dialog-heading"><div><h2 id="rpManagerTitle">Gerenciar sistema</h2><p id="rpManagerScopeLabel"></p></div><button type="button" class="dialog-close" data-close-rp-manager aria-label="Fechar">×</button></header><section id="rpXpSettings" class="rp-xp-settings" hidden><h3>Mensagens de level-up</h3><label class="autorepo-global-toggle"><input id="rpXpMuted" type="checkbox"><span><strong>Silenciar avisos de level-up</strong><small>O ganho de XP continua ativo; somente os avisos serão silenciados.</small></span></label><label><span id="rpXpDestinationLabel">Canal para mensagens de level-up</span><select id="rpXpDestination"><option value="">Canal onde o XP foi ganho</option></select><small id="rpXpDestinationHint">Deixe o destino padrão para avisar onde o XP foi ganho.</small></label><button type="button" id="saveRpXpSettings">Salvar configurações de XP</button></section><div class="rp-manager-toolbar"><button type="button" id="resetRpSystem" class="moderation-action danger">Resetar sistema</button></div><form id="rpSearchForm" class="moderation-search"><input id="rpSearch" type="search" maxlength="100" autocomplete="off" placeholder="Buscar por nome, username ou ID"><button type="submit">Buscar</button></form><p class="moderation-help" id="rpManagerDescription"></p><div id="rpManagerUsers" class="rp-manager-users" aria-live="polite"></div><p class="antilink-form-feedback" id="rpManagerFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-rp-manager>Fechar</button></footer></dialog>`;
-  const store2Dialog = `<dialog class="antilink-dialog store2-dialog" id="store2Dialog" aria-labelledby="store2Title"><header class="antilink-dialog-heading"><div><h2 id="store2Title">Loja 2</h2><p id="store2ScopeLabel">Catálogo e pedidos deste grupo ou servidor.</p></div><button type="button" class="dialog-close" data-close-store2 aria-label="Fechar">×</button></header><form id="store2DetailsForm"><label>Título da loja<input name="title" maxlength="120" required></label><label>Aviso<textarea name="notice" maxlength="1000" rows="3" required></textarea></label><div class="antilink-dialog-actions"><button type="submit" class="primary">Salvar título e aviso</button></div></form><section><h3>Itens do catálogo</h3><form id="store2ItemForm"><input name="id" type="hidden"><label>Nome<input name="name" maxlength="120" required></label><div class="antilink-form-grid"><label>Preço em SatCoins<input name="price" type="text" inputmode="decimal" placeholder="250,00" required></label><label>Categoria<input name="category" maxlength="80" required></label></div><label>Quantidade (ou “infinito”)<input name="quantity" type="text" inputmode="numeric" placeholder="5 ou infinito" required></label><div class="antilink-dialog-actions"><button type="submit" class="primary" id="store2ItemSubmit">Adicionar item</button><button type="button" id="store2ItemCancel" hidden>Cancelar edição</button></div></form><div id="store2Items" class="store2-list" aria-live="polite"></div></section><section><h3>Pedidos pendentes</h3><div id="store2Orders" class="store2-list" aria-live="polite"></div></section><p class="antilink-form-feedback" id="store2Feedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-store2>Fechar</button></footer></dialog>`;
+  const store2Dialog = `<dialog class="antilink-dialog store2-dialog" id="store2Dialog" aria-labelledby="store2Title"><header class="antilink-dialog-heading"><div><h2 id="store2Title">Loja 2</h2><p id="store2ScopeLabel">Catálogo e pedidos deste grupo ou servidor.</p></div><button type="button" class="dialog-close" data-close-store2 aria-label="Fechar">×</button></header><form id="store2DetailsForm"><label>Título da loja<input name="title" maxlength="120" required></label><label>Aviso<textarea name="notice" maxlength="1000" rows="3" required></textarea></label><div class="antilink-dialog-actions"><button type="submit" class="primary">Salvar título e aviso</button></div></form><section><h3>Itens do catálogo</h3><form id="store2ItemForm"><input name="id" type="hidden"><label>Nome<input name="name" maxlength="120" required></label><div class="antilink-form-grid"><label>Preço em SatCoins<input name="price" type="text" inputmode="decimal" placeholder="250,00" required></label><label>Categoria<input name="category" maxlength="80" required></label></div><div class="antilink-form-grid"><label>Quantidade (ou “infinito”)<input name="quantity" type="text" inputmode="numeric" placeholder="5 ou infinito" required></label><label>Importância<select name="rarity"><option value="">Não definida</option><option value="comum">Comum</option><option value="incomum">Incomum</option><option value="raro">Raro</option><option value="epico">Épico</option><option value="lendario">Lendário</option></select></label></div><div class="antilink-dialog-actions"><button type="submit" class="primary" id="store2ItemSubmit">Adicionar item</button><button type="button" id="store2ItemCancel" hidden>Cancelar edição</button></div></form><div id="store2Items" class="store2-list" aria-live="polite"></div></section><section><h3>Pedidos pendentes</h3><div id="store2Orders" class="store2-list" aria-live="polite"></div></section><p class="antilink-form-feedback" id="store2Feedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-store2>Fechar</button></footer></dialog>`;
   const monitorDialog = `<dialog class="antilink-dialog monitor-dialog" id="monitorDialog" aria-labelledby="monitorDialogTitle"><form id="monitorForm"><header class="antilink-dialog-heading"><div><h2 id="monitorDialogTitle">Configurações do monitor</h2><p id="monitorScopeLabel"></p></div><button type="button" class="dialog-close" data-close-monitor aria-label="Fechar">×</button></header><div id="monitorFormFields" class="monitor-form-fields"></div><p class="antilink-form-feedback" id="monitorFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-monitor>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>`;
   const schedulesDialog = `<dialog class="antilink-dialog schedules-dialog" id="schedulesDialog" aria-labelledby="schedulesDialogTitle"><header class="antilink-dialog-heading"><div><h2 id="schedulesDialogTitle">Agendamentos</h2><p id="schedulesScopeLabel"></p></div><button type="button" class="dialog-close" data-close-schedules aria-label="Fechar">×</button></header><p class="monitor-field-caption">Gerencie mensagens automáticas para este chat ou tópico. Os horários seguem o fuso horário local do computador que executa o bot.</p><div id="scheduleList" class="schedule-list"></div><button type="button" id="addSchedule" class="schedule-add">Criar agendamento</button><form id="scheduleForm" hidden style="display:none"><input type="hidden" name="id"><div class="antilink-form-grid"><label>Nome<input name="name" type="text" maxlength="100" required></label><label>Gatilho<select name="triggerType"><option value="fixed">Horários fixos</option><option value="interval">Intervalo</option></select></label></div><div id="scheduleFixedFields"><label>Horários (HH:MM, separados por vírgula)<input name="times" type="text" placeholder="07:00, 12:00, 20:00"></label></div><div id="scheduleIntervalFields" hidden><label>Intervalo (por exemplo, 30m, 2h ou 1d2h)<input name="interval" type="text" placeholder="1h"></label></div><div class="antilink-form-grid"><label>Repetição<select name="repeatMode"><option value="once">Uma vez</option><option value="daily">Diariamente</option><option value="weekly">Semanalmente</option><option value="monthly">Mensalmente</option></select></label><label id="scheduleMonthDayField" hidden>Dia do mês<input name="monthDay" type="number" min="1" max="31"></label></div><fieldset class="antilink-options" id="scheduleWeekdayFields" hidden style="display:none"><legend>Dias da semana</legend><div class="monitor-check-list">${[["0","Domingo"],["1","Segunda"],["2","Terça"],["3","Quarta"],["4","Quinta"],["5","Sexta"],["6","Sábado"]].map(([day,label])=>`<label><input type="checkbox" name="days" value="${day}">${label}</label>`).join("")}</div></fieldset><label>Tipo de mensagem<select name="messageMode"><option value="text">Texto</option><option value="media">Mídia com legenda</option></select></label><label>Texto / legenda<textarea name="text" maxlength="4000" rows="4"></textarea></label><section class="schedule-media"><strong>Mídia: </strong><span id="scheduleMediaStatus">Nenhuma mídia configurada.</span><p class="monitor-field-caption">O upload é salvo imediatamente; os demais campos só são salvos pelo botão abaixo.</p><label>Enviar imagem ou vídeo (JPEG, PNG, WebP, GIF ou MP4; até 8 MB)<input type="file" name="mediaFile" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4"></label><div class="antilink-dialog-actions"><button type="button" id="uploadScheduleMedia">Enviar mídia</button><button type="button" id="removeScheduleMedia" hidden>Remover mídia</button></div></section><p class="antilink-form-feedback" id="scheduleFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" id="cancelScheduleEdit">Cancelar</button><button type="submit" class="primary">Salvar agendamento</button></footer></form></dialog>`;
 
@@ -3970,7 +4047,8 @@ function renderGroupAdmin(data) {
       result.store.items.forEach(item=>{
         const row=document.createElement("article"),title=document.createElement("h4"),detail=document.createElement("p"),actions=document.createElement("div"),edit=document.createElement("button"),remove=document.createElement("button");
         row.className="store2-row";title.textContent=item.name;
-        detail.textContent="#"+item.id+" · "+item.category+" · "+formatStoreMoney(item.price)+" · Estoque: "+(item.quantity===null?"infinito":item.quantity);
+        const rarityLabels={comum:"Comum",incomum:"Incomum",raro:"Raro",epico:"Épico",lendario:"Lendário"};
+        detail.textContent="#"+item.id+" · "+item.category+(item.rarity?" · Importância: "+(rarityLabels[item.rarity]||item.rarity):"")+" · "+formatStoreMoney(item.price)+" · Estoque: "+(item.quantity===null?"infinito":item.quantity);
         actions.className="store2-row-actions";edit.type="button";edit.textContent="Editar";edit.dataset.store2Edit=String(item.id);
         remove.type="button";remove.className="danger";remove.textContent="Remover";remove.dataset.store2Remove=String(item.id);
         actions.append(edit,remove);row.append(title,detail,actions);store2ItemList.append(row);
@@ -4025,7 +4103,7 @@ function renderGroupAdmin(data) {
     store2ItemForm.addEventListener("submit",async event=>{
       event.preventDefault();
       const button=store2ItemSubmit,id=store2ItemForm.elements.id.value;button.disabled=true;
-      const item={name:store2ItemForm.elements.name.value,price:store2ItemForm.elements.price.value,category:store2ItemForm.elements.category.value,quantity:store2ItemForm.elements.quantity.value};
+      const item={name:store2ItemForm.elements.name.value,price:store2ItemForm.elements.price.value,category:store2ItemForm.elements.category.value,quantity:store2ItemForm.elements.quantity.value,rarity:store2ItemForm.elements.rarity.value||null};
       const saved=await saveStore2Action({action:id?"edit":"add",itemId:id,item},id?"Item atualizado.":"Item cadastrado.");
       if(saved)resetStore2ItemForm();
       button.disabled=false;
@@ -4039,6 +4117,7 @@ function renderGroupAdmin(data) {
         store2ItemForm.elements.id.value=String(item.id);store2ItemForm.elements.name.value=item.name;
         store2ItemForm.elements.price.value=(item.price/100).toFixed(2);store2ItemForm.elements.category.value=item.category;
         store2ItemForm.elements.quantity.value=item.quantity===null?"infinito":String(item.quantity);
+        store2ItemForm.elements.rarity.value=item.rarity||"";
         store2ItemSubmit.textContent="Salvar alterações";store2ItemCancel.hidden=false;store2ItemForm.elements.name.focus();return;
       }
       const remove=event.target.closest("[data-store2-remove]");
@@ -6201,8 +6280,10 @@ function start() {
               const item = payload?.item;
               if (!item || typeof item !== "object" || Array.isArray(item) ||
                   typeof item.name !== "string" || item.name.trim().length > 120 ||
-                  typeof item.category !== "string" || item.category.trim().length > 80) {
-                throw new Error("Informe nome e categoria válidos para o item.");
+                  typeof item.category !== "string" || item.category.trim().length > 80 ||
+                  (item.rarity !== undefined && item.rarity !== null &&
+                    !Object.values(economy.ITEM_RARITY).includes(item.rarity))) {
+                throw new Error("Informe nome, categoria e importância válidos para o item.");
               }
               const price = parseAdminStorePrice(item.price);
               const quantity = parseAdminStoreQuantity(item.quantity);
@@ -6213,7 +6294,8 @@ function start() {
                 name: item.name,
                 category: item.category,
                 price,
-                quantity
+                quantity,
+                rarity: item.rarity === undefined ? undefined : item.rarity
               };
               if (action === "add") {
                 if (!economy.addCommunityStoreItem(message, itemData)) {
@@ -6925,7 +7007,7 @@ function start() {
       return;
     }
 
-    if (request.method === "GET" && requestUrl.pathname === "/loja-cosmeticos") {
+    if (request.method === "GET" && ["/loja-cosmeticos", "/loja-bot", "/mercado-local"].includes(requestUrl.pathname)) {
       const central = await getSessionCentral(request);
       if (!central) {
         response.writeHead(302, { Location: "/dashboard", "Cache-Control": "no-store" });
@@ -6934,37 +7016,53 @@ function start() {
       }
       const platform = String(requestUrl.searchParams.get("plataforma") || "").toLowerCase();
       const groupId = String(requestUrl.searchParams.get("grupo") || "");
+      const shopType = requestUrl.pathname === "/loja-bot"
+        ? "bot"
+        : requestUrl.pathname === "/mercado-local"
+          ? "market"
+          : "cosmetics";
       try {
         const accountData = await getLocalAccountData(central, platform, groupId);
         const message = getLocalGroupMessage(platform, groupId, accountData.platformId);
-        const cosmetics = economy.getProfileCosmetics(message, accountData.platformId);
+        const pageData = {
+          platform,
+          groupId,
+          groupName: accountData.groupName,
+          userName: accountData.userName,
+          balance: accountData.account.balance
+        };
+        let html;
+        if (shopType === "cosmetics") {
+          pageData.cosmetics = economy.getProfileCosmetics(message, accountData.platformId);
+          html = renderCosmeticsStore(pageData);
+        } else if (shopType === "bot") {
+          pageData.items = economy.getStoreItems();
+          html = renderShopCatalog(pageData, shopType);
+        } else {
+          pageData.store = economy.getCommunityStore(message);
+          if (!pageData.store) throw new Error("Mercado Local indisponível para este grupo ou servidor.");
+          html = renderShopCatalog(pageData, shopType);
+        }
         response.writeHead(200, {
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-store",
           "Referrer-Policy": "no-referrer",
           "X-Content-Type-Options": "nosniff"
         });
-        response.end(renderCosmeticsStore({
-          platform,
-          groupId,
-          groupName: accountData.groupName,
-          userName: accountData.userName,
-          balance: accountData.account.balance,
-          cosmetics
-        }));
+        response.end(html);
       } catch (error) {
         const reason = String(error?.message || "");
         const statusCode = /não participa|não está vinculada/i.test(reason) ? 403
           : /offline/i.test(reason) ? 503 : 400;
         if (statusCode === 503) {
-          console.error("[WEB] Falha ao abrir a loja de cosméticos:", error.message || error);
+          console.error("[WEB] Falha ao abrir uma loja do painel local:", error.message || error);
         }
         response.writeHead(statusCode, {
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-store",
           "X-Content-Type-Options": "nosniff"
         });
-        response.end(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Loja indisponível</title><body style="font-family:Segoe UI,Arial;background:#10131c;color:#f5f7fb;padding:40px"><h1>Loja de cosméticos indisponível</h1><p>${escapeHtml(reason)}</p><a href="/dashboard" style="color:#b9c6ff">Voltar à Conta Central</a></body></html>`);
+        response.end(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Loja indisponível</title><body style="font-family:Segoe UI,Arial;background:#10131c;color:#f5f7fb;padding:40px"><h1>Loja indisponível</h1><p>${escapeHtml(reason)}</p><a href="/dashboard" style="color:#b9c6ff">Voltar à Conta Central</a></body></html>`);
       }
       return;
     }
@@ -7014,4 +7112,4 @@ function start() {
   return server;
 }
 
-module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking, renderLocalAccount, renderCosmeticsStore, renderGroupAdmin, canManagePlatformGroup };
+module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking, renderLocalAccount, renderCosmeticsStore, renderShopCatalog, renderGroupAdmin, canManagePlatformGroup };

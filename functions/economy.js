@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const centralAccounts = require("./centralAccounts");
+const itemRarity = require("./itemRarity");
 const profileCosmetics = require("./profileCosmetics");
 
 const economyDir = path.join(__dirname, "..", "settings", "economy");
@@ -22,14 +23,14 @@ const COMMUNITY_STORE_DEFAULT_TITLE = "🛍️ LOJA LOCAL";
 const COMMUNITY_STORE_DEFAULT_NOTICE = "Itens especiais disponíveis neste grupo/servidor.";
 const COMMUNITY_STORE_FIRST_ITEM_ID = 1001;
 const STORE_ITEMS = [
-    { key: "work", name: "resetar trabalho", aliases: ["trabalho", "work"], price: 10000, date: "workDate", count: "workCount", max: MAX_WORKS_PER_DAY },
-    { key: "fishing", name: "resetar pesca", aliases: ["pesca", "pescar", "fishing"], price: 8000, date: "fishingDate", count: "fishingCount", max: MAX_WORKS_PER_DAY },
-    { key: "mining", name: "resetar mineração", aliases: ["mineracao", "mineração", "minerar", "mining"], price: 9000, date: "miningDate", count: "miningCount", max: MAX_WORKS_PER_DAY },
-    { key: "casino", name: "resetar cassino", aliases: ["cassino", "casino"], price: 5000, date: "casinoDate", count: "casinoCount", max: MAX_CASINO_PER_DAY },
-    { key: "transfer", name: "resetar transferência", aliases: ["transferencia", "transferência", "transferir", "transfer"], price: 10000, date: "transferDate", count: "transferCount", max: MAX_TRANSFERS_PER_DAY },
-    { key: "robbery", name: "resetar roubo", aliases: ["roubo", "roubar", "robbery"], price: STORE_ROBBERY_PRICE, date: "robberyDate", count: "robberyCount", max: MAX_ROBBERIES_PER_DAY },
-    { key: "all", name: "resetar todos", aliases: ["todos", "all"], price: 62000 },
-    { key: "shield", name: "escudo anti-roubo", aliases: ["escudo", "shield"], price: STORE_SHIELD_PRICE, product: true }
+    { key: "work", name: "resetar trabalho", aliases: ["trabalho", "work"], price: 10000, rarity: itemRarity.COMMON, date: "workDate", count: "workCount", max: MAX_WORKS_PER_DAY },
+    { key: "fishing", name: "resetar pesca", aliases: ["pesca", "pescar", "fishing"], price: 8000, rarity: itemRarity.COMMON, date: "fishingDate", count: "fishingCount", max: MAX_WORKS_PER_DAY },
+    { key: "mining", name: "resetar mineração", aliases: ["mineracao", "mineração", "minerar", "mining"], price: 9000, rarity: itemRarity.COMMON, date: "miningDate", count: "miningCount", max: MAX_WORKS_PER_DAY },
+    { key: "casino", name: "resetar cassino", aliases: ["cassino", "casino"], price: 5000, rarity: itemRarity.COMMON, date: "casinoDate", count: "casinoCount", max: MAX_CASINO_PER_DAY },
+    { key: "transfer", name: "resetar transferência", aliases: ["transferencia", "transferência", "transferir", "transfer"], price: 10000, rarity: itemRarity.COMMON, date: "transferDate", count: "transferCount", max: MAX_TRANSFERS_PER_DAY },
+    { key: "robbery", name: "resetar roubo", aliases: ["roubo", "roubar", "robbery"], price: STORE_ROBBERY_PRICE, rarity: itemRarity.COMMON, date: "robberyDate", count: "robberyCount", max: MAX_ROBBERIES_PER_DAY },
+    { key: "all", name: "resetar todos", aliases: ["todos", "all"], price: 62000, rarity: itemRarity.RARE },
+    { key: "shield", name: "escudo anti-roubo", aliases: ["escudo", "shield"], price: STORE_SHIELD_PRICE, rarity: itemRarity.RARE, product: true }
 ];
 const DAILY_PROFIT_KEYS = [
     "resgate",
@@ -66,6 +67,13 @@ function createCommunityStore() {
     };
 }
 
+function normalizeItemRarity(value) {
+    const rarity = String(value || "").trim().normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+    return Object.values(itemRarity).includes(rarity) ? rarity : null;
+}
+
 function normalizeCommunityStore(value) {
     const defaults = createCommunityStore();
     if (!value || typeof value !== "object" || Array.isArray(value)) return defaults;
@@ -85,7 +93,8 @@ function normalizeCommunityStore(value) {
             name: item.name,
             category: item.category,
             price: Number(item.price),
-            quantity: item.quantity === null ? null : Number(item.quantity)
+            quantity: item.quantity === null ? null : Number(item.quantity),
+            rarity: normalizeItemRarity(item.rarity)
         }))
         : [];
     const orders = Array.isArray(value.orders)
@@ -413,6 +422,28 @@ function setProfileBackground(message, background) {
         boughtNow: !alreadyOwned,
         background: backgroundKey,
         balance: account.balance
+    };
+}
+
+function buyProfileBackground(message, selection) {
+    const value = String(selection || "").trim().normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+    const hasCategoryPrefix = /^(?:fundo|fundos|background|backgrounds)\s+/.test(value);
+    const numericId = /^\d+$/.test(value) ? Number(value) : null;
+    const isCosmeticId = Number.isSafeInteger(numericId) && numericId >= 2000;
+    if (!hasCategoryPrefix && !isCosmeticId) return { matched: false };
+
+    const background = profileCosmetics.resolveProfileBackground(value);
+    if (!background) {
+        return { matched: true, purchased: false, reason: "invalid-background" };
+    }
+
+    return {
+        matched: true,
+        ...setProfileBackground(message, background.key),
+        item: background,
+        price: profileCosmetics.PROFILE_BACKGROUND_PRICE
     };
 }
 
@@ -1103,6 +1134,8 @@ function addCommunityStoreItem(message, item) {
         !(item.quantity === null || (Number.isSafeInteger(item.quantity) && item.quantity >= 0))) {
         return null;
     }
+    if (item.rarity !== undefined && item.rarity !== null &&
+        normalizeItemRarity(item.rarity) !== item.rarity) return null;
     const data = loadScope(scope);
     const store = data.communityStore;
     const newItem = {
@@ -1110,7 +1143,8 @@ function addCommunityStoreItem(message, item) {
         name: item.name.trim(),
         category: item.category.trim(),
         price: item.price,
-        quantity: item.quantity
+        quantity: item.quantity,
+        rarity: normalizeItemRarity(item.rarity)
     };
     store.items.push(newItem);
     saveScope(scope, data);
@@ -1133,6 +1167,9 @@ function editCommunityStoreItem(message, itemId, field, value) {
     } else if (field === "quantity") {
         if (!(value === null || (Number.isSafeInteger(value) && value >= 0))) return null;
         item.quantity = value;
+    } else if (field === "rarity") {
+        if (!(value === null || normalizeItemRarity(value) === value)) return null;
+        item.rarity = value;
     } else {
         return null;
     }
@@ -1143,6 +1180,8 @@ function editCommunityStoreItem(message, itemId, field, value) {
 function updateCommunityStoreItem(message, itemId, updates) {
     const scope = getScope(message);
     if (!scope || !updates || typeof updates !== "object" || Array.isArray(updates)) return null;
+    if (updates.rarity !== undefined && updates.rarity !== null &&
+        normalizeItemRarity(updates.rarity) !== updates.rarity) return null;
     const data = loadScope(scope);
     const item = data.communityStore.items.find(candidate => candidate.id === Number(itemId));
     if (!item) return null;
@@ -1151,13 +1190,15 @@ function updateCommunityStoreItem(message, itemId, updates) {
         name: updates.name,
         category: updates.category,
         price: updates.price,
-        quantity: updates.quantity
+        quantity: updates.quantity,
+        rarity: updates.rarity === undefined ? item.rarity ?? null : normalizeItemRarity(updates.rarity)
     };
     if (typeof updatedItem.name !== "string" || !updatedItem.name.trim() ||
         typeof updatedItem.category !== "string" || !updatedItem.category.trim() ||
         !Number.isSafeInteger(updatedItem.price) || updatedItem.price < 0 ||
         !(updatedItem.quantity === null ||
-            (Number.isSafeInteger(updatedItem.quantity) && updatedItem.quantity >= 0))) {
+            (Number.isSafeInteger(updatedItem.quantity) && updatedItem.quantity >= 0)) ||
+        !(updatedItem.rarity === null || normalizeItemRarity(updatedItem.rarity) === updatedItem.rarity)) {
         return null;
     }
 
@@ -1165,7 +1206,8 @@ function updateCommunityStoreItem(message, itemId, updates) {
         name: updatedItem.name.trim(),
         category: updatedItem.category.trim(),
         price: updatedItem.price,
-        quantity: updatedItem.quantity
+        quantity: updatedItem.quantity,
+        rarity: updatedItem.rarity
     });
     saveScope(scope, data);
     return { ...item };
@@ -1465,7 +1507,9 @@ module.exports = {
     getAccountByUser,
     getProfileCosmetics,
     setProfileBackground,
+    buyProfileBackground,
     resetProfileBackground,
+    ITEM_RARITY: itemRarity,
     PROFILE_BACKGROUNDS: profileCosmetics.PROFILE_BACKGROUNDS,
     PROFILE_BACKGROUND_PRICE: profileCosmetics.PROFILE_BACKGROUND_PRICE,
     resetBalance,

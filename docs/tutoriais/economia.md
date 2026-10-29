@@ -86,13 +86,20 @@ Cada usuário pode personalizar o fundo do perfil separadamente em cada grupo ou
 **WhatsApp, Telegram e Discord**
 
 ```text
+!cosmeticos
 !cosmeticos fundo
 !cosmeticos fundo oceano
 !cosmeticos fundo padrao
 !cosmeticos previa fundo oceano
+!comprar 2001
+!comprar fundo oceano
 ```
 
-O primeiro comando abre a loja e lista as cores, o fundo atual e quais cores já foram compradas. Cada cor custa **1.000,00 satcoins**; depois da compra, pode ser equipada novamente sem custo. O fundo escolhido aparece nos banners de perfil e de casamento, nos rankings e nos perfis web. A opção `padrao` restaura o visual original sem apagar as cores compradas. Contas antigas sem cosméticos continuam usando os fundos originais.
+`!cosmeticos` abre o menu da loja, e `!cosmeticos fundo` lista os fundos disponíveis por raridade, com IDs a partir de **2000**. Cada cor custa **1.000,00 satcoins**. Compre com `!comprar <id>` ou `!comprar fundo <cor>`. Depois, `!cosmeticos fundo <cor>` aplica o fundo se você já o possui; caso contrário, o bot informa como comprá-lo. Para pré-visualizar, use `!cosmeticos previa fundo <cor>`. O fundo escolhido aparece nos banners de perfil e de casamento, nos rankings e nos perfis web. A opção `padrao` restaura o visual original sem apagar as cores compradas. Contas antigas sem cosméticos continuam usando os fundos originais.
+
+As opções incluem azul, oceano, verde, roxo, rosa, vermelho, dourado, rubi e grafite. No perfil, a bolha de casamento usa as cores do perfil da pessoa com quem você está casado(a).
+
+Os itens da loja de resets e os cosméticos também têm um nível de raridade catalogado internamente para uso futuro, sem alterar funcionalidades ou a apresentação das lojas. Os níveis disponíveis são **Comum**, **Incomum**, **Raro**, **Épico** e **Lendário**. Todas as cores cosméticas são **Raro**. Nos resets, itens abaixo de **100,00** são **Comum**, de **100,00** até abaixo de **500,00** são **Incomum**, e de **500,00** a **700,00** são **Raro**; resetar trabalho, transferência e roubo são exceções classificadas como **Comum**. O escudo anti-roubo é uma exceção e está classificado como **Raro**.
 
 Para ver uma imagem antes de escolher, use `!cosmeticos previa fundo <cor>` (por exemplo, `!cosmeticos previa fundo oceano`). A prévia não compra nem aplica a cor. Também é possível abrir a **Loja de cosméticos** pelo perfil da Conta Central em um grupo: a página mostra a prévia ao vivo, permite reaplicar cores compradas e pede confirmação antes de descontar o saldo. A cor escolhida também personaliza o cabeçalho, o fundo e os destaques dos painéis local e administrativo daquele grupo.
 

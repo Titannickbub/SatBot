@@ -123,11 +123,14 @@ async function renderProfile(message) {
         }
     }
     let partnerAvatarBuffer = null;
+    let partnerBackgroundTheme = null;
     let multiPartnerAvatars = [];
     if (marriages.length === 1 && currentMarriage && !currentMarriage.selfMarriage && currentMarriage.partnerId) {
         const partnerProfile = await resolvePlatformProfile(profile.platform, currentMarriage.partnerId, {
             centralAccounts: message.functions?.centralAccounts
         });
+        const partnerBackground = economy.getProfileCosmetics(message, currentMarriage.partnerId).background;
+        partnerBackgroundTheme = profileCosmetics.getProfileBackground(partnerBackground);
         const partnerAvatar = await loadCoupleAvatar(partnerProfile?.avatarUrl, currentMarriage.partnerId);
         if (partnerAvatar) {
             partnerAvatarBuffer = await sharp(partnerAvatar).resize(76, 76).png().toBuffer();
@@ -144,6 +147,9 @@ async function renderProfile(message) {
             return avatar ? sharp(avatar).resize(76, 76).png().toBuffer() : null;
         }));
     }
+    const marriageTheme = currentMarriage && !currentMarriage.selfMarriage
+        ? partnerBackgroundTheme
+        : backgroundTheme;
     const marriageCard = marriages.length > 1
         ? [
             `<rect x="600" y="445" width="530" height="130" rx="18" fill="${backgroundTheme?.stops[1] || "#202a40"}" stroke="${backgroundTheme?.accent || "#334566"}"/>`,
@@ -151,9 +157,9 @@ async function renderProfile(message) {
         ].join("")
         : currentMarriage && !currentMarriage.selfMarriage
             ? [
-                `<rect x="600" y="445" width="530" height="130" rx="18" fill="${backgroundTheme?.stops[1] || "#202a40"}" stroke="${backgroundTheme?.accent || "#334566"}"/>`,
+                `<rect x="600" y="445" width="530" height="130" rx="18" fill="${marriageTheme?.stops[1] || "#202a40"}" stroke="${marriageTheme?.accent || "#334566"}"/>`,
                 text("CASAMENTO", 622, 477, 14, "#9da8bd", 700),
-                `<circle cx="660" cy="526" r="42" fill="${backgroundTheme?.stops[2] || "#0e1422"}" stroke="${backgroundTheme?.accent || "#e9a8c6"}" stroke-width="3"/>`,
+                `<circle cx="660" cy="526" r="42" fill="${marriageTheme?.stops[2] || "#0e1422"}" stroke="${marriageTheme?.accent || "#e9a8c6"}" stroke-width="3"/>`,
                 text(fitCoupleName(currentMarriage.partnerName, 22), 716, 530, 19, "#f5f7fb", 800),
                 text(marriageDetail, 716, 557, 12, "#b8c3d9")
             ].join("")

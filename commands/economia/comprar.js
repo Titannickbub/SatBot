@@ -4,15 +4,18 @@ module.exports = {
     name: "comprar",
     aliases: ["buy", "comprar2"],
     category: "economia/loja",
-    description: `🛍️ Compra itens da loja local, resets de atividades ou itens de proteção usando seus satcoins.
+    description: `🛍️ Compra itens da loja local, resets, itens de proteção ou cosméticos usando seus satcoins.
 
 📝 1. Compre informando o número ou nome do item da loja:
 {prefix}comprar 1
 {prefix}comprar resetar trabalho
 {prefix}comprar escudo
+{prefix}comprar 2000
+{prefix}comprar fundo azul
 
 Consulte a {prefix}loja para verificar a lista de produtos, números e preços atuais.
 Para comprar um item da loja configurada pelos administradores, use {prefix}loja2 e informe o ID (a partir de 1001) ou nome. Os pedidos aguardam entrega manual e podem ser cancelados pela equipe.
+Fundos cosméticos podem ser comprados pelo ID (a partir de 2000) ou com "fundo <cor>".
 
 ⚠️ Resets só podem ser comprados após esgotar o limite diário da atividade correspondente.`,
     usage: "{prefix}comprar [texto]",
@@ -23,6 +26,28 @@ Para comprar um item da loja configurada pelos administradores, use {prefix}loja
         }
 
         const selection = message.args?.join(" ");
+        if (message.command !== "comprar2") {
+            const cosmeticResult = economy.buyProfileBackground(message, selection);
+            if (cosmeticResult.matched) {
+                if (!cosmeticResult.purchased) {
+                    if (cosmeticResult.reason === "insufficient-balance") {
+                        return message.reply({
+                            text: `❌ Saldo insuficiente. Você precisa de ${economy.formatMoney(cosmeticResult.price)} e tem ${economy.formatMoney(cosmeticResult.balance)}.`
+                        });
+                    }
+                    return message.reply({
+                        text: `❌ Fundo não encontrado. Use ${message.prefix}cosmeticos fundo para consultar os IDs e nomes disponíveis.`
+                    });
+                }
+
+                const backgroundName = cosmeticResult.item.label;
+                const text = cosmeticResult.boughtNow
+                    ? `✅ Fundo ${backgroundName} comprado e aplicado por ${economy.formatMoney(cosmeticResult.price)}.\nSaldo atual: ${economy.formatMoney(cosmeticResult.balance)}`
+                    : `✅ Fundo ${backgroundName} aplicado. Você já tinha comprado esse cosmético, então não houve cobrança.`;
+                return message.reply({ text });
+            }
+        }
+
         const communityResult = economy.buyCommunityStoreItem(message, selection);
         if (communityResult.purchased) {
             return replyForCommunityOrder(message, communityResult);

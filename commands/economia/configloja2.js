@@ -11,7 +11,11 @@ const FIELD_NAMES = {
     price: "price",
     quantidade: "quantity",
     estoque: "quantity",
-    quantity: "quantity"
+    quantity: "quantity",
+    importancia: "rarity",
+    importância: "rarity",
+    raridade: "rarity",
+    rarity: "rarity"
 };
 
 module.exports = {
@@ -36,6 +40,7 @@ Use um número na quantidade ou infinito para um estoque que nunca acaba.
 ✏️ 3. Edite ou remova itens pelo ID (os IDs começam em 1001):
 {prefix}configloja2 editar 1001 preço 25.000,00
 {prefix}configloja2 editar 1001 quantidade infinito
+{prefix}configloja2 editar 1001 importancia raro
 {prefix}configloja2 remover 1001
 
 📦 4. Consulte os pedidos e informe quando forem entregues ou cancelados:
@@ -139,19 +144,40 @@ function editItem(message, args) {
     const rawValue = args.slice(2).join(" ").trim();
     if (!Number.isSafeInteger(itemId) || !field || !rawValue) {
         return message.reply({
-            text: `❌ Uso: ${message.prefix}configloja2 editar <id> <nome|preço|categoria|quantidade> <valor>`
+            text: `❌ Uso: ${message.prefix}configloja2 editar <id> <nome|preço|categoria|quantidade|importância> <valor>`
         });
     }
 
     let value = rawValue;
     if (field === "price") value = parseStorePrice(rawValue);
     if (field === "quantity") value = parseQuantity(rawValue);
-    if (value === undefined || (field !== "quantity" && value === null)) {
-        return message.reply({ text: "❌ Valor inválido. Preço deve ser válido; quantidade deve ser um inteiro ou infinito." });
+    if (field === "rarity") value = parseItemRarity(rawValue);
+    if (value === undefined ||
+        (field !== "quantity" && field !== "rarity" && value === null)) {
+        return message.reply({
+            text: "❌ Valor inválido. Use um preço válido, uma quantidade inteira ou infinito, ou uma importância: comum, incomum, raro, épico ou lendário."
+        });
     }
     const item = economy.editCommunityStoreItem(message, itemId, field, value);
     if (!item) return message.reply({ text: `❌ Item ${itemId} não encontrado ou valor inválido.` });
-    return message.reply({ text: `✅ Item ${item.id} atualizado: ${item.name} — ${economy.formatMoney(item.price)} | ${item.category} | ${item.quantity === null ? "estoque infinito" : `estoque ${item.quantity}`}` });
+    const rarity = item.rarity ? ` | importância ${formatItemRarity(item.rarity)}` : " | importância não definida";
+    return message.reply({ text: `✅ Item ${item.id} atualizado: ${item.name} — ${economy.formatMoney(item.price)} | ${item.category} | ${item.quantity === null ? "estoque infinito" : `estoque ${item.quantity}`}${rarity}` });
+}
+
+function parseItemRarity(value) {
+    const normalized = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase();
+    if (["nenhuma", "nenhum", "nao definida", "nao definido", "limpar"].includes(normalized)) return null;
+    return Object.values(economy.ITEM_RARITY).includes(normalized) ? normalized : undefined;
+}
+
+function formatItemRarity(value) {
+    return ({
+        [economy.ITEM_RARITY.COMMON]: "Comum",
+        [economy.ITEM_RARITY.UNCOMMON]: "Incomum",
+        [economy.ITEM_RARITY.RARE]: "Raro",
+        [economy.ITEM_RARITY.EPIC]: "Épico",
+        [economy.ITEM_RARITY.LEGENDARY]: "Lendário"
+    })[value] || value;
 }
 
 function removeItem(message, rawId) {
@@ -208,7 +234,7 @@ function usage(message) {
         `${prefix}configloja2 titulo <texto>`,
         `${prefix}configloja2 aviso <texto>`,
         `${prefix}configloja2 adicionar <nome> | <preço> | <categoria> | <quantidade|infinito>`,
-        `${prefix}configloja2 editar <id> <nome|preço|categoria|quantidade> <valor>`,
+        `${prefix}configloja2 editar <id> <nome|preço|categoria|quantidade|importância> <valor>`,
         `${prefix}configloja2 remover <id>`,
         `${prefix}configloja2 pedidos`,
         `${prefix}configloja2 entregar <pedido>`,
