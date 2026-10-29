@@ -2871,22 +2871,79 @@ function renderShopCatalog(data, shopType) {
     groups.get(category).push(item);
   }
   const notice = botShop
-    ? "Catálogo informativo dos resets e produtos do Bot. A compra, quando disponível, é feita pelo comando comprar no grupo."
+    ? "Compre resets e itens de proteção diretamente pelo painel. Resets só podem ser comprados quando o limite diário da atividade acabar."
     : data.store.notice;
+  const rarityLabels = {
+    [economy.ITEM_RARITY.COMMON]: "Comum",
+    [economy.ITEM_RARITY.UNCOMMON]: "Incomum",
+    [economy.ITEM_RARITY.RARE]: "Raro",
+    [economy.ITEM_RARITY.EPIC]: "Épico",
+    [economy.ITEM_RARITY.LEGENDARY]: "Lendário"
+  };
+  const shopContext = {
+    platform: data.platform,
+    groupId: data.groupId,
+    shop: botShop ? "bot" : "market",
+    shieldCharges: Number(data.shieldCharges) || 0
+  };
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${escapeHtml(title)} · ${escapeHtml(data.groupName)}</title><style>
-    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;background:radial-gradient(circle at 15% 0,#252b48 0,#10131c 48%,#090b10 100%)}.catalog-page{width:min(900px,100%);margin:0 auto}.catalog-topbar{padding:8px 0 20px;border-bottom:1px solid #ffffff16}.catalog-topbar a{color:#b9c6ff;text-decoration:none;font-weight:700}.catalog-hero{margin:24px 0;padding:25px;border:1px solid #8797ff33;border-radius:20px;background:linear-gradient(120deg,#293454,#22263d 70%,#1b2435)}.catalog-hero h1{margin:0 0 9px;font-size:clamp(26px,5vw,38px)}.catalog-hero p{margin:0;color:#c1c9df;line-height:1.6}.catalog-category{margin-top:16px;padding:21px;border:1px solid #ffffff14;border-radius:17px;background:linear-gradient(145deg,#191e2d,#131824)}.catalog-category h2{margin:0 0 13px;font-size:18px}.catalog-items{display:grid;gap:8px}.catalog-item{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px;border:1px solid #ffffff0f;border-radius:12px;background:#ffffff05}.catalog-item h3{margin:0;font-size:14px}.catalog-item p{margin:5px 0 0;color:#aab3c8;font-size:11px}.catalog-item>strong{white-space:nowrap;color:#c6bdff;font-size:13px}.catalog-empty{padding:18px;border:1px dashed #ffffff25;border-radius:12px;color:#aab3c8}.catalog-footer{margin:18px 0;color:#8390a9;font-size:12px}@media(max-width:540px){body{padding:16px}.catalog-hero,.catalog-category{padding:18px}.catalog-item{align-items:flex-start;flex-direction:column}}
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;background:radial-gradient(circle at 15% 0,#252b48 0,#10131c 48%,#090b10 100%)}button,a{font:inherit}.catalog-page{width:min(900px,100%);margin:0 auto}.catalog-topbar{padding:8px 0 20px;border-bottom:1px solid #ffffff16}.catalog-topbar a{color:#b9c6ff;text-decoration:none;font-weight:700}.catalog-hero{margin:24px 0;padding:25px;border:1px solid #8797ff33;border-radius:20px;background:linear-gradient(120deg,#293454,#22263d 70%,#1b2435)}.catalog-hero h1{margin:0 0 9px;font-size:clamp(26px,5vw,38px)}.catalog-hero p{margin:0;color:#c1c9df;line-height:1.6}.catalog-balance{display:flex;justify-content:space-between;gap:12px;margin:16px 0;padding:14px 17px;border:1px solid #ffffff18;border-radius:13px;background:#ffffff06;color:#aab3c8}.catalog-balance strong{color:#f5f7fb}.catalog-category{margin-top:16px;padding:21px;border:1px solid #ffffff14;border-radius:17px;background:linear-gradient(145deg,#191e2d,#131824)}.catalog-category h2{margin:0 0 13px;font-size:18px}.catalog-items{display:grid;gap:8px}.catalog-item{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px;border:1px solid #ffffff0f;border-radius:12px;background:#ffffff05}.catalog-item h3{margin:0;font-size:14px}.catalog-item p{margin:5px 0 0;color:#aab3c8;font-size:11px}.catalog-item-action{display:flex;align-items:center;gap:12px}.catalog-item-action strong{white-space:nowrap;color:#c6bdff;font-size:13px}.catalog-buy{min-height:36px;padding:7px 12px;border:1px solid #8797ff66;border-radius:9px;background:#8797ff1a;color:#e3e7ff;font-size:12px;font-weight:750;cursor:pointer}.catalog-buy:hover{background:#8797ff32}.catalog-buy:disabled{opacity:.55;cursor:not-allowed}.catalog-feedback{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.catalog-empty{padding:18px;border:1px dashed #ffffff25;border-radius:12px;color:#aab3c8}.catalog-footer{margin:18px 0;color:#8390a9;font-size:12px}.purchase-dialog{position:fixed;inset:50% auto auto 50%;transform:translate(-50%,-50%);margin:0;width:min(440px,calc(100% - 28px));max-height:calc(100vh - 32px);overflow:auto;padding:0;border:1px solid #8797ff55;border-radius:18px;background:#171c2a;color:#f5f7fb;box-shadow:0 24px 90px #000b}.purchase-dialog::backdrop{background:#05070bcc;backdrop-filter:blur(4px)}.purchase-dialog-content{padding:22px}.purchase-dialog h2{margin:0 0 10px}.purchase-dialog p{margin:0;color:#c1c9df;line-height:1.6;overflow-wrap:anywhere}.purchase-dialog.success h2{color:#9cf0cf}.purchase-dialog.error h2{color:#ff9caa}.purchase-dialog-actions{display:flex;justify-content:flex-end;margin-top:20px}.purchase-dialog-actions button{min-height:38px;padding:8px 14px;border:1px solid #ffffff30;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-weight:700;cursor:pointer}@media(max-width:540px){body{padding:16px}.catalog-hero,.catalog-category{padding:18px}.catalog-item{align-items:flex-start;flex-direction:column}.catalog-item-action{width:100%;justify-content:space-between}}
   </style></head><body><main class="catalog-page">
     <nav class="catalog-topbar"><a href="/painel-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">← Voltar ao perfil</a></nav>
     <header class="catalog-hero"><h1>${botShop ? "🛒 " : "🏪 "}${escapeHtml(title)}</h1><p>${escapeHtml(notice)}</p></header>
+    <div class="catalog-balance"><span>Seu saldo local</span><strong id="shopBalance">${escapeHtml(economy.formatMoney(data.balance))}</strong></div>
     ${items.length ? [...groups].map(([category, entries]) => `
       <section class="catalog-category"><h2>${escapeHtml(category)}</h2>
-        <div class="catalog-items">${entries.map(item => `<article class="catalog-item">
-          <div><h3>${escapeHtml(item.name)}</h3><p>${botShop ? "Item informativo" : `ID ${item.id} · ${item.quantity === null ? "Estoque ilimitado" : `Estoque: ${item.quantity}`}`}</p></div>
-          <strong>${economy.formatMoney(item.price)}</strong>
-        </article>`).join("")}</div>
+        <div class="catalog-items">${entries.map(item => {
+          const selection = botShop ? item.key : item.id;
+          const outOfStock = !botShop && item.quantity === 0;
+          const shieldActive = botShop && item.key === "shield" && shopContext.shieldCharges > 0;
+          const detail = botShop
+            ? rarityLabels[item.rarity] || "Item da economia"
+            : `ID ${item.id} · <span class="catalog-stock">${item.quantity === null ? "Estoque ilimitado" : `Estoque: ${item.quantity}`}</span>`;
+          return `<article class="catalog-item" data-shop-item="${escapeHtml(String(selection))}">
+            <div><h3>${escapeHtml(item.name)}</h3><p>${detail}</p></div>
+            <div class="catalog-item-action"><strong>${economy.formatMoney(item.price)}</strong><button class="catalog-buy" type="button" data-shop-purchase="${escapeHtml(String(selection))}"${outOfStock || shieldActive ? " disabled" : ""}>${outOfStock ? "Esgotado" : shieldActive ? `Escudo ativo (${shopContext.shieldCharges})` : "Comprar"}</button></div>
+          </article>`;
+        }).join("")}</div>
       </section>`).join("") : `<section class="catalog-category"><p class="catalog-empty">${botShop ? "Não há itens disponíveis." : "O Mercado Local ainda não tem itens cadastrados."}</p></section>`}
-    <p class="catalog-footer">${botShop ? "Esta página é apenas informativa. Use os comandos do Bot para realizar compras." : "Compras do Mercado Local são realizadas pelo comando comprar no grupo; a entrega é feita pelos administradores."}</p>
-  </main></body></html>`;
+    <p id="shopFeedback" class="catalog-feedback" role="status" aria-live="polite"></p>
+    <p class="catalog-footer">${botShop ? "A compra é aplicada imediatamente à sua economia local." : "Após a compra, seu pedido ficará pendente até a entrega manual pela equipe deste grupo/servidor."}</p>
+  </main><dialog id="purchaseDialog" class="purchase-dialog" aria-labelledby="purchaseDialogTitle" aria-describedby="purchaseDialogMessage"><div class="purchase-dialog-content"><h2 id="purchaseDialogTitle"></h2><p id="purchaseDialogMessage"></p><footer class="purchase-dialog-actions"><button type="button" id="closePurchaseDialog">Fechar</button></footer></div></dialog><script>
+    const shopContext=${JSON.stringify(shopContext)};
+    const feedback=document.getElementById("shopFeedback");
+    const purchaseDialog=document.getElementById("purchaseDialog");
+    function showPurchaseResult(title,message,isError){
+      purchaseDialog.classList.toggle("error",Boolean(isError));
+      purchaseDialog.classList.toggle("success",!isError);
+      document.getElementById("purchaseDialogTitle").textContent=title;
+      document.getElementById("purchaseDialogMessage").textContent=message;
+      purchaseDialog.showModal();
+    }
+    function showShopFeedback(message,isError){feedback.textContent=message;feedback.classList.toggle("error",Boolean(isError))}
+    document.getElementById("closePurchaseDialog").addEventListener("click",()=>purchaseDialog.close());
+    purchaseDialog.addEventListener("click",event=>{if(event.target===purchaseDialog)purchaseDialog.close()});
+    document.querySelectorAll("[data-shop-purchase]").forEach(button=>button.addEventListener("click",async()=>{
+      if(button.disabled)return;
+      const selection=button.dataset.shopPurchase;let keepDisabled=false;button.disabled=true;showShopFeedback("Processando compra...",false);
+      try{
+        const response=await fetch("/api/account/local/shop-purchase",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...shopContext,selection})});
+        const result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível concluir a compra.");
+        document.getElementById("shopBalance").textContent=result.balance;
+        if(shopContext.shop==="market"){
+          const card=Array.from(document.querySelectorAll("[data-shop-item]")).find(candidate=>candidate.dataset.shopItem===String(result.itemId));
+          if(card){const stock=card.querySelector(".catalog-stock");if(stock)stock.textContent=result.quantity===null?"Estoque ilimitado":"Estoque: "+result.quantity;if(result.quantity===0){button.textContent="Esgotado";keepDisabled=true}}
+          const message="Pedido #"+result.orderId+" criado para "+result.itemName+". A equipe fará a entrega manualmente. Saldo atual: "+result.balance;
+          showShopFeedback(message,false);showPurchaseResult("Compra concluída",message,false);
+        }else{
+          if(result.itemKey==="shield"){button.textContent="Escudo ativo ("+result.shieldCharges+")";keepDisabled=true}
+          const message=result.itemName+" comprado por "+result.price+". Saldo atual: "+result.balance;
+          showShopFeedback(message,false);showPurchaseResult("Compra concluída",message,false);
+        }
+      }catch(error){showShopFeedback(error.message,true);showPurchaseResult("Compra recusada",error.message,true)}
+      finally{button.disabled=keepDisabled}
+    }));
+  </script></body></html>`;
 }
 
 function getCosmeticPanelStyles(backgroundKey, panelType) {
@@ -6598,6 +6655,88 @@ function start() {
         return;
       }
 
+      if (requestUrl.pathname === "/api/account/local/shop-purchase") {
+        const platform = typeof payload?.platform === "string" ? payload.platform : "";
+        const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
+        const shop = typeof payload?.shop === "string" ? payload.shop : "";
+        const selection = typeof payload?.selection === "string" ? payload.selection.trim() : "";
+        const platformAccount = central.platformAccounts.find(account => account.platform === platform);
+        if (!platformAccount?.platformId) {
+          sendJson(response, 404, { error: "Esta plataforma não está vinculada à sua Conta Central." });
+          return;
+        }
+        if (!isValidPlatformGroupId(groupId) || !["bot", "market"].includes(shop) ||
+            !selection || selection.length > 100) {
+          sendJson(response, 400, { error: "Loja ou item inválido." });
+          return;
+        }
+
+        try {
+          if (!await isPlatformGroupMember(platform, groupId, String(platformAccount.platformId))) {
+            sendJson(response, 403, { error: "Sua conta vinculada não participa mais deste grupo ou servidor." });
+            return;
+          }
+          const message = getLocalGroupMessage(platform, groupId, String(platformAccount.platformId));
+          message.displayName = platformAccount.displayName || platformAccount.username || platformAccount.platformId;
+
+          if (shop === "bot") {
+            const result = economy.buyStoreItem(message, selection);
+            if (!result.purchased) {
+              const errors = {
+                invalid_item: "Este item não foi encontrado na Loja do Bot.",
+                not_ready: "O limite diário desta atividade ainda não acabou; o reset só pode ser comprado depois de esgotá-lo.",
+                shield_active: "Você já possui um escudo ativo. Só poderá comprar outro quando as cargas acabarem.",
+                shield_min_balance: `Você precisa ter pelo menos ${economy.formatMoney(economy.MIN_SHIELD_BALANCE)} para comprar um escudo.`,
+                all_not_ready: "O reset de todos só pode ser comprado quando trabalho, pesca, mineração e roubo atingirem seus limites.",
+                insufficient_balance: `Saldo insuficiente. Você precisa de ${economy.formatMoney(result.item.price)}.`
+              };
+              sendJson(response, 400, { error: errors[result.reason] || "Não foi possível concluir a compra." });
+              return;
+            }
+            sendJson(response, 200, {
+              success: true,
+              balance: economy.formatMoney(result.balance),
+              itemName: result.item.name,
+              itemKey: result.item.key,
+              price: economy.formatMoney(result.item.price),
+              shieldCharges: result.shieldCharges || 0
+            });
+            return;
+          }
+
+          const result = economy.buyCommunityStoreItem(message, selection);
+          if (!result.purchased) {
+            const errors = {
+              not_found: "Item não encontrado no Mercado Local.",
+              out_of_stock: "Este item está esgotado.",
+              insufficient_balance: `Saldo insuficiente. Você precisa de ${economy.formatMoney(result.item.price)}.`
+            };
+            sendJson(response, 400, { error: errors[result.reason] || "Não foi possível concluir a compra." });
+            return;
+          }
+          sendJson(response, 200, {
+            success: true,
+            balance: economy.formatMoney(result.balance),
+            itemId: result.item.id,
+            itemName: result.item.name,
+            orderId: result.order.id,
+            quantity: result.item.quantity
+          });
+        } catch (error) {
+          const reason = String(error?.message || "");
+          const statusCode = /não participa|não está vinculada/i.test(reason) ? 403
+            : /offline|não está disponível/i.test(reason) ? 503
+              : /inválid|não encontrado|não foi possível/i.test(reason) ? 400 : 500;
+          if (statusCode === 500 || statusCode === 503) {
+            console.error("[WEB] Falha ao concluir compra pelo painel:", error.message || error);
+          }
+          sendJson(response, statusCode, {
+            error: statusCode === 500 ? "Não foi possível concluir a compra agora." : reason
+          });
+        }
+        return;
+      }
+
       if (requestUrl.pathname === "/api/account/local/merge" ||
           requestUrl.pathname === "/api/account/local/transfer" ||
           requestUrl.pathname === "/api/account/local/cosmetics") {
@@ -7029,7 +7168,8 @@ function start() {
           groupId,
           groupName: accountData.groupName,
           userName: accountData.userName,
-          balance: accountData.account.balance
+          balance: accountData.account.balance,
+          shieldCharges: accountData.account.shieldCharges
         };
         let html;
         if (shopType === "cosmetics") {

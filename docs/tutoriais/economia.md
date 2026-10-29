@@ -103,6 +103,16 @@ Os itens da loja de resets e os cosméticos também têm um nível de raridade c
 
 Para ver uma imagem antes de escolher, use `!cosmeticos previa fundo <cor>` (por exemplo, `!cosmeticos previa fundo oceano`). A prévia não compra nem aplica a cor. Também é possível abrir a **Loja de cosméticos** pelo perfil da Conta Central em um grupo: a página mostra a prévia ao vivo, permite reaplicar cores compradas e pede confirmação antes de descontar o saldo. A cor escolhida também personaliza o cabeçalho, o fundo e os destaques dos painéis local e administrativo daquele grupo.
 
+## Lojas pelo painel web
+
+No perfil da Conta Central, abra um grupo ou servidor e acesse a seção
+**Lojas**. A **Loja do Bot** permite comprar resets e itens de proteção pelo
+saldo local; os resets continuam sujeitos aos limites diários e o escudo às
+regras da loja. O **Mercado Local** permite comprar os itens cadastrados pela
+equipe: o saldo e o estoque são atualizados na compra, e um pedido fica
+pendente até a entrega manual pelos administradores. As lojas usam o saldo da
+economia daquele grupo ou servidor.
+
 ## Escudo anti-roubo
 
 Consulte o estado da sua proteção com um banner personalizado:
