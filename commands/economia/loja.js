@@ -11,6 +11,14 @@ const ITEM_EMOJIS = {
     shield: "🛡️"
 };
 
+const RARITY_LABELS = {
+    [economy.ITEM_RARITY.COMMON]: "Comum",
+    [economy.ITEM_RARITY.UNCOMMON]: "Incomum",
+    [economy.ITEM_RARITY.RARE]: "Raro",
+    [economy.ITEM_RARITY.EPIC]: "Épico",
+    [economy.ITEM_RARITY.LEGENDARY]: "Lendário"
+};
+
 module.exports = {
     name: "loja",
     aliases: ["shop", "store"],
@@ -32,7 +40,7 @@ O bot lista todos os resets (trabalho, pesca, mineração, roubo, cassino) e ite
 
         const items = economy.getStoreItems();
         const itemLines = items.map(item =>
-            `${ITEM_EMOJIS[item.key] || "🔹"} ${item.position}. ${item.name} — ${economy.formatMoney(item.price)}`
+            `${ITEM_EMOJIS[item.key] || "🔹"} ${item.position}. ${item.name} — ${economy.formatMoney(item.price)} · ${RARITY_LABELS[item.rarity] || "Item"}`
         );
         const prefix = message.prefix || "!";
         const purchaseInstructions = [

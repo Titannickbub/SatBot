@@ -13,6 +13,7 @@ const CASINO_JACKPOT_PAYOUT_MULTIPLIER = 11;
 const MAX_TRANSFERS_PER_DAY = 3;
 const MAX_ROBBERIES_PER_DAY = 3;
 const MIN_TRANSFER_AMOUNT = 1000;
+const MIN_VAULT_DEPOSIT = 50000;
 const MIN_ROBBABLE_BALANCE = 2000;
 const STORE_ROBBERY_PRICE = 20000;
 const MIN_SHIELD_BALANCE = 50000;
@@ -22,6 +23,29 @@ const LEVEL_UP_REWARD_BASE = 1500;
 const COMMUNITY_STORE_DEFAULT_TITLE = "🛍️ LOJA LOCAL";
 const COMMUNITY_STORE_DEFAULT_NOTICE = "Itens especiais disponíveis neste grupo/servidor.";
 const COMMUNITY_STORE_FIRST_ITEM_ID = 1001;
+const SIGNAL_SEARCH_LEVELS = Object.freeze({
+    recruta: Object.freeze({
+        label: "Recruta",
+        price: 10000,
+        cashMin: 500,
+        cashMax: 3000,
+        weights: Object.freeze({ money: 70, reset: 30 })
+    }),
+    especializada: Object.freeze({
+        label: "Especializada",
+        price: 50000,
+        cashMin: 2000,
+        cashMax: 10000,
+        weights: Object.freeze({ money: 55, reset: 20, cosmetic: 25 })
+    })
+});
+const LOCAL_SIGNAL_RARITIES = Object.freeze([
+    itemRarity.COMMON,
+    itemRarity.UNCOMMON,
+    itemRarity.RARE,
+    itemRarity.EPIC,
+    itemRarity.LEGENDARY
+]);
 const STORE_ITEMS = [
     { key: "work", name: "resetar trabalho", aliases: ["trabalho", "work"], price: 10000, rarity: itemRarity.COMMON, date: "workDate", count: "workCount", max: MAX_WORKS_PER_DAY },
     { key: "fishing", name: "resetar pesca", aliases: ["pesca", "pescar", "fishing"], price: 8000, rarity: itemRarity.COMMON, date: "fishingDate", count: "fishingCount", max: MAX_WORKS_PER_DAY },
@@ -29,7 +53,7 @@ const STORE_ITEMS = [
     { key: "casino", name: "resetar cassino", aliases: ["cassino", "casino"], price: 5000, rarity: itemRarity.COMMON, date: "casinoDate", count: "casinoCount", max: MAX_CASINO_PER_DAY },
     { key: "transfer", name: "resetar transferência", aliases: ["transferencia", "transferência", "transferir", "transfer"], price: 10000, rarity: itemRarity.COMMON, date: "transferDate", count: "transferCount", max: MAX_TRANSFERS_PER_DAY },
     { key: "robbery", name: "resetar roubo", aliases: ["roubo", "roubar", "robbery"], price: STORE_ROBBERY_PRICE, rarity: itemRarity.COMMON, date: "robberyDate", count: "robberyCount", max: MAX_ROBBERIES_PER_DAY },
-    { key: "all", name: "resetar todos", aliases: ["todos", "all"], price: 62000, rarity: itemRarity.RARE },
+    { key: "all", name: "resetar todos", aliases: ["todos", "all"], price: 62000, rarity: itemRarity.EPIC },
     { key: "shield", name: "escudo anti-roubo", aliases: ["escudo", "shield"], price: STORE_SHIELD_PRICE, rarity: itemRarity.RARE, product: true }
 ];
 const DAILY_PROFIT_KEYS = [
@@ -42,7 +66,8 @@ const DAILY_PROFIT_KEYS = [
     "transferenciaRecebida",
     "roubo",
     "rouboSofrido",
-    "loja"
+    "loja",
+    "busca"
 ];
 
 const scopeCache = new Map();
@@ -63,7 +88,66 @@ function createCommunityStore() {
         nextItemId: COMMUNITY_STORE_FIRST_ITEM_ID,
         nextOrderId: 1,
         items: [],
-        orders: []
+        orders: [],
+        localSignalSearch: createLocalSignalSearch()
+    };
+}
+
+function createLocalSignalSearch() {
+    return {
+        enabled: false,
+        price: 10000,
+        tiers: Object.fromEntries(LOCAL_SIGNAL_RARITIES.map(rarity => [rarity, {
+            chance: 0,
+            guaranteeAfter: null,
+            cashMin: null,
+            cashMax: null,
+            botItems: [],
+            marketItems: []
+        }])),
+        featured: []
+    };
+}
+
+function normalizeLocalSignalSearch(value) {
+    const defaults = createLocalSignalSearch();
+    if (!value || typeof value !== "object" || Array.isArray(value)) return defaults;
+    const tiers = {};
+    for (const rarity of LOCAL_SIGNAL_RARITIES) {
+        const tier = value.tiers?.[rarity];
+        const defaultTier = defaults.tiers[rarity];
+        tiers[rarity] = {
+            chance: Number.isSafeInteger(tier?.chance) && tier.chance >= 0 && tier.chance <= 100
+                ? tier.chance : defaultTier.chance,
+            guaranteeAfter: Number.isSafeInteger(tier?.guaranteeAfter) && tier.guaranteeAfter >= 1 && tier.guaranteeAfter <= 10000
+                ? tier.guaranteeAfter : null,
+            cashMin: Number.isSafeInteger(tier?.cashMin) && tier.cashMin >= 0 ? tier.cashMin : null,
+            cashMax: Number.isSafeInteger(tier?.cashMax) && tier.cashMax >= 0 ? tier.cashMax : null,
+            botItems: Array.isArray(tier?.botItems)
+                ? [...new Set(tier.botItems.filter(key => STORE_ITEMS.some(item => item.key === key)))]
+                : [],
+            marketItems: Array.isArray(tier?.marketItems)
+                ? [...new Set(tier.marketItems.filter(id => Number.isSafeInteger(id) && id >= COMMUNITY_STORE_FIRST_ITEM_ID))]
+                : []
+        };
+        if (tiers[rarity].cashMin === null || tiers[rarity].cashMax === null ||
+            tiers[rarity].cashMax < tiers[rarity].cashMin) {
+            tiers[rarity].cashMin = null;
+            tiers[rarity].cashMax = null;
+        }
+    }
+    const featured = Array.isArray(value.featured)
+        ? value.featured.slice(0, 2).filter(item =>
+            item && typeof item === "object" &&
+            (item.type === "bot" && STORE_ITEMS.some(candidate => candidate.key === item.key) ||
+                item.type === "market" && Number.isSafeInteger(item.id) && item.id >= COMMUNITY_STORE_FIRST_ITEM_ID)
+        ).map(item => item.type === "bot" ? { type: "bot", key: item.key } : { type: "market", id: item.id })
+        : [];
+    return {
+        enabled: value.enabled === true,
+        price: Number.isSafeInteger(value.price) && value.price > 0 ? value.price : defaults.price,
+        tiers,
+        featured
     };
 }
 
@@ -119,7 +203,8 @@ function normalizeCommunityStore(value) {
             ? Math.max(1, nextOrderId, ...orders.map(order => Number(order.id) + 1))
             : Math.max(1, ...orders.map(order => Number(order.id) + 1)),
         items,
-        orders
+        orders,
+        localSignalSearch: normalizeLocalSignalSearch(value.localSignalSearch)
     };
 }
 
@@ -263,6 +348,7 @@ function getAccount(message) {
             displayName: message.displayName || null,
             username: message.username || null,
             balance: 0,
+            vaultBalance: 0,
             lastClaimDate: null,
             workDate: null,
             workCount: 0,
@@ -351,6 +437,17 @@ function getAccount(message) {
         saveScope(scope, store);
     }
 
+    if (!Object.prototype.hasOwnProperty.call(store.accounts[accountKey], "vaultBalance")) {
+        store.accounts[accountKey].vaultBalance = 0;
+        saveScope(scope, store);
+    } else {
+        const vaultBalance = Number(store.accounts[accountKey].vaultBalance);
+        if (!Number.isSafeInteger(vaultBalance) || vaultBalance < 0) {
+            throw new Error("O saldo do cofre desta conta está inválido.");
+        }
+        store.accounts[accountKey].vaultBalance = vaultBalance;
+    }
+
     ensureDailyProfitData(store.accounts[accountKey]);
 
     return {
@@ -361,6 +458,72 @@ function getAccount(message) {
 
 function getBalance(message) {
     return getAccount(message).account.balance;
+}
+
+function getTotalBalance(account) {
+    return (Number(account?.balance) || 0) + (Number(account?.vaultBalance) || 0);
+}
+
+function moveToVault(message, amount, operation) {
+    const { account, scope } = getAccount(message);
+    const result = {
+        moved: false,
+        reason: null,
+        amount,
+        balance: account.balance,
+        vaultBalance: account.vaultBalance,
+        totalBalance: getTotalBalance(account),
+        scope
+    };
+
+    if (!Number.isSafeInteger(amount) || amount <= 0 ||
+        (operation === "deposit" && amount < MIN_VAULT_DEPOSIT)) {
+        result.reason = "invalid_amount";
+        return result;
+    }
+
+    const balance = Number(account.balance) || 0;
+    const vaultBalance = Number(account.vaultBalance) || 0;
+    if (operation === "deposit") {
+        if (balance < amount) {
+            result.reason = "insufficient_balance";
+            return result;
+        }
+        if (!Number.isSafeInteger(vaultBalance + amount)) {
+            result.reason = "invalid_amount";
+            return result;
+        }
+        account.balance = balance - amount;
+        account.vaultBalance = vaultBalance + amount;
+    } else {
+        if (vaultBalance < amount) {
+            result.reason = "insufficient_vault";
+            return result;
+        }
+        if (!Number.isSafeInteger(balance + amount)) {
+            result.reason = "invalid_amount";
+            return result;
+        }
+        account.vaultBalance = vaultBalance - amount;
+        account.balance = balance + amount;
+    }
+
+    saveScope(scope, loadScope(scope));
+    return {
+        ...result,
+        moved: true,
+        balance: account.balance,
+        vaultBalance: account.vaultBalance,
+        totalBalance: getTotalBalance(account)
+    };
+}
+
+function depositToVault(message, amount) {
+    return moveToVault(message, amount, "deposit");
+}
+
+function withdrawFromVault(message, amount) {
+    return moveToVault(message, amount, "withdraw");
 }
 
 function getAccountByUser(message, userId) {
@@ -374,7 +537,7 @@ function getAccountByUser(message, userId) {
 function getProfileCosmetics(message, userId = message?.userId) {
     const scope = getScope(message);
     if (!scope || userId === null || userId === undefined) {
-        return { background: null, ownedBackgrounds: [] };
+        return { background: null, ownedBackgrounds: [], outline: null, ownedOutlines: [] };
     }
     const account = loadScope(scope).accounts[String(userId)];
     const cosmetics = account?.cosmetics;
@@ -382,9 +545,15 @@ function getProfileCosmetics(message, userId = message?.userId) {
         ? [...new Set(cosmetics.backgrounds.map(profileCosmetics.normalizeProfileBackground).filter(Boolean))]
         : [];
     const selected = profileCosmetics.normalizeProfileBackground(cosmetics?.background);
+    const ownedOutlines = Array.isArray(cosmetics?.outlines)
+        ? [...new Set(cosmetics.outlines.map(profileCosmetics.normalizeProfileOutline).filter(Boolean))]
+        : [];
+    const selectedOutline = profileCosmetics.normalizeProfileOutline(cosmetics?.outline);
     return {
         background: selected && ownedBackgrounds.includes(selected) ? selected : null,
-        ownedBackgrounds
+        ownedBackgrounds,
+        outline: selectedOutline && ownedOutlines.includes(selectedOutline) ? selectedOutline : null,
+        ownedOutlines
     };
 }
 
@@ -399,16 +568,17 @@ function setProfileBackground(message, background) {
         ? cosmetics.backgrounds.map(profileCosmetics.normalizeProfileBackground).filter(Boolean)
         : [];
     const alreadyOwned = ownedBackgrounds.includes(backgroundKey);
-    if (!alreadyOwned && account.balance < profileCosmetics.PROFILE_BACKGROUND_PRICE) {
+    const price = profileCosmetics.getProfileBackgroundPrice(backgroundKey);
+    if (!alreadyOwned && account.balance < price) {
         return {
             purchased: false,
             reason: "insufficient-balance",
-            price: profileCosmetics.PROFILE_BACKGROUND_PRICE,
+            price,
             balance: account.balance
         };
     }
     if (!alreadyOwned) {
-        account.balance -= profileCosmetics.PROFILE_BACKGROUND_PRICE;
+        account.balance -= price;
         ownedBackgrounds.push(backgroundKey);
     }
     account.cosmetics = {
@@ -421,30 +591,83 @@ function setProfileBackground(message, background) {
         purchased: true,
         boughtNow: !alreadyOwned,
         background: backgroundKey,
+        price,
         balance: account.balance
     };
 }
 
-function buyProfileBackground(message, selection) {
+function setProfileOutline(message, outline) {
+    const outlineKey = profileCosmetics.normalizeProfileOutline(outline);
+    if (!outlineKey) return { purchased: false, reason: "invalid-outline" };
+    const { account, scope } = getAccount(message);
+    const cosmetics = account.cosmetics && typeof account.cosmetics === "object"
+        ? account.cosmetics
+        : { outlines: [], outline: null };
+    const ownedOutlines = Array.isArray(cosmetics.outlines)
+        ? cosmetics.outlines.map(profileCosmetics.normalizeProfileOutline).filter(Boolean)
+        : [];
+    const alreadyOwned = ownedOutlines.includes(outlineKey);
+    const price = profileCosmetics.getProfileOutlinePrice(outlineKey);
+    if (!alreadyOwned && account.balance < price) {
+        return {
+            purchased: false,
+            reason: "insufficient-balance",
+            price,
+            balance: account.balance
+        };
+    }
+    if (!alreadyOwned) {
+        account.balance -= price;
+        ownedOutlines.push(outlineKey);
+    }
+    account.cosmetics = {
+        ...cosmetics,
+        outlines: [...new Set(ownedOutlines)],
+        outline: outlineKey
+    };
+    saveScope(scope, loadScope(scope));
+    return {
+        purchased: true,
+        boughtNow: !alreadyOwned,
+        outline: outlineKey,
+        price,
+        balance: account.balance
+    };
+}
+
+function buyProfileCosmetic(message, selection) {
     const value = String(selection || "").trim().normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
         .toLowerCase();
-    const hasCategoryPrefix = /^(?:fundo|fundos|background|backgrounds)\s+/.test(value);
+    const outlinePrefix = /^(?:linha|linhas|outline|contorno|contornos)\s+/.test(value);
+    const backgroundPrefix = /^(?:fundo|fundos|background|backgrounds)\s+/.test(value);
     const numericId = /^\d+$/.test(value) ? Number(value) : null;
     const isCosmeticId = Number.isSafeInteger(numericId) && numericId >= 2000;
-    if (!hasCategoryPrefix && !isCosmeticId) return { matched: false };
+    if (!outlinePrefix && !backgroundPrefix && !isCosmeticId) return { matched: false };
 
-    const background = profileCosmetics.resolveProfileBackground(value);
-    if (!background) {
-        return { matched: true, purchased: false, reason: "invalid-background" };
+    const type = outlinePrefix || (numericId !== null && numericId >= 3000) ? "outline" : "background";
+    const item = type === "outline"
+        ? profileCosmetics.resolveProfileOutline(value)
+        : profileCosmetics.resolveProfileBackground(value);
+    if (!item) {
+        return { matched: true, type, purchased: false, reason: "invalid-cosmetic" };
     }
 
     return {
         matched: true,
-        ...setProfileBackground(message, background.key),
-        item: background,
-        price: profileCosmetics.PROFILE_BACKGROUND_PRICE
+        type,
+        ...(type === "outline"
+            ? setProfileOutline(message, item.key)
+            : setProfileBackground(message, item.key)),
+        item,
+        price: type === "outline"
+            ? profileCosmetics.getProfileOutlinePrice(item.key)
+            : profileCosmetics.getProfileBackgroundPrice(item.key)
     };
+}
+
+function buyProfileBackground(message, selection) {
+    return buyProfileCosmetic(message, selection);
 }
 
 function resetProfileBackground(message) {
@@ -459,13 +682,25 @@ function resetProfileBackground(message) {
     return { changed };
 }
 
+function resetProfileOutline(message) {
+    const { account, scope } = getAccount(message);
+    const cosmetics = account.cosmetics;
+    if (!cosmetics || typeof cosmetics !== "object") {
+        return { changed: false };
+    }
+    const changed = Boolean(cosmetics.outline);
+    cosmetics.outline = null;
+    saveScope(scope, loadScope(scope));
+    return { changed };
+}
+
 function listAccounts(message) {
     const scope = getScope(message);
     if (!scope) return [];
     return Object.values(loadScope(scope).accounts)
         .filter(account => account && typeof account === "object")
         .sort((left, right) =>
-            Number(right.balance || 0) - Number(left.balance || 0) ||
+            getTotalBalance(right) - getTotalBalance(left) ||
             String(left.displayName || left.username || left.userId).localeCompare(
                 String(right.displayName || right.username || right.userId),
                 "pt-BR"
@@ -512,9 +747,11 @@ function resetBalance(message, userId) {
     const account = store.accounts[String(userId)];
     if (!account || typeof account !== "object") return null;
     const previousBalance = Math.max(0, Number(account.balance) || 0);
+    const previousVaultBalance = Math.max(0, Number(account.vaultBalance) || 0);
     account.balance = 0;
+    account.vaultBalance = 0;
     saveScope(scope, store);
-    return { ...account, previousBalance };
+    return { ...account, previousBalance, previousVaultBalance };
 }
 
 function resetAllBalances(message) {
@@ -523,7 +760,10 @@ function resetAllBalances(message) {
     const store = loadScope(scope);
     const accounts = Object.values(store.accounts)
         .filter(account => account && typeof account === "object");
-    for (const account of accounts) account.balance = 0;
+    for (const account of accounts) {
+        account.balance = 0;
+        account.vaultBalance = 0;
+    }
     saveScope(scope, store);
     return accounts.length;
 }
@@ -534,7 +774,7 @@ function getBalancePosition(message, userId) {
     const store = loadScope(scope);
     const accounts = Object.values(store.accounts)
         .filter(account => account && typeof account === "object")
-        .sort((a, b) => Number(b.balance || 0) - Number(a.balance || 0));
+        .sort((a, b) => (Number(b.balance) || 0) - (Number(a.balance) || 0));
     const index = accounts.findIndex(account => String(account.userId) === String(userId));
     return index === -1 ? null : index + 1;
 }
@@ -661,7 +901,7 @@ function getRanking(message, order = "rich", limit = 5) {
     return Object.values(store.accounts)
         .filter(account => account && typeof account === "object")
         .sort((a, b) => {
-            const difference = Number(b.balance || 0) - Number(a.balance || 0);
+            const difference = (Number(b.balance) || 0) - (Number(a.balance) || 0);
             return order === "poor" ? -difference : difference;
         })
         .slice(0, limit)
@@ -677,7 +917,9 @@ function getRanking(message, order = "rich", limit = 5) {
                 userId: String(account.userId),
                 username: account.username || platformAccount?.username || null,
                 name: account.displayName || account.username || platformAccount?.displayName || platformAccount?.username || central?.name || "Usuário",
-                balance: Number(account.balance) || 0
+                balance: Number(account.balance) || 0,
+                walletBalance: Number(account.balance) || 0,
+                vaultBalance: Number(account.vaultBalance) || 0
             };
         });
 }
@@ -1098,8 +1340,87 @@ function getCommunityStore(message) {
     return {
         title: store.title,
         notice: store.notice,
-        items: store.items.map(item => ({ ...item }))
+        items: store.items.map(item => ({ ...item })),
+        localSignalSearch: normalizeLocalSignalSearch(store.localSignalSearch)
     };
+}
+
+function getLocalSignalSearch(message) {
+    const scope = getScope(message);
+    if (!scope) return null;
+    const store = loadScope(scope).communityStore;
+    const config = normalizeLocalSignalSearch(store.localSignalSearch);
+    const account = getAccountByUser(message);
+    const progress = account ? getSignalSearchProgress(account, "local") : {
+        pullsSinceRarity: {}
+    };
+    const marketItems = store.items.map(item => ({ ...item }));
+    return {
+        ...config,
+        marketItems,
+        botItems: getStoreItems().map(item => ({
+            key: item.key,
+            name: item.name,
+            price: item.price,
+            rarity: item.rarity,
+            product: Boolean(item.product)
+        })),
+        pullsUntilGuarantee: Object.fromEntries(LOCAL_SIGNAL_RARITIES.map(rarity => {
+            const guaranteeAfter = config.tiers[rarity].guaranteeAfter;
+            const pullsSince = Number(progress.pullsSinceRarity?.[rarity]) || 0;
+            return [rarity, guaranteeAfter ? Math.max(0, guaranteeAfter - pullsSince) : null];
+        }))
+    };
+}
+
+function updateLocalSignalSearch(message, updates) {
+    const scope = getScope(message);
+    if (!scope || !updates || typeof updates !== "object" || Array.isArray(updates)) return null;
+    const store = loadScope(scope);
+    const config = normalizeLocalSignalSearch(updates);
+    if (!Number.isSafeInteger(updates.price) || updates.price <= 0 ||
+        !updates.tiers || typeof updates.tiers !== "object" || Array.isArray(updates.tiers)) return null;
+    const totalChance = LOCAL_SIGNAL_RARITIES.reduce((total, rarity) => {
+        const tier = updates.tiers[rarity];
+        if (!tier || !Number.isSafeInteger(tier.chance) || tier.chance < 0 || tier.chance > 100) return NaN;
+        return total + tier.chance;
+    }, 0);
+    if (totalChance !== 100) return null;
+    for (const rarity of LOCAL_SIGNAL_RARITIES) {
+        const tier = config.tiers[rarity];
+        const rawTier = updates.tiers[rarity];
+        if (rawTier.guaranteeAfter !== null && rawTier.guaranteeAfter !== undefined &&
+            (!Number.isSafeInteger(rawTier.guaranteeAfter) || rawTier.guaranteeAfter < 1 || rawTier.guaranteeAfter > 10000)) return null;
+        if (tier.chance === 0 && tier.guaranteeAfter !== null) return null;
+        if ((tier.cashMin === null) !== (tier.cashMax === null)) return null;
+        if (tier.cashMin !== null && (tier.cashMax < tier.cashMin || tier.cashMin < 0)) return null;
+        if (tier.marketItems.some(id => !store.communityStore.items.some(item => item.id === id))) return null;
+        if (tier.chance > 0) {
+            const hasCash = tier.cashMin !== null;
+            const hasBotItem = tier.botItems.length > 0;
+            const hasMarketItem = tier.marketItems.length > 0;
+            if (!hasCash && !hasBotItem && !hasMarketItem) return null;
+        }
+    }
+    if (!Array.isArray(updates.featured) || updates.featured.length > 2) return null;
+    const featuredKeys = new Set();
+    for (const item of config.featured) {
+        const key = item.type === "bot" ? `bot:${item.key}` : `market:${item.id}`;
+        if (featuredKeys.has(key)) return null;
+        featuredKeys.add(key);
+        const exists = item.type === "bot"
+            ? STORE_ITEMS.some(candidate => candidate.key === item.key)
+            : store.communityStore.items.some(candidate => candidate.id === item.id);
+        const configuredAsPrize = Object.values(config.tiers).some(tier => item.type === "bot"
+            ? tier.botItems.includes(item.key)
+            : tier.marketItems.includes(item.id));
+        if (!exists || !configuredAsPrize) return null;
+    }
+    if (config.featured.length !== updates.featured.length) return null;
+    config.enabled = updates.enabled === true;
+    store.communityStore.localSignalSearch = config;
+    saveScope(scope, loadScope(scope));
+    return getLocalSignalSearch(message);
 }
 
 function setCommunityStoreText(message, field, value) {
@@ -1220,6 +1541,12 @@ function removeCommunityStoreItem(message, itemId) {
     const index = data.communityStore.items.findIndex(item => item.id === Number(itemId));
     if (index === -1) return null;
     const [removed] = data.communityStore.items.splice(index, 1);
+    const config = normalizeLocalSignalSearch(data.communityStore.localSignalSearch);
+    for (const tier of Object.values(config.tiers)) {
+        tier.marketItems = tier.marketItems.filter(id => id !== removed.id);
+    }
+    config.featured = config.featured.filter(item => item.type !== "market" || item.id !== removed.id);
+    data.communityStore.localSignalSearch = config;
     saveScope(scope, data);
     return { ...removed };
 }
@@ -1403,6 +1730,444 @@ function resolveStoreItem(selection) {
     ) || null;
 }
 
+function getSignalSearchProgress(account, level) {
+    const stored = account.signalSearch && typeof account.signalSearch === "object"
+        ? account.signalSearch
+        : {};
+    const levelState = stored[level] && typeof stored[level] === "object" ? stored[level] : {};
+    return {
+        totalPulls: Number.isSafeInteger(levelState.totalPulls) && levelState.totalPulls >= 0
+            ? levelState.totalPulls
+            : 0,
+        pullsSinceEpic: Number.isSafeInteger(levelState.pullsSinceEpic) && levelState.pullsSinceEpic >= 0
+            ? levelState.pullsSinceEpic
+            : 0,
+        pullsSinceWorkReset: Number.isSafeInteger(levelState.pullsSinceWorkReset) && levelState.pullsSinceWorkReset >= 0
+            ? levelState.pullsSinceWorkReset
+            : 0,
+        pullsSinceRarity: Object.fromEntries(LOCAL_SIGNAL_RARITIES.map(rarity => [
+            rarity,
+            Number.isSafeInteger(levelState.pullsSinceRarity?.[rarity]) && levelState.pullsSinceRarity[rarity] >= 0
+                ? levelState.pullsSinceRarity[rarity]
+                : 0
+        ]))
+    };
+}
+
+function getSignalSearchState(message, userId = message?.userId) {
+    const account = getAccountByUser(message, userId);
+    const levels = Object.fromEntries(Object.entries(SIGNAL_SEARCH_LEVELS).map(([key, config]) => {
+        const progress = account ? getSignalSearchProgress(account, key) : {
+            totalPulls: 0,
+            pullsSinceEpic: 0,
+            pullsSinceWorkReset: 0
+        };
+        return [key, {
+            label: config.label,
+            price: config.price,
+            pullsUntilEpic: Math.max(0, 10 - progress.pullsSinceEpic),
+            pullsUntilWorkReset: key === "recruta"
+                ? Math.max(0, 5 - progress.pullsSinceWorkReset)
+                : null
+        }];
+    }));
+    return { levels, balance: Number(account?.balance) || 0 };
+}
+
+function canApplyStoreReset(account, item, today) {
+    const isAtLimit = storeItem =>
+        account[storeItem.date] === today &&
+        Number(account[storeItem.count]) >= storeItem.max;
+    if (item.key === "all") {
+        return STORE_ITEMS
+            .filter(storeItem => ["work", "fishing", "mining", "robbery"].includes(storeItem.key))
+            .every(isAtLimit);
+    }
+    return Boolean(item.date && item.count && item.max && isAtLimit(item));
+}
+
+function applyStoreReset(account, item, today) {
+    const itemsToReset = item.key === "all"
+        ? STORE_ITEMS.filter(storeItem => !storeItem.product && storeItem.key !== "all")
+        : [item];
+    for (const storeItem of itemsToReset) {
+        account[storeItem.date] = today;
+        account[storeItem.count] = 0;
+    }
+}
+
+function getSignalSearchEpicItems(level) {
+    const resetItems = STORE_ITEMS.filter(item => item.rarity === itemRarity.EPIC && !item.product)
+        .map(item => ({ type: "reset", item, rarity: item.rarity }));
+    if (level === "recruta") return resetItems;
+    const cosmetics = [
+        ...Object.entries(profileCosmetics.PROFILE_BACKGROUNDS)
+            .filter(([, item]) => item.rarity === itemRarity.EPIC)
+            .map(([key, item]) => ({ type: "cosmetic", cosmeticType: "background", key, item, rarity: item.rarity })),
+        ...Object.entries(profileCosmetics.PROFILE_OUTLINES)
+            .filter(([, item]) => item.rarity === itemRarity.EPIC)
+            .map(([key, item]) => ({ type: "cosmetic", cosmeticType: "outline", key, item, rarity: item.rarity }))
+    ];
+    return [...resetItems, ...cosmetics];
+}
+
+function chooseSignalSearchReward(level, config, guarantee) {
+    if (guarantee === "epic") {
+        const epicItems = getSignalSearchEpicItems(level);
+        if (!epicItems.length) throw new Error(`Nenhum prêmio épico configurado para a busca ${level}.`);
+        return { ...pickRandom(epicItems), guarantee };
+    }
+    if (guarantee === "work") {
+        const workReset = STORE_ITEMS.find(item => item.key === "work");
+        return { type: "reset", item: workReset, rarity: workReset.rarity, guarantee };
+    }
+
+    const roll = Math.random() * 100;
+    if (roll < config.weights.money) {
+        return {
+            type: "money",
+            amount: randomInteger(config.cashMin, config.cashMax),
+            rarity: itemRarity.COMMON
+        };
+    }
+    let remainingWeight = config.weights.money;
+    if (config.weights.reset && roll < (remainingWeight += config.weights.reset)) {
+        const resetItems = STORE_ITEMS.filter(item => !item.product && item.key !== "all" && item.key !== "shield");
+        const item = pickRandom(resetItems);
+        return { type: "reset", item, rarity: item.rarity };
+    }
+    if (config.weights.cosmetic) {
+        const cosmeticItems = [
+            ...Object.entries(profileCosmetics.PROFILE_BACKGROUNDS)
+                .map(([key, item]) => ({ type: "cosmetic", cosmeticType: "background", key, item, rarity: item.rarity })),
+            ...Object.entries(profileCosmetics.PROFILE_OUTLINES)
+                .map(([key, item]) => ({ type: "cosmetic", cosmeticType: "outline", key, item, rarity: item.rarity }))
+        ];
+        return pickRandom(cosmeticItems);
+    }
+    throw new Error(`A tabela de prêmios da busca ${level} está inválida.`);
+}
+
+function grantSignalCosmetic(account, prize) {
+    const field = prize.cosmeticType === "outline" ? "outlines" : "backgrounds";
+    const normalizer = prize.cosmeticType === "outline"
+        ? profileCosmetics.normalizeProfileOutline
+        : profileCosmetics.normalizeProfileBackground;
+    const current = account.cosmetics && typeof account.cosmetics === "object" ? account.cosmetics : {};
+    const owned = Array.isArray(current[field]) ? current[field].map(normalizer).filter(Boolean) : [];
+    if (owned.includes(prize.key)) return false;
+    account.cosmetics = { ...current, [field]: [...new Set([...owned, prize.key])] };
+    return true;
+}
+
+function awardSignalSearchPrize(account, prize, today) {
+    if (prize.type === "money") {
+        account.balance += prize.amount;
+        recordDailyProfit(account, "busca", prize.amount);
+        return { type: "money", name: "Prêmio em SatCoins", amount: prize.amount, rarity: prize.rarity, isNew: false };
+    }
+    if (prize.type === "reset") {
+        if (!canApplyStoreReset(account, prize.item, today)) {
+            const amount = Math.floor(prize.item.price / 2);
+            account.balance += amount;
+            recordDailyProfit(account, "busca", amount);
+            return {
+                type: "money",
+                name: prize.item.name,
+                amount,
+                rarity: prize.rarity,
+                isNew: false,
+                converted: true,
+                guarantee: prize.guarantee || null
+            };
+        }
+        applyStoreReset(account, prize.item, today);
+        return {
+            type: "reset",
+            name: prize.item.name,
+            itemKey: prize.item.key,
+            rarity: prize.rarity,
+            isNew: true,
+            guarantee: prize.guarantee || null
+        };
+    }
+    if (prize.type === "cosmetic") {
+        if (!grantSignalCosmetic(account, prize)) {
+            const storePrice = prize.cosmeticType === "outline"
+                ? profileCosmetics.getProfileOutlinePrice(prize.key)
+                : profileCosmetics.getProfileBackgroundPrice(prize.key);
+            const amount = Math.floor(storePrice / 2);
+            account.balance += amount;
+            recordDailyProfit(account, "busca", amount);
+            return {
+                type: "money",
+                name: `${prize.item.label} (duplicado)`,
+                amount,
+                rarity: prize.rarity,
+                isNew: false,
+                converted: true
+            };
+        }
+        return {
+            type: "cosmetic",
+            name: `${prize.cosmeticType === "outline" ? "Outline" : "Fundo"} ${prize.item.label}`,
+            cosmeticType: prize.cosmeticType,
+            cosmeticKey: prize.key,
+            rarity: prize.rarity,
+            isNew: true
+        };
+    }
+    throw new Error("Tipo de prêmio da busca inválido.");
+}
+
+function searchSignals(message, level, quantity = 1) {
+    const config = SIGNAL_SEARCH_LEVELS[level];
+    if (!config) return { searched: false, reason: "invalid-level" };
+    if (quantity !== 1 && quantity !== 10) return { searched: false, reason: "invalid-quantity" };
+    const { account, scope } = getAccount(message);
+    const totalPrice = config.price * quantity;
+    if (!Number.isSafeInteger(totalPrice) || account.balance < totalPrice) {
+        return {
+            searched: false,
+            reason: "insufficient-balance",
+            price: totalPrice,
+            balance: account.balance,
+            scope
+        };
+    }
+
+    const today = getLocalDate();
+    account.balance -= totalPrice;
+    recordDailyProfit(account, "busca", -totalPrice);
+    const rewards = [];
+    for (let index = 0; index < quantity; index++) {
+        const progress = getSignalSearchProgress(account, level);
+        const epicDue = progress.pullsSinceEpic + 1 >= 10;
+        const workDue = level === "recruta" && progress.pullsSinceWorkReset + 1 >= 5;
+        const prize = chooseSignalSearchReward(level, config, epicDue ? "epic" : workDue ? "work" : null);
+        const reward = awardSignalSearchPrize(account, prize, today);
+        reward.guarantee = prize.guarantee || null;
+        rewards.push(reward);
+
+        const updatedProgress = getSignalSearchProgress(account, level);
+        updatedProgress.totalPulls += 1;
+        updatedProgress.pullsSinceEpic = prize.rarity === itemRarity.EPIC ? 0 : progress.pullsSinceEpic + 1;
+        updatedProgress.pullsSinceWorkReset = prize.guarantee === "work" || prize.item?.key === "work" || prize.item?.key === "all"
+            ? 0
+            : progress.pullsSinceWorkReset + 1;
+        account.signalSearch = {
+            ...(account.signalSearch && typeof account.signalSearch === "object" ? account.signalSearch : {}),
+            [level]: updatedProgress
+        };
+    }
+    saveScope(scope, loadScope(scope));
+    return {
+        searched: true,
+        level,
+        quantity,
+        price: totalPrice,
+        rewards,
+        balance: account.balance,
+        state: getSignalSearchState(message),
+        scope
+    };
+}
+
+function getLocalSignalTierPrizes(config, tier, store) {
+    const prizes = [];
+    if (tier.cashMin !== null && tier.cashMax !== null) {
+        prizes.push({ type: "money", min: tier.cashMin, max: tier.cashMax });
+    }
+    for (const key of tier.botItems) {
+        const item = STORE_ITEMS.find(candidate => candidate.key === key);
+        if (item) prizes.push({ type: "bot", item });
+    }
+    for (const id of tier.marketItems) {
+        const item = store.communityStore.items.find(candidate => candidate.id === id);
+        if (item && item.quantity !== 0) prizes.push({ type: "market", item });
+    }
+    return prizes;
+}
+
+function chooseLocalSignalRarity(config, progress) {
+    const dueRarity = [...LOCAL_SIGNAL_RARITIES].reverse().find(rarity => {
+        const tier = config.tiers[rarity];
+        return tier.chance > 0 && tier.guaranteeAfter &&
+            progress.pullsSinceRarity[rarity] + 1 >= tier.guaranteeAfter;
+    });
+    if (dueRarity) return { rarity: dueRarity, guarantee: true };
+    const roll = Math.random() * 100;
+    let cumulativeChance = 0;
+    for (const rarity of LOCAL_SIGNAL_RARITIES) {
+        cumulativeChance += config.tiers[rarity].chance;
+        if (roll < cumulativeChance) return { rarity, guarantee: false };
+    }
+    throw new Error("As probabilidades da Busca Local estão inválidas.");
+}
+
+function awardLocalSignalPrize(account, prize, rarity, guarantee, today, store) {
+    if (prize.type === "money") {
+        const amount = randomInteger(prize.min, prize.max);
+        account.balance += amount;
+        recordDailyProfit(account, "busca", amount);
+        return {
+            type: "money",
+            name: "Prêmio em SatCoins",
+            amount,
+            rarity,
+            guarantee: guarantee ? rarity : null,
+            isNew: rarity === itemRarity.EPIC || rarity === itemRarity.LEGENDARY
+        };
+    }
+    if (prize.type === "bot") {
+        const item = prize.item;
+        if (item.key === "shield") {
+            if (Number(account.shieldCharges) > 0) {
+                const amount = Math.floor(item.price / 2);
+                account.balance += amount;
+                recordDailyProfit(account, "busca", amount);
+                return {
+                    type: "money",
+                    name: `${item.name} (convertido)`,
+                    amount,
+                    rarity,
+                    guarantee: guarantee ? rarity : null,
+                    converted: true,
+                    isNew: false
+                };
+            }
+            account.shieldCharges = SHIELD_DURABILITY;
+            return {
+                type: "reset",
+                name: item.name,
+                itemKey: item.key,
+                rarity,
+                guarantee: guarantee ? rarity : null,
+                isNew: true
+            };
+        }
+        if (!canApplyStoreReset(account, item, today)) {
+            const amount = Math.floor(item.price / 2);
+            account.balance += amount;
+            recordDailyProfit(account, "busca", amount);
+            return {
+                type: "money",
+                name: `${item.name} (convertido)`,
+                amount,
+                rarity,
+                guarantee: guarantee ? rarity : null,
+                converted: true,
+                isNew: false
+            };
+        }
+        applyStoreReset(account, item, today);
+        return {
+            type: "reset",
+            name: item.name,
+            itemKey: item.key,
+            rarity,
+            guarantee: guarantee ? rarity : null,
+            isNew: true
+        };
+    }
+    if (prize.type === "market") {
+        const item = store.communityStore.items.find(candidate => candidate.id === prize.item.id);
+        if (!item || item.quantity === 0) {
+            throw new Error("Um prêmio do Mercado Local acabou de ficar indisponível. Tente a busca novamente.");
+        }
+        if (item.quantity !== null) item.quantity -= 1;
+        const order = {
+            id: store.communityStore.nextOrderId++,
+            itemId: item.id,
+            itemName: item.name,
+            category: item.category,
+            price: 0,
+            userId: String(account.userId),
+            displayName: account.displayName || account.username || String(account.userId),
+            status: "pending",
+            createdAt: Date.now(),
+            source: "local-signal-search"
+        };
+        store.communityStore.orders.push(order);
+        return {
+            type: "market",
+            name: item.name,
+            itemId: item.id,
+            category: item.category,
+            orderId: order.id,
+            rarity,
+            guarantee: guarantee ? rarity : null,
+            isNew: true
+        };
+    }
+    throw new Error("Tipo de prêmio da Busca Local inválido.");
+}
+
+function searchLocalSignals(message, quantity = 1) {
+    if (quantity !== 1 && quantity !== 10) return { searched: false, reason: "invalid-quantity" };
+    const { scope } = getAccount(message);
+    const store = loadScope(scope);
+    const config = normalizeLocalSignalSearch(store.communityStore.localSignalSearch);
+    if (!config.enabled) return { searched: false, reason: "disabled" };
+    const totalPrice = config.price * quantity;
+    const accountId = String(message.userId);
+    const currentAccount = store.accounts[accountId];
+    if (!currentAccount) return { searched: false, reason: "missing-account" };
+    if (!Number.isSafeInteger(totalPrice) || currentAccount.balance < totalPrice) {
+        return {
+            searched: false,
+            reason: "insufficient-balance",
+            price: totalPrice,
+            balance: currentAccount.balance,
+            scope
+        };
+    }
+    if (LOCAL_SIGNAL_RARITIES.some(rarity => config.tiers[rarity].chance > 0 &&
+        !getLocalSignalTierPrizes(config, config.tiers[rarity], store).length)) {
+        return { searched: false, reason: "unavailable-prizes", scope };
+    }
+
+    const workingStore = JSON.parse(JSON.stringify(store));
+    const account = workingStore.accounts[accountId];
+    account.balance -= totalPrice;
+    recordDailyProfit(account, "busca", -totalPrice);
+    const today = getLocalDate();
+    const rewards = [];
+    let progress = getSignalSearchProgress(account, "local");
+    for (let index = 0; index < quantity; index++) {
+        const { rarity, guarantee } = chooseLocalSignalRarity(config, progress);
+        const prizes = getLocalSignalTierPrizes(config, config.tiers[rarity], workingStore);
+        if (!prizes.length) return { searched: false, reason: "unavailable-prizes", scope };
+        const prize = pickRandom(prizes);
+        const reward = awardLocalSignalPrize(account, prize, rarity, guarantee, today, workingStore);
+        rewards.push(reward);
+        progress.totalPulls += 1;
+        progress.pullsSinceRarity = Object.fromEntries(LOCAL_SIGNAL_RARITIES.map(candidate => [
+            candidate,
+            LOCAL_SIGNAL_RARITIES.indexOf(candidate) <= LOCAL_SIGNAL_RARITIES.indexOf(rarity)
+                ? 0
+                : progress.pullsSinceRarity[candidate] + 1
+        ]));
+        account.signalSearch = {
+            ...(account.signalSearch && typeof account.signalSearch === "object" ? account.signalSearch : {}),
+            local: progress
+        };
+    }
+    store.accounts[accountId] = account;
+    store.communityStore = workingStore.communityStore;
+    saveScope(scope, store);
+    return {
+        searched: true,
+        level: "local",
+        quantity,
+        price: totalPrice,
+        rewards,
+        balance: account.balance,
+        state: getLocalSignalSearch(message),
+        scope
+    };
+}
+
 function casino(message, bet, fruits) {
     const { account, scope } = getAccount(message);
     const today = getLocalDate();
@@ -1496,6 +2261,7 @@ module.exports = {
     MAX_WORKS_PER_DAY,
     MAX_TRANSFERS_PER_DAY,
     MIN_TRANSFER_AMOUNT,
+    MIN_VAULT_DEPOSIT,
     SATCOIN_SYMBOL,
     canWork,
     claimDaily,
@@ -1504,14 +2270,24 @@ module.exports = {
     getAccount,
     listAccounts,
     getBalance,
+    getTotalBalance,
+    depositToVault,
+    withdrawFromVault,
     getAccountByUser,
     getProfileCosmetics,
     setProfileBackground,
+    setProfileOutline,
+    resetProfileOutline,
     buyProfileBackground,
+    buyProfileCosmetic,
     resetProfileBackground,
     ITEM_RARITY: itemRarity,
     PROFILE_BACKGROUNDS: profileCosmetics.PROFILE_BACKGROUNDS,
+    PROFILE_OUTLINES: profileCosmetics.PROFILE_OUTLINES,
     PROFILE_BACKGROUND_PRICE: profileCosmetics.PROFILE_BACKGROUND_PRICE,
+    PROFILE_OUTLINE_PRICE: profileCosmetics.PROFILE_OUTLINE_PRICE,
+    getProfileBackgroundPrice: profileCosmetics.getProfileBackgroundPrice,
+    getProfileOutlinePrice: profileCosmetics.getProfileOutlinePrice,
     resetBalance,
     resetAllBalances,
     getBalancePosition,
@@ -1544,6 +2320,13 @@ module.exports = {
     canRob,
     getStoreItems,
     buyStoreItem,
+    SIGNAL_SEARCH_LEVELS,
+    LOCAL_SIGNAL_RARITIES,
+    getSignalSearchState,
+    searchSignals,
+    searchLocalSignals,
+    getLocalSignalSearch,
+    updateLocalSignalSearch,
     getCommunityStore,
     setCommunityStoreText,
     updateCommunityStoreDetails,

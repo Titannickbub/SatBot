@@ -7,12 +7,12 @@ module.exports = {
     name: "carteira",
     aliases: ["saldo", "wallet"],
     category: "economia",
-    description: `💰 Consulta o seu saldo de satcoins na economia local do grupo ou servidor atual.
+    description: `💰 Consulta sua carteira disponível, saldo protegido no cofre e patrimônio total da economia local.
 
 📝 1. Execute o comando dentro de um grupo ou servidor:
 {prefix}carteira
 
-O bot gera um banner com seu saldo, identificação e disponibilidade da recompensa diária para resgate ({prefix}resgatar).
+O bot gera um banner com carteira, cofre, patrimônio total, identificação e disponibilidade da recompensa diária para resgate ({prefix}resgatar).
 
 ⚠️ A economia e os saldos são separados individualmente por grupo/servidor.`,
     usage: "{prefix}carteira",
@@ -25,6 +25,8 @@ O bot gera um banner com seu saldo, identificação e disponibilidade da recompe
         const account = economy.getAccount(message);
         const name = message.displayName || message.username || message.userId;
         const balance = economy.formatMoney(account.account.balance);
+        const vaultBalance = economy.formatMoney(account.account.vaultBalance);
+        const totalBalance = economy.formatMoney(economy.getTotalBalance(account.account));
         const scope = economy.getScope(message);
         const canClaimDaily = economy.canClaimDaily(message);
         let avatar = null;
@@ -44,6 +46,8 @@ O bot gera um banner com seu saldo, identificação e disponibilidade da recompe
             name,
             userId: message.userId,
             balance,
+            vaultBalance,
+            totalBalance,
             scopeName: scope.name,
             scopeType: scope.type,
             platform: message.platform,
@@ -54,7 +58,7 @@ O bot gera um banner com seu saldo, identificação e disponibilidade da recompe
 
         return message.replyImg({
             image: banner,
-            caption: `💰 Carteira de ${name} — saldo: ${balance}`,
+            caption: `💰 Carteira de ${name} — disponível: ${balance} | cofre: ${vaultBalance} | patrimônio: ${totalBalance}`,
             fileName: "carteira.png"
         });
     }

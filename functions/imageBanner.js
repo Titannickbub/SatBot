@@ -34,9 +34,9 @@ function text(value, x, y, size, color = "#f5f7fb", weight = 400, anchor = "star
     return `<text x="${x}" y="${y}" fill="${color}" font-family="Arial,Segoe UI,sans-serif" font-size="${size}px" font-weight="${weight}" text-anchor="${anchor}">${escapeXml(value)}</text>`;
 }
 
-function card(x, y, width, label, value, detail, valueColor = "#f5f7fb", theme) {
+function card(x, y, width, label, value, detail, valueColor = "#f5f7fb", theme, outlineColor) {
     return [
-        `<rect x="${x}" y="${y}" width="${width}" height="130" rx="18" fill="${theme?.stops[1] || "#202a40"}" stroke="${theme?.accent || "#334566"}"/>`,
+        `<rect x="${x}" y="${y}" width="${width}" height="130" rx="18" fill="${theme?.stops[1] || "#202a40"}" stroke="${outlineColor || theme?.accent || "#334566"}"/>`,
         text(label, x + 22, y + 32, 14, "#9da8bd", 700),
         text(value, x + 22, y + 76, 28, valueColor, 800),
         text(detail, x + 22, y + 108, 14, "#b8c3d9")
@@ -47,11 +47,12 @@ function baseSvg(width, height, title, subtitle, body, titleX = 70, theme) {
     const botName = config.getBotName();
     const stops = theme?.stops || ["#27365d", "#111827", "#090b10"];
     const panelFill = theme ? `${stops[2]}dd` : "#111521dd";
-    const panelStroke = theme?.accent || "#334366";
-    const brandColor = theme?.accent || "#7ea7ff";
+    const rainbow = Boolean(theme?.rainbow);
+    const panelStroke = rainbow ? "url(#rainbow)" : theme?.accent || "#334366";
+    const brandColor = rainbow ? "url(#rainbow)" : theme?.accent || "#7ea7ff";
     return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
-<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${stops[0]}"/><stop offset="0.55" stop-color="${stops[1]}"/><stop offset="1" stop-color="${stops[2]}"/></linearGradient></defs>
-<rect width="${width}" height="${height}" fill="url(#bg)"/>
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${stops[0]}"/><stop offset="0.55" stop-color="${stops[1]}"/><stop offset="1" stop-color="${stops[2]}"/></linearGradient><linearGradient id="rainbow" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff1744"/><stop offset=".17" stop-color="#ff9100"/><stop offset=".34" stop-color="#ffea00"/><stop offset=".51" stop-color="#00e676"/><stop offset=".68" stop-color="#00b0ff"/><stop offset=".85" stop-color="#651fff"/><stop offset="1" stop-color="#ff1744"/></linearGradient></defs>
+<rect width="${width}" height="${height}" fill="${rainbow ? "url(#rainbow)" : "url(#bg)"}"/>
 <rect x="28" y="28" width="${width - 56}" height="${height - 56}" rx="26" fill="${panelFill}" stroke="${panelStroke}"/>
 ${text(botName, 70, 88, 24, brandColor, 800)}
     ${text(title, titleX, 140, 38, "#f5f7fb", 800)}
@@ -86,6 +87,8 @@ async function renderProfile(message) {
         ? `Há ${currentMarriage.duration} • desde ${new Date(currentMarriage.marriedAt).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}`
         : "Sem casamento neste grupo/servidor";
     const backgroundTheme = profileCosmetics.getProfileBackground(profile.economy.background);
+    const profileOutline = profileCosmetics.getProfileOutline(profile.economy.outline);
+    const outlineColor = profileOutline?.rainbow ? "url(#rainbow)" : profileOutline?.color;
     let avatarBuffer = null;
     let avatarUrl = profile.platform === "discord" ? profile.avatarUrl : null;
     if (profile.platform !== "discord" || !avatarUrl) {
@@ -152,24 +155,24 @@ async function renderProfile(message) {
         : backgroundTheme;
     const marriageCard = marriages.length > 1
         ? [
-            `<rect x="600" y="445" width="530" height="130" rx="18" fill="${backgroundTheme?.stops[1] || "#202a40"}" stroke="${backgroundTheme?.accent || "#334566"}"/>`,
+            `<rect x="600" y="445" width="530" height="130" rx="18" fill="${backgroundTheme?.stops[1] || "#202a40"}" stroke="${outlineColor || backgroundTheme?.accent || "#334566"}"/>`,
             text("CASAMENTO", 622, 477, 14, "#9da8bd", 700)
         ].join("")
         : currentMarriage && !currentMarriage.selfMarriage
             ? [
-                `<rect x="600" y="445" width="530" height="130" rx="18" fill="${marriageTheme?.stops[1] || "#202a40"}" stroke="${marriageTheme?.accent || "#334566"}"/>`,
+                `<rect x="600" y="445" width="530" height="130" rx="18" fill="${marriageTheme?.stops[1] || "#202a40"}" stroke="${outlineColor || marriageTheme?.accent || "#334566"}"/>`,
                 text("CASAMENTO", 622, 477, 14, "#9da8bd", 700),
                 `<circle cx="660" cy="526" r="42" fill="${marriageTheme?.stops[2] || "#0e1422"}" stroke="${marriageTheme?.accent || "#e9a8c6"}" stroke-width="3"/>`,
                 text(fitCoupleName(currentMarriage.partnerName, 22), 716, 530, 19, "#f5f7fb", 800),
                 text(marriageDetail, 716, 557, 12, "#b8c3d9")
             ].join("")
-            : card(600, 445, 530, "CASAMENTO", marriageValue, marriageDetail, "#f5f7fb", backgroundTheme);
+            : card(600, 445, 530, "CASAMENTO", marriageValue, marriageDetail, "#f5f7fb", backgroundTheme, outlineColor);
     const body = [
         `<rect x="70" y="205" width="1060" height="64" rx="14" fill="${backgroundTheme?.stops[2] || "#0e1422"}"/>`,
         text(`${profile.groupName} • ${profile.platform} • ID ${profile.userId}`, 94, 245, 16, "#b7c5e7"),
-        card(70, 295, 510, "SATCOINS", formatMoney(profile.economy.balance), `Posição no dinheiro: ${moneyPosition}`, "#8ff0bf", backgroundTheme),
-        card(600, 295, 530, "XP • NÍVEL", `${profile.xp.value} XP • Nível ${profile.xp.level}`, `Posição no XP: ${xpPosition}`, "#f5f7fb", backgroundTheme),
-        card(70, 445, 510, "ATIVIDADE", profile.activity.total, `Posição no ranking: ${profile.activity.position ? `#${profile.activity.position}` : "Não classificado"}`, "#f5f7fb", backgroundTheme),
+        card(70, 295, 510, "PATRIMÔNIO TOTAL", formatMoney(profile.economy.balance), `Carteira ${formatMoney(profile.economy.walletBalance)} • Cofre ${formatMoney(profile.economy.vaultBalance)} • Posição na carteira ${moneyPosition}`, "#8ff0bf", backgroundTheme, outlineColor),
+        card(600, 295, 530, "XP • NÍVEL", `${profile.xp.value} XP • Nível ${profile.xp.level}`, `Posição no XP: ${xpPosition}`, "#f5f7fb", backgroundTheme, outlineColor),
+        card(70, 445, 510, "ATIVIDADE", profile.activity.total, `Posição no ranking: ${profile.activity.position ? `#${profile.activity.position}` : "Não classificado"}`, "#f5f7fb", backgroundTheme, outlineColor),
         marriageCard
     ].join("");
     const image = sharp(Buffer.from(baseSvg(
@@ -220,7 +223,7 @@ async function renderProfileBackgroundPreview(backgroundKey) {
     if (!background) return { error: "Cor inválida." };
 
     const body = [
-        `<rect x="70" y="215" width="1060" height="340" rx="24" fill="${background.stops[2]}" stroke="${background.accent}" stroke-width="2"/>`,
+        `<rect x="70" y="215" width="1060" height="340" rx="24" fill="${background.rainbow ? "url(#rainbow)" : background.stops[2]}" stroke="${background.rainbow ? "url(#rainbow)" : background.accent}" stroke-width="2"/>`,
         text("PRÉVIA DO FUNDO", 105, 270, 16, background.accent, 800),
         text("Seu perfil com este visual", 105, 323, 30, "#f5f7fb", 800),
         `<rect x="105" y="355" width="990" height="150" rx="18" fill="${background.stops[1]}" stroke="${background.accent}" stroke-opacity=".55"/>`,
@@ -245,6 +248,32 @@ async function renderProfileBackgroundPreview(backgroundKey) {
     return {
         buffer,
         caption: `🎨 Prévia do fundo ${background.label}. Esta imagem é demonstrativa e não compra nem aplica a cor.`
+    };
+}
+
+async function renderProfileOutlinePreview(outlineKey) {
+    const outline = profileCosmetics.getProfileOutline(outlineKey);
+    if (!outline) return { error: "Cor de outline inválida." };
+    const outlineColor = outline.rainbow ? "url(#rainbow)" : outline.color;
+
+    const body = [
+        `<rect x="70" y="215" width="1060" height="340" rx="24" fill="#111827" stroke="#334366" stroke-width="2"/>`,
+        text("PRÉVIA DO OUTLINE", 105, 270, 16, outline.rainbow ? "#ff70cf" : outline.color, 800),
+        text("Contorno das bolhas do perfil", 105, 323, 30, "#f5f7fb", 800),
+        card(105, 365, 470, "PATRIMÔNIO", "1 000,00💷", "Carteira e cofre", "#8ff0bf", null, outlineColor),
+        card(625, 365, 470, "EXPERIÊNCIA", "Nível 10", "Seu nível atual", "#f5f7fb", null, outlineColor)
+    ].join("");
+    const buffer = await sharp(Buffer.from(baseSvg(
+        1200,
+        650,
+        `Outline ${outline.label}`,
+        "Prévia do contorno das bolhas • não altera seu perfil",
+        body
+    ))).png().toBuffer();
+
+    return {
+        buffer,
+        caption: `🖍️ Prévia do outline ${outline.label} aplicado aos contornos das bolhas do perfil.`
     };
 }
 
@@ -386,7 +415,7 @@ async function renderRanking(message, type, order = "rich") {
         ? "RANKING DE XP"
         : isActivity
             ? "RANKING DE ATIVIDADE"
-            : "RANKING DE SATCOINS";
+            : "RANKING DE CARTEIRA";
     const cardSvg = cards.map(({ entry, background }, index) => {
         const x = startX + index * (cardWidth + cardGap);
         const colors = ["#667c27", "#a9345c", "#9b4939", "#315d83", "#6d4c8d"];
@@ -411,8 +440,8 @@ async function renderRanking(message, type, order = "rich") {
                 : isActivity
                     ? `HOJE ${entry.dailyTotal || 0}`
                     : isPoor
-                        ? "MENOR SALDO"
-                        : "SALDO";
+                        ? "MENOR SALDO DE CARTEIRA"
+                        : "SALDO DE CARTEIRA";
         return [
             `<rect x="${x}" y="${cardY}" width="${cardWidth}" height="${cardHeight}" rx="22" fill="${theme?.stops[1] || "#161b24"}" stroke="${color}" stroke-width="4"/>`,
             `<path d="M${x + 2} ${cardY + 22} Q${x + 2} ${cardY + 2} ${x + 22} ${cardY + 2} H${x + cardWidth - 22} Q${x + cardWidth - 2} ${cardY + 2} ${x + cardWidth - 2} ${cardY + 22} V${cardY + 178} H${x + 2} Z" fill="${theme?.stops[0] || color}" opacity="0.76"/>`,
@@ -486,7 +515,9 @@ function getRequesterRankingEntry(message, type) {
     return {
         userId,
         name: account?.displayName || account?.username || displayName,
-        balance: Number(account?.balance) || 0,
+        balance: economy.getTotalBalance(account),
+        walletBalance: Number(account?.balance) || 0,
+        vaultBalance: Number(account?.vaultBalance) || 0,
         position: economy.getBalancePosition(message, userId) || "—",
         isRequester: true
     };
@@ -772,6 +803,7 @@ function messageScope(message) {
 module.exports = {
     renderProfile,
     renderProfileBackgroundPreview,
+    renderProfileOutlinePreview,
     renderRanking,
     renderCoupleTest,
     renderMarriageBanner,

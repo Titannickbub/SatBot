@@ -12,10 +12,11 @@ module.exports = {
 {prefix}comprar escudo
 {prefix}comprar 2000
 {prefix}comprar fundo azul
+{prefix}comprar linha azul
 
 Consulte a {prefix}loja para verificar a lista de produtos, números e preços atuais.
 Para comprar um item da loja configurada pelos administradores, use {prefix}loja2 e informe o ID (a partir de 1001) ou nome. Os pedidos aguardam entrega manual e podem ser cancelados pela equipe.
-Fundos cosméticos podem ser comprados pelo ID (a partir de 2000) ou com "fundo <cor>".
+Fundos cosméticos podem ser comprados pelo ID (a partir de 2000) ou com "fundo <cor>". Outlines das bolhas usam IDs a partir de 3000 ou "linha <cor>".
 
 ⚠️ Resets só podem ser comprados após esgotar o limite diário da atividade correspondente.`,
     usage: "{prefix}comprar [texto]",
@@ -27,7 +28,7 @@ Fundos cosméticos podem ser comprados pelo ID (a partir de 2000) ou com "fundo 
 
         const selection = message.args?.join(" ");
         if (message.command !== "comprar2") {
-            const cosmeticResult = economy.buyProfileBackground(message, selection);
+            const cosmeticResult = economy.buyProfileCosmetic(message, selection);
             if (cosmeticResult.matched) {
                 if (!cosmeticResult.purchased) {
                     if (cosmeticResult.reason === "insufficient-balance") {
@@ -36,14 +37,15 @@ Fundos cosméticos podem ser comprados pelo ID (a partir de 2000) ou com "fundo 
                         });
                     }
                     return message.reply({
-                        text: `❌ Fundo não encontrado. Use ${message.prefix}cosmeticos fundo para consultar os IDs e nomes disponíveis.`
+                        text: `❌ Cosmético não encontrado. Use ${message.prefix}cosmeticos fundo ou ${message.prefix}cosmeticos linha para consultar os IDs e nomes disponíveis.`
                     });
                 }
 
-                const backgroundName = cosmeticResult.item.label;
+                const cosmeticName = cosmeticResult.item.label;
+                const cosmeticType = cosmeticResult.type === "outline" ? "Outline das bolhas" : "Fundo";
                 const text = cosmeticResult.boughtNow
-                    ? `✅ Fundo ${backgroundName} comprado e aplicado por ${economy.formatMoney(cosmeticResult.price)}.\nSaldo atual: ${economy.formatMoney(cosmeticResult.balance)}`
-                    : `✅ Fundo ${backgroundName} aplicado. Você já tinha comprado esse cosmético, então não houve cobrança.`;
+                    ? `✅ ${cosmeticType} ${cosmeticName} comprado e aplicado por ${economy.formatMoney(cosmeticResult.price)}.\nSaldo atual: ${economy.formatMoney(cosmeticResult.balance)}`
+                    : `✅ ${cosmeticType} ${cosmeticName} aplicado. Você já tinha comprado esse cosmético, então não houve cobrança.`;
                 return message.reply({ text });
             }
         }

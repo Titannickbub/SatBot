@@ -23,6 +23,8 @@ async function renderWalletBanner({
     name,
     userId,
     balance,
+    vaultBalance,
+    totalBalance,
     scopeName,
     scopeType,
     platform,
@@ -35,6 +37,8 @@ async function renderWalletBanner({
     const displayScope = fitText(scopeName || "Comunidade", 42);
     const formattedBalance = String(balance || "0,00💷").replace(/💷/g, "").trim();
     const balanceFontSize = Math.max(50, 82 - Math.max(0, Array.from(formattedBalance).length - 9) * 3);
+    const formattedVaultBalance = String(vaultBalance || "0,00💷").replace(/💷/g, "").trim();
+    const vaultFontSize = Math.max(34, 54 - Math.max(0, Array.from(formattedVaultBalance).length - 10) * 2);
     const claimMessage = canClaimDaily
         ? `RESGATE DIÁRIO DISPONÍVEL • +${dailyReward.replace(/💷/g, "").trim()} SATCOINS`
         : "RESGATE DIÁRIO JÁ UTILIZADO";
@@ -72,10 +76,15 @@ async function renderWalletBanner({
 <circle cx="982" cy="224" r="38" fill="#73dbb4" opacity=".86"/>
 <circle cx="1024" cy="224" r="38" fill="#dbb36f" opacity=".86"/>
 <path d="M918 203q43 21 0 43m14-57q57 35 0 71m14-86q70 43 0 101" fill="none" stroke="#a4b7b7" stroke-width="4" stroke-linecap="round" opacity=".8"/>
-<text x="145" y="392" fill="#9bb9b5" font-family="Arial,Segoe UI,sans-serif" font-size="14px" font-weight="800" letter-spacing="2">SALDO DISPONÍVEL</text>
+<text x="145" y="392" fill="#9bb9b5" font-family="Arial,Segoe UI,sans-serif" font-size="14px" font-weight="800" letter-spacing="2">CARTEIRA DISPONÍVEL</text>
 <text x="145" y="460" fill="#f2f7f5" font-family="Arial,Segoe UI,sans-serif" font-size="${balanceFontSize}px" font-weight="800">${escapeXml(formattedBalance)}</text>
 <text x="149" y="489" fill="#81e7bf" font-family="Arial,Segoe UI,sans-serif" font-size="15px" font-weight="800" letter-spacing="3">SATCOINS</text>
-<rect x="110" y="516" width="960" height="1" fill="#ffffff" opacity=".17"/>
+<rect x="650" y="365" width="420" height="132" rx="18" fill="#101d29" stroke="#42645d" stroke-width="1"/>
+<text x="680" y="397" fill="#9bb9b5" font-family="Arial,Segoe UI,sans-serif" font-size="14px" font-weight="800" letter-spacing="2">COFRE PROTEGIDO</text>
+<text x="680" y="450" fill="#f2f7f5" font-family="Arial,Segoe UI,sans-serif" font-size="${vaultFontSize}px" font-weight="800">${escapeXml(formattedVaultBalance)}</text>
+<text x="683" y="478" fill="#81e7bf" font-family="Arial,Segoe UI,sans-serif" font-size="12px" font-weight="800" letter-spacing="2">INUTILIZÁVEL ATÉ O SAQUE</text>
+<text x="145" y="510" fill="#b9c9c7" font-family="Arial,Segoe UI,sans-serif" font-size="13px" font-weight="700">PATRIMÔNIO TOTAL: ${escapeXml(String(totalBalance || balance).replace(/💷/g, "").trim())} SATCOINS</text>
+<rect x="110" y="532" width="960" height="1" fill="#ffffff" opacity=".17"/>
 <circle cx="120" cy="556" r="5" fill="${canClaimDaily ? "#82e9bf" : "#81959c"}"/>
 <text x="140" y="561" fill="${claimColor}" font-family="Arial,Segoe UI,sans-serif" font-size="13px" font-weight="800" letter-spacing="1">${escapeXml(claimMessage)}</text>
 <text x="1070" y="561" fill="#80949c" font-family="Arial,Segoe UI,sans-serif" font-size="11px" font-weight="700" text-anchor="end">ID DA CONTA ${escapeXml(displayId)}</text>

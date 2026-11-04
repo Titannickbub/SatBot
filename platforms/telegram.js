@@ -467,6 +467,9 @@ async function start(onMessage) {
                 } else if (data.text) {
                     options.caption = data.text;
                 }
+                if (data.parse_mode) {
+                    options.parse_mode = data.parse_mode;
+                }
 
                 const photo = data.url || data.photo || data.image || data.file;
 

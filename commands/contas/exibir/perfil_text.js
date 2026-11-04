@@ -16,7 +16,7 @@ module.exports = {
 📝 1. Execute o comando dentro de um grupo ou servidor:
 {prefix}perfil_text
 
-O bot envia uma mensagem detalhando seu nome, ID, saldo em satcoins, estatísticas de atividade, nível de XP e status do NoFap.
+O bot envia uma mensagem detalhando seu nome, ID, carteira, cofre e patrimônio total, além das estatísticas de atividade, nível de XP e status do NoFap.
 
 ℹ️ Para gerar a versão visual estilizada em imagem, utilize o comando {prefix}perfil.`,
     usage: "{prefix}perfil_text",
@@ -27,7 +27,7 @@ O bot envia uma mensagem detalhando seu nome, ID, saldo em satcoins, estatístic
         const central = store?.findByPlatform(platform, message.userId);
         const nofapStatus = central ? nofapHelper.getNofapStatus(central.id) : { active: false, currentDays: 0, recordDays: 0, totalResets: 0, title: '🌱 Iniciante' };
         const scope = economy.getScope(message);
-        const balance = scope ? economy.getBalance(message) : null;
+        const account = scope ? economy.getAccount(message).account : null;
         const xpData = scope ? xp.load(message) : null;
         const xpUser = xpData?.users?.[String(message.userId)] || { xp: 0 };
         const xpLevel = xp.levelForXp(xpUser.xp);
@@ -49,7 +49,9 @@ O bot envia uma mensagem detalhando seu nome, ID, saldo em satcoins, estatístic
             `━━━━━━━━━━━━━━━━━━━━━━`,
             `👤 Nome: ${currentName}`,
             `🆔 ID: ${message.userId}`,
-            scope ? `💷 Satcoins (${scope.type === "servidor" ? "servidor" : "grupo"}): ${economy.formatMoney(balance)}` : null,
+            scope ? `💳 Carteira disponível: ${economy.formatMoney(account.balance)}` : null,
+            scope ? `🔒 Cofre protegido: ${economy.formatMoney(account.vaultBalance)}` : null,
+            scope ? `💰 Patrimônio total: ${economy.formatMoney(economy.getTotalBalance(account))}` : null,
             scope ? `📊 Atividade: ${activityCount}` : null,
             ...(scope
                 ? xpData?.enabled

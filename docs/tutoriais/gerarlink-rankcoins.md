@@ -1,8 +1,8 @@
 [Voltar para Comandos de administração](./comandos-adm.md) · [Voltar para Tutoriais](../tutoriais.md)
 
-# Como gerar link web do ranking de economia com `!gerarlink_rankcoins`
+# Como gerar link web do ranking de saldo da carteira com `!gerarlink_rankcoins`
 
-O comando `!gerarlink_rankcoins` (também acessível por `!gerarlink-rankcoins`, `!gerarlink_rankrico`, `!linkrankcoins` ou `!linkrankrico`) gera um link exclusivo para visualizar o painel web com o ranking dos membros mais ricos (maiores saldos em satcoins) do grupo ou servidor.
+O comando `!gerarlink_rankcoins` (também acessível por `!gerarlink-rankcoins`, `!gerarlink_rankrico`, `!linkrankcoins` ou `!linkrankrico`) gera um link exclusivo para visualizar o painel web com os membros ordenados pelo saldo disponível na carteira. O cofre é mostrado separadamente e não influencia a classificação.
 
 Com esse link, membros e administradores podem conferir tabelas completas com posições, saldos e patrimônios da comunidade através do navegador.
 
@@ -40,8 +40,8 @@ Execute o comando dentro do grupo ou servidor desejado:
 ## O que o painel web exibe
 
 Ao acessar o link gerado pelo navegador:
-- **Tabela de classificação:** lista ordenada dos participantes com maiores reservas de satcoins.
-- **Saldos:** exibição formatada dos valores acumulados por cada membro.
+- **Tabela de classificação:** lista ordenada pelo saldo disponível na carteira, sem contar os satcoins protegidos no cofre.
+- **Saldos:** exibição formatada dos valores da carteira e do cofre separadamente.
 - **Identificação:** nome de exibição e avatar dos membros na plataforma.
 - **Pódio:** destaque visual dos 3 membros mais ricos do grupo.
 

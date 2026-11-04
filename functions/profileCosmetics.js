@@ -1,6 +1,7 @@
 const itemRarity = require("./itemRarity");
 
 const PROFILE_BACKGROUND_PRICE = 100000;
+const PROFILE_OUTLINE_PRICE = 100000;
 
 const PROFILE_BACKGROUNDS = Object.freeze({
     azul: Object.freeze({
@@ -65,8 +66,39 @@ const PROFILE_BACKGROUNDS = Object.freeze({
         rarity: itemRarity.RARE,
         stops: Object.freeze(["#4c5868", "#29323e", "#141920"]),
         accent: "#bac9dc"
+    }),
+    rgb: Object.freeze({
+        id: 2009,
+        label: "RGB",
+        rarity: itemRarity.EPIC,
+        price: 4000000,
+        stops: Object.freeze(["#ff1744", "#9c27b0", "#311b92"]),
+        accent: "#ff70cf",
+        rainbow: true
     })
 });
+
+const PROFILE_OUTLINES = Object.freeze(Object.fromEntries(
+    Object.entries(PROFILE_BACKGROUNDS).map(([key, background]) => [
+        key,
+        Object.freeze({
+            id: background.id + 1000,
+            label: background.label,
+            rarity: background.rarity,
+            price: background.price,
+            color: background.accent,
+            rainbow: Boolean(background.rainbow)
+        })
+    ])
+));
+
+function getProfileBackgroundPrice(value) {
+    return PROFILE_BACKGROUNDS[normalizeProfileBackground(value)]?.price || PROFILE_BACKGROUND_PRICE;
+}
+
+function getProfileOutlinePrice(value) {
+    return PROFILE_OUTLINES[normalizeProfileOutline(value)]?.price || PROFILE_OUTLINE_PRICE;
+}
 
 function normalizeProfileBackground(value) {
     const key = String(value || "").trim().normalize("NFD")
@@ -100,16 +132,57 @@ function resolveProfileBackground(value) {
 
 function getProfileBackgroundCss(value, fallbackStops = ["#27365d", "#111827", "#090b10"]) {
     const background = getProfileBackground(value);
+    if (background?.rainbow) {
+        return "linear-gradient(110deg, #ff1744, #ff9100, #ffea00, #00e676, #00b0ff, #651fff, #ff1744)";
+    }
     const stops = background?.stops || fallbackStops;
     return `linear-gradient(145deg, ${stops[0]}, ${stops[1]} 55%, ${stops[2]})`;
 }
 
+function normalizeProfileOutline(value) {
+    const key = String(value || "").trim().normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+    return Object.prototype.hasOwnProperty.call(PROFILE_OUTLINES, key) ? key : null;
+}
+
+function getProfileOutline(value) {
+    const key = normalizeProfileOutline(value);
+    return key ? { key, ...PROFILE_OUTLINES[key] } : null;
+}
+
+function getProfileOutlineById(id) {
+    const numericId = Number(id);
+    const entry = Object.entries(PROFILE_OUTLINES)
+        .find(([, outline]) => outline.id === numericId);
+    return entry ? { key: entry[0], ...entry[1] } : null;
+}
+
+function resolveProfileOutline(value) {
+    const normalized = String(value || "").trim().normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+    const categoryPrefix = normalized.match(/^(?:linha|linhas|outline|contorno|contornos)\s+(.+)$/);
+    const selection = categoryPrefix ? categoryPrefix[1] : normalized;
+    return /^\d+$/.test(selection)
+        ? getProfileOutlineById(selection)
+        : getProfileOutline(selection);
+}
+
 module.exports = {
     PROFILE_BACKGROUND_PRICE,
+    PROFILE_OUTLINE_PRICE,
     PROFILE_BACKGROUNDS,
+    PROFILE_OUTLINES,
+    getProfileBackgroundPrice,
+    getProfileOutlinePrice,
     getProfileBackground,
     getProfileBackgroundById,
     getProfileBackgroundCss,
     normalizeProfileBackground,
-    resolveProfileBackground
+    resolveProfileBackground,
+    getProfileOutline,
+    getProfileOutlineById,
+    normalizeProfileOutline,
+    resolveProfileOutline
 };

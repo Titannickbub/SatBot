@@ -37,7 +37,7 @@ module.exports = {
 1. Escolha o ranking:
 • atividade — posição, total de atividades, dados de hoje, mensagens, comandos, figurinhas e arquivos.
 • xp — posição, XP acumulado, nível e XP restante para o próximo nível.
-• rico — posição e saldo na economia.
+• rico — posição calculada pela carteira, além dos saldos de carteira, cofre e patrimônio total.
 
 2. Identifique o membro mencionando-o, respondendo à mensagem dele ou informando o ID:
 {prefix}rankinfo <atividade|xp|rico> <@usuário|id>
@@ -111,7 +111,7 @@ O sistema correspondente precisa estar ativado neste grupo ou servidor, e o memb
             return message.reply({
                 text: [
                     `⭐ XP DE ${nameOf(user)}`,
-                    `🏆 Posição: ${position ? `#${position}` : "Não classificado"}`,
+                    `🏆 Posição pela carteira: ${position ? `#${position}` : "Não classificado"}`,
                     `⭐ XP: ${user.xp}`,
                     `🎚️ Nível: ${level.level}`,
                     `📈 Próximo nível: ${level.nextLevelXp - user.xp} XP`
@@ -127,7 +127,9 @@ O sistema correspondente precisa estar ativado neste grupo ou servidor, e o memb
             text: [
                 `💷 RIQUEZA DE ${nameOf(account)}`,
                 `🏆 Posição: ${position ? `#${position}` : "Não classificado"}`,
-                `💰 Saldo: ${economy.formatMoney(account.balance)}`
+                `💳 Carteira: ${economy.formatMoney(account.balance)}`,
+                `🔒 Cofre: ${economy.formatMoney(Number(account.vaultBalance) || 0)}`,
+                `💰 Patrimônio total: ${economy.formatMoney(economy.getTotalBalance(account))}`
             ].join("\n")
         });
     }

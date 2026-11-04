@@ -1840,13 +1840,18 @@ function getAdminRpUserData(message, setting, query = "") {
   const normalizedQuery = String(query).trim().replace(/^@/, "").toLowerCase();
   let entries;
   if (setting === "economy") {
-    entries = economy.listAccounts(message).map(account => ({
-      userId: String(account.userId),
-      username: account.username || "",
-      displayName: account.displayName || "",
-      value: Number(account.balance) || 0,
-      detail: economy.formatMoney(account.balance)
-    }));
+    entries = economy.listAccounts(message).map(account => {
+      const walletBalance = Number(account.balance) || 0;
+      const vaultBalance = Number(account.vaultBalance) || 0;
+      const totalBalance = economy.getTotalBalance(account);
+      return {
+        userId: String(account.userId),
+        username: account.username || "",
+        displayName: account.displayName || "",
+        value: totalBalance,
+        detail: `Patrimônio: ${economy.formatMoney(totalBalance)} · Carteira: ${economy.formatMoney(walletBalance)} · Cofre: ${economy.formatMoney(vaultBalance)}`
+      };
+    });
   } else if (setting === "xp") {
     entries = xp.ranking(message).map(user => ({
       userId: String(user.userId),
@@ -2451,6 +2456,7 @@ async function getLocalAccountData(central, platform, groupId) {
   profileUrl.searchParams.set("usuario", platformId);
   const profile = await readProfile(profileUrl, { allowEmpty: true });
   const account = economy.getAccountByUser(message, platformId);
+  const cosmetics = economy.getProfileCosmetics(message, platformId);
   const profits = account ? economy.getDailyProfits(message) : null;
   const today = economy.getLocalDate();
   const warnConfig = getWarnConfig(message);
@@ -2458,15 +2464,20 @@ async function getLocalAccountData(central, platform, groupId) {
     platform,
     groupId,
     platformId,
+    economyEnabled: economy.isEnabled(message),
     canManage: await canManagePlatformGroup(platform, groupId, platformId),
+    signalSearch: economy.getSignalSearchState(message, platformId),
+    localSignalSearch: economy.getLocalSignalSearch(message),
     groupName: profile.groupName || `Grupo ${groupId}`,
     userName: profile.name || platformAccount.displayName || platformAccount.username || "Sua conta",
-    profileBackground: economy.getProfileCosmetics(message, platformId).background,
+    profileBackground: cosmetics.background,
+    profileOutline: cosmetics.outline,
     avatarUrl: await getProfileAvatar(platform, groupId, platformId),
     warnings: getUserWarns(message, platformId),
     maxWarnings: warnConfig?.max || 3,
     account: account ? {
       balance: Number(account.balance) || 0,
+      vaultBalance: Number(account.vaultBalance) || 0,
       dailyClaimed: account.lastClaimDate === today,
       workCount: account.workDate === today ? Number(account.workCount) || 0 : 0,
       fishingCount: account.fishingDate === today ? Number(account.fishingCount) || 0 : 0,
@@ -2477,6 +2488,7 @@ async function getLocalAccountData(central, platform, groupId) {
       shieldCharges: Number(account.shieldCharges) || 0
     } : {
       balance: 0,
+      vaultBalance: 0,
       dailyClaimed: false,
       workCount: 0,
       fishingCount: 0,
@@ -2532,17 +2544,17 @@ async function getLocalAccountData(central, platform, groupId) {
 
 function renderLocalAccount(data) {
   const safeBotName = escapeHtml(config.getBotName());
-  const cosmeticThemeStyles = getCosmeticPanelStyles(data.profileBackground, "local");
+  const cosmeticThemeStyles = getCosmeticPanelStyles(data.profileBackground, "local", data.profileOutline);
   const groupType = data.platform === "discord" ? "Servidor" : "Grupo";
-  const currency = amount => `${economy.formatMoney(Number(amount) || 0)} ${economy.SATCOIN_SYMBOL}`;
+  const currency = amount => economy.formatMoney(Number(amount) || 0);
   const dailyLabels = [
     ["resgate", "Resgate diário"], ["trabalho", "Trabalho"], ["pesca", "Pesca"],
     ["mineracao", "Mineração"], ["cassino", "Cassino"], ["roubo", "Roubos feitos"],
     ["rouboSofrido", "Roubos sofridos"], ["transferenciaEnviada", "Transferido"],
-    ["transferenciaRecebida", "Recebido"], ["loja", "Loja"]
+    ["transferenciaRecebida", "Recebido"], ["loja", "Loja"], ["busca", "Busca de sinais"]
   ];
   const dailyRows = data.dailyProfits
-    ? dailyLabels.map(([key, label]) => `<div class="daily-row"><span>${label}</span><strong>${currency(data.dailyProfits[key])}</strong></div>`).join("")
+    ? dailyLabels.map(([key, label]) => `<div class="daily-row"><span>${label}</span><strong${key === "busca" ? ' id="localSignalSearchProfit"' : ""}>${currency(data.dailyProfits[key])}</strong></div>`).join("")
     : `<p class="muted">Ainda não há registros de economia neste grupo.</p>`;
   const dailyClaimCommand = `${escapeHtml(config.getPrefix())}resgatar`;
   const activityLimits = [
@@ -2559,12 +2571,17 @@ function renderLocalAccount(data) {
     ? `<article class="daily-claim claimed"><span class="daily-claim-icon" aria-hidden="true">✓</span><div><strong>Resgate diário já coletado</strong><small>Você já recebeu sua recompensa de hoje neste grupo.</small></div></article>`
     : `<article class="daily-claim available"><span class="daily-claim-icon" aria-hidden="true">✦</span><div><strong>Seu resgate diário está disponível</strong><small>Para resgatar, envie <code>${dailyClaimCommand}</code> neste ${groupType.toLowerCase()}. O bônus pode ser coletado uma vez por dia.</small></div></article>`;
   const accountStats = `<div class="local-stats">
-        <article class="local-stat balance-stat"><small>Saldo local</small><strong>${currency(data.account.balance)}</strong><span>Escudos: ${data.account.shieldCharges}</span></article>
+        <article class="local-stat balance-stat"><small>Carteira disponível</small><strong id="localWalletBalance">${currency(data.account.balance)}</strong><span>Usada em compras, apostas e transferências · escudos: ${data.account.shieldCharges}</span></article>
+        <article class="local-stat balance-stat"><small>Cofre protegido</small><strong id="localVaultBalance">${currency(data.account.vaultBalance)}</strong><span>Inutilizável até ser sacado</span></article>
         ${activityLimits}
       </div>
       ${dailyClaimCard}
       <h2 class="subheading">Movimentações de hoje</h2><div class="daily-list">${dailyRows}</div>
-      <div class="daily-total"><span>Lucro líquido total hoje</span><strong>${currency(data.dailyProfitTotal)}</strong></div>`;
+      <div class="daily-total"><span>Patrimônio total (carteira + cofre)</span><strong id="localTotalBalance">${currency(data.account.balance + data.account.vaultBalance)}</strong></div>
+      <div class="daily-total"><span>Lucro líquido total hoje</span><strong id="localDailyProfitTotal">${currency(data.dailyProfitTotal)}</strong></div>`;
+  const vaultPanel = data.economyEnabled
+    ? `<section class="local-panel"><h2>Movimentar cofre</h2><p class="muted">O saldo guardado fica protegido e não pode ser usado diretamente. Depósitos a partir de ${economy.formatMoney(economy.MIN_VAULT_DEPOSIT)}; saques sem valor mínimo.</p><div class="local-actions"><form id="vaultForm"><label for="vaultAction">Ação</label><select id="vaultAction" name="action"><option value="deposit">Depositar no cofre</option><option value="withdraw">Sacar para a carteira</option></select><label for="vaultAmount">Quantidade em SatCoins</label><input id="vaultAmount" name="amount" type="text" inputmode="decimal" placeholder="500.00" autocomplete="off" required><button type="submit">Confirmar movimentação</button></form><p class="local-feedback" id="vaultFeedback" role="status"></p></div></section>`
+    : `<section class="local-panel"><h2>Cofre protegido</h2><p class="muted">Depósitos e saques ficam indisponíveis enquanto a economia deste grupo ou servidor estiver desativada.</p></section>`;
   const rankLinks = [
     ["Riqueza", "/rankrico", data.ranks.balance],
     ["Experiência", "/rankxp", data.ranks.xp],
@@ -2628,7 +2645,7 @@ function renderLocalAccount(data) {
     .local-actions{display:grid;gap:12px;margin-top:16px}
     .local-actions form{display:grid;gap:9px}
     .local-actions label{color:#cbd3e5;font-size:12px;font-weight:700}
-    .local-actions input{width:100%;min-height:44px;border:1px solid #39445d;border-radius:11px;background:#0e1422;color:#fff;padding:10px 12px;font:inherit}
+    .local-actions input,.local-actions select{width:100%;min-height:44px;border:1px solid #39445d;border-radius:11px;background:#0e1422;color:#fff;padding:10px 12px;font:inherit}
     .local-actions button{min-height:42px;border:0;border-radius:11px;background:linear-gradient(120deg,#8877ff,#577cff);color:#fff;font:inherit;font-weight:700;cursor:pointer}
     .local-actions button:disabled{opacity:.6;cursor:wait}
     .local-feedback{min-height:20px;margin:4px 0 0;color:#9cf0cf;font-size:13px;line-height:1.5}
@@ -2640,7 +2657,7 @@ function renderLocalAccount(data) {
     .rank-link small{display:block;margin-top:4px;color:var(--muted);font-size:10px;font-weight:500}
     .rank-link:hover{border-color:#8599ff88;background:#8599ff12}
     .rank-link span{color:#a99dff}
-    .local-store-links{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    .local-store-links{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
     .local-store-link{display:grid;grid-template-columns:auto 1fr;align-items:center;column-gap:11px;min-height:84px;padding:14px;border:1px solid var(--line);border-radius:14px;background:#ffffff05;color:#e8ebf5;text-decoration:none;transition:transform .16s ease,border-color .16s ease,background .16s ease}
     .local-store-link:hover,.local-store-link:focus-visible{transform:translateY(-2px);border-color:#a99dff88;background:#a99dff0d;outline:2px solid #a99dff44;outline-offset:2px}
     .local-store-link>span{grid-row:span 2;font-size:23px}
@@ -2695,12 +2712,14 @@ function renderLocalAccount(data) {
         <a class="local-store-link bot-store-link" href="/loja-bot?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}"><span>🛒</span><strong>Loja do Bot</strong><small>Resets e itens da economia</small></a>
         <a class="local-store-link market-store-link" href="/mercado-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}"><span>🏪</span><strong>Mercado Local</strong><small>Itens cadastrados pelos administradores</small></a>
         <a class="local-store-link cosmetics-store-link" href="/loja-cosmeticos?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}"><span>🎨</span><strong>Loja de cosméticos</strong><small>Personalize seu perfil</small></a>
+        <a class="local-store-link signal-search-link" href="/busca-sinais?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}"><span>✦</span><strong>Busca de Sinais</strong><small>Escolha uma busca e confira os prêmios</small></a>
       </div></section>
     </section>
     <section class="local-section" aria-labelledby="functionsSectionTitle">
       <header class="local-section-heading"><div><h2 id="functionsSectionTitle">Funções</h2><p>Ações disponíveis para sua conta neste grupo ou servidor.</p></div></header>
       <div class="local-functions">
         <section class="local-panel"><h2>Unir Conta Central</h2><p class="muted">Insira o código gerado pela outra conta. A Conta Central atual será mantida como principal.</p><div class="local-actions"><form id="joinCentralForm"><label for="mergeCode">Código de união</label><input id="mergeCode" name="code" maxlength="8" autocomplete="one-time-code" required><button type="submit">Unir contas</button></form><p class="local-feedback" id="joinFeedback" role="status"></p></div></section>
+        ${vaultPanel}
         <section class="local-panel"><h2>Transferir SatCoins</h2><p class="muted">A transferência acontece nesta economia local. Informe o ID exato de alguém que já tenha uma conta de economia aqui. O bot mantém os limites e as regras de transferência.</p><div class="local-actions"><form id="transferForm"><label for="recipientId">ID do destinatário</label><input id="recipientId" name="recipientId" maxlength="100" autocomplete="off" required><label for="transferAmount">Quantidade (mínimo: 10.00)</label><input id="transferAmount" name="amount" type="text" inputmode="decimal" placeholder="10.00" autocomplete="off" required><button type="submit">Revisar transferência</button></form><p class="local-feedback" id="transferFeedback" role="status"></p></div></section>
       </div>
     </section>
@@ -2721,6 +2740,21 @@ function renderLocalAccount(data) {
       try{const result=await submitLocalAction("/api/account/local/merge",{code:document.getElementById("mergeCode").value.trim().toUpperCase()});feedback("joinFeedback","Contas unidas. Conta Central: "+result.centralId,false);event.currentTarget.reset();}
       catch(error){feedback("joinFeedback",error.message,true)}finally{button.disabled=false}
     });
+    const vaultForm=document.getElementById("vaultForm");
+    vaultForm?.addEventListener("submit",async event=>{
+      event.preventDefault();const form=event.currentTarget,button=form.querySelector("button"),action=document.getElementById("vaultAction").value,amount=document.getElementById("vaultAmount").value.trim(),normalizedAmount=amount.replace(",",".");
+      if(!/^\\d+(?:\\.\\d{1,2})?$/.test(normalizedAmount)||Number(normalizedAmount)<=0){feedback("vaultFeedback","Informe uma quantia válida maior que zero.",true);return}
+      if(action==="deposit"&&Number(normalizedAmount)<500){feedback("vaultFeedback","O depósito mínimo é de 500.00 SatCoins.",true);return}
+      if(!window.confirm((action==="deposit"?"Depositar ":"Sacar ")+normalizedAmount+" SatCoins "+(action==="deposit"?"no cofre?":"do cofre para a carteira?")))return;
+      button.disabled=true;feedback("vaultFeedback","",false);
+      try{
+        const result=await submitLocalAction("/api/account/local/vault",{action,amount});
+        document.getElementById("localWalletBalance").textContent=result.balance;
+        document.getElementById("localVaultBalance").textContent=result.vaultBalance;
+        document.getElementById("localTotalBalance").textContent=result.totalBalance;
+        feedback("vaultFeedback",(action==="deposit"?"Depósito":"Saque")+" concluído. Carteira: "+result.balance+" · Cofre: "+result.vaultBalance,false);form.reset();
+      }catch(error){feedback("vaultFeedback",error.message,true)}finally{button.disabled=false}
+    });
     document.getElementById("transferForm").addEventListener("submit",async event=>{
       event.preventDefault();const form=event.currentTarget,button=form.querySelector("button"),recipientId=document.getElementById("recipientId").value.trim(),amount=document.getElementById("transferAmount").value.trim();
       const normalizedAmount=amount.replace(",",".");
@@ -2730,6 +2764,525 @@ function renderLocalAccount(data) {
       try{const result=await submitLocalAction("/api/account/local/transfer",{recipientId,amount});feedback("transferFeedback","Transferência concluída. Valor: "+result.amount+" · Saldo restante: "+result.balance,false);form.reset();}
       catch(error){feedback("transferFeedback",error.message,true)}finally{button.disabled=false}
     });
+  </script></body></html>`;
+}
+
+function renderSignalSearch(data) {
+  const currency = amount => economy.formatMoney(Number(amount) || 0);
+  const rarityLabels = {
+    [economy.ITEM_RARITY.COMMON]: "Comum",
+    [economy.ITEM_RARITY.UNCOMMON]: "Incomum",
+    [economy.ITEM_RARITY.RARE]: "Raro",
+    [economy.ITEM_RARITY.EPIC]: "Épico",
+    [economy.ITEM_RARITY.LEGENDARY]: "Lendário"
+  };
+  const rewardCatalog = {};
+  const resetItems = economy.getStoreItems().filter(item => !item.product && item.key !== "shield");
+  const addReward = reward => {
+    rewardCatalog[reward.id] = reward;
+    return reward;
+  };
+  const rewards = {
+    moneyRecruta: addReward({
+      id: "money-recruta", type: "money", name: "Prêmio em SatCoins",
+      details: `De ${currency(economy.SIGNAL_SEARCH_LEVELS.recruta.cashMin)} a ${currency(economy.SIGNAL_SEARCH_LEVELS.recruta.cashMax)} SatCoins`,
+      rarity: economy.ITEM_RARITY.COMMON
+    }),
+    moneyEspecializada: addReward({
+      id: "money-especializada", type: "money", name: "Prêmio em SatCoins",
+      details: `De ${currency(economy.SIGNAL_SEARCH_LEVELS.especializada.cashMin)} a ${currency(economy.SIGNAL_SEARCH_LEVELS.especializada.cashMax)} SatCoins`,
+      rarity: economy.ITEM_RARITY.COMMON
+    }),
+    recruitResets: resetItems.filter(item => item.key !== "all").map(item => addReward({
+      id: `reset-${item.key}`, type: "reset", name: item.name, details: "Reset da Loja do Bot",
+      rarity: item.rarity
+    })),
+    epicResets: resetItems.filter(item => item.rarity === economy.ITEM_RARITY.EPIC).map(item => addReward({
+      id: `reset-${item.key}`, type: "reset", name: item.name, details: "Reset Épico da Loja do Bot",
+      rarity: item.rarity
+    })),
+    cosmetics: [
+      ...Object.entries(economy.PROFILE_BACKGROUNDS).map(([key, item]) => addReward({
+        id: `background-${key}`, type: "background", name: `Fundo ${item.label}`,
+        details: `Cosmético de perfil · ID ${item.id}`, rarity: item.rarity,
+        key, rainbow: Boolean(item.rainbow), stops: item.stops, accent: item.accent
+      })),
+      ...Object.entries(economy.PROFILE_OUTLINES).map(([key, item]) => addReward({
+        id: `outline-${key}`, type: "outline", name: `Outline ${item.label}`,
+        details: `Cosmético de perfil · ID ${item.id}`, rarity: item.rarity,
+        key, rainbow: Boolean(item.rainbow), color: item.color
+      }))
+    ]
+  };
+  const rewardArt = reward => {
+    if (reward.type === "background") {
+      const style = reward.rainbow
+        ? "background:linear-gradient(110deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744);background-size:300% 300%"
+        : `background:linear-gradient(145deg,${reward.stops[0]},${reward.stops[1]} 55%,${reward.stops[2]})`;
+      return `<span class="signal-reward-art${reward.rainbow ? " rainbow-background" : ""}" style="${style}" aria-hidden="true"></span>`;
+    }
+    if (reward.type === "outline") {
+      const border = reward.rainbow
+        ? "border:3px solid transparent;background:linear-gradient(#111827,#111827) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%"
+        : `border:3px solid ${reward.color}`;
+      return `<span class="signal-reward-art outline-art" aria-hidden="true"><i style="${border}"></i></span>`;
+    }
+    return `<span class="signal-reward-art icon-art" aria-hidden="true">${reward.type === "money" ? "💷" : reward.type === "market" ? "📦" : "↻"}</span>`;
+  };
+  const rewardButton = reward => `<button class="signal-prize-card${reward.rarity === economy.ITEM_RARITY.EPIC ? " epic" : ""}${reward.rainbow ? " rainbow-prize" : ""}" type="button" data-signal-reward="${escapeHtml(reward.id)}" aria-label="Ver prêmio: ${escapeHtml(reward.name)}">
+    ${rewardArt(reward)}<span class="signal-prize-info"><strong>${escapeHtml(reward.name)}</strong><small>${escapeHtml(rarityLabels[reward.rarity] || reward.rarity)} · ${escapeHtml(reward.details)}</small></span><span class="signal-prize-open">Ver</span>
+  </button>`;
+  const featuredBackground = rewards.cosmetics.find(item => item.type === "background" && item.key === "rgb");
+  const featuredOutline = rewards.cosmetics.find(item => item.type === "outline" && item.key === "rgb");
+  const localSignalSearch = data.localSignalSearch || { enabled: false, tiers: {}, featured: [], marketItems: [], botItems: [] };
+  const localRewards = [];
+  for (const rarity of economy.LOCAL_SIGNAL_RARITIES) {
+    const tier = localSignalSearch.tiers[rarity];
+    if (!tier || tier.chance <= 0) continue;
+    if (tier.cashMin !== null && tier.cashMax !== null) {
+      localRewards.push(addReward({
+        id: `local-money-${rarity}`, type: "money", name: "Prêmio em SatCoins",
+        details: `De ${currency(tier.cashMin)} a ${currency(tier.cashMax)}`,
+        rarity, source: "local", chance: tier.chance
+      }));
+    }
+    for (const key of tier.botItems) {
+      const item = localSignalSearch.botItems.find(candidate => candidate.key === key);
+      if (!item) continue;
+      localRewards.push(addReward({
+        id: `local-bot-${key}`, type: "reset", name: item.name, details: "Prêmio da Loja do Bot",
+        rarity, source: "bot", itemKey: key, chance: tier.chance
+      }));
+    }
+    for (const id of tier.marketItems) {
+      const item = localSignalSearch.marketItems.find(candidate => candidate.id === id);
+      if (!item) continue;
+      localRewards.push(addReward({
+        id: `local-market-${id}`, type: "market", name: item.name,
+        details: `Pedido do Mercado Local · ${item.category}${item.quantity === 0 ? " · Esgotado" : ""}`,
+        rarity, source: "market", itemId: id, chance: tier.chance,
+        unavailable: item.quantity === 0
+      }));
+    }
+  }
+  const localFeaturedRewards = localSignalSearch.featured.map(item => item.type === "bot"
+    ? localRewards.find(reward => reward.id === `local-bot-${item.key}`)
+    : localRewards.find(reward => reward.id === `local-market-${item.id}`)
+  ).filter(Boolean);
+  const searchLevels = data.signalSearch?.levels || {};
+  const levelCards = Object.entries(economy.SIGNAL_SEARCH_LEVELS).map(([key, level]) => {
+    const progress = searchLevels[key] || { pullsUntilEpic: 10, pullsUntilWorkReset: key === "recruta" ? 5 : null };
+    const isRecruit = key === "recruta";
+    const disabled = data.economyEnabled ? "" : " disabled";
+    const availableRewards = isRecruit
+      ? [rewards.moneyRecruta, ...rewards.recruitResets, ...rewards.epicResets]
+      : [rewards.moneyEspecializada, ...rewards.recruitResets, ...rewards.epicResets, ...rewards.cosmetics];
+    const prizeList = `<div class="signal-prize-grid">${availableRewards.map(rewardButton).join("")}</div>`;
+    const detail = isRecruit
+      ? `${level.weights.money}% de chance de SatCoins e ${level.weights.reset}% de reset. Reset de trabalho garantido em até ${progress.pullsUntilWorkReset} busca(s); Épico em até ${progress.pullsUntilEpic}.`
+      : `${level.weights.money}% de chance de SatCoins, ${level.weights.reset}% de reset e ${level.weights.cosmetic}% de cosmético. Épico garantido em até ${progress.pullsUntilEpic} busca(s).`;
+    return `<article class="signal-level-card${isRecruit ? " selected" : ""}" data-signal-level-card="${key}"${isRecruit ? "" : " hidden"}>
+      <header><div><span class="signal-level-kicker">${isRecruit ? "NÍVEL 01" : "NÍVEL 02"}</span><h2>${escapeHtml(level.label)}</h2></div><span class="signal-level-emblem" aria-hidden="true">${isRecruit ? "✦" : "✧"}</span></header>
+      <p>${detail}</p><div class="signal-level-cost"><span>Por busca</span><strong>${currency(level.price)}</strong><span>Busca x10</span><strong>${currency(level.price * 10)}</strong></div>
+      <div class="signal-search-buttons"><button type="button" data-signal-level="${key}" data-signal-quantity="1"${disabled}>Buscar x1</button><button type="button" data-signal-level="${key}" data-signal-quantity="10"${disabled}>Buscar x10</button></div>
+      <details class="signal-prizes-details"><summary>Ver prêmios disponíveis</summary>${prizeList}</details>
+    </article>`;
+  }).join("");
+  const localLevelCard = (() => {
+    const activeTiers = economy.LOCAL_SIGNAL_RARITIES
+      .filter(rarity => localSignalSearch.tiers[rarity]?.chance > 0)
+      .map(rarity => `${rarityLabels[rarity] || rarity}: ${localSignalSearch.tiers[rarity].chance}%`);
+    const guarantees = economy.LOCAL_SIGNAL_RARITIES
+      .filter(rarity => localSignalSearch.pullsUntilGuarantee?.[rarity] !== null &&
+        localSignalSearch.pullsUntilGuarantee?.[rarity] !== undefined)
+      .map(rarity => `${rarityLabels[rarity] || rarity} garantido em até ${localSignalSearch.pullsUntilGuarantee[rarity]} busca(s)`);
+    const detail = localSignalSearch.enabled
+      ? [
+        `Chances: ${activeTiers.join(" · ") || "nenhum prêmio configurado"}.`,
+        guarantees.length ? `Garantias: ${guarantees.join(" · ")}.` : "Sem garantias por raridade configuradas."
+      ].join(" ")
+      : "A Busca Local ainda não foi ativada pelos administradores deste grupo ou servidor.";
+    const availableRewards = localRewards.filter(reward => !reward.unavailable);
+    const prizeList = localSignalSearch.enabled
+      ? `<div class="signal-prize-grid">${availableRewards.map(rewardButton).join("") || '<p class="signal-featured-empty">Nenhum prêmio disponível no momento.</p>'}</div>`
+      : `<p class="signal-featured-empty">Peça a um administrador para configurar e ativar esta busca.</p>`;
+    const price = Number(localSignalSearch.price) || 0;
+    return `<article class="signal-level-card" data-signal-level-card="local" hidden>
+      <header><div><span class="signal-level-kicker">NÍVEL LOCAL</span><h2>Busca Local</h2></div><span class="signal-level-emblem" aria-hidden="true">✦</span></header>
+      <p>${escapeHtml(detail)}</p><div class="signal-level-cost"><span>Por busca</span><strong>${currency(price)}</strong><span>Busca x10</span><strong>${currency(price * 10)}</strong></div>
+      <div class="signal-search-buttons"><button type="button" data-signal-level="local" data-signal-quantity="1"${data.economyEnabled && localSignalSearch.enabled ? "" : " disabled"}>Buscar x1</button><button type="button" data-signal-level="local" data-signal-quantity="10"${data.economyEnabled && localSignalSearch.enabled ? "" : " disabled"}>Buscar x10</button></div>
+      <details class="signal-prizes-details"><summary>Ver prêmios disponíveis</summary>${prizeList}</details>
+    </article>`;
+  })();
+  const allLevelCards = levelCards + localLevelCard;
+  const localFeaturedMarkup = localFeaturedRewards.length
+    ? localFeaturedRewards.map(reward => `<button class="signal-featured-card" type="button" data-signal-reward="${escapeHtml(reward.id)}">${rewardArt(reward)}<span><strong>${escapeHtml(reward.name)}</strong><small>${escapeHtml(rarityLabels[reward.rarity] || reward.rarity)} · Destaque da Busca Local</small></span></button>`).join("")
+    : `<p class="signal-featured-empty">Os administradores ainda não definiram destaques para a Busca Local.</p>`;
+  const context = {
+    platform: data.platform,
+    groupId: data.groupId,
+    levels: {
+      ...Object.fromEntries(Object.entries(economy.SIGNAL_SEARCH_LEVELS).map(([key, level]) => [key, level.price])),
+      local: localSignalSearch.price
+    },
+    rewards: rewardCatalog
+  };
+  const profileLink = `/painel-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}`;
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Busca de Sinais · ${escapeHtml(data.groupName)}</title><style>
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#090c15;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;background:radial-gradient(ellipse at 50% -15%,#4b3176 0,#151a31 34%,#090c15 74%)}button,a{font:inherit}.signal-page{width:min(1040px,100%);margin:0 auto}.signal-topbar{display:flex;justify-content:space-between;gap:12px;padding:8px 0 18px;border-bottom:1px solid #ffffff18}.signal-topbar a{color:#d5c9ff;text-decoration:none;font-weight:700}.signal-topbar span{color:#aab3c8;font-size:12px}.signal-hero{position:relative;overflow:hidden;margin:22px 0;padding:clamp(22px,5vw,38px);border:1px solid #b996ff44;border-radius:22px;background:linear-gradient(120deg,#171c35eF,#32204be8 65%,#102b3beF);box-shadow:0 22px 70px #0005}.signal-hero:after{position:absolute;inset:auto -12% -90% 45%;height:100%;border-radius:50%;background:#c085ff22;filter:blur(35px);content:""}.signal-hero h1{position:relative;z-index:1;margin:7px 0;font-size:clamp(29px,5vw,44px)}.signal-hero p{position:relative;z-index:1;max-width:680px;margin:0;color:#d0d5e5;line-height:1.6}.signal-eyebrow,.signal-level-kicker{color:#d1b3ff;font-size:10px;font-weight:850;letter-spacing:.18em}.signal-balance{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}.signal-balance span{padding:9px 12px;border:1px solid #ffffff1a;border-radius:10px;background:#05091466;color:#bbc4d7;font-size:12px}.signal-balance strong{color:#fff}.signal-featured{position:relative;z-index:1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:22px}.signal-featured-card{display:flex;min-width:0;align-items:center;gap:14px;padding:14px;border:1px solid #d6a5ff77;border-radius:15px;background:#100d1caa;color:#fff;text-align:left;cursor:pointer;transition:transform .18s ease,border-color .18s ease}.signal-featured-card:hover,.signal-featured-card:focus-visible{transform:translateY(-3px);border-color:#fff;outline:2px solid #d6a5ff66;outline-offset:2px}.signal-featured-card strong,.signal-featured-card small{display:block}.signal-featured-card small{margin-top:5px;color:#c5b9d8;font-size:11px}.signal-featured-card .signal-reward-art{width:72px;height:58px;flex:none}.signal-section-title{margin:28px 0 12px}.signal-section-title h2{margin:0;font-size:20px}.signal-section-title p{margin:5px 0 0;color:#aab3c8;font-size:12px}.signal-wallet{margin:14px 0;padding:13px 15px;border:1px solid #ffffff16;border-radius:13px;background:#ffffff06;color:#adb7ca;font-size:13px}.signal-wallet strong{color:#fff}.signal-level-picker{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}.signal-level-tab{min-height:48px;padding:10px 14px;border:1px solid #ffffff24;border-radius:12px;background:#ffffff08;color:#cbd2e2;text-align:left;font-weight:750;cursor:pointer}.signal-level-tab span{float:right;color:#9da7bb;font-size:11px;font-weight:500}.signal-level-tab[aria-selected=true]{border-color:#b997ff;background:linear-gradient(120deg,#8c68dc3b,#557cff22);color:#fff;box-shadow:0 0 22px #8f68ff1c}.signal-level-card{padding:clamp(17px,4vw,25px);border:1px solid #ffffff1c;border-radius:18px;background:linear-gradient(145deg,#191e30,#111724);box-shadow:0 16px 42px #0003}.signal-level-card[hidden]{display:none}.signal-level-card>header{display:flex;justify-content:space-between;align-items:center}.signal-level-card h2{margin:4px 0 0;font-size:24px}.signal-level-emblem{display:grid;width:44px;height:44px;place-items:center;border:1px solid #c59dff66;border-radius:14px;background:#a775ff1a;color:#ddc8ff;font-size:25px}.signal-level-card>p{max-width:700px;color:#aab3c8;font-size:13px;line-height:1.6}.signal-level-cost{display:grid;grid-template-columns:1fr auto;gap:8px;margin:17px 0;padding:12px 14px;border:1px solid #ffffff12;border-radius:12px;background:#ffffff05;color:#aab3c8;font-size:12px}.signal-level-cost strong{color:#fff;text-align:right}.signal-search-buttons{display:flex;flex-wrap:wrap;gap:9px}.signal-search-buttons button,.signal-modal-next{min-height:44px;padding:10px 17px;border:0;border-radius:11px;background:linear-gradient(120deg,#9876ff,#5a7bff);color:#fff;font-weight:800;cursor:pointer;box-shadow:0 8px 22px #625cff2b}.signal-search-buttons button:hover,.signal-modal-next:hover{filter:brightness(1.12)}.signal-search-buttons button:disabled{opacity:.5;cursor:not-allowed}.signal-prizes-details{margin-top:20px;border-top:1px solid #ffffff12}.signal-prizes-details summary{padding:15px 0 4px;color:#d8c6ff;font-size:13px;font-weight:750;cursor:pointer}.signal-prize-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:14px}.signal-prize-card{display:flex;min-width:0;align-items:center;gap:10px;padding:10px;border:1px solid #ffffff19;border-radius:12px;background:#ffffff05;color:#f5f7fb;text-align:left;cursor:pointer;transition:transform .16s ease,border-color .16s ease}.signal-prize-card:hover,.signal-prize-card:focus-visible{transform:translateY(-2px);border-color:#8ecfff;outline:2px solid #8ecfff33;outline-offset:1px}.signal-prize-card.epic{border-color:#d4a0ff66;background:linear-gradient(130deg,#a45adb14,#ffffff05)}.signal-prize-card.rainbow-prize{border-color:#ff92e988;box-shadow:inset 0 0 18px #f0a8c611}.signal-reward-art{display:grid;width:56px;height:44px;flex:none;place-items:center;overflow:hidden;border:1px solid #ffffff24;border-radius:9px;background:linear-gradient(145deg,#263858,#111827);font-size:23px}.signal-reward-art.rainbow-background{background-size:300% 300%;animation:signal-rainbow 5s linear infinite}.outline-art{padding:8px;background:#111827}.outline-art i{display:block;width:100%;height:100%;border-radius:7px}.signal-prize-info{display:block;min-width:0;flex:1}.signal-prize-info strong,.signal-prize-info small{display:block;overflow:hidden;text-overflow:ellipsis}.signal-prize-info strong{font-size:12px}.signal-prize-info small{margin-top:4px;color:#9da9c0;font-size:10px;line-height:1.4}.signal-prize-open{color:#d1b3ff;font-size:11px;font-weight:800}.signal-featured .outline-art{width:72px;height:58px}.signal-feedback{min-height:22px;margin-top:12px;color:#9cf0cf;font-size:13px;line-height:1.5}.signal-feedback.error{color:#ff9caa}.signal-results{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:14px}.signal-results[hidden]{display:none}.signal-result{padding:11px;border:1px solid #73c9ec44;border-radius:11px;background:linear-gradient(145deg,#14324a,#0c1423);font-size:11px;line-height:1.5;overflow-wrap:anywhere}.signal-result.epic{border-color:#d8a4ff88;background:linear-gradient(145deg,#42244f,#161326)}.signal-return{display:inline-block;margin-top:18px;color:#cbbaff;text-decoration:none;font-size:12px}.signal-dialog{width:min(720px,calc(100% - 24px));max-width:none;max-height:min(850px,calc(100% - 24px));padding:0;overflow:auto;border:1px solid #d2a2ff77;border-radius:22px;background:#0b0d17;color:#f5f7fb;box-shadow:0 30px 110px #000d}.signal-dialog::backdrop{background:#03040bcc;backdrop-filter:blur(7px)}.signal-dialog-inner{position:relative;min-height:440px;padding:clamp(18px,5vw,32px);background:radial-gradient(ellipse at 50% 15%,#7251a055,transparent 58%),radial-gradient(circle at 15% 80%,#3b81a52b,transparent 35%),linear-gradient(145deg,#101525,#090b13 70%)}.signal-dialog-inner:before{position:absolute;inset:12% 18%;border:1px solid #d8b7ff26;border-radius:50%;box-shadow:0 0 60px #a883ff1c,0 0 140px #748aff12;content:"";pointer-events:none}.signal-dialog-top{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px}.signal-dialog-top small{color:#d6bbff;font-size:10px;font-weight:850;letter-spacing:.2em}.signal-dialog-close{display:grid;width:38px;height:38px;place-items:center;border:1px solid #ffffff2a;border-radius:11px;background:#ffffff0b;color:#fff;font-size:22px;cursor:pointer}.signal-presentation-wrap{position:relative;z-index:1;display:grid;min-height:330px;place-items:center;perspective:1200px;overflow:hidden}.signal-3d-card{position:relative;display:flex;width:min(380px,100%);min-height:270px;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;border:1px solid #8fd7ff88;border-radius:20px;background:linear-gradient(145deg,#173752,#111727 68%);text-align:center;transform-style:preserve-3d;box-shadow:0 24px 70px #0009,0 0 38px #54c9ff24;animation:signal-card-camera 4.8s ease-in-out infinite}.signal-3d-card.epic{border-color:#dba7ff;background:linear-gradient(145deg,#4f2b68,#171326 72%);box-shadow:0 24px 70px #0009,0 0 50px #d8a4ff44}.signal-3d-card.rainbow-bg{background:linear-gradient(130deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744);background-size:350% 350%;animation:signal-card-camera 4.8s ease-in-out infinite,signal-rainbow 6s linear infinite}.signal-3d-card.rainbow-outline{border:3px solid transparent;background:linear-gradient(145deg,#161b2b,#10131e) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:signal-card-camera 4.8s ease-in-out infinite,signal-rainbow 5s linear infinite}.signal-card-icon{display:grid;width:78px;height:78px;place-items:center;border:1px solid #ffffff38;border-radius:22px;background:#ffffff14;font-size:38px;box-shadow:0 12px 30px #0004;transform:translateZ(38px)}.signal-3d-card h2{max-width:100%;margin:0;font-size:clamp(22px,5vw,30px);text-shadow:0 3px 20px #0008;transform:translateZ(30px)}.signal-3d-card p{max-width:320px;margin:0;color:#e0e4ef;font-size:13px;line-height:1.5;transform:translateZ(22px)}.signal-card-rarity{padding:6px 10px;border:1px solid #ffffff44;border-radius:20px;background:#090b1688;color:#fff;font-size:10px;font-weight:850;letter-spacing:.14em;text-transform:uppercase;transform:translateZ(44px)}.signal-modal-footer{position:relative;z-index:2;display:flex;justify-content:center;gap:10px}.signal-modal-next[hidden]{display:none}.signal-modal-footer .signal-feedback{margin:0;text-align:center}.signal-dialog-results{position:relative;z-index:2;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.signal-dialog-results[hidden]{display:none}.signal-dialog-results .signal-result{text-align:left}@keyframes signal-card-camera{0%,100%{transform:rotateY(-15deg) rotateX(7deg) translateY(0)}35%{transform:rotateY(12deg) rotateX(-3deg) translateY(-7px)}68%{transform:rotateY(20deg) rotateX(5deg) translateY(2px)}}@keyframes signal-rainbow{to{background-position:100% 50%}}@media(prefers-reduced-motion:reduce){.signal-reward-art.rainbow-background,.signal-3d-card{animation:none}}@media(max-width:700px){body{padding:15px}.signal-featured,.signal-level-picker{grid-template-columns:1fr}.signal-prize-grid{grid-template-columns:1fr}.signal-results,.signal-dialog-results{grid-template-columns:repeat(2,minmax(0,1fr))}.signal-dialog-inner{min-height:400px}.signal-presentation-wrap{min-height:285px}.signal-3d-card{min-height:240px}}@media(max-width:420px){.signal-level-cost{font-size:11px}.signal-search-buttons button{flex:1}.signal-results,.signal-dialog-results{grid-template-columns:1fr 1fr}.signal-dialog-results .signal-result{padding:8px;font-size:10px}}
+  </style><style>
+    .signal-level-picker{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+    .signal-featured-group{display:contents}
+    .signal-featured-group[hidden]{display:none}
+    .signal-featured-empty{grid-column:1/-1;margin:0;padding:14px;border:1px dashed #ffffff2b;border-radius:12px;color:#aab3c8;font-size:12px}
+  </style></head><body><main class="signal-page">
+    <nav class="signal-topbar"><a href="${profileLink}">← Painel local</a><span>${escapeHtml(data.groupName)} · ${escapeHtml(data.platform)}</span></nav>
+    <header class="signal-hero"><span class="signal-eyebrow">TRANSMISSÃO DE SINAIS</span><h1>Busca de Sinais</h1><p>Escolha um nível, faça uma busca x1 ou x10 e revele os prêmios disponíveis.</p>
+      <div class="signal-balance"><span>Carteira: <strong id="signalWalletBalance">${currency(data.account.balance)}</strong></span><span>Garantias independentes por nível</span></div>
+      <div class="signal-featured" aria-label="Prêmios em destaque">
+        <div class="signal-featured-group" data-signal-featured-group="bot">
+          <button class="signal-featured-card" type="button" data-signal-reward="${featuredBackground.id}">${rewardArt(featuredBackground)}<span><strong>Fundo RGB</strong><small>Épico · ID ${economy.PROFILE_BACKGROUNDS.rgb.id} · Destaque</small></span></button>
+          <button class="signal-featured-card" type="button" data-signal-reward="${featuredOutline.id}">${rewardArt(featuredOutline)}<span><strong>Outline RGB</strong><small>Épico · ID ${economy.PROFILE_OUTLINES.rgb.id} · Destaque</small></span></button>
+        </div>
+        <div class="signal-featured-group" data-signal-featured-group="local" hidden>${localFeaturedMarkup}</div>
+      </div>
+    </header>
+    <header class="signal-section-title"><h2>Escolha sua busca</h2><p>O pagamento é descontado da carteira; o saldo do cofre não é utilizado.</p></header>
+    <div class="signal-wallet">Saldo disponível para esta busca: <strong id="signalAvailableBalance">${currency(data.account.balance)}</strong></div>
+    <div class="signal-level-picker" role="tablist" aria-label="Nível da busca">
+      <button class="signal-level-tab" type="button" role="tab" aria-selected="true" data-signal-level-tab="recruta">Busca Recruta <span>${currency(economy.SIGNAL_SEARCH_LEVELS.recruta.price)}</span></button>
+      <button class="signal-level-tab" type="button" role="tab" aria-selected="false" data-signal-level-tab="especializada">Busca Especializada <span>${currency(economy.SIGNAL_SEARCH_LEVELS.especializada.price)}</span></button>
+      <button class="signal-level-tab" type="button" role="tab" aria-selected="false" data-signal-level-tab="local">Busca Local <span>${currency(localSignalSearch.price)}</span></button>
+    </div>
+    ${allLevelCards}
+    ${data.economyEnabled ? "" : `<p class="signal-feedback error">A economia está desativada neste grupo ou servidor; as buscas ficam indisponíveis.</p>`}
+    <p id="signalSearchFeedback" class="signal-feedback" role="status" aria-live="polite"></p>
+    <div id="signalSearchResults" class="signal-results" aria-live="polite" hidden></div>
+    <a class="signal-return" href="${profileLink}">Voltar ao painel da conta local</a>
+  </main>
+  <style>
+    .signal-presentation-wrap{position:relative;z-index:1;display:grid;min-height:360px;place-items:center;perspective:1200px;overflow:hidden}
+    .signal-card-camera{transform-style:preserve-3d}
+    .signal-card{position:relative;width:min(270px,72vw);height:350px;transform-style:preserve-3d;opacity:0}
+    .signal-dialog[open] .signal-card{animation:card-unseal 1.05s cubic-bezier(.16,.76,.25,1) both,card-float 3.4s ease-in-out 1.05s infinite alternate}
+    .signal-card-face{position:absolute;inset:0;display:flex;flex-direction:column;overflow:hidden;border:1px solid #9de7ff99;border-radius:19px;background:linear-gradient(155deg,#173b56,#101a2d 58%,#101423);backface-visibility:hidden;-webkit-backface-visibility:hidden;box-shadow:0 20px 55px #0009,inset 0 0 0 5px #8ce2f012,inset 0 0 26px #72d9f022}
+    .signal-card-face:before{position:absolute;inset:8px;border:1px solid #9de7ff24;border-radius:13px;content:"";pointer-events:none}
+    .signal-card-back{align-items:center;justify-content:center;gap:24px;transform:rotateY(180deg);background:radial-gradient(circle,#285678,#10182a 67%)}
+    .signal-card-back-mark{color:#bbf2ff;font-size:64px;text-shadow:0 0 35px #6edaff}
+    .signal-card-back-label{text-align:center;color:#bdeafa;font-size:20px;font-weight:900;letter-spacing:.28em;line-height:1.5}
+    .signal-card-back-code{position:absolute;bottom:25px;color:#7199ae;font-size:10px;letter-spacing:.2em}
+    .signal-card-front{padding:17px 17px 14px;transform:rotateY(0deg)}
+    .signal-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .signal-card-rarity{color:#91def5;font-size:9px;font-weight:900;letter-spacing:.17em}
+    .signal-card-stars{color:#8fdef4;font-size:12px;letter-spacing:2px}
+    .signal-card-art{position:relative;display:grid;flex:1;min-height:0;place-items:center;margin:15px 0 10px;overflow:hidden;border:1px solid #9de7ff24;border-radius:12px;background:radial-gradient(ellipse at 50% 48%,#3679a955,transparent 58%),linear-gradient(145deg,#162d45,#101425)}
+    .signal-card-art:before,.signal-card-art:after{position:absolute;width:170px;height:170px;border:1px solid #8ce2f02b;border-radius:50%;content:"";transform:rotateX(68deg)}
+    .signal-card-art:after{transform:rotateY(68deg)}
+    .signal-card-art-orbit{position:absolute;width:118px;height:118px;border:1px solid #a3eaff8a;border-radius:50%;box-shadow:0 0 30px #51c9f955,inset 0 0 25px #58c8ec22}
+    .signal-card-art-core{position:relative;z-index:1;display:grid;width:76px;height:76px;place-items:center;border:1px solid #d5f7ffbb;border-radius:24px;background:radial-gradient(circle at 35% 30%,#e0fbff,#60c4e7 38%,#24537b 100%);color:#fff;font-size:37px;box-shadow:0 0 35px #70dcffbb,inset 0 0 18px #e6fbff88}
+    .signal-card-art-glint{position:absolute;top:17%;right:19%;color:#e6fcff;font-size:26px;text-shadow:0 0 14px #9eeaff}
+    .signal-card-copy{display:grid;gap:5px}
+    .signal-card-type,.signal-card-index{color:#91a9be;font-size:8px;font-weight:800;letter-spacing:.14em}
+    .signal-card-copy strong{font-size:17px;line-height:1.15}
+    .signal-card-copy small{color:#b4c3d5;font-size:10px}
+    .signal-card-index{margin-top:11px;font-size:7px}
+    .signal-card.epic .signal-card-face{border-color:#ebc0ff;background:linear-gradient(155deg,#633c79,#261f43 58%,#151426);box-shadow:0 20px 65px #6d319799,inset 0 0 0 5px #f4d0ff12,inset 0 0 34px #d787ff55}
+    .signal-card.epic .signal-card-face:before{border-color:#f0d7ff44}
+    .signal-card.epic .signal-card-art{background:radial-gradient(ellipse at 50% 48%,#a857c877,transparent 58%),linear-gradient(145deg,#392749,#171527)}
+    .signal-card.epic .signal-card-art-orbit{border-color:#edc0ffcc;box-shadow:0 0 40px #d27bff99,inset 0 0 25px #d27bff44}
+    .signal-card.epic .signal-card-art-core{border-color:#f6ddff;background:radial-gradient(circle at 35% 30%,#fff5ff,#db9fff 38%,#75439c 100%);box-shadow:0 0 42px #d584ffdd,inset 0 0 18px #fff3ff}
+    .signal-card.epic .signal-card-stars,.signal-card.epic .signal-card-rarity{color:#edc1ff}
+    .signal-card.epic .signal-card-art-glint{color:#fff0ff;text-shadow:0 0 16px #dfa0ff}
+    .signal-card.rainbow-background .signal-card-face{background:linear-gradient(145deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744);background-size:350% 350%;animation:signal-rainbow 6s linear infinite}
+    .signal-card.rainbow-outline .signal-card-face{border:3px solid transparent;background:linear-gradient(145deg,#161b2b,#10131e) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%}
+    @keyframes camera-sweep{0%{transform:perspective(1200px) rotateX(-5deg) rotateY(-10deg)}50%{transform:perspective(1200px) rotateX(3deg) rotateY(7deg)}100%{transform:perspective(1200px) rotateX(-2deg) rotateY(12deg)}}
+    @keyframes card-unseal{0%{opacity:0;transform:rotateY(180deg) rotateX(14deg) scale(.68) translateY(22px)}65%{opacity:1;transform:rotateY(-12deg) rotateX(-4deg) scale(1.04)}100%{opacity:1;transform:rotateY(0) rotateX(0) scale(1)}}
+    @keyframes card-float{to{translate:0 -7px}}
+    .signal-dialog[open] .signal-card-camera{animation:camera-sweep 4.8s ease-in-out 1.1s infinite alternate}
+    @media(max-width:600px){.signal-presentation-wrap{min-height:310px}.signal-card{width:min(245px,75vw);height:320px}}
+    .signal-reveal-stage{position:relative;display:grid;min-height:390px;place-items:center;overflow:hidden;border:1px solid #73c9ec44;border-radius:20px;background:radial-gradient(ellipse at center,#1d3853aa,transparent 58%),linear-gradient(145deg,#101d30,#0c1220 60%,#151326);perspective:1200px}
+    .signal-reveal-stage:before,.signal-reveal-stage:after{position:absolute;content:"";border:1px solid #8ce2f020;border-radius:50%;aspect-ratio:1}
+    .signal-reveal-stage:before{width:min(70vw,430px)}.signal-reveal-stage:after{width:min(54vw,330px)}
+    .signal-reveal-stage .signal-grid{position:absolute;inset:0;z-index:0;opacity:.22;background-image:linear-gradient(#8ce2f01b 1px,transparent 1px),linear-gradient(90deg,#8ce2f01b 1px,transparent 1px);background-size:38px 38px;mask-image:radial-gradient(ellipse,#000 15%,transparent 78%)}
+    .signal-reveal-stage .signal-orb{position:absolute;z-index:1;width:170px;height:170px;border:1px solid #9de7ff66;border-radius:50%;background:radial-gradient(circle at 38% 34%,#b5f2ffdd 0,#62c6ed88 10%,#25527c66 36%,#10203944 69%,transparent 70%);box-shadow:0 0 36px #61cdef55,inset 0 0 35px #8fe6ff55;transition:transform .5s ease,filter .5s ease,opacity .5s ease}
+    .signal-reveal-stage .signal-orb:before,.signal-reveal-stage .signal-orb:after{position:absolute;inset:-14px;content:"";border:1px solid #85def044;border-radius:50%;transform:rotateX(68deg)}
+    .signal-reveal-stage .signal-orb:after{transform:rotateY(68deg)}
+    .signal-reveal-stage .signal-beam{position:absolute;z-index:2;top:8%;left:0;width:100%;height:2px;opacity:0;background:linear-gradient(90deg,transparent,#9cf3ff,#fff,#9cf3ff,transparent);box-shadow:0 0 20px #70dcff;transform:translateY(0)}
+    .signal-orb:before,.signal-orb:after{border-radius:50%}
+    .signal-card-scene{position:absolute;z-index:3;inset:0;display:grid;place-items:center;perspective:1200px;opacity:0;pointer-events:none;transition:opacity .25s ease}
+    .signal-reveal-stage.is-revealed .signal-card-scene{opacity:1}
+    .signal-card-camera{transform-style:preserve-3d}
+    .signal-card{position:relative;width:min(250px,64vw);height:330px;transform-style:preserve-3d;opacity:0}
+    .signal-reveal-stage.is-revealed .signal-card{animation:card-unseal 1.05s cubic-bezier(.16,.76,.25,1) both,card-float 3.4s ease-in-out 1.05s infinite alternate}
+    .signal-reveal-stage.is-running .signal-orb{animation:orb-pulse .9s ease-in-out infinite alternate}
+    .signal-reveal-stage.is-running .signal-beam{opacity:1;animation:scan 1.15s ease-in-out infinite alternate}
+    .signal-reveal-stage.is-running .signal-grid{animation:grid-flicker .22s steps(2) infinite}
+    .signal-reveal-stage.is-revealed .signal-orb{transform:scale(2.2);filter:brightness(1.7);opacity:.2}
+    .signal-reveal-stage.is-epic{border-color:#d8a4ff99;box-shadow:0 24px 90px #6c36a566,inset 0 0 55px #954ed222}
+    .signal-reveal-stage.is-epic .signal-orb{background:radial-gradient(circle at 38% 34%,#fff0cddd 0,#e5a5ff99 12%,#7049a188 40%,#1a164466 70%,transparent 71%);box-shadow:0 0 60px #d391ff99,inset 0 0 35px #e4b7ff66}
+    .signal-reveal-stage.is-epic .signal-card-face{border-color:#ebc0ff;background:linear-gradient(155deg,#633c79,#261f43 58%,#151426);box-shadow:0 20px 65px #6d319799,inset 0 0 0 5px #f4d0ff12,inset 0 0 34px #d787ff55}
+    .signal-reveal-stage.is-epic .signal-card-face:before{border-color:#f0d7ff44}
+    .signal-reveal-stage.is-epic .signal-card-art{background:radial-gradient(ellipse at 50% 48%,#a857c877,transparent 58%),linear-gradient(145deg,#392749,#171527)}
+    .signal-reveal-stage.is-epic .signal-card-art-orbit{border-color:#edc0ffcc;box-shadow:0 0 40px #d27bff99,inset 0 0 25px #d27bff44}
+    .signal-reveal-stage.is-epic .signal-card-art-core{border-color:#f6ddff;background:radial-gradient(circle at 35% 30%,#fff5ff,#db9fff 38%,#75439c 100%);box-shadow:0 0 42px #d584ffdd,inset 0 0 18px #fff3ff}
+    .signal-reveal-stage.is-epic .signal-card-stars,.signal-reveal-stage.is-epic .signal-card-rarity{color:#edc1ff}
+    .signal-reveal-stage.is-epic .signal-card-art-glint{color:#fff0ff;text-shadow:0 0 16px #dfa0ff}
+    .signal-card.rainbow-background .signal-card-face{background:linear-gradient(145deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744);background-size:350% 350%;animation:signal-rainbow 6s linear infinite}
+    .signal-card.rainbow-outline .signal-card-face{border:3px solid transparent;background:linear-gradient(145deg,#161b2b,#10131e) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%}
+    .signal-reveal-stage.is-results{min-height:470px}
+    .signal-reveal-stage.is-results .signal-card-scene,.signal-reveal-stage.is-results .signal-orb,.signal-reveal-stage.is-results .signal-beam{display:none}
+    .signal-ten-results{position:absolute;inset:0;z-index:4;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:10px;padding:22px;align-content:center}
+    .signal-ten-results[hidden]{display:none!important}
+    .signal-mini-card{position:relative;display:flex;min-width:0;flex-direction:column;justify-content:space-between;overflow:hidden;padding:13px;border:1px solid #78cce477;border-radius:12px;background:radial-gradient(circle at 50% 38%,#27638b66,transparent 58%),linear-gradient(155deg,#173b56,#101a2d 58%,#101423);box-shadow:0 10px 24px #0006;animation:mini-card-in .35s ease both}
+    .signal-mini-card.is-epic{border-color:#e8b3ff;background:radial-gradient(circle at 50% 38%,#ad5bc877,transparent 58%),linear-gradient(155deg,#633c79,#261f43 58%,#151426);box-shadow:0 8px 26px #853da944}
+    .signal-mini-card.is-new:after{position:absolute;top:7px;right:7px;padding:4px 6px;border:1px solid #f5d0ff88;border-radius:6px;background:#a458d255;color:#ffe8ff;content:"NOVO";font-size:8px;font-weight:900;letter-spacing:.1em}
+    .signal-mini-rarity{font-size:8px;font-weight:900;letter-spacing:.12em;color:#a5eaff}
+    .signal-mini-card.is-epic .signal-mini-rarity{color:#efc5ff}
+    .signal-mini-art{display:grid;flex:1;place-items:center;margin:10px 0;border:1px solid #ffffff20;border-radius:9px;background:#07101c55;color:#b9f1ff;font-size:30px;text-shadow:0 0 20px currentColor}
+    .signal-mini-card.is-epic .signal-mini-art{color:#f3c8ff}
+    .signal-mini-card strong{font-size:11px;line-height:1.2}.signal-mini-card small{margin-top:4px;color:#aab8cf;font-size:8px;line-height:1.3}
+    .signal-mini-card.is-owned{filter:saturate(.62);border-style:dashed}
+    .signal-mini-card.is-owned:before{position:absolute;right:7px;bottom:7px;color:#c0c9d8;content:"DUPLICADO";font-size:7px;font-weight:800;letter-spacing:.08em}
+    @keyframes scan{to{transform:translateY(350px)}}@keyframes orb-pulse{to{transform:scale(1.12);filter:brightness(1.35)}}@keyframes grid-flicker{50%{opacity:.42}}
+    @keyframes mini-card-in{from{opacity:0;transform:translateY(12px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+    @keyframes camera-sweep{0%{transform:perspective(1200px) rotateX(-5deg) rotateY(-10deg)}50%{transform:perspective(1200px) rotateX(3deg) rotateY(7deg)}100%{transform:perspective(1200px) rotateX(-2deg) rotateY(12deg)}}
+    .signal-reveal-stage.is-revealed .signal-card-camera{animation:camera-sweep 4.8s ease-in-out 1.1s infinite alternate}
+    @media(max-width:600px){.signal-reveal-stage{min-height:330px}.signal-ten-results{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:none;grid-auto-rows:145px;gap:8px;padding:14px}.signal-reveal-stage.is-results{min-height:790px}.signal-mini-card{padding:10px}.signal-mini-art{margin:6px 0;font-size:24px}}
+    @media(prefers-reduced-motion:reduce){.signal-reveal-stage.is-revealed .signal-card-camera,.signal-reveal-stage.is-revealed .signal-card,.signal-mini-card{animation-duration:.01ms!important;animation-iteration-count:1!important}}
+  </style>
+  <dialog id="signalSearchDialog" class="signal-dialog" aria-labelledby="signalDialogTitle">
+    <div class="signal-dialog-inner"><header class="signal-dialog-top"><small id="signalDialogTitle">PRÉVIA DO PRÊMIO</small><button id="signalDialogClose" class="signal-dialog-close" type="button" aria-label="Fechar">×</button></header>
+      <div id="signalRevealStage" class="signal-reveal-stage"><div class="signal-grid" aria-hidden="true"></div><div class="signal-orb" aria-hidden="true"></div><div class="signal-beam" aria-hidden="true"></div>
+        <div class="signal-card-scene"><div id="signalCardCamera" class="signal-card-camera"><article id="signal3dCard" class="signal-card">
+        <div class="signal-card-face signal-card-back" aria-hidden="true"><span class="signal-card-back-mark">✦</span><span class="signal-card-back-label">SIGNAL<br>SEARCH</span><span class="signal-card-back-code">SS · 01</span></div>
+        <div class="signal-card-face signal-card-front"><div class="signal-card-top"><span id="signalCardRarity" class="signal-card-rarity"></span><span id="signalCardStars" class="signal-card-stars" aria-label="raridade">✦ ✦ ✦</span></div><div id="signalCardArt" class="signal-card-art" aria-hidden="true"><span class="signal-card-art-orbit"></span><span class="signal-card-art-core" id="signalCardIcon">✦</span><span class="signal-card-art-glint">✧</span></div><div class="signal-card-copy"><span id="signalCardType" class="signal-card-type">PRÉVIA DO PRÊMIO</span><strong id="signalCardName"></strong><small id="signalCardDetails"></small></div><span class="signal-card-index">SIGNAL ARCHIVE · 001</span></div>
+      </article></div></div><div id="signalTenResults" class="signal-ten-results" role="list" aria-label="Dez recompensas da busca" hidden></div></div>
+      <footer class="signal-modal-footer"><button id="signalModalNext" class="signal-modal-next" type="button" hidden>Próximo especial</button></footer>
+    </div>
+  </dialog>
+  <audio id="normalSignalAudio" preload="none" src="/sinal.mp3"></audio><audio id="epicSignalAudio" preload="none" src="/sinal2.mp3"></audio>
+  <script>
+    const localContext=${JSON.stringify(context)};
+    const dialog=document.getElementById("signalSearchDialog"),nextButton=document.getElementById("signalModalNext"),stage=document.getElementById("signalRevealStage"),tenResults=document.getElementById("signalTenResults");
+    const signalRarity=${JSON.stringify(rarityLabels)};
+    const wait=duration=>new Promise(resolve=>window.setTimeout(resolve,duration));
+    async function submitSignalSearch(level,quantity){
+      const response=await fetch("/api/account/local/signal-search",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({platform:localContext.platform,groupId:localContext.groupId,level,quantity})});
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.error||"Não foi possível fazer esta busca.");
+      return result;
+    }
+    function setCardReward(reward,details,rarity,preview){
+      const card=document.getElementById("signal3dCard");
+      const camera=document.getElementById("signalCardCamera");
+      const front=card.querySelector(".signal-card-front");
+      const art=document.getElementById("signalCardArt");
+      document.getElementById("signalDialogTitle").textContent=preview?"PRÉVIA DO PRÊMIO":"SINAL RECEBIDO";
+      document.getElementById("signalCardType").textContent=preview?"PRÉVIA DO PRÊMIO":"RECOMPENSA DA BUSCA";
+      const isHighRarity=rarity==="epico"||rarity==="lendario";
+      card.className="signal-card"+(isHighRarity?" epic":"");
+      front.style.background="";
+      front.style.borderColor="";
+      art.style.background="";
+      document.getElementById("signalCardRarity").textContent=signalRarity[rarity]||String(rarity||"Prêmio");
+      document.getElementById("signalCardName").textContent=reward.name;
+      document.getElementById("signalCardDetails").textContent=details||reward.details||"Prêmio da Busca de Sinais";
+      const icon=document.getElementById("signalCardIcon");
+      icon.textContent=reward.type==="background"?"▧":reward.type==="outline"?"◫":reward.type==="money"?"💷":reward.type==="market"?"📦":"↻";
+      document.getElementById("signalCardStars").textContent=isHighRarity?"✦ ✦ ✦ ✦ ✦":"✦ ✦ ✦";
+      if(reward.type==="background"){
+        card.classList.toggle("rainbow-background",Boolean(reward.rainbow));
+        if(!reward.rainbow){
+          const gradient="linear-gradient(145deg,"+reward.stops[0]+","+reward.stops[1]+" 55%,"+reward.stops[2]+")";
+          front.style.background=gradient;
+          art.style.background=gradient;
+        }
+      }else if(reward.type==="outline"){
+        card.classList.toggle("rainbow-outline",Boolean(reward.rainbow));
+        if(!reward.rainbow)front.style.borderColor=reward.color;
+      }
+      tenResults.hidden=true;
+      stage.classList.remove("is-running","is-revealed","is-epic","is-results");
+      stage.classList.add("is-revealed");
+      if(isHighRarity)stage.classList.add("is-epic");
+      card.style.animation="none";camera.style.animation="none";void card.offsetWidth;
+      card.style.animation="";camera.style.animation="";
+      nextButton.hidden=true;
+      if(!dialog.open)dialog.showModal();
+    }
+    document.getElementById("signalDialogClose").addEventListener("click",()=>dialog.close());
+    document.querySelectorAll("[data-signal-reward]").forEach(button=>button.addEventListener("click",()=>{
+      const reward=localContext.rewards[button.dataset.signalReward];
+      if(reward)setCardReward(reward,reward.details,reward.rarity,true);
+    }));
+    document.querySelectorAll("[data-signal-level-tab]").forEach(button=>button.addEventListener("click",()=>{
+      document.querySelectorAll("[data-signal-level-tab]").forEach(tab=>tab.setAttribute("aria-selected",String(tab===button)));
+      document.querySelectorAll("[data-signal-level-card]").forEach(card=>card.hidden=card.dataset.signalLevelCard!==button.dataset.signalLevelTab);
+      document.querySelectorAll("[data-signal-featured-group]").forEach(group=>group.hidden=group.dataset.signalFeaturedGroup!==(button.dataset.signalLevelTab==="local"?"local":"bot"));
+    }));
+    async function playSignalAudio(type){
+      const audio=document.getElementById(type==="epic"?"epicSignalAudio":"normalSignalAudio");
+      try{
+        [document.getElementById("normalSignalAudio"),document.getElementById("epicSignalAudio")].forEach(track=>{track.pause();track.currentTime=0});
+        await audio.play();
+        return "";
+      }catch(error){
+        console.warn("[WEB] Áudio da busca de sinais indisponível:",error.message||error);
+        return " Não foi possível tocar o áudio da busca.";
+      }
+    }
+    function rewardIdentity(reward){
+      return reward.type==="market"
+        ? "market:"+reward.itemId
+        : reward.type==="money"
+        ? "money:"+reward.rarity+":"+reward.amount
+        : reward.type==="cosmetic"
+        ? "cosmetic:"+reward.cosmeticType+":"+reward.cosmeticKey
+        : "reset:"+reward.itemKey;
+    }
+    function resetRevealStage(){
+      stage.classList.remove("is-running","is-revealed","is-epic","is-results");
+      tenResults.hidden=true;
+      tenResults.replaceChildren();
+      nextButton.hidden=true;
+      const card=document.getElementById("signal3dCard"),camera=document.getElementById("signalCardCamera");
+      card.className="signal-card";
+      card.style.animation="none";camera.style.animation="none";void card.offsetWidth;
+      card.style.animation="";camera.style.animation="";
+    }
+    function beginReveal(){
+      resetRevealStage();
+      stage.classList.add("is-running");
+      document.getElementById("signalDialogTitle").textContent="BUSCANDO SINAL";
+      if(!dialog.open)dialog.showModal();
+    }
+    function showRewardCard(reward,details){
+      const cardReward=reward.type==="cosmetic"
+        ? localContext.rewards[reward.cosmeticType+"-"+reward.cosmeticKey]
+        : null;
+      const displayReward=cardReward?{...cardReward,...reward,type:cardReward.type}:reward;
+      setCardReward(displayReward,details,reward.rarity,false);
+    }
+    async function waitForAdvance(label){
+      nextButton.textContent=label;
+      nextButton.hidden=false;
+      nextButton.focus();
+      const continued=await new Promise(resolve=>{
+        const closed=()=>resolve(false);
+        dialog.addEventListener("close",closed,{once:true});
+        nextButton.onclick=()=>{
+          dialog.removeEventListener("close",closed);
+          resolve(true);
+        };
+      });
+      nextButton.hidden=true;
+      nextButton.onclick=null;
+      return continued;
+    }
+    function renderTenResults(rewards,presentedSpecials){
+      const shown=new Set();
+      tenResults.replaceChildren(...rewards.map((reward,index)=>{
+        const card=document.createElement("article");
+        const identity=rewardIdentity(reward);
+        const isSpecial=reward.rarity==="epico"||reward.rarity==="lendario";
+        const isNew=isSpecial&&reward.isNew&&!shown.has(identity)&&presentedSpecials.has(identity);
+        const isOwned=isSpecial&&!isNew;
+        if(isNew)shown.add(identity);
+        card.className="signal-mini-card"+(isSpecial?" is-epic":"")+(isNew?" is-new":"")+(isOwned?" is-owned":"");
+        card.setAttribute("role","listitem");
+        card.style.animationDelay=(index*45)+"ms";
+        const rarity=document.createElement("span");
+        rarity.className="signal-mini-rarity";
+        rarity.textContent=String(reward.rarity||"comum").toUpperCase();
+        const art=document.createElement("span");
+        art.className="signal-mini-art";
+        art.setAttribute("aria-hidden","true");
+        art.textContent=reward.type==="money"?"💷":reward.type==="market"?"📦":reward.type==="reset"?"↻":reward.cosmeticType==="outline"?"◫":"▧";
+        const name=document.createElement("strong");
+        name.textContent=reward.name;
+        const detail=document.createElement("small");
+        detail.textContent=reward.type==="money"?reward.amountFormatted:reward.converted?"Convertido em SatCoins":reward.type==="market"?"Pedido local criado":reward.type==="reset"?"Prêmio do bot aplicado":"Cosmético adicionado";
+        card.append(rarity,art,name,detail);
+        return card;
+      }));
+      stage.classList.remove("is-running","is-revealed","is-epic");
+      stage.classList.add("is-results");
+      tenResults.hidden=false;
+      document.getElementById("signalDialogTitle").textContent="RESULTADOS DA BUSCA";
+      nextButton.textContent="Fechar resultados";
+      nextButton.hidden=false;
+      nextButton.onclick=()=>dialog.close();
+    }
+    document.querySelectorAll("[data-signal-level]").forEach(button=>button.addEventListener("click",async()=>{
+      const level=button.dataset.signalLevel,quantity=Number(button.dataset.signalQuantity),price=localContext.levels[level];
+      const levelName=level==="local"?"Local":level==="recruta"?"Recruta":"Especializada";
+      if(!window.confirm("Fazer "+(quantity===10?"dez buscas":"uma busca")+" "+levelName+" por "+((price*quantity)/100).toFixed(2)+" SatCoins? O pagamento sai da carteira, não do cofre."))return;
+      const buttons=[...document.querySelectorAll("[data-signal-level]")];
+      buttons.forEach(item=>item.disabled=true);
+      const feedback=document.getElementById("signalSearchFeedback");
+      feedback.textContent="Realizando busca...";feedback.classList.remove("error");
+      try{
+        const result=await submitSignalSearch(level,quantity);
+        document.getElementById("signalWalletBalance").textContent=result.balance;
+        document.getElementById("signalAvailableBalance").textContent=result.balance;
+        const uniqueSpecials=new Map();
+        if(quantity===10){
+          result.rewards.filter(reward=>(reward.rarity==="epico"||reward.rarity==="lendario")&&reward.isNew).forEach(reward=>{
+            const identity=rewardIdentity(reward);
+            if(!uniqueSpecials.has(identity))uniqueSpecials.set(identity,reward);
+          });
+        }
+        const specials=[...uniqueSpecials.values()];
+        const presentedSpecials=new Set();
+        const singleReward=quantity===1?result.rewards[0]:null;
+        beginReveal();
+        const audioNotice=await playSignalAudio((singleReward?.rarity==="epico"||specials.length)?"epic":"normal");
+        await wait(1500);
+        if(!dialog.open)return;
+        if(quantity===1){
+          const reward=result.rewards[0];
+          const details=reward.type==="money"?reward.amountFormatted:reward.converted?"Convertido em SatCoins":reward.type==="market"?"Pedido criado para entrega pelos administradores":reward.type==="reset"?"Prêmio do Bot aplicado à sua conta":"Adicionado à sua coleção";
+          showRewardCard(reward,details);
+        }else{
+          for(let index=0;index<specials.length;index++){
+            if(index>0){
+              stage.classList.remove("is-revealed","is-epic");
+              stage.classList.add("is-running");
+              await wait(420);
+            }
+            const reward=specials[index];
+            const details=reward.converted?"Convertido em SatCoins":reward.type==="market"?"Pedido criado para entrega pelos administradores":reward.type==="reset"?"Prêmio do Bot aplicado à sua conta":"Adicionado à sua coleção";
+            showRewardCard(reward,details);
+            presentedSpecials.add(rewardIdentity(reward));
+            if(specials.length>1){
+              await wait(1100);
+              if(!await waitForAdvance(index===specials.length-1?"Ver os 10 resultados":"Próximo especial"))return;
+            }else{
+              await wait(1450);
+            }
+            if(!dialog.open)return;
+          }
+          renderTenResults(result.rewards,presentedSpecials);
+        }
+        const state=result.state[level];
+        let progress;
+        if(quantity===10){
+          progress=specials.length
+            ? "Busca x10 concluída · "+specials.length+" especial(is) inédito(s) apresentado(s); os dez resultados estão na janela."
+            : "Busca x10 concluída · nenhum especial inédito; os dez resultados aparecem juntos.";
+        }else if(level==="local"){
+          const guarantees=Object.entries(state.pullsUntilGuarantee||{}).filter(([,remaining])=>remaining!==null)
+            .map(([rarity,remaining])=>(signalRarity[rarity]||rarity)+" garantido em até "+remaining+" busca(s)");
+          progress="Busca Local concluída."+ (guarantees.length?" Garantias: "+guarantees.join(" · ")+".":"");
+        }else{
+          progress="Busca concluída. Épico garantido em até "+state.pullsUntilEpic+" busca(s).";
+          if(state.pullsUntilWorkReset!==null)progress+=" Reset de trabalho em até "+state.pullsUntilWorkReset+" busca(s).";
+        }
+        feedback.textContent=progress+audioNotice;
+        if(audioNotice)feedback.classList.add("error");
+      }catch(error){feedback.textContent=error.message;feedback.classList.add("error")}
+      finally{buttons.forEach(item=>item.disabled=false)}
+    }));
   </script></body></html>`;
 }
 
@@ -2743,6 +3296,7 @@ function renderCosmeticsStore(data) {
     [economy.ITEM_RARITY.LEGENDARY]: "Lendário"
   };
   const ownedBackgrounds = data.cosmetics.ownedBackgrounds || [];
+  const ownedOutlines = data.cosmetics.ownedOutlines || [];
   const groups = new Map();
   for (const [key, background] of Object.entries(backgrounds)) {
     if (!groups.has(background.rarity)) groups.set(background.rarity, []);
@@ -2755,8 +3309,27 @@ function renderCosmeticsStore(data) {
         const owned = ownedBackgrounds.includes(background.key);
         const active = data.cosmetics.background === background.key;
         return `<article class="color-card${active ? " active" : ""}" data-color-card="${escapeHtml(background.key)}">
-          <div class="color-swatch" aria-hidden="true" style="background:linear-gradient(145deg,${background.stops[0]},${background.stops[1]} 55%,${background.stops[2]})"></div>
-          <div class="color-card-info"><div><h3>${escapeHtml(background.label)}</h3><p>ID ${background.id} · ${active ? "Em uso" : owned ? "Comprado" : `Preço: ${economy.formatMoney(economy.PROFILE_BACKGROUND_PRICE)}`}</p></div><button class="color-action" type="button" data-preview-color="${escapeHtml(background.key)}">Mostrar prévia</button></div>
+          <div class="color-swatch${background.rainbow ? " rainbow-background" : ""}" aria-hidden="true" style="${background.rainbow ? "background-image:linear-gradient(110deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744);background-size:300% 300%" : `background:linear-gradient(145deg,${background.stops[0]},${background.stops[1]} 55%,${background.stops[2]})`}"></div>
+          <div class="color-card-info"><div><h3>${escapeHtml(background.label)}</h3><p>ID ${background.id} · ${active ? "Em uso" : owned ? "Comprado" : `Preço: ${economy.formatMoney(economy.getProfileBackgroundPrice(background.key))}`}</p></div><button class="color-action" type="button" data-preview-color="${escapeHtml(background.key)}">Mostrar prévia</button></div>
+        </article>`;
+      }).join("")}</div>
+    </section>`).join("");
+  const outlines = economy.PROFILE_OUTLINES;
+  const outlineGroups = new Map();
+  for (const [key, outline] of Object.entries(outlines)) {
+    if (!outlineGroups.has(outline.rarity)) outlineGroups.set(outline.rarity, []);
+    outlineGroups.get(outline.rarity).push({ key, ...outline });
+  }
+  const outlineCategories = [...outlineGroups].map(([rarity, items]) => `
+    <section class="store-panel category-panel">
+      <header class="category-heading"><div><h2>Outlines · ${escapeHtml(rarityLabels[rarity] || rarity)}</h2><p class="store-muted">${items.length} opções</p></div></header>
+      <div class="store-items">${items.map(outline => {
+        const owned = ownedOutlines.includes(outline.key);
+        const active = data.cosmetics.outline === outline.key;
+        const price = economy.getProfileOutlinePrice(outline.key);
+        return `<article class="color-card${active ? " active" : ""}" data-outline-card="${escapeHtml(outline.key)}">
+          <div class="color-swatch" aria-hidden="true" style="height:86px;padding:20px;background:#111827"><div class="${outline.rainbow ? "rainbow-outline-sample" : ""}" style="height:46px;border:2px solid ${outline.rainbow ? "transparent" : outline.color};border-radius:14px${outline.rainbow ? ";background:linear-gradient(#111827,#111827) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%" : ""}"></div></div>
+          <div class="color-card-info"><div><h3>${escapeHtml(outline.label)}</h3><p>${active ? "Em uso" : owned ? "Comprado" : `ID ${outline.id} · ${escapeHtml(rarityLabels[outline.rarity] || outline.rarity)} · ${economy.formatMoney(price)}`}</p></div><button class="color-action" type="button" data-preview-outline="${escapeHtml(outline.key)}">Mostrar prévia</button></div>
         </article>`;
       }).join("")}</div>
     </section>`).join("");
@@ -2765,54 +3338,101 @@ function renderCosmeticsStore(data) {
     groupId: data.groupId,
     balance: economy.formatMoney(data.balance),
     price: economy.formatMoney(economy.PROFILE_BACKGROUND_PRICE),
+    outlinePrice: economy.formatMoney(economy.PROFILE_OUTLINE_PRICE),
+    rarityLabels,
     backgrounds: Object.fromEntries(Object.entries(backgrounds).map(([key, background]) => [
       key,
       {
         id: background.id,
         label: background.label,
         rarity: background.rarity,
+        price: economy.formatMoney(economy.getProfileBackgroundPrice(key)),
         stops: background.stops,
-        accent: background.accent
+        accent: background.accent,
+        rainbow: Boolean(background.rainbow)
       }
     ])),
     ownedBackgrounds,
-    appliedBackground: data.cosmetics.background
+    appliedBackground: data.cosmetics.background,
+    outlines: Object.fromEntries(Object.entries(outlines).map(([key, outline]) => [
+      key,
+      { ...outline, price: economy.formatMoney(economy.getProfileOutlinePrice(key)) }
+    ])),
+    ownedOutlines,
+    appliedOutline: data.cosmetics.outline
   };
   const profileLink = `/painel-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}`;
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Loja de cosméticos · ${escapeHtml(data.groupName)}</title><style>
     :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;background:radial-gradient(circle at 15% 0,#312344 0,#10131c 48%,#090b10 100%)}button,a{font:inherit}.store-page{width:min(980px,100%);margin:0 auto}.store-topbar{display:flex;justify-content:space-between;gap:12px;padding:8px 0 20px;border-bottom:1px solid #ffffff16}.store-topbar a{color:#d6b5ff;text-decoration:none;font-weight:700}.store-topbar span,.store-muted{color:#aab3c8}.store-hero{margin:24px 0;padding:26px;border:1px solid #f0a8c633;border-radius:20px;background:linear-gradient(120deg,#452b4a,#24263d 70%,#1b2435)}.store-hero h1{margin:4px 0 8px;font-size:clamp(28px,5vw,40px)}.store-hero p{margin:0;color:#d0c8dc;line-height:1.6}    .store-panel{margin-top:16px;padding:22px;border:1px solid #ffffff14;border-radius:18px;background:linear-gradient(145deg,#191e2d,#131824)}.category-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.category-heading h2{margin:0;font-size:19px}.category-heading p{margin:5px 0 0}.category-picker{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;margin-top:16px;padding:17px;border:1px solid #f0a8c644;border-radius:14px;background:#f0a8c60a;color:#f5f7fb;text-align:left;cursor:pointer}.category-picker:hover,.category-picker:focus-visible{border-color:#f0a8c6;outline:2px solid #f0a8c644;outline-offset:2px}.category-picker strong,.category-picker small{display:block}.category-picker small{margin-top:5px;color:#aab3c8;font-size:12px}.category-picker>span:last-child{font-size:22px;color:#f0a8c6}.store-items{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:18px}.color-card{overflow:hidden;border:1px solid #ffffff16;border-radius:14px;background:#ffffff05}.color-card.active{border-color:#f0a8c6aa;box-shadow:0 0 0 1px #f0a8c633}.color-swatch{height:64px;border-bottom:1px solid #ffffff12}.color-card-info{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px}.color-card-info h3{margin:0;font-size:14px}.color-card-info p{margin:5px 0 0;color:#aab3c8;font-size:11px}.color-action,.reset-button,.modal-button{min-height:38px;padding:8px 12px;border:1px solid #f0a8c655;border-radius:10px;background:#f076a51a;color:#ffe0ef;font-size:12px;font-weight:750;cursor:pointer;white-space:nowrap}.color-action:hover,.modal-button:hover{background:#f076a532}.store-balance{display:flex;justify-content:space-between;gap:12px;margin-top:14px;padding:13px;border:1px solid #ffffff14;border-radius:12px;background:#ffffff06;color:#aab3c8;font-size:12px}.store-balance strong{color:#f5f7fb}.store-feedback{min-height:22px;margin:12px 0 0;color:#9cf0cf;font-size:13px}.store-feedback.error{color:#ff9caa}.reset-button{margin-top:14px;border-color:#ffffff30;background:#ffffff08;color:#e8ebf5}.preview-dialog{width:min(560px,calc(100% - 28px));padding:0;border:1px solid #f0a8c655;border-radius:20px;background:#151a27;color:#f5f7fb;box-shadow:0 24px 90px #000b}.preview-dialog::backdrop{background:#05070bcc;backdrop-filter:blur(4px)}.dialog-content{padding:22px}.dialog-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.dialog-header h2{margin:0}.dialog-header p{margin:5px 0 0;color:#aab3c8;font-size:13px}.dialog-close{width:38px;height:38px;border:1px solid #ffffff25;border-radius:10px;background:#ffffff08;color:#f5f7fb;font-size:20px;cursor:pointer}.preview-card{min-height:240px;margin-top:18px;padding:20px;border:1px solid #ffffff30;border-radius:16px;box-shadow:0 18px 45px #0004}.preview-label{display:inline-block;padding:6px 9px;border:1px solid #ffffff32;border-radius:20px;background:#0003;color:#fff;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.preview-user{display:flex;align-items:center;gap:12px;margin-top:30px}.preview-avatar{display:grid;width:54px;height:54px;place-items:center;border:2px solid var(--preview-accent);border-radius:17px;background:#ffffff18;color:#fff;font-size:21px;font-weight:800}.preview-user strong,.preview-user small{display:block}.preview-user small{margin-top:4px;color:#ffffffb8}.preview-profile{margin-top:16px;padding:14px;border:1px solid #ffffff2a;border-radius:12px;background:#080b1280}.preview-profile strong{color:var(--preview-accent)}.preview-profile p{margin:6px 0 0;color:#ffffffbb;font-size:12px;line-height:1.5}.dialog-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}.dialog-actions .secondary{border-color:#ffffff30;background:#ffffff08;color:#e8ebf5}.dialog-actions button:disabled,.reset-button:disabled{opacity:.55;cursor:wait}.store-footer{margin:18px 0;color:#8390a9}@media(max-width:600px){body{padding:16px}.store-hero,.store-panel,.dialog-content{padding:18px}.store-items{grid-template-columns:1fr}.color-card-info{align-items:flex-start}.dialog-actions{flex-direction:column-reverse}.dialog-actions button{width:100%}}
     .category-catalog[hidden]{display:none}
+    .rainbow-background{animation:rainbow-cycle 5s linear infinite}
+    .rainbow-outline-sample{animation:rainbow-cycle 5s linear infinite}
+    .preview-card.rainbow-background{background-image:linear-gradient(110deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744)!important;background-size:300% 300%;animation:rainbow-cycle 5s linear infinite}
+    .rainbow-outline-preview{border-color:transparent!important;background:linear-gradient(#080b1280,#080b1280) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box!important;background-size:100% 100%,300% 100%;animation:rainbow-cycle 5s linear infinite}
+    @keyframes rainbow-cycle{to{background-position:100% 50%}}
+    @media(prefers-reduced-motion:reduce){.rainbow-background,.rainbow-outline-sample,.rainbow-outline-preview{animation:none}}
   </style></head><body><main class="store-page">
     <nav class="store-topbar"><a href="${profileLink}">← Voltar ao perfil</a><span>Loja de cosméticos · ${escapeHtml(data.groupName)}</span></nav>
-    <header class="store-hero"><h1>🎨 Loja de cosméticos</h1><p>Escolha uma categoria e abra a prévia de um fundo para comprar ou equipar. Os fundos comprados podem ser trocados sem custo.</p></header>
-    <section id="cosmeticCategories" class="store-panel"><h2>Categorias de cosméticos</h2><button id="showBackgrounds" class="category-picker" type="button"><span><strong>Fundos</strong><small>Confira os fundos disponíveis e suas categorias de raridade</small></span><span aria-hidden="true">→</span></button></section>
+    <header class="store-hero"><h1>🎨 Loja de cosméticos</h1><p>Personalize os fundos do perfil e o outline das bolhas. Cosméticos comprados podem ser trocados sem custo.</p></header>
+    <section id="cosmeticCategories" class="store-panel"><h2>Categorias de cosméticos</h2><button id="showBackgrounds" class="category-picker" type="button"><span><strong>Fundos</strong><small>Confira os fundos disponíveis e suas categorias de raridade</small></span><span aria-hidden="true">→</span></button><button id="showOutlines" class="category-picker" type="button"><span><strong>Linha das bolhas (outline)</strong><small>Personalize o contorno dos cartões do perfil</small></span><span aria-hidden="true">→</span></button></section>
     <div id="backgroundCatalog" class="category-catalog" hidden><section class="store-panel"><button id="backToCategories" class="reset-button" type="button">← Categorias de cosméticos</button></section>${categories}
       <section class="store-panel"><div class="store-balance"><span>Seu saldo local</span><strong id="storeBalance">${pageContext.balance}</strong></div><button id="resetBackground" class="reset-button" type="button">Restaurar fundo original</button><p id="storeFeedback" class="store-feedback" role="status" aria-live="polite"></p></section>
     </div>
+    <div id="outlineCatalog" class="category-catalog" hidden><section class="store-panel"><button id="backFromOutlines" class="reset-button" type="button">← Categorias de cosméticos</button><header class="category-heading"><div><h2>Linha das bolhas (outline)</h2><p class="store-muted">Outlines organizadas por raridade; o modo padrão acompanha a cor do fundo.</p></div></header></section>${outlineCategories}<section class="store-panel"><div class="store-balance"><span>Seu saldo local</span><strong id="outlineStoreBalance">${pageContext.balance}</strong></div><button id="resetOutline" class="reset-button" type="button">Usar outline padrão</button><p id="outlineFeedback" class="store-feedback" role="status" aria-live="polite"></p></section></div>
     <p class="store-footer">Os cosméticos e o saldo são individuais desta plataforma e deste grupo.</p>
   </main>
-  <dialog id="previewDialog" class="preview-dialog" aria-labelledby="dialogTitle"><div class="dialog-content"><header class="dialog-header"><div><h2 id="dialogTitle">Prévia do fundo</h2><p id="dialogDescription"></p></div><button class="dialog-close" type="button" data-close-dialog aria-label="Fechar">×</button></header><div id="previewCard" class="preview-card"><span class="preview-label">Perfil neste grupo</span><div class="preview-user"><div class="preview-avatar">U</div><div><strong>${escapeHtml(data.userName)}</strong><small>${escapeHtml(data.groupName)}</small></div></div><div class="preview-profile"><strong id="previewColorName"></strong><p>Esta é uma prévia do fundo no perfil local.</p></div></div><p id="dialogFeedback" class="store-feedback" role="status" aria-live="polite"></p><footer class="dialog-actions"><button class="modal-button secondary" type="button" data-close-dialog>Fechar</button><button id="previewAction" class="modal-button" type="button">Comprar e equipar</button></footer></div></dialog>
+  <dialog id="previewDialog" class="preview-dialog" aria-labelledby="dialogTitle"><div class="dialog-content"><header class="dialog-header"><div><h2 id="dialogTitle">Prévia do fundo</h2><p id="dialogDescription"></p></div><button class="dialog-close" type="button" data-close-dialog aria-label="Fechar">×</button></header><div id="previewCard" class="preview-card"><span class="preview-label">Perfil neste grupo</span><div class="preview-user"><div id="previewAvatar" class="preview-avatar">U</div><div><strong>${escapeHtml(data.userName)}</strong><small>${escapeHtml(data.groupName)}</small></div></div><div id="previewProfile" class="preview-profile"><strong id="previewColorName"></strong><p id="previewProfileDescription">Esta é uma prévia do fundo no perfil local.</p></div></div><p id="dialogFeedback" class="store-feedback" role="status" aria-live="polite"></p><footer class="dialog-actions"><button class="modal-button secondary" type="button" data-close-dialog>Fechar</button><button id="previewAction" class="modal-button" type="button">Comprar e equipar</button></footer></div></dialog>
   <script>
     const storeContext=${JSON.stringify(pageContext)};
     const backgroundUrl="/api/account/local/cosmetics";
     let appliedBackground=storeContext.appliedBackground;
+    let appliedOutline=storeContext.appliedOutline;
     let previewKey=null;
+    let previewType="background";
     const dialog=document.getElementById("previewDialog");
     const dialogFeedback=document.getElementById("dialogFeedback");
     document.getElementById("showBackgrounds").addEventListener("click",()=>{document.getElementById("cosmeticCategories").hidden=true;document.getElementById("backgroundCatalog").hidden=false});
     document.getElementById("backToCategories").addEventListener("click",()=>{document.getElementById("backgroundCatalog").hidden=true;document.getElementById("cosmeticCategories").hidden=false});
+    document.getElementById("showOutlines").addEventListener("click",()=>{document.getElementById("cosmeticCategories").hidden=true;document.getElementById("outlineCatalog").hidden=false});
+    document.getElementById("backFromOutlines").addEventListener("click",()=>{document.getElementById("outlineCatalog").hidden=true;document.getElementById("cosmeticCategories").hidden=false});
     function showFeedback(element,message,isError){element.textContent=message;element.classList.toggle("error",Boolean(isError))}
-    function actionLabel(key){return appliedBackground===key?"Em uso":storeContext.ownedBackgrounds.includes(key)?"Equipar":"Comprar e equipar"}
+    function actionLabel(key,type=previewType){return type==="outline"?(appliedOutline===key?"Em uso":storeContext.ownedOutlines.includes(key)?"Equipar":"Comprar e equipar"):(appliedBackground===key?"Em uso":storeContext.ownedBackgrounds.includes(key)?"Equipar":"Comprar e equipar")}
     function openPreview(key){
       const background=storeContext.backgrounds[key];if(!background)return;
-      previewKey=key;
+      previewKey=key;previewType="background";
       document.getElementById("dialogTitle").textContent="Prévia · "+background.label;
-      document.getElementById("dialogDescription").textContent="ID "+background.id+" · "+background.rarity+" · "+(storeContext.ownedBackgrounds.includes(key)?"Já comprado":"Preço: "+storeContext.price);
+      document.getElementById("dialogDescription").textContent="ID "+background.id+" · "+(storeContext.rarityLabels[background.rarity]||background.rarity)+" · "+(storeContext.ownedBackgrounds.includes(key)?"Já comprado":"Preço: "+background.price);
       document.getElementById("previewColorName").textContent=background.label;
+      document.getElementById("previewProfileDescription").textContent="Esta é uma prévia do fundo no perfil local.";
       const card=document.getElementById("previewCard");
       card.style.background="linear-gradient(145deg,"+background.stops[0]+","+background.stops[1]+" 55%,"+background.stops[2]+")";
+      card.classList.toggle("rainbow-background",Boolean(background.rainbow));
       card.style.setProperty("--preview-accent",background.accent);
+      document.getElementById("previewProfile").style.borderColor="";
+      document.getElementById("previewProfile").classList.remove("rainbow-outline-preview");
+      document.getElementById("previewAvatar").style.borderColor="";
+      document.getElementById("previewAvatar").classList.remove("rainbow-outline-preview");
       const action=document.getElementById("previewAction");action.textContent=actionLabel(key);action.disabled=appliedBackground===key;
+      showFeedback(dialogFeedback,"",false);
+      if(!dialog.open)dialog.showModal();
+    }
+    function openOutlinePreview(key){
+      const outline=storeContext.outlines[key];if(!outline)return;
+      previewKey=key;previewType="outline";
+      document.getElementById("dialogTitle").textContent="Prévia do outline · "+outline.label;
+      document.getElementById("dialogDescription").textContent="ID "+outline.id+" · "+(storeContext.rarityLabels[outline.rarity]||outline.rarity)+" · "+(storeContext.ownedOutlines.includes(key)?"Já comprado":"Preço: "+outline.price);
+      document.getElementById("previewColorName").textContent="Outline "+outline.label;
+      document.getElementById("previewProfileDescription").textContent="Esta é uma prévia da linha das bolhas no perfil local.";
+      const card=document.getElementById("previewCard");
+      const background=storeContext.backgrounds[appliedBackground];
+      card.style.background=background?"linear-gradient(145deg,"+background.stops[0]+","+background.stops[1]+" 55%,"+background.stops[2]+")":"#171c2a";
+      card.classList.toggle("rainbow-background",Boolean(background?.rainbow));
+      card.style.setProperty("--preview-accent",outline.color);
+      document.getElementById("previewProfile").style.borderColor=outline.color;
+      document.getElementById("previewAvatar").style.borderColor=outline.color;
+      document.getElementById("previewProfile").classList.toggle("rainbow-outline-preview",Boolean(outline.rainbow));
+      document.getElementById("previewAvatar").classList.toggle("rainbow-outline-preview",Boolean(outline.rainbow));
+      const action=document.getElementById("previewAction");action.textContent=actionLabel(key,"outline");action.disabled=appliedOutline===key;
       showFeedback(dialogFeedback,"",false);
       if(!dialog.open)dialog.showModal();
     }
@@ -2821,37 +3441,68 @@ function renderCosmeticsStore(data) {
         const key=card.dataset.colorCard,background=storeContext.backgrounds[key];
         const active=appliedBackground===key,owned=storeContext.ownedBackgrounds.includes(key);
         card.classList.toggle("active",active);
-        card.querySelector(".color-card-info p").textContent="ID "+background.id+" · "+(active?"Em uso":owned?"Comprado":"Preço: "+storeContext.price);
+        card.querySelector(".color-card-info p").textContent="ID "+background.id+" · "+(active?"Em uso":owned?"Comprado":"Preço: "+background.price);
       });
-      if(previewKey){const action=document.getElementById("previewAction");action.textContent=actionLabel(previewKey);action.disabled=appliedBackground===previewKey;}
+      refreshOutlineCards();
+      if(previewKey){const action=document.getElementById("previewAction");action.textContent=actionLabel(previewKey);action.disabled=previewType==="outline"?appliedOutline===previewKey:appliedBackground===previewKey;}
+    }
+    function refreshOutlineCards(){
+      document.querySelectorAll("[data-outline-card]").forEach(card=>{
+        const key=card.dataset.outlineCard,outline=storeContext.outlines[key];
+        const active=appliedOutline===key,owned=storeContext.ownedOutlines.includes(key);
+        card.classList.toggle("active",active);
+        card.querySelector(".color-card-info p").textContent=active?"Em uso":owned?"Comprado":"ID "+outline.id+" · "+(storeContext.rarityLabels[outline.rarity]||outline.rarity)+" · "+outline.price;
+      });
     }
     async function submitBackground(payload){
       const response=await fetch(backgroundUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...storeContext,...payload})});
       const result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível atualizar seu perfil.");return result;
     }
     document.querySelectorAll("[data-preview-color]").forEach(button=>button.addEventListener("click",()=>openPreview(button.dataset.previewColor)));
+    document.querySelectorAll("[data-preview-outline]").forEach(button=>button.addEventListener("click",()=>openOutlinePreview(button.dataset.previewOutline)));
     document.querySelectorAll("[data-close-dialog]").forEach(button=>button.addEventListener("click",()=>dialog.close()));
     dialog.addEventListener("click",event=>{if(event.target===dialog)dialog.close()});
     document.getElementById("previewAction").addEventListener("click",async()=>{
-      const key=previewKey;if(!key||appliedBackground===key)return;
-      const button=document.getElementById("previewAction"),wasOwned=storeContext.ownedBackgrounds.includes(key);
-      button.disabled=true;showFeedback(dialogFeedback,wasOwned?"Equipando fundo...":"Comprando e equipando fundo...",false);
+      const key=previewKey;if(!key||(previewType==="outline"?appliedOutline===key:appliedBackground===key))return;
+      const isOutline=previewType==="outline",owned=isOutline?storeContext.ownedOutlines.includes(key):storeContext.ownedBackgrounds.includes(key);
+      const button=document.getElementById("previewAction");
+      button.disabled=true;showFeedback(dialogFeedback,owned?"Equipando cosmético...":"Comprando e equipando cosmético...",false);
       try{
-        const result=await submitBackground({action:"set",background:key});
-        appliedBackground=result.background;storeContext.balance=result.balance;
+        const result=isOutline
+          ? await submitBackground({action:"setOutline",outline:key})
+          : await submitBackground({action:"set",background:key});
+        if(isOutline){appliedOutline=result.outline;storeContext.appliedOutline=appliedOutline;}
+        else appliedBackground=result.background;
+        storeContext.balance=result.balance;
         document.getElementById("storeBalance").textContent=result.balance;
-        if(result.boughtNow&&!storeContext.ownedBackgrounds.includes(key))storeContext.ownedBackgrounds.push(key);
+        if(isOutline)document.getElementById("outlineStoreBalance").textContent=result.balance;
+        const ownedItems=isOutline?storeContext.ownedOutlines:storeContext.ownedBackgrounds;
+        if(result.boughtNow&&!ownedItems.includes(key))ownedItems.push(key);
         refreshCards();
-        showFeedback(dialogFeedback,result.boughtNow?"Fundo comprado e equipado!":"Fundo equipado sem cobrança.",false);
-        showFeedback(document.getElementById("storeFeedback"),result.boughtNow?"Compra confirmada e aplicada ao seu perfil.":"Fundo aplicado ao seu perfil.",false);
+        const cosmeticName=isOutline?"Outline":"Fundo";
+        const message=result.boughtNow?cosmeticName+" comprado e equipado!":cosmeticName+" equipado sem cobrança.";
+        showFeedback(dialogFeedback,message,false);
+        showFeedback(document.getElementById(isOutline?"outlineFeedback":"storeFeedback"),message,false);
       }catch(error){showFeedback(dialogFeedback,error.message,true)}
-      finally{button.disabled=appliedBackground===key}
+      finally{button.disabled=previewType==="outline"?appliedOutline===key:appliedBackground===key}
     });
     document.getElementById("resetBackground").addEventListener("click",async()=>{
       const button=document.getElementById("resetBackground");if(!appliedBackground){showFeedback(document.getElementById("storeFeedback"),"Seu perfil já está usando o fundo original.",false);return}
       button.disabled=true;
       try{await submitBackground({action:"reset"});appliedBackground=null;refreshCards();showFeedback(document.getElementById("storeFeedback"),"Fundo original restaurado. Suas cores compradas continuam disponíveis.",false)}
       catch(error){showFeedback(document.getElementById("storeFeedback"),error.message,true)}
+      finally{button.disabled=false}
+    });
+    document.getElementById("resetOutline").addEventListener("click",async()=>{
+      const button=document.getElementById("resetOutline");
+      if(!appliedOutline){showFeedback(document.getElementById("outlineFeedback"),"O outline já acompanha a cor do fundo.",false);return}
+      button.disabled=true;
+      try{
+        await submitBackground({action:"resetOutline"});
+        appliedOutline=null;storeContext.appliedOutline=null;
+        refreshCards();
+        showFeedback(document.getElementById("outlineFeedback"),"Outline padrão restaurado; ele acompanha a cor do fundo.",false);
+      }catch(error){showFeedback(document.getElementById("outlineFeedback"),error.message,true)}
       finally{button.disabled=false}
     });
     refreshCards();
@@ -2946,18 +3597,26 @@ function renderShopCatalog(data, shopType) {
   </script></body></html>`;
 }
 
-function getCosmeticPanelStyles(backgroundKey, panelType) {
+function getCosmeticPanelStyles(backgroundKey, panelType, outlineKey) {
   const background = economy.PROFILE_BACKGROUNDS[backgroundKey];
-  if (!background) return "";
-  const [start, middle, end] = background.stops;
-  const accent = background.accent;
-  const pageBackground = `radial-gradient(circle at top,${start} 0,${middle} 48%,${end} 100%)`;
+  const outline = economy.PROFILE_OUTLINES[outlineKey];
+  if (!background && !outline) return "";
+  const [start, middle, end] = background?.stops || ["#27365d", "#111827", "#090b10"];
+  const accent = background?.accent || "#7ea7ff";
+  const borderColor = outline?.color || accent;
+  const rainbowGradient = "linear-gradient(110deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744)";
+  const rainbowAnimation = background?.rainbow || outline?.rainbow
+    ? `@keyframes cosmetic-rainbow-cycle{to{background-position:100% 50%}}@media(prefers-reduced-motion:reduce){body,.local-hero,.local-panel,.local-stat,.rank-link,.admin-page .hero,.admin-page .overview-card,.admin-page .setting-card{animation:none!important}}`
+    : "";
+  const pageBackground = background?.rainbow
+    ? rainbowGradient
+    : `radial-gradient(circle at top,${start} 0,${middle} 48%,${end} 100%)`;
   const heroBackground = `linear-gradient(145deg,${start},${middle} 55%,${end})`;
   const panelBackground = `linear-gradient(145deg,${middle} 0%,${end} 100%)`;
   if (panelType === "local") {
-    return `body{background:${pageBackground}}.local-hero{border-color:${accent}88;background:${heroBackground}}.local-panel{border-color:${accent}66;background:${panelBackground}}.local-stat,.rank-link{border-color:${accent}44;background:${middle}88}.local-topbar a,.local-section-heading h2,.rank-link span{color:${accent}}.rank-link:hover{border-color:${accent};background:${start}88}`;
+    return `${rainbowAnimation}body{background:${pageBackground};${background?.rainbow ? "background-size:300% 300%;animation:cosmetic-rainbow-cycle 7s linear infinite" : ""}}.local-hero{border-color:${accent}88;background:${heroBackground}}.local-panel{border-color:${accent}66;background:${panelBackground}}.local-stat,.rank-link{border-color:${borderColor}88;background:${middle}88}.local-topbar a,.local-section-heading h2,.rank-link span{color:${accent}}.rank-link:hover{border-color:${borderColor};background:${start}88}${background?.rainbow ? `.local-hero,.local-panel{border:1px solid transparent;background:linear-gradient(145deg,${start}ee,${end}ee) padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 7s linear infinite}` : ""}${outline?.rainbow ? `.local-stat,.rank-link{border:1px solid transparent;background:linear-gradient(${middle}88,${middle}88) padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 5s linear infinite}` : ""}`;
   }
-  return `body{background:${pageBackground}}
+  return `${rainbowAnimation}body{background:${pageBackground};${background?.rainbow ? "background-size:300% 300%;animation:cosmetic-rainbow-cycle 7s linear infinite" : ""}}
     .admin-page .topbar a,.admin-page .eyebrow,.admin-page .permission-count,.admin-page .shortcut-card code,.admin-page .scope-picker label,.admin-page .scope-current{color:${accent}}
     .admin-page .hero{border-color:${accent}88;background:${heroBackground}}
     .admin-page .overview-card,.admin-page .setting-card,.admin-page .moderation-card{border-color:${accent}66;background:${panelBackground}}
@@ -2986,6 +3645,36 @@ function renderGroupAdmin(data) {
   ).join("");
   const rootLevel = data.platform === "whatsapp" ? "chat" : "server";
   const settingDefinitions = getAdminSystemDefinitions(data.platform, rootLevel);
+  const localSignalRarityLabels = {
+    comum: "Comum",
+    incomum: "Incomum",
+    raro: "Raro",
+    epico: "Épico",
+    lendario: "Lendário"
+  };
+  const localSignalTierFields = economy.LOCAL_SIGNAL_RARITIES.map(rarity => `
+    <fieldset class="local-signal-tier" data-local-signal-tier="${rarity}">
+      <legend>${localSignalRarityLabels[rarity]}</legend>
+      <div class="antilink-form-grid">
+        <label>Chance (%)<input type="number" name="chance" min="0" max="100" step="1" required></label>
+        <label>Garantir após buscas (0 = sem garantia)<input type="number" name="guaranteeAfter" min="0" max="10000" step="1" value="0" required></label>
+        <label>SatCoins mínimo (opcional)<input type="text" name="cashMin" inputmode="decimal" placeholder="Ex.: 5,00"></label>
+        <label>SatCoins máximo (opcional)<input type="text" name="cashMax" inputmode="decimal" placeholder="Ex.: 20,00"></label>
+      </div>
+      <div class="local-signal-choice-group"><strong>Itens do Bot que podem sair</strong><div class="local-signal-check-list" data-local-bot-items></div></div>
+      <div class="local-signal-choice-group"><strong>Itens do Mercado Local que podem sair</strong><div class="local-signal-check-list" data-local-market-items></div><small>Ao ganhar um item do Mercado Local, um pedido gratuito será criado para os administradores.</small></div>
+    </fieldset>`).join("");
+  const localSignalDialog = `<dialog class="antilink-dialog store2-dialog local-signal-dialog" id="localSignalDialog" aria-labelledby="localSignalTitle">
+    <form id="localSignalForm">
+      <header class="antilink-dialog-heading"><div><h2 id="localSignalTitle">Busca de Sinais Local</h2><p id="localSignalScopeLabel">Configure os prêmios e probabilidades deste grupo ou servidor.</p></div><button type="button" class="dialog-close" data-close-local-signal aria-label="Fechar">×</button></header>
+      <label class="autorepo-global-toggle"><input type="checkbox" name="enabled"><span><strong>Ativar Busca Local</strong><small>Quando ativa, aparece como um terceiro nível na página de Busca de Sinais.</small></span></label>
+      <label>Preço de uma busca em SatCoins<input type="text" name="price" inputmode="decimal" placeholder="100,00" required><small>O preço da busca x10 é calculado automaticamente.</small></label>
+      <div class="local-signal-tier-list">${localSignalTierFields}</div>
+      <fieldset class="local-signal-featured"><legend>Destaques nos cartões (marque até 2)</legend><div class="local-signal-check-list" id="localSignalFeatured"></div></fieldset>
+      <p class="antilink-form-feedback" id="localSignalFeedback" role="status" aria-live="polite"></p>
+      <footer class="antilink-dialog-actions"><button type="button" data-close-local-signal>Cancelar</button><button type="submit" class="primary">Salvar Busca Local</button></footer>
+    </form>
+  </dialog>`;
   const immediateActionDefinitions = {
     discord: [["kick", "Expulsar", true], ["ban", "Banir", true], ["mute", "Silenciar temporariamente", true], ["unmute", "Remover silêncio", true], ["unban", "Desbanir", true]],
     telegram: [["kick", "Expulsar", true], ["ban", "Banir", true], ["mute", "Silenciar temporariamente", true], ["unmute", "Remover silêncio", true], ["unban", "Desbanir", true]],
@@ -3021,7 +3710,7 @@ function renderGroupAdmin(data) {
       const configButton = configurableSettings.includes(setting.key)
         ? `<button type="button" class="setting-icon-button" data-${setting.key.toLowerCase()}-config data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Configurar ${setting.key} neste escopo" title="Configurações do ${setting.key}">${ADMIN_SETTINGS_GEAR_ICON}</button>`
         : ["economy", "xp", "activity"].includes(setting.key)
-          ? `<button type="button" class="setting-icon-button" data-rp-config="${setting.key}" data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Gerenciar ${setting.label}" title="Gerenciar ${setting.label}">${ADMIN_SETTINGS_GEAR_ICON}</button>${setting.key === "economy" ? `<button type="button" class="setting-icon-button setting-store2-button" data-store2-config><span aria-hidden="true">${ADMIN_SETTINGS_GEAR_ICON}</span><span>Configurar Loja 2</span></button>` : ""}`
+          ? `<button type="button" class="setting-icon-button" data-rp-config="${setting.key}" data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Gerenciar ${setting.label}" title="Gerenciar ${setting.label}">${ADMIN_SETTINGS_GEAR_ICON}</button>${setting.key === "economy" ? `<button type="button" class="setting-icon-button setting-store2-button" data-store2-config><span aria-hidden="true">${ADMIN_SETTINGS_GEAR_ICON}</span><span>Configurar Loja 2</span></button><button type="button" class="setting-icon-button setting-store2-button" data-local-signal-config><span aria-hidden="true">✦</span><span>Configurar Busca Local</span></button>` : ""}`
         : setting.key === "agendar"
           ? `<button type="button" class="setting-icon-button" data-schedule-config data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Gerenciar agendamentos neste escopo" title="Gerenciar agendamentos">${ADMIN_SETTINGS_GEAR_ICON}</button>`
         : isMonitor
@@ -3091,6 +3780,16 @@ function renderGroupAdmin(data) {
     .setting-store2-button svg{width:15px;height:15px}
     .store2-dialog{width:min(760px,calc(100vw - 24px))}
     .store2-dialog input{width:100%;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#0e121b;color:#f5f7fb;font:inherit;font-size:12px}
+    .local-signal-dialog{width:min(820px,calc(100vw - 24px))}
+    .local-signal-tier-list{display:grid;gap:12px;max-height:48vh;overflow:auto;padding-right:4px}
+    .local-signal-tier{display:grid;gap:10px;padding:13px;border:1px solid var(--line);border-radius:12px;background:#ffffff04}
+    .local-signal-tier legend{padding:0 6px;color:#d4c7ff;font-weight:800}
+    .local-signal-choice-group,.local-signal-featured{display:grid;gap:8px;margin:0;padding:12px;border:1px solid var(--line);border-radius:10px}
+    .local-signal-choice-group>strong,.local-signal-featured legend{color:#d4c7ff;font-size:12px}
+    .local-signal-check-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:7px}
+    .local-signal-check{display:flex;align-items:flex-start;gap:8px;padding:8px 9px;border:1px solid #ffffff18;border-radius:8px;background:#0e121b;color:#e5e9f2;font-size:12px}
+    .local-signal-check input{width:16px;height:16px;min-width:16px;flex:none;margin:1px 0 0;padding:0;border:0;border-radius:4px;background:transparent;accent-color:#b997ff}
+    .local-signal-check small{display:block;margin-top:3px;color:#9da7bb;font-size:10px}
     .store2-dialog section{display:grid;gap:10px;padding-top:14px;border-top:1px solid var(--line)}
     .store2-dialog section h3{margin:0;font-size:14px}
     .store2-list{display:grid;gap:8px}
@@ -3144,6 +3843,7 @@ function renderGroupAdmin(data) {
     ${autoApproveDialog}
     ${rpManagerDialog}
     ${store2Dialog}
+    ${localSignalDialog}
     ${monitorDialog}
     ${schedulesDialog}
     <p class="feedback" id="adminFeedback" role="status" aria-live="polite"></p>
@@ -3610,12 +4310,12 @@ function renderGroupAdmin(data) {
         detail.style.cssText="margin:0;color:var(--muted);font-size:12px";
         card.append(title,id,detail);
         if(activeRpSetting==="economy"||activeRpSetting==="xp"){
-          const field=document.createElement("input");field.type="number";field.min="0";field.step=activeRpSetting==="economy"?"0.01":"1";field.placeholder=activeRpSetting==="economy"?"Valor em SatCoins":"Quantidade de XP";field.setAttribute("aria-label","Valor para "+(user.displayName||user.userId));field.style.cssText="grid-column:1/-1;width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#0e121b;color:#f5f7fb;font:inherit";card.append(field);
+          const field=document.createElement("input");field.type="number";field.min="0";field.step=activeRpSetting==="economy"?"0.01":"1";field.placeholder=activeRpSetting==="economy"?"Valor em SatCoins (carteira)":"Quantidade de XP";field.setAttribute("aria-label","Valor para "+(user.displayName||user.userId));field.style.cssText="grid-column:1/-1;width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#0e121b;color:#f5f7fb;font:inherit";card.append(field);
           appendRpAction(card,"Definir","set",user.userId,field);
           appendRpAction(card,"Adicionar","add",user.userId,field);
           if(activeRpSetting==="economy"||activeRpSetting==="xp")appendRpAction(card,"Retirar","subtract",user.userId,field);
         }
-        appendRpAction(card,activeRpSetting==="activity"?"Apagar registro":"Zerar valor","reset",user.userId,null);
+        appendRpAction(card,activeRpSetting==="activity"?"Apagar registro":activeRpSetting==="economy"?"Zerar carteira e cofre":"Zerar valor","reset",user.userId,null);
         rpManagerUsers.append(card);
       });
       if(total>users.length){const more=document.createElement("p");more.className="warning-empty";more.textContent="Mostrando "+users.length+" de "+total+" registros. Refine a busca pelo nome ou ID.";rpManagerUsers.append(more)}
@@ -4080,6 +4780,102 @@ function renderGroupAdmin(data) {
       }catch(error){autorepoFeedback.classList.add("error");autorepoFeedback.textContent=error.message}
       finally{submitButton.disabled=false}
     });
+    const localSignalDialog=document.getElementById("localSignalDialog");
+    const localSignalForm=document.getElementById("localSignalForm");
+    const localSignalFeedback=document.getElementById("localSignalFeedback");
+    const localSignalFeatured=document.getElementById("localSignalFeatured");
+    let localSignalState=null;
+    function setLocalSignalFeedback(message,isError=false){
+      localSignalFeedback.classList.toggle("error",isError);
+      localSignalFeedback.textContent=message;
+    }
+    function renderLocalSignalChecks(container,items,selectedValues,namePrefix){
+      container.replaceChildren();
+      if(!items.length){
+        const empty=document.createElement("small");empty.textContent="Nenhum item disponível.";container.append(empty);return;
+      }
+      const selected=new Set(selectedValues.map(String));
+      for(const item of items){
+        const value=String(item.value),label=document.createElement("label"),checkbox=document.createElement("input"),copy=document.createElement("span"),title=document.createElement("span"),detail=document.createElement("small");
+        label.className="local-signal-check";checkbox.type="checkbox";checkbox.name=namePrefix;checkbox.value=value;checkbox.checked=selected.has(value);
+        title.textContent=item.label;detail.textContent=item.detail||"";
+        copy.append(title);if(item.detail)copy.append(detail);label.append(checkbox,copy);container.append(label);
+      }
+    }
+    function renderLocalSignalState(result){
+      const config=result.localSignalSearch||result;
+      localSignalState=config;
+      localSignalForm.elements.enabled.checked=config.enabled;
+      localSignalForm.elements.price.value=(config.price/100).toFixed(2);
+      for(const fieldset of localSignalForm.querySelectorAll("[data-local-signal-tier]")){
+        const rarity=fieldset.dataset.localSignalTier,tier=config.tiers[rarity];
+        fieldset.elements.chance.value=String(tier.chance);
+        fieldset.elements.guaranteeAfter.value=String(tier.guaranteeAfter||0);
+        fieldset.elements.cashMin.value=tier.cashMin===null?"":(tier.cashMin/100).toFixed(2);
+        fieldset.elements.cashMax.value=tier.cashMax===null?"":(tier.cashMax/100).toFixed(2);
+        const botItems=config.botItems.map(item=>({value:item.key,label:item.name,detail:formatStoreMoney(item.price)}));
+        const marketItems=config.marketItems.map(item=>({value:item.id,label:"#"+item.id+" · "+item.name,detail:formatStoreMoney(item.price)}));
+        renderLocalSignalChecks(fieldset.querySelector("[data-local-bot-items]"),botItems,tier.botItems,"botItem");
+        renderLocalSignalChecks(fieldset.querySelector("[data-local-market-items]"),marketItems,tier.marketItems,"marketItem");
+      }
+      const featuredOptions=[
+        ...config.botItems.filter(item=>Object.values(config.tiers).some(tier=>tier.botItems.includes(item.key)))
+          .map(item=>({value:"bot:"+item.key,label:item.name,detail:"Loja do Bot"})),
+        ...config.marketItems.filter(item=>Object.values(config.tiers).some(tier=>tier.marketItems.includes(item.id)))
+          .map(item=>({value:"market:"+item.id,label:item.name,detail:"Mercado Local"}))
+      ];
+      renderLocalSignalChecks(
+        localSignalFeatured,
+        featuredOptions,
+        config.featured.map(item=>item.type==="bot"?"bot:"+item.key:"market:"+item.id),
+        "featuredItem"
+      );
+    }
+    async function openLocalSignalDialog(button){
+      const scopeLabel=button.closest(".setting-card")?.querySelector(".setting-scope")?.textContent||"Grupo ou servidor";
+      document.getElementById("localSignalScopeLabel").textContent=scopeLabel+" · itens e probabilidades da busca local";
+      localSignalDialog.showModal();setLocalSignalFeedback("Carregando configuração...");
+      try{renderLocalSignalState(await requestAdminApi("/api/account/local/admin-local-signal-search-state"));setLocalSignalFeedback("")}
+      catch(error){setLocalSignalFeedback(error.message,true)}
+    }
+    document.querySelectorAll("[data-local-signal-config]").forEach(button=>button.addEventListener("click",()=>openLocalSignalDialog(button)));
+    localSignalDialog.querySelectorAll("[data-close-local-signal]").forEach(button=>button.addEventListener("click",()=>localSignalDialog.close()));
+    localSignalDialog.addEventListener("click",event=>{if(event.target===localSignalDialog)localSignalDialog.close()});
+    localSignalFeatured.addEventListener("change",event=>{
+      const selected=[...localSignalFeatured.querySelectorAll('input[type="checkbox"]:checked')];
+      if(selected.length>2){event.target.checked=false;setLocalSignalFeedback("Escolha no máximo dois destaques.",true)}
+      else setLocalSignalFeedback("");
+    });
+    localSignalForm.addEventListener("submit",async event=>{
+      event.preventDefault();
+      const submit=localSignalForm.querySelector('[type="submit"]');
+      const tiers={};
+      for(const fieldset of localSignalForm.querySelectorAll("[data-local-signal-tier]")){
+        const rarity=fieldset.dataset.localSignalTier;
+        const cashMin=fieldset.elements.cashMin.value.trim(),cashMax=fieldset.elements.cashMax.value.trim();
+        if(Boolean(cashMin)!==Boolean(cashMax)){setLocalSignalFeedback("Preencha mínimo e máximo de dinheiro, ou deixe ambos vazios.",true);return}
+        tiers[rarity]={
+          chance:Number(fieldset.elements.chance.value),
+          guaranteeAfter:Number(fieldset.elements.guaranteeAfter.value)||null,
+          cashMin:cashMin||null,cashMax:cashMax||null,
+          botItems:[...fieldset.querySelectorAll("[data-local-bot-items] input:checked")].map(input=>input.value),
+          marketItems:[...fieldset.querySelectorAll("[data-local-market-items] input:checked")].map(input=>Number(input.value))
+        };
+      }
+      const featured=[...localSignalFeatured.querySelectorAll('input[type="checkbox"]:checked')].map(input=>{
+        const [type,value]=input.value.split(":");
+        return type==="bot"?{type,key:value}:{type,id:Number(value)};
+      });
+      if(featured.length>2){setLocalSignalFeedback("Escolha no máximo dois destaques.",true);return}
+      submit.disabled=true;setLocalSignalFeedback("Salvando configuração...");
+      try{
+        const result=await requestAdminApi("/api/account/local/admin-local-signal-search",{
+          config:{enabled:localSignalForm.elements.enabled.checked,price:localSignalForm.elements.price.value,tiers,featured}
+        });
+        renderLocalSignalState(result);setLocalSignalFeedback("Busca Local salva.");
+      }catch(error){setLocalSignalFeedback(error.message,true)}
+      finally{submit.disabled=false}
+    });
     const store2Dialog=document.getElementById("store2Dialog");
     const store2Feedback=document.getElementById("store2Feedback");
     const store2DetailsForm=document.getElementById("store2DetailsForm");
@@ -4117,7 +4913,7 @@ function renderGroupAdmin(data) {
       result.orders.forEach(order=>{
         const row=document.createElement("article"),title=document.createElement("h4"),detail=document.createElement("p"),actions=document.createElement("div"),deliver=document.createElement("button"),cancel=document.createElement("button");
         row.className="store2-row";title.textContent="#"+order.id+" · "+order.itemName;
-        detail.textContent=(order.displayName||order.userId)+" · "+formatStoreMoney(order.price);
+        detail.textContent=(order.displayName||order.userId)+" · "+formatStoreMoney(order.price)+(order.source==="local-signal-search"?" · Prêmio da Busca Local":"");
         actions.className="store2-row-actions";deliver.type="button";deliver.textContent="Marcar entregue";deliver.dataset.store2Order="delivered";deliver.dataset.orderId=String(order.id);
         cancel.type="button";cancel.className="danger";cancel.textContent="Cancelar e estornar";cancel.dataset.store2Order="cancelled";cancel.dataset.orderId=String(order.id);
         actions.append(deliver,cancel);row.append(title,detail,actions);store2OrderList.append(row);
@@ -4780,6 +5576,7 @@ async function readProfile(url, { allowEmpty = false } = {}) {
   const platformAccount = central?.platformAccounts?.find(item =>
     item.platform === platform && String(item.platformId) === String(userId)
   );
+  const cosmetics = economy.getProfileCosmetics(message, userId);
   return {
     platform,
     groupId,
@@ -4791,9 +5588,12 @@ async function readProfile(url, { allowEmpty = false } = {}) {
       platformAccount?.username || central?.name || "Usuário",
     economy: {
       exists: Boolean(account),
-      balance: Number(account?.balance) || 0,
+      balance: account ? economy.getTotalBalance(account) : 0,
+      walletBalance: Number(account?.balance) || 0,
+      vaultBalance: Number(account?.vaultBalance) || 0,
       position: account ? economy.getBalancePosition(message, userId) : null,
-      background: economy.getProfileCosmetics(message, userId).background
+      background: cosmetics.background,
+      outline: cosmetics.outline
     },
     xp: {
       exists: Boolean(xpUser),
@@ -4918,6 +5718,214 @@ function getSessionCookie(sessionId, secure, rememberMe = false) {
 
 function clearSessionCookie(secure) {
   return `satbot_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secure ? "; Secure" : ""}`;
+}
+
+function renderSignalSearchDemo(botName) {
+  const safeBotName = escapeHtml(botName);
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Busca de Sinais · ${safeBotName}</title><style>
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#090d18;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;background:radial-gradient(ellipse at 50% 20%,#193452 0,transparent 42%),linear-gradient(145deg,#090d18,#111324 70%,#1a1025)}button,a{font:inherit}.signal-page{width:min(900px,100%);margin:0 auto}.signal-topbar{display:flex;justify-content:space-between;gap:12px;padding:8px 0 20px;border-bottom:1px solid #ffffff18}.signal-topbar a{color:#a7dafa;text-decoration:none;font-weight:700}.signal-topbar span{color:#9ba9c0;font-size:12px}.signal-hero{margin:26px 0 18px;text-align:center}.signal-kicker{color:#84d7ed;font-size:11px;font-weight:800;letter-spacing:.22em;text-transform:uppercase}.signal-hero h1{margin:10px 0;font-size:clamp(30px,6vw,48px);letter-spacing:-.04em}.signal-hero p{max-width:620px;margin:0 auto;color:#aab8cf;line-height:1.6}.signal-stage{position:relative;display:grid;min-height:390px;place-items:center;overflow:hidden;border:1px solid #73c9ec44;border-radius:24px;background:radial-gradient(ellipse at center,#1d3853aa,transparent 58%),linear-gradient(145deg,#101d30,#0c1220 60%,#151326);box-shadow:0 24px 80px #0007}.signal-stage:before,.signal-stage:after{position:absolute;content:"";border:1px solid #8ce2f020;border-radius:50%;aspect-ratio:1}.signal-stage:before{width:min(70vw,430px)}.signal-stage:after{width:min(54vw,330px)}.signal-grid{position:absolute;inset:0;opacity:.22;background-image:linear-gradient(#8ce2f01b 1px,transparent 1px),linear-gradient(90deg,#8ce2f01b 1px,transparent 1px);background-size:38px 38px;mask-image:radial-gradient(ellipse,#000 15%,transparent 78%)}.signal-orb{position:absolute;width:170px;height:170px;border:1px solid #9de7ff66;border-radius:50%;background:radial-gradient(circle at 38% 34%,#b5f2ffdd 0,#62c6ed88 10%,#25527c66 36%,#10203944 69%,transparent 70%);box-shadow:0 0 36px #61cdef55,inset 0 0 35px #8fe6ff55;transition:transform .5s ease,filter .5s ease}.signal-orb:before,.signal-orb:after{position:absolute;inset:-14px;content:"";border:1px solid #85def044;border-radius:50%;transform:rotateX(68deg)}.signal-orb:after{transform:rotateY(68deg)}.signal-beam{position:absolute;z-index:1;top:8%;left:0;width:100%;height:2px;opacity:0;background:linear-gradient(90deg,transparent,#9cf3ff,#ffffff, #9cf3ff,transparent);box-shadow:0 0 20px #70dcff;transform:translateY(0)}.signal-result{position:relative;z-index:2;display:grid;justify-items:center;gap:10px;width:min(290px,75%);padding:22px;border:1px solid #ffffff20;border-radius:18px;background:#0a1020e8;text-align:center;opacity:0;transform:translateY(25px) scale(.92);transition:opacity .35s ease,transform .45s cubic-bezier(.2,.8,.2,1);backdrop-filter:blur(8px)}.signal-result-icon{display:grid;width:84px;height:84px;place-items:center;border:1px solid #76d9f077;border-radius:24px;background:linear-gradient(145deg,#19405a,#17233d);color:#aff0ff;font-size:36px;box-shadow:0 0 30px #4cccf333}.signal-result strong{font-size:20px}.signal-result small{color:#9eb0c8}.signal-rarity{color:#8edbf2;font-size:10px;font-weight:900;letter-spacing:.2em;text-transform:uppercase}.signal-stage.is-running .signal-orb{animation:orb-pulse .9s ease-in-out infinite alternate}.signal-stage.is-running .signal-beam{opacity:1;animation:scan 1.15s ease-in-out infinite alternate}.signal-stage.is-running .signal-grid{animation:grid-flicker .22s steps(2) infinite}.signal-stage.is-revealed .signal-orb{transform:scale(2.2);filter:brightness(1.7);opacity:.2}.signal-stage.is-revealed .signal-result{opacity:1;transform:translateY(0) scale(1)}.signal-stage.is-epic{border-color:#d8a4ff99;box-shadow:0 24px 90px #6c36a566,inset 0 0 55px #954ed222}.signal-stage.is-epic .signal-orb{background:radial-gradient(circle at 38% 34%,#fff0cddd 0,#e5a5ff99 12%,#7049a188 40%,#1a164466 70%,transparent 71%);box-shadow:0 0 60px #d391ff99,inset 0 0 35px #e4b7ff66}.signal-stage.is-epic .signal-result-icon{border-color:#e4b5ff99;background:linear-gradient(145deg,#613b7b,#30224b);color:#f5d6ff;box-shadow:0 0 40px #d282ff66}.signal-stage.is-epic .signal-rarity{color:#e2a8ff}.signal-controls{display:flex;justify-content:center;flex-wrap:wrap;gap:12px;margin:20px 0}.signal-button{min-height:48px;padding:11px 18px;border:1px solid #67c7e866;border-radius:12px;background:#30a9d91b;color:#d9f7ff;font-weight:800;cursor:pointer;transition:transform .15s ease,background .15s ease}.signal-button:hover:not(:disabled){transform:translateY(-2px);background:#30a9d933}.signal-button.epic{border-color:#d39afa88;background:#a458d21c;color:#f2dfff}.signal-button.epic:hover:not(:disabled){background:#a458d23a}.signal-button:disabled{opacity:.5;cursor:wait}.signal-status{min-height:24px;margin:0 auto;color:#9eb0c8;text-align:center;font-size:13px}.signal-status.error{color:#ffabb5}.signal-note{margin-top:22px;padding:14px 16px;border:1px solid #ffffff14;border-radius:12px;background:#ffffff06;color:#8493aa;font-size:12px;line-height:1.6}.signal-note strong{color:#c6d1e4}@keyframes scan{to{transform:translateY(350px)}}@keyframes orb-pulse{to{transform:scale(1.12);filter:brightness(1.35)}}@keyframes grid-flicker{50%{opacity:.42}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}@media(max-width:600px){body{padding:16px}.signal-stage{min-height:330px}.signal-topbar{align-items:flex-start;flex-direction:column}.signal-orb{width:140px;height:140px}}
+    .signal-card-scene{position:absolute;z-index:3;display:grid;place-items:center;width:100%;height:100%;perspective:1200px;opacity:0;pointer-events:none;transition:opacity .25s ease}.signal-stage.is-revealed .signal-card-scene{opacity:1}.signal-card-camera{--camera-x:0deg;--camera-y:0deg;transform-style:preserve-3d}.signal-stage.is-revealed .signal-card-camera{animation:camera-sweep 4.8s ease-in-out 1.1s infinite alternate}.signal-card{position:relative;width:min(250px,64vw);height:330px;transform-style:preserve-3d;opacity:0}.signal-stage.is-revealed .signal-card{animation:card-unseal 1.05s cubic-bezier(.16,.76,.25,1) both,card-float 3.4s ease-in-out 1.05s infinite alternate}.signal-card-face{position:absolute;inset:0;overflow:hidden;display:flex;flex-direction:column;border:1px solid #9de7ff99;border-radius:19px;backface-visibility:hidden;-webkit-backface-visibility:hidden;background:linear-gradient(155deg,#173b56,#101a2d 58%,#101423);box-shadow:0 20px 55px #0009,inset 0 0 0 5px #8ce2f012,inset 0 0 26px #72d9f022}.signal-card-face:before{position:absolute;inset:8px;content:"";border:1px solid #9de7ff24;border-radius:13px;pointer-events:none}.signal-card-back{align-items:center;justify-content:center;gap:24px;transform:rotateY(180deg);background:radial-gradient(circle,#285678,#10182a 67%)}.signal-card-back-mark{color:#bbf2ff;font-size:64px;text-shadow:0 0 35px #6edaff}.signal-card-back-label{text-align:center;color:#bdeafa;font-size:20px;font-weight:900;letter-spacing:.28em;line-height:1.5}.signal-card-back-code{position:absolute;bottom:25px;color:#7199ae;font-size:10px;letter-spacing:.2em}.signal-card-front{padding:17px 17px 14px;transform:rotateY(0deg)}.signal-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px}.signal-rarity{color:#91def5;font-size:9px;font-weight:900;letter-spacing:.17em}.signal-card-stars{color:#8fdef4;font-size:12px;letter-spacing:2px}.signal-card-art{position:relative;display:grid;flex:1;min-height:0;place-items:center;margin:15px 0 10px;overflow:hidden;border:1px solid #9de7ff24;border-radius:12px;background:radial-gradient(ellipse at 50% 48%,#3679a955,transparent 58%),linear-gradient(145deg,#162d45,#101425)}.signal-card-art:before,.signal-card-art:after{position:absolute;content:"";width:170px;height:170px;border:1px solid #8ce2f02b;border-radius:50%;transform:rotateX(68deg)}.signal-card-art:after{transform:rotateY(68deg)}.signal-card-art-orbit{position:absolute;width:118px;height:118px;border:1px solid #a3eaff8a;border-radius:50%;box-shadow:0 0 30px #51c9f955,inset 0 0 25px #58c8ec22}.signal-card-art-core{position:relative;z-index:1;display:grid;width:76px;height:76px;place-items:center;border:1px solid #d5f7ffbb;border-radius:24px;background:radial-gradient(circle at 35% 30%,#e0fbff,#60c4e7 38%,#24537b 100%);color:#fff;font-size:37px;box-shadow:0 0 35px #70dcffbb,inset 0 0 18px #e6fbff88}.signal-card-art-glint{position:absolute;top:17%;right:19%;color:#e6fcff;font-size:26px;text-shadow:0 0 14px #9eeaff}.signal-card-copy{display:grid;gap:5px}.signal-card-type,.signal-card-index{color:#91a9be;font-size:8px;font-weight:800;letter-spacing:.14em}.signal-card-copy strong{font-size:17px;line-height:1.15}.signal-card-copy small{color:#b4c3d5;font-size:10px}.signal-card-index{margin-top:11px;font-size:7px}.signal-stage.is-epic .signal-card-face{border-color:#ebc0ff;background:linear-gradient(155deg,#633c79,#261f43 58%,#151426);box-shadow:0 20px 65px #6d319799,inset 0 0 0 5px #f4d0ff12,inset 0 0 34px #d787ff55}.signal-stage.is-epic .signal-card-face:before{border-color:#f0d7ff44}.signal-stage.is-epic .signal-card-art{background:radial-gradient(ellipse at 50% 48%,#a857c877,transparent 58%),linear-gradient(145deg,#392749,#171527)}.signal-stage.is-epic .signal-card-art-orbit{border-color:#edc0ffcc;box-shadow:0 0 40px #d27bff99,inset 0 0 25px #d27bff44}.signal-stage.is-epic .signal-card-art-core{border-color:#f6ddff;background:radial-gradient(circle at 35% 30%,#fff5ff,#db9fff 38%,#75439c 100%);box-shadow:0 0 42px #d584ffdd,inset 0 0 18px #fff3ff}.signal-stage.is-epic .signal-card-stars,.signal-stage.is-epic .signal-rarity{color:#edc1ff}.signal-stage.is-epic .signal-card-art-glint{color:#fff0ff;text-shadow:0 0 16px #dfa0ff}@keyframes card-unseal{0%{opacity:0;transform:rotateY(180deg) rotateX(14deg) scale(.68) translateY(22px)}65%{opacity:1;transform:rotateY(-12deg) rotateX(-4deg) scale(1.04)}100%{opacity:1;transform:rotateY(0) rotateX(0) scale(1)}}@keyframes camera-sweep{0%{transform:perspective(1200px) rotateX(calc(var(--camera-x) - 5deg)) rotateY(calc(var(--camera-y) - 10deg))}50%{transform:perspective(1200px) rotateX(calc(var(--camera-x) + 3deg)) rotateY(calc(var(--camera-y) + 7deg))}100%{transform:perspective(1200px) rotateX(calc(var(--camera-x) - 2deg)) rotateY(calc(var(--camera-y) + 12deg))}}@keyframes card-float{to{translate:0 -7px}}@media(max-width:600px){.signal-card{width:min(220px,70vw);height:300px}}@media(prefers-reduced-motion:reduce){.signal-stage.is-revealed .signal-card-camera,.signal-stage.is-revealed .signal-card{animation-duration:.01ms!important;animation-iteration-count:1!important}}
+  </style></head><body><style>
+    .signal-ten-results{position:absolute;inset:0;z-index:4;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:10px;padding:22px;align-content:center}.signal-ten-results[hidden]{display:none!important}.signal-stage.is-results{min-height:470px}.signal-stage.is-results .signal-card-scene,.signal-stage.is-results .signal-orb,.signal-stage.is-results .signal-beam{display:none}.signal-mini-card{position:relative;display:flex;min-width:0;flex-direction:column;justify-content:space-between;overflow:hidden;padding:13px;border:1px solid #78cce477;border-radius:12px;background:radial-gradient(circle at 50% 38%,#27638b66,transparent 58%),linear-gradient(155deg,#173b56,#101a2d 58%,#101423);box-shadow:0 10px 24px #0006;animation:mini-card-in .35s ease both}.signal-mini-card.is-epic{border-color:#e8b3ff;background:radial-gradient(circle at 50% 38%,#ad5bc877,transparent 58%),linear-gradient(155deg,#633c79,#261f43 58%,#151426);box-shadow:0 8px 26px #853da944}.signal-mini-card.is-new:after{position:absolute;top:7px;right:7px;padding:4px 6px;border:1px solid #f5d0ff88;border-radius:6px;background:#a458d255;color:#ffe8ff;content:"NOVO";font-size:8px;font-weight:900;letter-spacing:.1em}.signal-mini-rarity{font-size:8px;font-weight:900;letter-spacing:.12em;color:#a5eaff}.signal-mini-card.is-epic .signal-mini-rarity{color:#efc5ff}.signal-mini-art{display:grid;flex:1;place-items:center;margin:10px 0;border:1px solid #ffffff20;border-radius:9px;background:#07101c55;color:#b9f1ff;font-size:30px;text-shadow:0 0 20px currentColor}.signal-mini-card.is-epic .signal-mini-art{color:#f3c8ff}.signal-mini-card strong{font-size:11px;line-height:1.2}.signal-mini-card small{margin-top:4px;color:#aab8cf;font-size:8px;line-height:1.3}.signal-mini-card.is-owned{filter:saturate(.62);border-style:dashed}.signal-mini-card.is-owned:before{position:absolute;right:7px;bottom:7px;color:#c0c9d8;content:"DUPLICADO";font-size:7px;font-weight:800;letter-spacing:.08em}.signal-collection{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin:10px auto 0;color:#9eb0c8;font-size:12px}.signal-reset-collection{padding:5px 9px;border:1px solid #ffffff20;border-radius:8px;background:#ffffff08;color:#c6d1e4;font-size:11px;cursor:pointer}.signal-reset-collection:hover{border-color:#d39afa88}.signal-button.x10{border-color:#7e85ff88;background:#7267e522;color:#e3ddff}.signal-stage.is-epic.is-running{border-color:#d8a4ff99}@keyframes mini-card-in{from{opacity:0;transform:translateY(12px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}@media(max-width:600px){.signal-ten-results{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:none;grid-auto-rows:145px;gap:8px;padding:14px}.signal-stage.is-results{min-height:790px}.signal-mini-card{padding:10px}.signal-mini-art{margin:6px 0;font-size:24px}}@media(prefers-reduced-motion:reduce){.signal-mini-card{animation:none}}
+  </style><main class="signal-page">
+    <nav class="signal-topbar"><a href="/dashboard">← Voltar ao dashboard</a><span>${safeBotName} · Experimento visual</span></nav>
+    <header class="signal-hero"><div class="signal-kicker">Simulação independente · sem custos ou prêmios reais</div><h1>Busca de Sinais</h1><p>O sinal se abre e revela cartões 3D de recompensa. No x10, especiais inéditos são apresentados um a um antes dos dez resultados aparecerem lado a lado.</p></header>
+    <section id="signalStage" class="signal-stage" aria-label="Animação de busca de sinais">
+      <div class="signal-grid" aria-hidden="true"></div><div class="signal-orb" aria-hidden="true"></div><div class="signal-beam" aria-hidden="true"></div>
+      <div class="signal-card-scene" aria-live="polite"><div class="signal-card-camera"><article id="signalCard" class="signal-card">
+        <div class="signal-card-face signal-card-back" aria-hidden="true"><span class="signal-card-back-mark">✦</span><span class="signal-card-back-label">SIGNAL<br>SEARCH</span><span class="signal-card-back-code">SS · 01</span></div>
+        <div class="signal-card-face signal-card-front"><div class="signal-card-top"><span id="signalRarity" class="signal-rarity"></span><span id="signalStars" class="signal-card-stars" aria-label="raridade">✦ ✦ ✦</span></div><div class="signal-card-art" aria-hidden="true"><span class="signal-card-art-orbit"></span><span class="signal-card-art-core" id="signalCardIcon">✦</span><span class="signal-card-art-glint">✧</span></div><div class="signal-card-copy"><span class="signal-card-type">RECOMPENSA DE DEMONSTRAÇÃO</span><strong id="signalItem"></strong><small id="signalItemDetail"></small></div><span class="signal-card-index">SIGNAL ARCHIVE · 001</span></div>
+      </article></div></div>
+      <div id="signalTenResults" class="signal-ten-results" role="list" aria-label="Dez recompensas da simulação" hidden></div>
+    </section>
+    <div class="signal-controls"><button class="signal-button" type="button" data-signal-result="normal">Simular prêmio normal</button><button class="signal-button epic" type="button" data-signal-result="epic">Simular prêmio raro / épico</button><button class="signal-button x10" type="button" data-signal-result="x10">Simular x10</button><button id="signalNext" class="signal-button epic" type="button" hidden>Próximo especial</button></div>
+    <div class="signal-collection"><span id="signalCollectionStatus">Especiais inéditos nesta sessão: 0</span><button id="resetSignalCollection" class="signal-reset-collection" type="button">Limpar coleção de teste</button></div>
+    <p id="signalStatus" class="signal-status" role="status" aria-live="polite">Aguardando uma simulação.</p>
+    <p class="signal-note"><strong>Modo de teste:</strong> os botões simulam resultados; nada é comprado ou conectado aos dados do bot. Os especiais obtidos ficam apenas na memória desta página e são apagados ao recarregar ou limpar a coleção. O x10 sorteia resultados de demonstração e apresenta apenas especiais ainda não obtidos.</p>
+    <audio id="normalSignalAudio" preload="none" src="/sinal.mp3"></audio><audio id="epicSignalAudio" preload="none" src="/sinal2.mp3"></audio>
+  </main><script>
+    const stage=document.getElementById("signalStage");
+    const status=document.getElementById("signalStatus");
+    const cardCamera=document.querySelector(".signal-card-camera");
+    const buttons=[...document.querySelectorAll("[data-signal-result]")];
+    const nextButton=document.getElementById("signalNext");
+    const resultGrid=document.getElementById("signalTenResults");
+    const collectionStatus=document.getElementById("signalCollectionStatus");
+    const collection=new Set();
+    const normalItems=[
+      {id:"normal-tuning",name:"Pingente de Sintonização",detail:"Sinal estável · Classe B",icon:"◈"},
+      {id:"normal-pulse",name:"Pulso de Frequência",detail:"Eco comum · Classe B",icon:"⌁"},
+      {id:"normal-prism",name:"Fragmento Prisma",detail:"Frequência clara · Classe B",icon:"◇"},
+      {id:"normal-echo",name:"Eco Metálico",detail:"Ressonância leve · Classe B",icon:"⌘"}
+    ];
+    const specialItems=[
+      {id:"special-aurora",name:"Núcleo de Aurora",detail:"Ressonância excepcional · Classe S",icon:"✧"},
+      {id:"special-prism",name:"Prisma Boreal",detail:"Frequência extraordinária · Classe S",icon:"❖"},
+      {id:"special-eclipse",name:"Fragmento de Eclipse",detail:"Sinal transcendente · Classe S",icon:"☼"}
+    ];
+    let isBusy=false;
+    let continuePresentation=null;
+    const wait=duration=>new Promise(resolve=>window.setTimeout(resolve,duration));
+    async function playSignalAudio(type){
+      const audio=document.getElementById(type==="epic"?"epicSignalAudio":"normalSignalAudio");
+      try{
+        [document.getElementById("normalSignalAudio"),document.getElementById("epicSignalAudio")].forEach(track=>{track.pause();track.currentTime=0});
+        await audio.play();
+        return "";
+      }
+      catch(error){console.warn("[WEB] Áudio da demo de sinais indisponível:",error.message||error);return " Áudio não tocou; verifique se "+(type==="epic"?"sinal2.mp3":"sinal.mp3")+" está na raiz do projeto e se o navegador permite reprodução."}
+    }
+    function updateCollectionStatus(){
+      collectionStatus.textContent="Especiais inéditos nesta sessão: "+collection.size;
+    }
+    function resetStage(){
+      stage.classList.remove("is-running","is-revealed","is-epic","is-results");
+      nextButton.hidden=true;
+      resultGrid.hidden=true;
+      resultGrid.replaceChildren();
+      cardCamera.style.setProperty("--camera-x","0deg");
+      cardCamera.style.setProperty("--camera-y","0deg");
+    }
+    function setPresentationCard(item){
+      const epic=item.rarity==="epic";
+      stage.classList.remove("is-running","is-epic","is-revealed");
+      document.getElementById("signalRarity").textContent=epic?"ÉPICO":"NORMAL";
+      document.getElementById("signalItem").textContent=item.name;
+      document.getElementById("signalItemDetail").textContent=item.detail;
+      document.getElementById("signalStars").textContent=epic?"✦ ✦ ✦ ✦ ✦":"✦ ✦ ✦";
+      document.getElementById("signalCardIcon").textContent=item.icon;
+      if(epic)stage.classList.add("is-epic");
+      void document.getElementById("signalCard").offsetWidth;
+      stage.classList.add("is-revealed");
+    }
+    function waitForPresentationAdvance(label,message){
+      nextButton.textContent=label;
+      nextButton.hidden=false;
+      status.textContent=message;
+      nextButton.focus();
+      return new Promise(resolve=>{continuePresentation=()=>{nextButton.hidden=true;continuePresentation=null;resolve()}});
+    }
+    function renderTenResults(results,newlyObtained){
+      const markedNew=new Set();
+      resultGrid.replaceChildren(...results.map((item,index)=>{
+        const card=document.createElement("article");
+        const isNew=item.rarity==="epic"&&newlyObtained.has(item.id)&&!markedNew.has(item.id);
+        const isOwned=item.rarity==="epic"&&collection.has(item.id)&&!isNew;
+        if(isNew)markedNew.add(item.id);
+        card.className="signal-mini-card"+(item.rarity==="epic"?" is-epic":"")+(isNew?" is-new":"")+(isOwned?" is-owned":"");
+        card.setAttribute("role","listitem");
+        card.style.animationDelay=(index*45)+"ms";
+        const rarity=document.createElement("span");
+        rarity.className="signal-mini-rarity";
+        rarity.textContent=item.rarity==="epic"?"ÉPICO":"NORMAL";
+        const art=document.createElement("span");
+        art.className="signal-mini-art";
+        art.setAttribute("aria-hidden","true");
+        art.textContent=item.icon;
+        const name=document.createElement("strong");
+        name.textContent=item.name;
+        const detail=document.createElement("small");
+        detail.textContent=item.detail;
+        card.append(rarity,art,name,detail);
+        return card;
+      }));
+      resultGrid.hidden=false;
+      stage.classList.remove("is-running","is-revealed");
+      stage.classList.add("is-results");
+    }
+    async function revealSpecials(items,newlyObtained){
+      for(let index=0;index<items.length;index++){
+        if(index>0){stage.classList.remove("is-revealed","is-epic");stage.classList.add("is-running");await wait(420)}
+        setPresentationCard(items[index]);
+        collection.add(items[index].id);
+        newlyObtained.add(items[index].id);
+        updateCollectionStatus();
+        if(items.length>1){
+          const isLast=index===items.length-1;
+          await wait(1100);
+          await waitForPresentationAdvance(
+            isLast?"Ver os 10 resultados":"Próximo especial",
+            "Especial "+(index+1)+" de "+items.length+" apresentado."+(isLast?" Clique para ver os dez resultados.":" Clique em Próximo especial para continuar.")
+          );
+        }else await wait(1450);
+      }
+    }
+    async function simulateSignal(type){
+      if(isBusy)return;
+      isBusy=true;
+      buttons.forEach(button=>button.disabled=true);
+      resetStage();
+      status.classList.remove("error");
+      try{
+        if(type==="x10"){
+          const results=Array.from({length:10},()=>Math.random()<0.12
+            ? {...specialItems[Math.floor(Math.random()*specialItems.length)],rarity:"epic"}
+            : {...normalItems[Math.floor(Math.random()*normalItems.length)],rarity:"normal"});
+          const newSpecials=[...new Map(results.filter(item=>item.rarity==="epic"&&!collection.has(item.id)).map(item=>[item.id,item])).values()];
+          const newlyObtained=new Set();
+          stage.classList.add("is-running");
+          status.textContent="Fazendo dez buscas...";
+          let audioNotice=await playSignalAudio(newSpecials.length?"epic":"normal");
+          await wait(1500);
+          if(newSpecials.length){
+            status.textContent="Sinal especial detectado!";
+            await revealSpecials(newSpecials,newlyObtained);
+          }
+          renderTenResults(results,newlyObtained);
+          const revealedIds=new Set();
+          const duplicateSpecials=results.filter(item=>{
+            if(item.rarity!=="epic")return false;
+            if(!newlyObtained.has(item.id)||revealedIds.has(item.id))return true;
+            revealedIds.add(item.id);
+            return false;
+          }).length;
+          status.textContent=newSpecials.length
+            ? "Busca x10 concluída · "+newSpecials.length+" especial(is) inédito(s) apresentado(s) · "+duplicateSpecials+" duplicado(s)."+audioNotice
+            : "Busca x10 concluída · nenhum especial inédito; os dez resultados aparecem juntos."+audioNotice;
+          if(audioNotice)status.classList.add("error");
+          return;
+        }
+        stage.classList.add("is-running");
+        status.textContent="Procurando sinal...";
+        const audioNotice=await playSignalAudio(type);
+        await wait(1500);
+        const item=type==="epic"
+          ? {...specialItems[0],rarity:"epic"}
+          : {...normalItems[0],rarity:"normal"};
+        setPresentationCard(item);
+        if(item.rarity==="epic"){
+          collection.add(item.id);
+          updateCollectionStatus();
+        }
+        status.textContent=(type==="epic"?"Prêmio épico":"Prêmio normal")+" recebido!"+audioNotice;
+        if(audioNotice)status.classList.add("error");
+      }finally{
+        isBusy=false;
+        buttons.forEach(button=>button.disabled=false);
+      }
+    }
+    document.getElementById("resetSignalCollection").addEventListener("click",()=>{
+      if(isBusy)return;
+      collection.clear();
+      updateCollectionStatus();
+      status.classList.remove("error");
+      status.textContent="Coleção temporária limpa.";
+    });
+    nextButton.addEventListener("click",()=>{if(continuePresentation)continuePresentation()});
+    stage.addEventListener("pointermove",event=>{
+      if(!stage.classList.contains("is-revealed"))return;
+      const bounds=stage.getBoundingClientRect();
+      const horizontal=(event.clientX-bounds.left)/bounds.width-.5;
+      const vertical=(event.clientY-bounds.top)/bounds.height-.5;
+      cardCamera.style.setProperty("--camera-y",(horizontal*24).toFixed(1)+"deg");
+      cardCamera.style.setProperty("--camera-x",(vertical*-18).toFixed(1)+"deg");
+    });
+    stage.addEventListener("pointerleave",()=>{
+      cardCamera.style.setProperty("--camera-x","0deg");
+      cardCamera.style.setProperty("--camera-y","0deg");
+    });
+    buttons.forEach(button=>button.addEventListener("click",()=>simulateSignal(button.dataset.signalResult)));
+  </script></body></html>`;
 }
 
 function homeStyles() {
@@ -5056,7 +6064,7 @@ function renderHome(botName, central = null, loginError = "") {
   <main class="dashboard">
     <nav class="topbar" aria-label="Navegação principal">
         <div class="brand"><span class="brand-mark">✦</span><span>${safeBotName}<small>PAINEL DA CONTA</small></span></div>
-        <div class="top-actions"><span class="secure-badge">Sessão protegida</span><button class="button" id="logout" type="button">Sair <span aria-hidden="true">↗</span></button></div>
+        <div class="top-actions"><span class="secure-badge">Sessão protegida</span><a class="button" href="/demo-busca-sinais">✦ Demo Busca de Sinais</a><button class="button" id="logout" type="button">Sair <span aria-hidden="true">↗</span></button></div>
     </nav>
     <section class="welcome">
         <div class="eyebrow">Sua central de controle</div>
@@ -5439,22 +6447,33 @@ function renderProfile(profile) {
   const avatarContent = `<img src="${escapeHtml(avatarUrl)}" alt="" onerror="this.onerror=null;this.src='/semfoto.jpg'">`;
 
   const profileTheme = profileCosmetics.getProfileBackground(profile.economy.background);
-  const profileBackground = profileTheme
-    ? `--profile-surface:${profileTheme.stops[1]}ee;--profile-deep:${profileTheme.stops[2]}f2;--profile-accent:${profileTheme.accent};--profile-border:${profileTheme.stops[0]};background:${profileCosmetics.getProfileBackgroundCss(profileTheme.key)}`
+  const profileOutline = profileCosmetics.getProfileOutline(profile.economy.outline);
+  const profileStyle = [
+    profileTheme
+      ? `--profile-surface:${profileTheme.stops[1]}ee;--profile-deep:${profileTheme.stops[2]}f2;--profile-accent:${profileTheme.accent};--profile-border:${profileTheme.stops[0]};background:${profileCosmetics.getProfileBackgroundCss(profileTheme.key)}`
+      : "",
+    profileOutline ? `--profile-outline:${profileOutline.color}` : ""
+  ].filter(Boolean).join(";");
+  const profileClasses = [
+    profileTheme?.rainbow ? "rainbow-background" : "",
+    profileOutline?.rainbow ? "rainbow-outline" : ""
+  ].filter(Boolean).join(" ");
+  const profileAnimationStyles = profileClasses
+    ? `<style>@keyframes profile-rainbow-cycle{to{background-position:100% 50%}}.card.rainbow-background{background:linear-gradient(110deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744)!important;background-size:300% 300%!important;animation:profile-rainbow-cycle 5s linear infinite}.card.rainbow-outline .grid article{border:2px solid transparent;background:linear-gradient(var(--profile-surface,#202a40),var(--profile-surface,#202a40)) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:profile-rainbow-cycle 5s linear infinite}@media(prefers-reduced-motion:reduce){.card.rainbow-background,.card.rainbow-outline .grid article{animation:none}}</style>`
     : "";
   const pageBackground = profileTheme
     ? `style="background:radial-gradient(circle at top, ${profileTheme.stops[0]} 0, ${profileTheme.stops[2]} 55%, #090b10 100%)"`
     : "";
   return `<!doctype html>
 <html lang="pt-BR">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Perfil de ${escapeHtml(profile.name)} - ${escapeHtml(botName)}</title><style>${styles()}</style></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Perfil de ${escapeHtml(profile.name)} - ${escapeHtml(botName)}</title><style>${styles()}</style>${profileAnimationStyles}</head>
 <body ${pageBackground}>
-  <main class="card" ${profileBackground ? `style="${profileBackground}"` : ""}>
+  <main class="card${profileClasses ? ` ${profileClasses}` : ""}" ${profileStyle ? `style="${profileStyle}"` : ""}>
     <div class="brand">${escapeHtml(botName)} <span>PERFIL</span></div>
     <header><div class="avatar">${escapeHtml(profile.name.charAt(0).toUpperCase())}${avatarContent}</div><div><h1>${escapeHtml(profile.name)}</h1><p class="muted">ID: ${escapeHtml(profile.userId)}</p></div></header>
     <div class="scope">Plataforma: ${escapeHtml(profile.platform)} <span>•</span> ${escapeHtml(profile.groupName)} <span>•</span> ID: ${escapeHtml(profile.groupId)}</div>
     <section class="grid">
-      <article><div class="label">SATCOINS</div><div class="value money">${formatMoney(profile.economy.balance)}</div><div class="meta">Posição no dinheiro: ${economyPosition}</div></article>
+      <article><div class="label">PATRIMÔNIO TOTAL</div><div class="value money">${formatMoney(profile.economy.balance)}</div><div class="meta">Carteira: ${formatMoney(profile.economy.walletBalance)}<br>Cofre protegido: ${formatMoney(profile.economy.vaultBalance)}<br>Posição no ranking: ${economyPosition}</div></article>
       <article><div class="label">XP</div><div class="value">${profile.xp.value}</div><div class="meta">Posição no XP: ${xpPosition}</div></article>
       <article><div class="label">ATIVIDADE</div><div class="value">${profile.activity.total}</div><div class="meta">Posição na atividade: ${activityPosition}<br>💬 ${profile.activity.messages} • ⚙️ ${profile.activity.commands} • 🎨 ${profile.activity.stickers} • 📎 ${profile.activity.files}</div></article>
       <article><div class="label">NÍVEL XP</div><div class="value">${profile.xp.level}</div><div class="meta">Ranking de experiência</div></article>
@@ -5511,6 +6530,8 @@ async function readRanking(url, type, order = "rich") {
       name: account.name || account.username || account.userId,
       userId: account.userId,
       balance: Number(account.balance) || 0,
+      walletBalance: Number(account.walletBalance) || 0,
+      vaultBalance: Number(account.vaultBalance) || 0,
       background: economy.getProfileCosmetics(message, account.userId).background
     }))
   };
@@ -5609,13 +6630,13 @@ function renderRanking(ranking) {
 
   const isXp = ranking.type === "xp";
   const isActivity = ranking.type === "activity";
-  const title = isXp ? "Ranking XP" : isActivity ? (ranking.includeAll ? "Ranking de atividade — todos" : "Ranking de atividade") : "Ranking de riqueza";
+  const title = isXp ? "Ranking XP" : isActivity ? (ranking.includeAll ? "Ranking de atividade — todos" : "Ranking de atividade") : "Ranking de carteira";
   const rows = ranking.entries.length
     ? ranking.entries.map(entry => isXp
       ? renderRankingEntry(ranking, entry, `<b>${entry.xp} XP</b><em>Nível ${entry.level}</em>`)
       : isActivity
         ? renderRankingEntry(ranking, entry, `<b>${entry.total} atividades</b><em>💬 ${entry.messages} • ⚙️ ${entry.commands} • 🎨 ${entry.stickers} • 📎 ${entry.files}</em>`)
-      : renderRankingEntry(ranking, entry, `<b class="money">${formatMoney(entry.balance)}</b>`)
+      : renderRankingEntry(ranking, entry, `<b class="money">${formatMoney(entry.balance)}</b><em>Carteira: ${formatMoney(entry.walletBalance)} · Cofre (fora do ranking): ${formatMoney(entry.vaultBalance)}</em>`)
     ).join("")
     : `<p class="muted">Ainda não há usuários neste ranking.</p>`;
 
@@ -5670,7 +6691,7 @@ function renderCredentialSetupPage(botName, tokenIsValid) {
 }
 
 function styles() {
-  return `:root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}.card{width:min(860px,100%);padding:34px;border:1px solid var(--profile-border,#334366);border-radius:24px;background:linear-gradient(145deg,var(--profile-surface,#1c2438ee),var(--profile-deep,#111521f2));box-shadow:0 24px 80px #0008}.brand{letter-spacing:.18em;color:var(--profile-accent,#7ea7ff);font-weight:800}.brand span{color:#9da8bd;font-weight:500;font-size:.75em}header{display:flex;align-items:center;gap:18px;margin:34px 0 18px}.avatar{position:relative;overflow:hidden;flex:none;width:72px;height:72px;border-radius:20px;display:grid;place-items:center;background:linear-gradient(135deg,var(--profile-accent,#6d5dfc),var(--profile-border,#3aa8ff));font-size:32px;font-weight:800}.avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}h1{margin:0;font-size:clamp(28px,5vw,46px)}p{margin:8px 0}.muted,.hint{color:#9da8bd}.scope{padding:13px 16px;border-radius:12px;background:var(--profile-deep,#0e1422);color:#b7c5e7;font-size:14px}.scope span{color:var(--profile-accent,#536486);margin:0 8px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}.grid article{padding:22px;border-radius:16px;background:var(--profile-surface,#202a40);border:1px solid var(--profile-border,#334566)}.label{color:#9da8bd;font-size:12px;letter-spacing:.12em;font-weight:700}.value{font-size:32px;font-weight:800;margin:12px 0 8px}.value.small{font-size:22px}.money{color:#8ff0bf}.meta{color:#b8c3d9;font-size:14px}footer{margin-top:26px;color:#71809d;font-size:13px}.error{text-align:center}.error h1{margin-top:28px}@media(max-width:600px){.card{padding:24px}.grid{grid-template-columns:1fr}header{margin-top:26px}}`;
+  return `:root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}.card{width:min(860px,100%);padding:34px;border:1px solid var(--profile-border,#334366);border-radius:24px;background:linear-gradient(145deg,var(--profile-surface,#1c2438ee),var(--profile-deep,#111521f2));box-shadow:0 24px 80px #0008}.brand{letter-spacing:.18em;color:var(--profile-accent,#7ea7ff);font-weight:800}.brand span{color:#9da8bd;font-weight:500;font-size:.75em}header{display:flex;align-items:center;gap:18px;margin:34px 0 18px}.avatar{position:relative;overflow:hidden;flex:none;width:72px;height:72px;border-radius:20px;display:grid;place-items:center;background:linear-gradient(135deg,var(--profile-accent,#6d5dfc),var(--profile-border,#3aa8ff));font-size:32px;font-weight:800}.avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}h1{margin:0;font-size:clamp(28px,5vw,46px)}p{margin:8px 0}.muted,.hint{color:#9da8bd}.scope{padding:13px 16px;border-radius:12px;background:var(--profile-deep,#0e1422);color:#b7c5e7;font-size:14px}.scope span{color:var(--profile-accent,#536486);margin:0 8px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}.grid article{padding:22px;border-radius:16px;background:var(--profile-surface,#202a40);border:1px solid var(--profile-outline,var(--profile-border,#334566))}.label{color:#9da8bd;font-size:12px;letter-spacing:.12em;font-weight:700}.value{font-size:32px;font-weight:800;margin:12px 0 8px}.value.small{font-size:22px}.money{color:#8ff0bf}.meta{color:#b8c3d9;font-size:14px}footer{margin-top:26px;color:#71809d;font-size:13px}.error{text-align:center}.error h1{margin-top:28px}@media(max-width:600px){.card{padding:24px}.grid{grid-template-columns:1fr}header{margin-top:26px}}`;
 }
 
 function start() {
@@ -6314,6 +7335,71 @@ function start() {
         return;
       }
 
+      if (requestUrl.pathname === "/api/account/local/admin-local-signal-search-state" ||
+          requestUrl.pathname === "/api/account/local/admin-local-signal-search") {
+        const platform = typeof payload?.platform === "string" ? payload.platform : "";
+        const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
+        const isStateRequest = requestUrl.pathname.endsWith("-state");
+        try {
+          await getGroupAdminData(central, platform, groupId);
+          const platformAccount = central.platformAccounts.find(account => account.platform === platform);
+          const message = getLocalGroupMessage(platform, groupId, String(platformAccount.platformId));
+          if (isStateRequest) {
+            sendJson(response, 200, { success: true, localSignalSearch: economy.getLocalSignalSearch(message) });
+            return;
+          }
+          const input = payload?.config;
+          if (!input || typeof input !== "object" || Array.isArray(input) ||
+              !input.tiers || typeof input.tiers !== "object" || Array.isArray(input.tiers)) {
+            throw new Error("Configuração da Busca Local inválida.");
+          }
+          const price = parseAdminStorePrice(input.price);
+          const tiers = {};
+          for (const rarity of economy.LOCAL_SIGNAL_RARITIES) {
+            const tier = input.tiers[rarity];
+            if (!tier || typeof tier !== "object" || Array.isArray(tier) ||
+                !Array.isArray(tier.botItems) || !Array.isArray(tier.marketItems)) {
+              throw new Error("Configure as chances e os prêmios de todas as raridades.");
+            }
+            const cashMin = tier.cashMin === null || tier.cashMin === "" ? null : parseAdminStorePrice(tier.cashMin);
+            const cashMax = tier.cashMax === null || tier.cashMax === "" ? null : parseAdminStorePrice(tier.cashMax);
+            if ((tier.cashMin !== null && tier.cashMin !== "" && cashMin === null) ||
+                (tier.cashMax !== null && tier.cashMax !== "" && cashMax === null)) {
+              throw new Error("Informe valores monetários válidos nos prêmios em SatCoins.");
+            }
+            tiers[rarity] = {
+              chance: Number(tier.chance),
+              guaranteeAfter: tier.guaranteeAfter === null || tier.guaranteeAfter === "" ? null : Number(tier.guaranteeAfter),
+              cashMin,
+              cashMax,
+              botItems: tier.botItems,
+              marketItems: tier.marketItems.map(Number)
+            };
+          }
+          const config = {
+            enabled: input.enabled === true,
+            price,
+            tiers,
+            featured: input.featured
+          };
+          const updated = economy.updateLocalSignalSearch(message, config);
+          if (!updated) {
+            throw new Error("A soma das chances deve ser 100%. Cada raridade com chance precisa ter prêmio; confira também garantias, destaques e itens cadastrados.");
+          }
+          sendJson(response, 200, { success: true, localSignalSearch: updated });
+        } catch (error) {
+          const reason = String(error?.message || "");
+          const statusCode = /não participa|não está vinculada|permissão administrativa/i.test(reason) ? 403
+            : /offline/i.test(reason) ? 503
+              : /inválid|configure|soma das chances|informe valores|cada raridade/i.test(reason) ? 400 : 500;
+          if (statusCode === 500 || statusCode === 503) console.error("[WEB] Falha ao configurar Busca Local:", error.message || error);
+          sendJson(response, statusCode, {
+            error: statusCode === 500 ? "Não foi possível carregar ou salvar a Busca Local." : reason
+          });
+        }
+        return;
+      }
+
       if (requestUrl.pathname === "/api/account/local/admin-store2-state" ||
           requestUrl.pathname === "/api/account/local/admin-store2") {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
@@ -6739,7 +7825,9 @@ function start() {
 
       if (requestUrl.pathname === "/api/account/local/merge" ||
           requestUrl.pathname === "/api/account/local/transfer" ||
-          requestUrl.pathname === "/api/account/local/cosmetics") {
+          requestUrl.pathname === "/api/account/local/vault" ||
+          requestUrl.pathname === "/api/account/local/cosmetics" ||
+          requestUrl.pathname === "/api/account/local/signal-search") {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
         const platformAccount = central.platformAccounts.find(account => account.platform === platform);
@@ -6755,6 +7843,51 @@ function start() {
         try {
           if (!await isPlatformGroupMember(platform, groupId, String(platformAccount.platformId))) {
             sendJson(response, 403, { error: "Sua conta vinculada não participa mais deste grupo ou servidor." });
+            return;
+          }
+
+          if (requestUrl.pathname === "/api/account/local/signal-search") {
+            const level = typeof payload?.level === "string" ? payload.level : "";
+            const quantity = payload?.quantity;
+            const isLocalSearch = level === "local";
+            if ((!isLocalSearch && !Object.prototype.hasOwnProperty.call(economy.SIGNAL_SEARCH_LEVELS, level)) ||
+                (quantity !== 1 && quantity !== 10)) {
+              sendJson(response, 400, { error: "Nível ou quantidade de buscas inválido." });
+              return;
+            }
+            const message = getLocalGroupMessage(platform, groupId, String(platformAccount.platformId));
+            if (!economy.isEnabled(message)) {
+              sendJson(response, 400, { error: "A economia está desativada neste grupo ou servidor." });
+              return;
+            }
+            const result = isLocalSearch
+              ? economy.searchLocalSignals(message, quantity)
+              : economy.searchSignals(message, level, quantity);
+            if (!result.searched) {
+              const errors = {
+                "insufficient-balance": `Saldo insuficiente. Esta busca custa ${economy.formatMoney(result.price)} e sua carteira tem ${economy.formatMoney(result.balance)}. O saldo do cofre não pode ser usado.`,
+                "invalid-level": "Nível de busca inválido.",
+                "invalid-quantity": "Quantidade de buscas inválida.",
+                disabled: "A Busca Local ainda não está configurada ou está desativada pelos administradores.",
+                "unavailable-prizes": "Uma das raridades configuradas está sem prêmios disponíveis. Avise um administrador para revisar a Busca Local."
+              };
+              sendJson(response, 400, { error: errors[result.reason] || "Não foi possível fazer esta busca." });
+              return;
+            }
+            const dailyProfits = economy.getDailyProfits(message);
+            const totalBalance = economy.getTotalBalance(economy.getAccount(message).account);
+            sendJson(response, 200, {
+              success: true,
+              balance: economy.formatMoney(result.balance),
+              totalBalance: economy.formatMoney(totalBalance),
+              rewards: result.rewards.map(reward => ({
+                ...reward,
+                amountFormatted: reward.type === "money" ? economy.formatMoney(reward.amount) : undefined
+              })),
+              dailyProfitTotal: economy.formatMoney(dailyProfits.total),
+              dailySearchProfit: economy.formatMoney(dailyProfits.profits.busca),
+              state: isLocalSearch ? { local: result.state } : result.state.levels
+            });
             return;
           }
 
@@ -6778,8 +7911,35 @@ function start() {
               });
               return;
             }
+            if (payload?.action === "setOutline") {
+              const result = economy.setProfileOutline(message, payload?.outline);
+              if (!result.purchased) {
+                sendJson(response, 400, {
+                  error: result.reason === "insufficient-balance"
+                    ? `Saldo insuficiente. Você precisa de ${economy.formatMoney(result.price)} e tem ${economy.formatMoney(result.balance)}.`
+                    : "A cor do outline selecionada não é válida."
+                });
+                return;
+              }
+              sendJson(response, 200, {
+                success: true,
+                outline: result.outline,
+                boughtNow: result.boughtNow,
+                balance: economy.formatMoney(result.balance)
+              });
+              return;
+            }
             if (payload?.action === "reset") {
               const result = economy.resetProfileBackground(message);
+              sendJson(response, 200, {
+                success: true,
+                changed: result.changed,
+                balance: economy.formatMoney(economy.getBalance(message))
+              });
+              return;
+            }
+            if (payload?.action === "resetOutline") {
+              const result = economy.resetProfileOutline(message);
               sendJson(response, 200, {
                 success: true,
                 changed: result.changed,
@@ -6800,6 +7960,41 @@ function start() {
             const merged = await centralAccounts.useMergeCode(code, central.id);
             await centralAccounts.saveNow();
             sendJson(response, 200, { success: true, centralId: merged.id });
+            return;
+          }
+
+          if (requestUrl.pathname === "/api/account/local/vault") {
+            const action = payload?.action === "deposit" ? "deposit" : payload?.action === "withdraw" ? "withdraw" : null;
+            const amount = parseSatcoinAmount(payload?.amount);
+            if (!action || amount === null || amount <= 0) {
+              sendJson(response, 400, { error: "Informe se deseja depositar ou sacar e uma quantia válida maior que zero." });
+              return;
+            }
+            const message = getLocalGroupMessage(platform, groupId, String(platformAccount.platformId));
+            if (!economy.isEnabled(message)) {
+              sendJson(response, 400, { error: "A economia está desativada neste grupo/servidor." });
+              return;
+            }
+            const result = action === "deposit"
+              ? economy.depositToVault(message, amount)
+              : economy.withdrawFromVault(message, amount);
+            if (!result.moved) {
+              const errors = {
+                invalid_amount: action === "deposit"
+                  ? `O depósito mínimo é de ${economy.formatMoney(economy.MIN_VAULT_DEPOSIT)}.`
+                  : "Informe uma quantia válida maior que zero.",
+                insufficient_balance: "Sua carteira não tem saldo suficiente para esse depósito.",
+                insufficient_vault: "O cofre não tem saldo suficiente para esse saque."
+              };
+              sendJson(response, 400, { error: errors[result.reason] || "Não foi possível movimentar o saldo do cofre." });
+              return;
+            }
+            sendJson(response, 200, {
+              success: true,
+              balance: economy.formatMoney(result.balance),
+              vaultBalance: economy.formatMoney(result.vaultBalance),
+              totalBalance: economy.formatMoney(result.totalBalance)
+            });
             return;
           }
 
@@ -6992,6 +8187,55 @@ function start() {
       return;
     }
 
+    if (requestUrl.pathname === "/demo-busca-sinais") {
+      const central = await getSessionCentral(request);
+      if (!central) {
+        response.writeHead(302, { Location: "/dashboard", "Cache-Control": "no-store" });
+        response.end();
+        return;
+      }
+      response.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff"
+      });
+      response.end(renderSignalSearchDemo(config.getBotName()));
+      return;
+    }
+
+    const signalAudioFiles = {
+      "/sinal.mp3": "sinal.mp3",
+      "/sinal2.mp3": "sinal2.mp3"
+    };
+    if (Object.prototype.hasOwnProperty.call(signalAudioFiles, requestUrl.pathname)) {
+      if (!await getSessionCentral(request)) {
+        response.writeHead(403, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+        response.end("Sign in to play demo audio.");
+        return;
+      }
+      try {
+        const audio = await fs.promises.readFile(path.join(__dirname, "..", signalAudioFiles[requestUrl.pathname]));
+        response.writeHead(200, {
+          "Content-Type": "audio/mpeg",
+          "Content-Length": audio.length,
+          "Cache-Control": "private, no-store",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(audio);
+      } catch (error) {
+        if (error.code === "ENOENT") {
+          response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+          response.end("Demo audio file is missing.");
+          return;
+        }
+        console.error(`[WEB] Não foi possível carregar o áudio ${signalAudioFiles[requestUrl.pathname]}:`, error.message || error);
+        response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+        response.end("Demo audio unavailable.");
+      }
+      return;
+    }
+
     if (requestUrl.pathname === "/semfoto.jpg") {
       try {
         await sendPlaceholderAvatar(response);
@@ -7111,7 +8355,7 @@ function start() {
       return;
     }
 
-    if (request.method === "GET" && requestUrl.pathname === "/painel-local") {
+    if (request.method === "GET" && ["/painel-local", "/busca-sinais"].includes(requestUrl.pathname)) {
       const central = await getSessionCentral(request);
       if (!central) {
         response.writeHead(302, { Location: "/dashboard", "Cache-Control": "no-store" });
@@ -7128,7 +8372,9 @@ function start() {
           "Referrer-Policy": "no-referrer",
           "X-Content-Type-Options": "nosniff"
         });
-        response.end(renderLocalAccount(data));
+        response.end(requestUrl.pathname === "/busca-sinais"
+          ? renderSignalSearch(data)
+          : renderLocalAccount(data));
       } catch (error) {
         const reason = String(error?.message || "");
         const statusCode = /não participa|não está vinculada/i.test(reason) ? 403
@@ -7141,7 +8387,8 @@ function start() {
           "Cache-Control": "no-store",
           "X-Content-Type-Options": "nosniff"
         });
-        response.end(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Painel indisponível</title><body style="font-family:Segoe UI,Arial;background:#10131c;color:#f5f7fb;padding:40px"><h1>Painel local indisponível</h1><p>${escapeHtml(reason)}</p><a href="/dashboard" style="color:#b9c6ff">Voltar à Conta Central</a></body></html>`);
+        const pageTitle = requestUrl.pathname === "/busca-sinais" ? "Busca indisponível" : "Painel local indisponível";
+        response.end(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${pageTitle}</title><body style="font-family:Segoe UI,Arial;background:#10131c;color:#f5f7fb;padding:40px"><h1>${pageTitle}</h1><p>${escapeHtml(reason)}</p><a href="/dashboard" style="color:#b9c6ff">Voltar à Conta Central</a></body></html>`);
       }
       return;
     }
@@ -7252,4 +8499,4 @@ function start() {
   return server;
 }
 
-module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking, renderLocalAccount, renderCosmeticsStore, renderShopCatalog, renderGroupAdmin, canManagePlatformGroup };
+module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking, renderLocalAccount, renderSignalSearch, renderCosmeticsStore, renderShopCatalog, renderGroupAdmin, canManagePlatformGroup };
