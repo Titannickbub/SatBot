@@ -97,7 +97,8 @@ function migrateLegacyDataFiles() {
 }
 
 const status = {
-    startedAt: null
+    startedAt: null,
+    initialSetup: false
 };
 
 function loadFunctions() {
@@ -410,7 +411,7 @@ console.log(
 
     const ignoreInitialSeconds = typeof config.ignoreInitialSeconds === "number" ? config.ignoreInitialSeconds : 30;
     const uptime = status.startedAt ? Date.now() - status.startedAt : 0;
-    if (uptime < ignoreInitialSeconds * 1000) {
+    if (!status.initialSetup && uptime < ignoreInitialSeconds * 1000) {
         const formatTime = functions.config && typeof functions.config.formatTimeString === "function"
             ? functions.config.formatTimeString(ignoreInitialSeconds)
             : `${ignoreInitialSeconds}s`;
@@ -689,12 +690,21 @@ async function start() {
     const config = functions.config && typeof functions.config.getConfig === "function"
         ? functions.config.getConfig()
         : {};
+    status.initialSetup = Boolean(
+        functions.owners &&
+        typeof functions.owners.hasOwners === "function" &&
+        !functions.owners.hasOwners()
+    );
     const ignoreInitialSeconds = typeof config.ignoreInitialSeconds === "number"
         ? Math.max(0, config.ignoreInitialSeconds)
         : 30;
-    setTimeout(() => {
-        console.log(`${_ts()} ✅[CORE] Restrição de inicialização finalizada. Mensagens serão processadas normalmente.`);
-    }, ignoreInitialSeconds * 1000);
+    if (status.initialSetup) {
+        console.log(`${_ts()} [CORE] Warm-up ignorado durante a configuração inicial do Super Usuário.`);
+    } else {
+        setTimeout(() => {
+            console.log(`${_ts()} ✅[CORE] Restrição de inicialização finalizada. Mensagens serão processadas normalmente.`);
+        }, ignoreInitialSeconds * 1000);
+    }
 
     loadCommands();
     loadPlatforms();
