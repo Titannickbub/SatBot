@@ -37,7 +37,7 @@ module.exports = {
 1. Escolha o ranking:
 • atividade — posição, total de atividades, dados de hoje, mensagens, comandos, figurinhas e arquivos.
 • xp — posição, XP acumulado, nível e XP restante para o próximo nível.
-• rico — posição calculada pela carteira, além dos saldos de carteira, cofre e patrimônio total.
+• rico — posição calculada conforme a configuração do ranking, além dos saldos de carteira, cofre e patrimônio total.
 
 2. Identifique o membro mencionando-o, respondendo à mensagem dele ou informando o ID:
 {prefix}rankinfo <atividade|xp|rico> <@usuário|id>

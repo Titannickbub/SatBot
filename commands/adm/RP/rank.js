@@ -150,7 +150,9 @@ function listText(message, entries, type, order) {
         ? "RANKING DE XP"
         : type === "activity"
             ? "RANKING DE ATIVIDADE"
-            : "RANKING DE CARTEIRA";
+            : economy.getIncludeVaultInRanking(message)
+                ? "RANKING DE PATRIMÔNIO TOTAL"
+                : "RANKING DE CARTEIRA";
     const scope = economy.getScope(message);
     const mentions = [];
     const rows = entries.map((entry, index) => {
@@ -186,7 +188,7 @@ module.exports = {
     name: "rank",
     aliases,
     category: "adm/RP",
-    description: `🏆 Consulte os rankings de XP, atividade e saldo disponível na carteira. As opções sem list enviam um banner com até cinco posições.
+    description: `🏆 Consulte os rankings de XP, atividade e riqueza. O valor da economia usa a carteira ou o patrimônio total, conforme configurado. As opções sem list enviam um banner com até cinco posições.
 
 📈 XP
 • {prefix}rank xp — cinco maiores valores de XP.
@@ -197,8 +199,8 @@ module.exports = {
 • {prefix}rank inativos — cinco membros com menos atividades entre os que têm registro. Não inclui membros sem atividade salva.
 
 💰 Riqueza
-• {prefix}rank rico — cinco maiores saldos disponíveis na carteira; o cofre não conta.
-• {prefix}rank pobre — cinco menores saldos de carteira registrados; o cofre não conta.
+• {prefix}rank rico — cinco maiores valores conforme a configuração do ranking.
+• {prefix}rank pobre — cinco menores valores conforme a configuração do ranking.
 
 📋 Listas completas
 Acrescente list a qualquer opção para listar todos os membros envolvidos, por exemplo:
@@ -226,7 +228,7 @@ Os comandos antigos rankxp, rankativos, rankrico, rank_rico, rankcoins, rankpobr
                     `${message.prefix}rank xp | notxp — maiores ou menores valores de XP`,
                     `${message.prefix}rank ativos — membros mais ativos`,
                     `${message.prefix}rank inativos — menos ativos registrados`,
-                    `${message.prefix}rank rico | pobre — maiores ou menores saldos de carteira (o cofre não conta)`,
+                    `${message.prefix}rank rico | pobre — maiores ou menores valores conforme a configuração do ranking`,
                     `Acrescente list a qualquer opção para listar todos (somente administradores).`
                 ].join("\n")
             });
@@ -241,7 +243,7 @@ Os comandos antigos rankxp, rankativos, rankrico, rank_rico, rankcoins, rankpobr
                     `${message.prefix}rank notxp — cinco menores valores de XP`,
                     `${message.prefix}rank ativos — cinco membros mais ativos`,
                     `${message.prefix}rank inativos — cinco menos ativos registrados`,
-                    `${message.prefix}rank rico / ${message.prefix}rank pobre — maiores ou menores saldos de carteira`,
+                    `${message.prefix}rank rico / ${message.prefix}rank pobre — maiores ou menores valores conforme a configuração do ranking`,
                     `${message.prefix}rank xp|notxp|ativos|inativos|rico|pobre list — lista completa (somente administradores)`
                 ].join("\n")
             });

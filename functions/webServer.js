@@ -1470,6 +1470,7 @@ async function getGroupAdminData(central, platform, groupId) {
     groupName: profile.groupName || `Grupo ${groupId}`,
     userName: profile.name || platformAccount.displayName || platformAccount.username || "Sua conta",
     profileBackground: cosmetics.background,
+    profileOutline: cosmetics.outline,
     avatarUrl: await getProfileAvatar(platform, groupId, platformId),
     settings: getAdminSettings(message),
     moderation: getModerationWarnings(platform, groupId, platformId),
@@ -1919,6 +1920,9 @@ function executeAdminRpAction(message, setting, input) {
       const amount = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
       if (!Number.isSafeInteger(amount) || amount < 0) throw new Error("O valor informado é inválido.");
       if (!["set", "add", "subtract"].includes(action)) throw new Error("Ação de economia inválida.");
+      if (action === "add" && !Number.isSafeInteger((Number(account.balance) || 0) + amount)) {
+        throw new Error("O saldo ultrapassa o limite permitido.");
+      }
       if (action === "subtract" && amount > Number(account.balance || 0)) {
         throw new Error("O saldo não pode ficar negativo.");
       }
@@ -2629,7 +2633,8 @@ function renderLocalAccount(data) {
     .admin-panel-button:hover,.admin-panel-button:focus-visible{transform:translateY(-2px);border-color:#b8adff;background:linear-gradient(120deg,#8877ff50,#577cff40);outline:2px solid #a99dff55;outline-offset:2px}
     .cosmetics-store-button{border-color:#f0a8c666;background:linear-gradient(120deg,#f076a535,#bd72ff28);color:#ffe0ef}
     .cosmetics-store-button:hover,.cosmetics-store-button:focus-visible{border-color:#f0a8c6;background:linear-gradient(120deg,#f076a550,#bd72ff40)}
-    .local-avatar{width:82px;height:82px;flex:none;border:3px solid #a99dff66;border-radius:24px;object-fit:cover;background:#171d2b}
+    .local-avatar-frame{display:grid;width:88px;height:88px;flex:none;place-items:center;padding:3px;border:3px solid #a99dff66;border-radius:27px;background:#171d2b}
+    .local-avatar{width:76px;height:76px;border-radius:18px;object-fit:cover;background:#171d2b}
     .local-hero h1{margin:0;font-size:clamp(25px,4vw,38px);overflow-wrap:anywhere}
     .local-hero p{margin:7px 0 0;color:#c1c9df}
     .local-section{margin-top:24px}
@@ -2688,11 +2693,11 @@ function renderLocalAccount(data) {
     .local-footer{margin-top:20px;color:#71809d;font-size:12px}
     @media(max-width:760px){.local-layout,.local-functions,.local-store-links{grid-template-columns:1fr}}
     @media(max-width:640px){.local-hero{align-items:flex-start;flex-direction:column}.local-hero-main{align-items:flex-start}.local-hero-actions{width:100%}.local-hero-action-links{width:100%}.admin-panel-button{width:100%}}
-    @media(max-width:480px){.local-page{padding:20px 0 38px}.local-hero{padding:20px}.local-avatar{width:62px;height:62px;border-radius:18px}.local-panel{padding:18px}.local-stats{grid-template-columns:1fr}.daily-list{grid-template-columns:1fr}}
+    @media(max-width:480px){.local-page{padding:20px 0 38px}.local-hero{padding:20px}.local-avatar-frame{width:68px;height:68px;border-radius:21px}.local-avatar{width:56px;height:56px;border-radius:12px}.local-panel{padding:18px}.local-stats{grid-template-columns:1fr}.daily-list{grid-template-columns:1fr}}
     ${cosmeticThemeStyles}
   </style></head><body><main class="local-page">
     <nav class="local-topbar"><a href="/dashboard">← Conta Central</a><span>${safeBotName} · Painel local</span></nav>
-    <header class="local-hero"><div class="local-hero-main"><img class="local-avatar" src="${escapeHtml(data.avatarUrl || "/semfoto.jpg")}" alt="Foto de perfil de ${escapeHtml(data.userName)}" onerror="this.onerror=null;this.src='/semfoto.jpg'"><div><div class="eyebrow">Painel da conta local</div><h1>${escapeHtml(data.userName)}</h1><p>${groupType}: ${escapeHtml(data.groupName)} · ${escapeHtml(data.platform)}</p></div></div><div class="local-hero-actions"><div class="local-hero-action-links">${data.canManage ? `<a class="admin-panel-button" href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">⚙ Painel de administração</a>` : ""}</div></div></header>
+    <header class="local-hero"><div class="local-hero-main"><span class="local-avatar-frame"><img class="local-avatar" src="${escapeHtml(data.avatarUrl || "/semfoto.jpg")}" alt="Foto de perfil de ${escapeHtml(data.userName)}" onerror="this.onerror=null;this.src='/semfoto.jpg'"></span><div><div class="eyebrow">Painel da conta local</div><h1>${escapeHtml(data.userName)}</h1><p>${groupType}: ${escapeHtml(data.groupName)} · ${escapeHtml(data.platform)}</p></div></div><div class="local-hero-actions"><div class="local-hero-action-links">${data.canManage ? `<a class="admin-panel-button" href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">⚙ Painel de administração</a>` : ""}</div></div></header>
     <section class="local-section" aria-labelledby="displaySectionTitle">
       <header class="local-section-heading"><div><h2 id="displaySectionTitle">Exibição</h2><p>Consulte seus dados e posições neste grupo ou servidor.</p></div></header>
       <div class="local-layout">
@@ -2823,9 +2828,9 @@ function renderSignalSearch(data) {
     }
     if (reward.type === "outline") {
       const border = reward.rainbow
-        ? "border:3px solid transparent;background:linear-gradient(#111827,#111827) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%"
-        : `border:3px solid ${reward.color}`;
-      return `<span class="signal-reward-art outline-art" aria-hidden="true"><i style="${border}"></i></span>`;
+        ? "border:7px solid transparent;background:linear-gradient(#111827,#111827) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%"
+        : `border:5px solid ${reward.color}`;
+      return `<span class="signal-reward-art outline-art${reward.rainbow ? " rainbow-outline-art" : ""}" aria-hidden="true"><i style="${border}"></i></span>`;
     }
     return `<span class="signal-reward-art icon-art" aria-hidden="true">${reward.type === "money" ? "💷" : reward.type === "market" ? "📦" : "↻"}</span>`;
   };
@@ -2864,11 +2869,34 @@ function renderSignalSearch(data) {
         unavailable: item.quantity === 0
       }));
     }
+    for (const key of tier.backgrounds || []) {
+      const item = localSignalSearch.backgrounds.find(candidate => candidate.key === key);
+      if (!item) continue;
+      const catalogItem = economy.PROFILE_BACKGROUNDS[key];
+      localRewards.push(addReward({
+        id: `local-background-${key}`, type: "background", name: `Fundo ${item.name}`,
+        details: `Cosmético de perfil · ID ${catalogItem.id}`, rarity,
+        key, rainbow: Boolean(catalogItem.rainbow), stops: catalogItem.stops,
+        accent: catalogItem.accent, source: "local", chance: tier.chance
+      }));
+    }
+    for (const key of tier.outlines || []) {
+      const item = localSignalSearch.outlines.find(candidate => candidate.key === key);
+      if (!item) continue;
+      const catalogItem = economy.PROFILE_OUTLINES[key];
+      localRewards.push(addReward({
+        id: `local-outline-${key}`, type: "outline", name: `Outline ${item.name}`,
+        details: `Cosmético de perfil · ID ${catalogItem.id}`, rarity,
+        key, rainbow: Boolean(catalogItem.rainbow), color: catalogItem.color,
+        source: "local", chance: tier.chance
+      }));
+    }
   }
-  const localFeaturedRewards = localSignalSearch.featured.map(item => item.type === "bot"
-    ? localRewards.find(reward => reward.id === `local-bot-${item.key}`)
-    : localRewards.find(reward => reward.id === `local-market-${item.id}`)
-  ).filter(Boolean);
+  const localFeaturedRewards = localSignalSearch.featured.map(item => {
+    if (item.type === "bot") return localRewards.find(reward => reward.id === `local-bot-${item.key}`);
+    if (item.type === "market") return localRewards.find(reward => reward.id === `local-market-${item.id}`);
+    return localRewards.find(reward => reward.id === `local-${item.type}-${item.key}`);
+  }).filter(Boolean);
   const searchLevels = data.signalSearch?.levels || {};
   const levelCards = Object.entries(economy.SIGNAL_SEARCH_LEVELS).map(([key, level]) => {
     const progress = searchLevels[key] || { pullsUntilEpic: 10, pullsUntilWorkReset: key === "recruta" ? 5 : null };
@@ -2929,7 +2957,7 @@ function renderSignalSearch(data) {
   };
   const profileLink = `/painel-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}`;
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Busca de Sinais · ${escapeHtml(data.groupName)}</title><style>
-    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#090c15;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;background:radial-gradient(ellipse at 50% -15%,#4b3176 0,#151a31 34%,#090c15 74%)}button,a{font:inherit}.signal-page{width:min(1040px,100%);margin:0 auto}.signal-topbar{display:flex;justify-content:space-between;gap:12px;padding:8px 0 18px;border-bottom:1px solid #ffffff18}.signal-topbar a{color:#d5c9ff;text-decoration:none;font-weight:700}.signal-topbar span{color:#aab3c8;font-size:12px}.signal-hero{position:relative;overflow:hidden;margin:22px 0;padding:clamp(22px,5vw,38px);border:1px solid #b996ff44;border-radius:22px;background:linear-gradient(120deg,#171c35eF,#32204be8 65%,#102b3beF);box-shadow:0 22px 70px #0005}.signal-hero:after{position:absolute;inset:auto -12% -90% 45%;height:100%;border-radius:50%;background:#c085ff22;filter:blur(35px);content:""}.signal-hero h1{position:relative;z-index:1;margin:7px 0;font-size:clamp(29px,5vw,44px)}.signal-hero p{position:relative;z-index:1;max-width:680px;margin:0;color:#d0d5e5;line-height:1.6}.signal-eyebrow,.signal-level-kicker{color:#d1b3ff;font-size:10px;font-weight:850;letter-spacing:.18em}.signal-balance{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}.signal-balance span{padding:9px 12px;border:1px solid #ffffff1a;border-radius:10px;background:#05091466;color:#bbc4d7;font-size:12px}.signal-balance strong{color:#fff}.signal-featured{position:relative;z-index:1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:22px}.signal-featured-card{display:flex;min-width:0;align-items:center;gap:14px;padding:14px;border:1px solid #d6a5ff77;border-radius:15px;background:#100d1caa;color:#fff;text-align:left;cursor:pointer;transition:transform .18s ease,border-color .18s ease}.signal-featured-card:hover,.signal-featured-card:focus-visible{transform:translateY(-3px);border-color:#fff;outline:2px solid #d6a5ff66;outline-offset:2px}.signal-featured-card strong,.signal-featured-card small{display:block}.signal-featured-card small{margin-top:5px;color:#c5b9d8;font-size:11px}.signal-featured-card .signal-reward-art{width:72px;height:58px;flex:none}.signal-section-title{margin:28px 0 12px}.signal-section-title h2{margin:0;font-size:20px}.signal-section-title p{margin:5px 0 0;color:#aab3c8;font-size:12px}.signal-wallet{margin:14px 0;padding:13px 15px;border:1px solid #ffffff16;border-radius:13px;background:#ffffff06;color:#adb7ca;font-size:13px}.signal-wallet strong{color:#fff}.signal-level-picker{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}.signal-level-tab{min-height:48px;padding:10px 14px;border:1px solid #ffffff24;border-radius:12px;background:#ffffff08;color:#cbd2e2;text-align:left;font-weight:750;cursor:pointer}.signal-level-tab span{float:right;color:#9da7bb;font-size:11px;font-weight:500}.signal-level-tab[aria-selected=true]{border-color:#b997ff;background:linear-gradient(120deg,#8c68dc3b,#557cff22);color:#fff;box-shadow:0 0 22px #8f68ff1c}.signal-level-card{padding:clamp(17px,4vw,25px);border:1px solid #ffffff1c;border-radius:18px;background:linear-gradient(145deg,#191e30,#111724);box-shadow:0 16px 42px #0003}.signal-level-card[hidden]{display:none}.signal-level-card>header{display:flex;justify-content:space-between;align-items:center}.signal-level-card h2{margin:4px 0 0;font-size:24px}.signal-level-emblem{display:grid;width:44px;height:44px;place-items:center;border:1px solid #c59dff66;border-radius:14px;background:#a775ff1a;color:#ddc8ff;font-size:25px}.signal-level-card>p{max-width:700px;color:#aab3c8;font-size:13px;line-height:1.6}.signal-level-cost{display:grid;grid-template-columns:1fr auto;gap:8px;margin:17px 0;padding:12px 14px;border:1px solid #ffffff12;border-radius:12px;background:#ffffff05;color:#aab3c8;font-size:12px}.signal-level-cost strong{color:#fff;text-align:right}.signal-search-buttons{display:flex;flex-wrap:wrap;gap:9px}.signal-search-buttons button,.signal-modal-next{min-height:44px;padding:10px 17px;border:0;border-radius:11px;background:linear-gradient(120deg,#9876ff,#5a7bff);color:#fff;font-weight:800;cursor:pointer;box-shadow:0 8px 22px #625cff2b}.signal-search-buttons button:hover,.signal-modal-next:hover{filter:brightness(1.12)}.signal-search-buttons button:disabled{opacity:.5;cursor:not-allowed}.signal-prizes-details{margin-top:20px;border-top:1px solid #ffffff12}.signal-prizes-details summary{padding:15px 0 4px;color:#d8c6ff;font-size:13px;font-weight:750;cursor:pointer}.signal-prize-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:14px}.signal-prize-card{display:flex;min-width:0;align-items:center;gap:10px;padding:10px;border:1px solid #ffffff19;border-radius:12px;background:#ffffff05;color:#f5f7fb;text-align:left;cursor:pointer;transition:transform .16s ease,border-color .16s ease}.signal-prize-card:hover,.signal-prize-card:focus-visible{transform:translateY(-2px);border-color:#8ecfff;outline:2px solid #8ecfff33;outline-offset:1px}.signal-prize-card.epic{border-color:#d4a0ff66;background:linear-gradient(130deg,#a45adb14,#ffffff05)}.signal-prize-card.rainbow-prize{border-color:#ff92e988;box-shadow:inset 0 0 18px #f0a8c611}.signal-reward-art{display:grid;width:56px;height:44px;flex:none;place-items:center;overflow:hidden;border:1px solid #ffffff24;border-radius:9px;background:linear-gradient(145deg,#263858,#111827);font-size:23px}.signal-reward-art.rainbow-background{background-size:300% 300%;animation:signal-rainbow 5s linear infinite}.outline-art{padding:8px;background:#111827}.outline-art i{display:block;width:100%;height:100%;border-radius:7px}.signal-prize-info{display:block;min-width:0;flex:1}.signal-prize-info strong,.signal-prize-info small{display:block;overflow:hidden;text-overflow:ellipsis}.signal-prize-info strong{font-size:12px}.signal-prize-info small{margin-top:4px;color:#9da9c0;font-size:10px;line-height:1.4}.signal-prize-open{color:#d1b3ff;font-size:11px;font-weight:800}.signal-featured .outline-art{width:72px;height:58px}.signal-feedback{min-height:22px;margin-top:12px;color:#9cf0cf;font-size:13px;line-height:1.5}.signal-feedback.error{color:#ff9caa}.signal-results{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:14px}.signal-results[hidden]{display:none}.signal-result{padding:11px;border:1px solid #73c9ec44;border-radius:11px;background:linear-gradient(145deg,#14324a,#0c1423);font-size:11px;line-height:1.5;overflow-wrap:anywhere}.signal-result.epic{border-color:#d8a4ff88;background:linear-gradient(145deg,#42244f,#161326)}.signal-return{display:inline-block;margin-top:18px;color:#cbbaff;text-decoration:none;font-size:12px}.signal-dialog{width:min(720px,calc(100% - 24px));max-width:none;max-height:min(850px,calc(100% - 24px));padding:0;overflow:auto;border:1px solid #d2a2ff77;border-radius:22px;background:#0b0d17;color:#f5f7fb;box-shadow:0 30px 110px #000d}.signal-dialog::backdrop{background:#03040bcc;backdrop-filter:blur(7px)}.signal-dialog-inner{position:relative;min-height:440px;padding:clamp(18px,5vw,32px);background:radial-gradient(ellipse at 50% 15%,#7251a055,transparent 58%),radial-gradient(circle at 15% 80%,#3b81a52b,transparent 35%),linear-gradient(145deg,#101525,#090b13 70%)}.signal-dialog-inner:before{position:absolute;inset:12% 18%;border:1px solid #d8b7ff26;border-radius:50%;box-shadow:0 0 60px #a883ff1c,0 0 140px #748aff12;content:"";pointer-events:none}.signal-dialog-top{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px}.signal-dialog-top small{color:#d6bbff;font-size:10px;font-weight:850;letter-spacing:.2em}.signal-dialog-close{display:grid;width:38px;height:38px;place-items:center;border:1px solid #ffffff2a;border-radius:11px;background:#ffffff0b;color:#fff;font-size:22px;cursor:pointer}.signal-presentation-wrap{position:relative;z-index:1;display:grid;min-height:330px;place-items:center;perspective:1200px;overflow:hidden}.signal-3d-card{position:relative;display:flex;width:min(380px,100%);min-height:270px;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;border:1px solid #8fd7ff88;border-radius:20px;background:linear-gradient(145deg,#173752,#111727 68%);text-align:center;transform-style:preserve-3d;box-shadow:0 24px 70px #0009,0 0 38px #54c9ff24;animation:signal-card-camera 4.8s ease-in-out infinite}.signal-3d-card.epic{border-color:#dba7ff;background:linear-gradient(145deg,#4f2b68,#171326 72%);box-shadow:0 24px 70px #0009,0 0 50px #d8a4ff44}.signal-3d-card.rainbow-bg{background:linear-gradient(130deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744);background-size:350% 350%;animation:signal-card-camera 4.8s ease-in-out infinite,signal-rainbow 6s linear infinite}.signal-3d-card.rainbow-outline{border:3px solid transparent;background:linear-gradient(145deg,#161b2b,#10131e) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:signal-card-camera 4.8s ease-in-out infinite,signal-rainbow 5s linear infinite}.signal-card-icon{display:grid;width:78px;height:78px;place-items:center;border:1px solid #ffffff38;border-radius:22px;background:#ffffff14;font-size:38px;box-shadow:0 12px 30px #0004;transform:translateZ(38px)}.signal-3d-card h2{max-width:100%;margin:0;font-size:clamp(22px,5vw,30px);text-shadow:0 3px 20px #0008;transform:translateZ(30px)}.signal-3d-card p{max-width:320px;margin:0;color:#e0e4ef;font-size:13px;line-height:1.5;transform:translateZ(22px)}.signal-card-rarity{padding:6px 10px;border:1px solid #ffffff44;border-radius:20px;background:#090b1688;color:#fff;font-size:10px;font-weight:850;letter-spacing:.14em;text-transform:uppercase;transform:translateZ(44px)}.signal-modal-footer{position:relative;z-index:2;display:flex;justify-content:center;gap:10px}.signal-modal-next[hidden]{display:none}.signal-modal-footer .signal-feedback{margin:0;text-align:center}.signal-dialog-results{position:relative;z-index:2;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.signal-dialog-results[hidden]{display:none}.signal-dialog-results .signal-result{text-align:left}@keyframes signal-card-camera{0%,100%{transform:rotateY(-15deg) rotateX(7deg) translateY(0)}35%{transform:rotateY(12deg) rotateX(-3deg) translateY(-7px)}68%{transform:rotateY(20deg) rotateX(5deg) translateY(2px)}}@keyframes signal-rainbow{to{background-position:100% 50%}}@media(prefers-reduced-motion:reduce){.signal-reward-art.rainbow-background,.signal-3d-card{animation:none}}@media(max-width:700px){body{padding:15px}.signal-featured,.signal-level-picker{grid-template-columns:1fr}.signal-prize-grid{grid-template-columns:1fr}.signal-results,.signal-dialog-results{grid-template-columns:repeat(2,minmax(0,1fr))}.signal-dialog-inner{min-height:400px}.signal-presentation-wrap{min-height:285px}.signal-3d-card{min-height:240px}}@media(max-width:420px){.signal-level-cost{font-size:11px}.signal-search-buttons button{flex:1}.signal-results,.signal-dialog-results{grid-template-columns:1fr 1fr}.signal-dialog-results .signal-result{padding:8px;font-size:10px}}
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#090c15;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;background:radial-gradient(ellipse at 50% -15%,#4b3176 0,#151a31 34%,#090c15 74%)}button,a{font:inherit}.signal-page{width:min(1040px,100%);margin:0 auto}.signal-topbar{display:flex;justify-content:space-between;gap:12px;padding:8px 0 18px;border-bottom:1px solid #ffffff18}.signal-topbar a{color:#d5c9ff;text-decoration:none;font-weight:700}.signal-topbar span{color:#aab3c8;font-size:12px}.signal-hero{position:relative;overflow:hidden;margin:22px 0;padding:clamp(22px,5vw,38px);border:1px solid #b996ff44;border-radius:22px;background:linear-gradient(120deg,#171c35eF,#32204be8 65%,#102b3beF);box-shadow:0 22px 70px #0005}.signal-hero:after{position:absolute;inset:auto -12% -90% 45%;height:100%;border-radius:50%;background:#c085ff22;filter:blur(35px);content:""}.signal-hero h1{position:relative;z-index:1;margin:7px 0;font-size:clamp(29px,5vw,44px)}.signal-hero p{position:relative;z-index:1;max-width:680px;margin:0;color:#d0d5e5;line-height:1.6}.signal-eyebrow,.signal-level-kicker{color:#d1b3ff;font-size:10px;font-weight:850;letter-spacing:.18em}.signal-balance{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}.signal-balance span{padding:9px 12px;border:1px solid #ffffff1a;border-radius:10px;background:#05091466;color:#bbc4d7;font-size:12px}.signal-balance strong{color:#fff}.signal-featured{position:relative;z-index:1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:22px}.signal-featured-card{display:flex;min-width:0;align-items:center;gap:14px;padding:14px;border:1px solid #d6a5ff77;border-radius:15px;background:#100d1caa;color:#fff;text-align:left;cursor:pointer;transition:transform .18s ease,border-color .18s ease}.signal-featured-card:hover,.signal-featured-card:focus-visible{transform:translateY(-3px);border-color:#fff;outline:2px solid #d6a5ff66;outline-offset:2px}.signal-featured-card strong,.signal-featured-card small{display:block}.signal-featured-card small{margin-top:5px;color:#c5b9d8;font-size:11px}.signal-featured-card .signal-reward-art{width:72px;height:58px;flex:none}.signal-section-title{margin:28px 0 12px}.signal-section-title h2{margin:0;font-size:20px}.signal-section-title p{margin:5px 0 0;color:#aab3c8;font-size:12px}.signal-wallet{margin:14px 0;padding:13px 15px;border:1px solid #ffffff16;border-radius:13px;background:#ffffff06;color:#adb7ca;font-size:13px}.signal-wallet strong{color:#fff}.signal-level-picker{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}.signal-level-tab{min-height:48px;padding:10px 14px;border:1px solid #ffffff24;border-radius:12px;background:#ffffff08;color:#cbd2e2;text-align:left;font-weight:750;cursor:pointer}.signal-level-tab span{float:right;color:#9da7bb;font-size:11px;font-weight:500}.signal-level-tab[aria-selected=true]{border-color:#b997ff;background:linear-gradient(120deg,#8c68dc3b,#557cff22);color:#fff;box-shadow:0 0 22px #8f68ff1c}.signal-level-card{padding:clamp(17px,4vw,25px);border:1px solid #ffffff1c;border-radius:18px;background:linear-gradient(145deg,#191e30,#111724);box-shadow:0 16px 42px #0003}.signal-level-card[hidden]{display:none}.signal-level-card>header{display:flex;justify-content:space-between;align-items:center}.signal-level-card h2{margin:4px 0 0;font-size:24px}.signal-level-emblem{display:grid;width:44px;height:44px;place-items:center;border:1px solid #c59dff66;border-radius:14px;background:#a775ff1a;color:#ddc8ff;font-size:25px}.signal-level-card>p{max-width:700px;color:#aab3c8;font-size:13px;line-height:1.6}.signal-level-cost{display:grid;grid-template-columns:1fr auto;gap:8px;margin:17px 0;padding:12px 14px;border:1px solid #ffffff12;border-radius:12px;background:#ffffff05;color:#aab3c8;font-size:12px}.signal-level-cost strong{color:#fff;text-align:right}.signal-search-buttons{display:flex;flex-wrap:wrap;gap:9px}.signal-search-buttons button,.signal-modal-next{min-height:44px;padding:10px 17px;border:0;border-radius:11px;background:linear-gradient(120deg,#9876ff,#5a7bff);color:#fff;font-weight:800;cursor:pointer;box-shadow:0 8px 22px #625cff2b}.signal-search-buttons button:hover,.signal-modal-next:hover{filter:brightness(1.12)}.signal-search-buttons button:disabled{opacity:.5;cursor:not-allowed}.signal-prizes-details{margin-top:20px;border-top:1px solid #ffffff12}.signal-prizes-details summary{padding:15px 0 4px;color:#d8c6ff;font-size:13px;font-weight:750;cursor:pointer}.signal-prize-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:14px}.signal-prize-card{display:flex;min-width:0;align-items:center;gap:10px;padding:10px;border:1px solid #ffffff19;border-radius:12px;background:#ffffff05;color:#f5f7fb;text-align:left;cursor:pointer;transition:transform .16s ease,border-color .16s ease}.signal-prize-card:hover,.signal-prize-card:focus-visible{transform:translateY(-2px);border-color:#8ecfff;outline:2px solid #8ecfff33;outline-offset:1px}.signal-prize-card.epic{border-color:#d4a0ff66;background:linear-gradient(130deg,#a45adb14,#ffffff05)}.signal-prize-card.rainbow-prize{border-color:#ff92e988;box-shadow:inset 0 0 18px #f0a8c611}.signal-reward-art{display:grid;width:56px;height:44px;flex:none;place-items:center;overflow:hidden;border:1px solid #ffffff24;border-radius:9px;background:linear-gradient(145deg,#263858,#111827);font-size:23px}.signal-reward-art.rainbow-background{background-size:300% 300%;animation:signal-rainbow 5s linear infinite}    .outline-art{padding:8px;background:#111827}.outline-art i{display:block;width:100%;height:100%;border-radius:7px}.outline-art.rainbow-outline-art i{animation:signal-rainbow 5s linear infinite}.signal-prize-info{display:block;min-width:0;flex:1}.signal-prize-info strong,.signal-prize-info small{display:block;overflow:hidden;text-overflow:ellipsis}.signal-prize-info strong{font-size:12px}.signal-prize-info small{margin-top:4px;color:#9da9c0;font-size:10px;line-height:1.4}.signal-prize-open{color:#d1b3ff;font-size:11px;font-weight:800}.signal-featured .outline-art{width:72px;height:58px}.signal-feedback{min-height:22px;margin-top:12px;color:#9cf0cf;font-size:13px;line-height:1.5}.signal-feedback.error{color:#ff9caa}.signal-results{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:14px}.signal-results[hidden]{display:none}.signal-result{padding:11px;border:1px solid #73c9ec44;border-radius:11px;background:linear-gradient(145deg,#14324a,#0c1423);font-size:11px;line-height:1.5;overflow-wrap:anywhere}.signal-result.epic{border-color:#d8a4ff88;background:linear-gradient(145deg,#42244f,#161326)}.signal-return{display:inline-block;margin-top:18px;color:#cbbaff;text-decoration:none;font-size:12px}.signal-dialog{width:min(720px,calc(100% - 24px));max-width:none;max-height:min(850px,calc(100% - 24px));padding:0;overflow:auto;border:1px solid #d2a2ff77;border-radius:22px;background:#0b0d17;color:#f5f7fb;box-shadow:0 30px 110px #000d}.signal-dialog::backdrop{background:#03040bcc;backdrop-filter:blur(7px)}.signal-dialog-inner{position:relative;min-height:440px;padding:clamp(18px,5vw,32px);background:radial-gradient(ellipse at 50% 15%,#7251a055,transparent 58%),radial-gradient(circle at 15% 80%,#3b81a52b,transparent 35%),linear-gradient(145deg,#101525,#090b13 70%)}.signal-dialog-inner:before{position:absolute;inset:12% 18%;border:1px solid #d8b7ff26;border-radius:50%;box-shadow:0 0 60px #a883ff1c,0 0 140px #748aff12;content:"";pointer-events:none}.signal-dialog-top{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px}.signal-dialog-top small{color:#d6bbff;font-size:10px;font-weight:850;letter-spacing:.2em}.signal-dialog-close{display:grid;width:38px;height:38px;place-items:center;border:1px solid #ffffff2a;border-radius:11px;background:#ffffff0b;color:#fff;font-size:22px;cursor:pointer}.signal-presentation-wrap{position:relative;z-index:1;display:grid;min-height:330px;place-items:center;perspective:1200px;overflow:hidden}.signal-3d-card{position:relative;display:flex;width:min(380px,100%);min-height:270px;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;border:1px solid #8fd7ff88;border-radius:20px;background:linear-gradient(145deg,#173752,#111727 68%);text-align:center;transform-style:preserve-3d;box-shadow:0 24px 70px #0009,0 0 38px #54c9ff24;animation:signal-card-camera 4.8s ease-in-out infinite}.signal-3d-card.epic{border-color:#dba7ff;background:linear-gradient(145deg,#4f2b68,#171326 72%);box-shadow:0 24px 70px #0009,0 0 50px #d8a4ff44}.signal-3d-card.rainbow-bg{background:linear-gradient(130deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744);background-size:350% 350%;animation:signal-card-camera 4.8s ease-in-out infinite,signal-rainbow 6s linear infinite}.signal-3d-card.rainbow-outline{border:3px solid transparent;background:linear-gradient(145deg,#161b2b,#10131e) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:signal-card-camera 4.8s ease-in-out infinite,signal-rainbow 5s linear infinite}.signal-card-icon{display:grid;width:78px;height:78px;place-items:center;border:1px solid #ffffff38;border-radius:22px;background:#ffffff14;font-size:38px;box-shadow:0 12px 30px #0004;transform:translateZ(38px)}.signal-3d-card h2{max-width:100%;margin:0;font-size:clamp(22px,5vw,30px);text-shadow:0 3px 20px #0008;transform:translateZ(30px)}.signal-3d-card p{max-width:320px;margin:0;color:#e0e4ef;font-size:13px;line-height:1.5;transform:translateZ(22px)}.signal-card-rarity{padding:6px 10px;border:1px solid #ffffff44;border-radius:20px;background:#090b1688;color:#fff;font-size:10px;font-weight:850;letter-spacing:.14em;text-transform:uppercase;transform:translateZ(44px)}.signal-modal-footer{position:relative;z-index:2;display:flex;justify-content:center;gap:10px}.signal-modal-next[hidden]{display:none}.signal-modal-footer .signal-feedback{margin:0;text-align:center}.signal-dialog-results{position:relative;z-index:2;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.signal-dialog-results[hidden]{display:none}.signal-dialog-results .signal-result{text-align:left}@keyframes signal-card-camera{0%,100%{transform:rotateY(-15deg) rotateX(7deg) translateY(0)}35%{transform:rotateY(12deg) rotateX(-3deg) translateY(-7px)}68%{transform:rotateY(20deg) rotateX(5deg) translateY(2px)}}@keyframes signal-rainbow{to{background-position:100% 50%}}@media(prefers-reduced-motion:reduce){.signal-reward-art.rainbow-background,.signal-3d-card{animation:none}}@media(max-width:700px){body{padding:15px}.signal-featured,.signal-level-picker{grid-template-columns:1fr}.signal-prize-grid{grid-template-columns:1fr}.signal-results,.signal-dialog-results{grid-template-columns:repeat(2,minmax(0,1fr))}.signal-dialog-inner{min-height:400px}.signal-presentation-wrap{min-height:285px}.signal-3d-card{min-height:240px}}@media(max-width:420px){.signal-level-cost{font-size:11px}.signal-search-buttons button{flex:1}.signal-results,.signal-dialog-results{grid-template-columns:1fr 1fr}.signal-dialog-results .signal-result{padding:8px;font-size:10px}}
   </style><style>
     .signal-level-picker{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
     .signal-featured-group{display:contents}
@@ -2994,7 +3022,7 @@ function renderSignalSearch(data) {
     .signal-card.epic .signal-card-stars,.signal-card.epic .signal-card-rarity{color:#edc1ff}
     .signal-card.epic .signal-card-art-glint{color:#fff0ff;text-shadow:0 0 16px #dfa0ff}
     .signal-card.rainbow-background .signal-card-face{background:linear-gradient(145deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744);background-size:350% 350%;animation:signal-rainbow 6s linear infinite}
-    .signal-card.rainbow-outline .signal-card-face{border:3px solid transparent;background:linear-gradient(145deg,#161b2b,#10131e) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%}
+    .signal-card.rainbow-outline .signal-card-face{border:8px solid transparent;background:linear-gradient(145deg,#161b2b,#10131e) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:signal-rainbow 5s linear infinite}
     @keyframes camera-sweep{0%{transform:perspective(1200px) rotateX(-5deg) rotateY(-10deg)}50%{transform:perspective(1200px) rotateX(3deg) rotateY(7deg)}100%{transform:perspective(1200px) rotateX(-2deg) rotateY(12deg)}}
     @keyframes card-unseal{0%{opacity:0;transform:rotateY(180deg) rotateX(14deg) scale(.68) translateY(22px)}65%{opacity:1;transform:rotateY(-12deg) rotateX(-4deg) scale(1.04)}100%{opacity:1;transform:rotateY(0) rotateX(0) scale(1)}}
     @keyframes card-float{to{translate:0 -7px}}
@@ -3028,7 +3056,7 @@ function renderSignalSearch(data) {
     .signal-reveal-stage.is-epic .signal-card-stars,.signal-reveal-stage.is-epic .signal-card-rarity{color:#edc1ff}
     .signal-reveal-stage.is-epic .signal-card-art-glint{color:#fff0ff;text-shadow:0 0 16px #dfa0ff}
     .signal-card.rainbow-background .signal-card-face{background:linear-gradient(145deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744);background-size:350% 350%;animation:signal-rainbow 6s linear infinite}
-    .signal-card.rainbow-outline .signal-card-face{border:3px solid transparent;background:linear-gradient(145deg,#161b2b,#10131e) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%}
+    .signal-card.rainbow-outline .signal-card-face{border:8px solid transparent;background:linear-gradient(145deg,#161b2b,#10131e) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:signal-rainbow 5s linear infinite}
     .signal-reveal-stage.is-results{min-height:470px}
     .signal-reveal-stage.is-results .signal-card-scene,.signal-reveal-stage.is-results .signal-orb,.signal-reveal-stage.is-results .signal-beam{display:none}
     .signal-ten-results{position:absolute;inset:0;z-index:4;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:10px;padding:22px;align-content:center}
@@ -3048,7 +3076,7 @@ function renderSignalSearch(data) {
     @keyframes camera-sweep{0%{transform:perspective(1200px) rotateX(-5deg) rotateY(-10deg)}50%{transform:perspective(1200px) rotateX(3deg) rotateY(7deg)}100%{transform:perspective(1200px) rotateX(-2deg) rotateY(12deg)}}
     .signal-reveal-stage.is-revealed .signal-card-camera{animation:camera-sweep 4.8s ease-in-out 1.1s infinite alternate}
     @media(max-width:600px){.signal-reveal-stage{min-height:330px}.signal-ten-results{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:none;grid-auto-rows:145px;gap:8px;padding:14px}.signal-reveal-stage.is-results{min-height:790px}.signal-mini-card{padding:10px}.signal-mini-art{margin:6px 0;font-size:24px}}
-    @media(prefers-reduced-motion:reduce){.signal-reveal-stage.is-revealed .signal-card-camera,.signal-reveal-stage.is-revealed .signal-card,.signal-mini-card{animation-duration:.01ms!important;animation-iteration-count:1!important}}
+    @media(prefers-reduced-motion:reduce){.signal-reveal-stage.is-revealed .signal-card-camera,.signal-reveal-stage.is-revealed .signal-card,.signal-mini-card{animation-duration:.01ms!important;animation-iteration-count:1!important}.signal-card.rainbow-outline .signal-card-face{animation:none!important}}
   </style>
   <dialog id="signalSearchDialog" class="signal-dialog" aria-labelledby="signalDialogTitle">
     <div class="signal-dialog-inner"><header class="signal-dialog-top"><small id="signalDialogTitle">PRÉVIA DO PRÊMIO</small><button id="signalDialogClose" class="signal-dialog-close" type="button" aria-label="Fechar">×</button></header>
@@ -3328,7 +3356,7 @@ function renderCosmeticsStore(data) {
         const active = data.cosmetics.outline === outline.key;
         const price = economy.getProfileOutlinePrice(outline.key);
         return `<article class="color-card${active ? " active" : ""}" data-outline-card="${escapeHtml(outline.key)}">
-          <div class="color-swatch" aria-hidden="true" style="height:86px;padding:20px;background:#111827"><div class="${outline.rainbow ? "rainbow-outline-sample" : ""}" style="height:46px;border:2px solid ${outline.rainbow ? "transparent" : outline.color};border-radius:14px${outline.rainbow ? ";background:linear-gradient(#111827,#111827) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%" : ""}"></div></div>
+          <div class="color-swatch" aria-hidden="true" style="height:86px;padding:16px;background:#111827"><div class="${outline.rainbow ? "rainbow-outline-sample" : ""}" style="height:54px;border:${outline.rainbow ? "6px solid transparent" : "4px solid " + outline.color};border-radius:14px${outline.rainbow ? ";background:linear-gradient(#111827,#111827) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%" : ""}"></div></div>
           <div class="color-card-info"><div><h3>${escapeHtml(outline.label)}</h3><p>${active ? "Em uso" : owned ? "Comprado" : `ID ${outline.id} · ${escapeHtml(rarityLabels[outline.rarity] || outline.rarity)} · ${economy.formatMoney(price)}`}</p></div><button class="color-action" type="button" data-preview-outline="${escapeHtml(outline.key)}">Mostrar prévia</button></div>
         </article>`;
       }).join("")}</div>
@@ -3368,9 +3396,10 @@ function renderCosmeticsStore(data) {
     .rainbow-background{animation:rainbow-cycle 5s linear infinite}
     .rainbow-outline-sample{animation:rainbow-cycle 5s linear infinite}
     .preview-card.rainbow-background{background-image:linear-gradient(110deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744)!important;background-size:300% 300%;animation:rainbow-cycle 5s linear infinite}
-    .rainbow-outline-preview{border-color:transparent!important;background:linear-gradient(#080b1280,#080b1280) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box!important;background-size:100% 100%,300% 100%;animation:rainbow-cycle 5s linear infinite}
+    .profile-outline-preview{border:5px solid var(--preview-outline)!important}
+    .rainbow-outline-preview{border:6px solid transparent!important;background:linear-gradient(#111722,#111722) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box!important;background-size:100% 100%,300% 100%;animation:rainbow-cycle 5s linear infinite}
     @keyframes rainbow-cycle{to{background-position:100% 50%}}
-    @media(prefers-reduced-motion:reduce){.rainbow-background,.rainbow-outline-sample,.rainbow-outline-preview{animation:none}}
+    @media(prefers-reduced-motion:reduce){.rainbow-background,.rainbow-outline-sample,.rainbow-outline-preview,.signal-card.rainbow-outline .signal-card-face,.outline-art.rainbow-outline-art i{animation:none}}
   </style></head><body><main class="store-page">
     <nav class="store-topbar"><a href="${profileLink}">← Voltar ao perfil</a><span>Loja de cosméticos · ${escapeHtml(data.groupName)}</span></nav>
     <header class="store-hero"><h1>🎨 Loja de cosméticos</h1><p>Personalize os fundos do perfil e o outline das bolhas. Cosméticos comprados podem ser trocados sem custo.</p></header>
@@ -3397,6 +3426,14 @@ function renderCosmeticsStore(data) {
     document.getElementById("backFromOutlines").addEventListener("click",()=>{document.getElementById("outlineCatalog").hidden=true;document.getElementById("cosmeticCategories").hidden=false});
     function showFeedback(element,message,isError){element.textContent=message;element.classList.toggle("error",Boolean(isError))}
     function actionLabel(key,type=previewType){return type==="outline"?(appliedOutline===key?"Em uso":storeContext.ownedOutlines.includes(key)?"Equipar":"Comprar e equipar"):(appliedBackground===key?"Em uso":storeContext.ownedBackgrounds.includes(key)?"Equipar":"Comprar e equipar")}
+    function setPreviewOutline(outline){
+      for(const element of [document.getElementById("previewProfile"),document.getElementById("previewAvatar")]){
+        element.classList.toggle("profile-outline-preview",Boolean(outline));
+        element.classList.toggle("rainbow-outline-preview",Boolean(outline?.rainbow));
+        if(outline)element.style.setProperty("--preview-outline",outline.color);
+        else element.style.removeProperty("--preview-outline");
+      }
+    }
     function openPreview(key){
       const background=storeContext.backgrounds[key];if(!background)return;
       previewKey=key;previewType="background";
@@ -3408,10 +3445,7 @@ function renderCosmeticsStore(data) {
       card.style.background="linear-gradient(145deg,"+background.stops[0]+","+background.stops[1]+" 55%,"+background.stops[2]+")";
       card.classList.toggle("rainbow-background",Boolean(background.rainbow));
       card.style.setProperty("--preview-accent",background.accent);
-      document.getElementById("previewProfile").style.borderColor="";
-      document.getElementById("previewProfile").classList.remove("rainbow-outline-preview");
-      document.getElementById("previewAvatar").style.borderColor="";
-      document.getElementById("previewAvatar").classList.remove("rainbow-outline-preview");
+      setPreviewOutline(storeContext.outlines[appliedOutline]);
       const action=document.getElementById("previewAction");action.textContent=actionLabel(key);action.disabled=appliedBackground===key;
       showFeedback(dialogFeedback,"",false);
       if(!dialog.open)dialog.showModal();
@@ -3428,10 +3462,7 @@ function renderCosmeticsStore(data) {
       card.style.background=background?"linear-gradient(145deg,"+background.stops[0]+","+background.stops[1]+" 55%,"+background.stops[2]+")":"#171c2a";
       card.classList.toggle("rainbow-background",Boolean(background?.rainbow));
       card.style.setProperty("--preview-accent",outline.color);
-      document.getElementById("previewProfile").style.borderColor=outline.color;
-      document.getElementById("previewAvatar").style.borderColor=outline.color;
-      document.getElementById("previewProfile").classList.toggle("rainbow-outline-preview",Boolean(outline.rainbow));
-      document.getElementById("previewAvatar").classList.toggle("rainbow-outline-preview",Boolean(outline.rainbow));
+      setPreviewOutline(outline);
       const action=document.getElementById("previewAction");action.textContent=actionLabel(key,"outline");action.disabled=appliedOutline===key;
       showFeedback(dialogFeedback,"",false);
       if(!dialog.open)dialog.showModal();
@@ -3606,7 +3637,7 @@ function getCosmeticPanelStyles(backgroundKey, panelType, outlineKey) {
   const borderColor = outline?.color || accent;
   const rainbowGradient = "linear-gradient(110deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744)";
   const rainbowAnimation = background?.rainbow || outline?.rainbow
-    ? `@keyframes cosmetic-rainbow-cycle{to{background-position:100% 50%}}@media(prefers-reduced-motion:reduce){body,.local-hero,.local-panel,.local-stat,.rank-link,.admin-page .hero,.admin-page .overview-card,.admin-page .setting-card{animation:none!important}}`
+    ? `@keyframes cosmetic-rainbow-cycle{to{background-position:100% 50%,100% 50%}}@media(prefers-reduced-motion:reduce){body,.local-hero,.local-panel,.local-stat,.rank-link,.local-avatar-frame,.admin-page .hero,.admin-page .hero .avatar,.admin-page .overview-card,.admin-page .setting-card,.admin-page .moderation-card{animation:none!important}}`
     : "";
   const pageBackground = background?.rainbow
     ? rainbowGradient
@@ -3614,8 +3645,18 @@ function getCosmeticPanelStyles(backgroundKey, panelType, outlineKey) {
   const heroBackground = `linear-gradient(145deg,${start},${middle} 55%,${end})`;
   const panelBackground = `linear-gradient(145deg,${middle} 0%,${end} 100%)`;
   if (panelType === "local") {
-    return `${rainbowAnimation}body{background:${pageBackground};${background?.rainbow ? "background-size:300% 300%;animation:cosmetic-rainbow-cycle 7s linear infinite" : ""}}.local-hero{border-color:${accent}88;background:${heroBackground}}.local-panel{border-color:${accent}66;background:${panelBackground}}.local-stat,.rank-link{border-color:${borderColor}88;background:${middle}88}.local-topbar a,.local-section-heading h2,.rank-link span{color:${accent}}.rank-link:hover{border-color:${borderColor};background:${start}88}${background?.rainbow ? `.local-hero,.local-panel{border:1px solid transparent;background:linear-gradient(145deg,${start}ee,${end}ee) padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 7s linear infinite}` : ""}${outline?.rainbow ? `.local-stat,.rank-link{border:1px solid transparent;background:linear-gradient(${middle}88,${middle}88) padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 5s linear infinite}` : ""}`;
+    const outlineStyles = outline?.rainbow
+      ? `.local-hero,.local-panel{border:6px solid transparent;background:${heroBackground} padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 5s linear infinite}.local-panel{background:${panelBackground} padding-box,${rainbowGradient} border-box}.local-stat,.rank-link{border:6px solid transparent;background:linear-gradient(${middle},${middle}) padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 5s linear infinite}.local-avatar-frame{border:6px solid transparent;background:linear-gradient(#171d2b,#171d2b) padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 5s linear infinite}`
+      : outline
+        ? `.local-hero,.local-panel,.local-stat,.rank-link,.local-avatar-frame{border:3px solid ${borderColor}}`
+        : "";
+    return `${rainbowAnimation}body{background:${pageBackground};${background?.rainbow ? "background-size:300% 300%;animation:cosmetic-rainbow-cycle 7s linear infinite" : ""}}.local-hero{border-color:${accent}88;background:${heroBackground}}.local-panel{border-color:${accent}66;background:${panelBackground}}.local-stat,.rank-link{border-color:${borderColor}88;background:${middle}88}.local-topbar a,.local-section-heading h2,.rank-link span{color:${accent}}.rank-link:hover{border-color:${borderColor};background:${start}88}${outlineStyles}`;
   }
+  const outlineStyles = outline?.rainbow
+    ? `.admin-page .hero,.admin-page .overview-card,.admin-page .setting-card,.admin-page .moderation-card{border:6px solid transparent;background:${heroBackground} padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 5s linear infinite}.admin-page .overview-card,.admin-page .setting-card,.admin-page .moderation-card{background:${panelBackground} padding-box,${rainbowGradient} border-box}.admin-page .hero .avatar{border:6px solid transparent;background:linear-gradient(#171d2b,#171d2b) padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 5s linear infinite}`
+    : outline
+      ? `.admin-page .hero,.admin-page .overview-card,.admin-page .setting-card,.admin-page .moderation-card{border:3px solid ${borderColor}}.admin-page .hero .avatar{border:3px solid ${borderColor}}`
+      : "";
   return `${rainbowAnimation}body{background:${pageBackground};${background?.rainbow ? "background-size:300% 300%;animation:cosmetic-rainbow-cycle 7s linear infinite" : ""}}
     .admin-page .topbar a,.admin-page .eyebrow,.admin-page .permission-count,.admin-page .shortcut-card code,.admin-page .scope-picker label,.admin-page .scope-current{color:${accent}}
     .admin-page .hero{border-color:${accent}88;background:${heroBackground}}
@@ -3634,11 +3675,194 @@ function getCosmeticPanelStyles(backgroundKey, panelType, outlineKey) {
     .admin-page .antilink-dialog .schedule-card button:not(.danger){border-color:${accent}66!important;background:${accent}20!important}
     .admin-page .antilink-dialog .monitor-job{border-color:${accent}55;background:${middle}88}
     .admin-page .antilink-dialog button:not(.danger):not(.primary):not(.dialog-close):hover{border-color:${accent};background:${start}88}
-    .admin-page .antilink-dialog .primary{border-color:${accent};background:${accent}33}`;
+    .admin-page .antilink-dialog .primary{border-color:${accent};background:${accent}33}
+    ${outlineStyles}`;
+}
+
+function renderEconomyAdmin(data) {
+  const context = JSON.stringify({ platform: data.platform, groupId: data.groupId });
+  const rarityData = JSON.stringify(economy.LOCAL_SIGNAL_RARITIES.map(value => ({
+    key: value,
+    label: ({ comum: "Comum", incomum: "Incomum", raro: "Raro", epico: "Épico", lendario: "Lendário" })[value] || value
+  })));
+  const groupType = data.platform === "discord" ? "Servidor" : "Grupo";
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Configurações da economia</title><style>
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb;--line:#334366;--muted:#9da8bd}*{box-sizing:border-box}body{margin:0;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}button,input,textarea,select{font:inherit}.page{width:min(1000px,100%);margin:0 auto}.top{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:8px 0 20px;border-bottom:1px solid var(--line)}a{color:#b9c6ff;text-decoration:none;font-weight:700}.hero,.panel{margin-top:20px;padding:22px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#1c2438,#131925)}h1{margin:7px 0;font-size:clamp(23px,4vw,34px)}h2{margin:0 0 8px;font-size:18px}h3{margin:0 0 8px;font-size:15px}.muted{color:var(--muted);line-height:1.55}.tabs{display:flex;gap:8px;overflow-x:auto;margin-top:18px;padding-bottom:3px}.tabs button{flex:none;padding:10px 15px;border-color:var(--line);border-radius:11px;color:#cbd2e2;white-space:nowrap}.tabs button[aria-selected="true"]{border-color:#9b8cff;background:#8b7bff30;color:#fff}.panel[hidden],.tier[hidden]{display:none}.setting{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:14px;border:1px solid var(--line);border-radius:12px;background:#ffffff05}.setting label{display:flex;align-items:center;gap:10px;font-weight:700}.setting input[type=checkbox]{width:19px;height:19px;accent-color:#9b8cff}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}label{display:grid;gap:6px;color:#dce2f3;font-size:12px;font-weight:700}input:not([type=checkbox]),textarea,select{width:100%;padding:10px 11px;border:1px solid #485776;border-radius:9px;background:#0e1422;color:#f5f7fb}textarea{resize:vertical}button{padding:9px 12px;border:1px solid #7582a3;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-weight:700;cursor:pointer}button:hover{border-color:#9b8cff;background:#8b7bff20}button:disabled{opacity:.55;cursor:wait}.primary{border-color:#9b8cff;background:#8b7bff30}.danger{border-color:#b65c69;color:#ffb1ba}.feedback{min-height:20px;margin:12px 0 0;color:#9cf0cf;font-size:12px}.feedback.error{color:#ff9eaa}.list{display:grid;gap:9px;margin-top:12px}.row{padding:13px;border:1px solid var(--line);border-radius:11px;background:#ffffff05}.row p{margin:5px 0;color:var(--muted);font-size:12px}.actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}.tier{margin:12px 0;padding:14px;border:1px solid var(--line);border-radius:12px}.tier legend{padding:0 7px;color:#b9c6ff;font-weight:800}.checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px}.check{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid #334366;border-radius:8px;color:#dce2f3;font-weight:400}.check input{accent-color:#9b8cff}.prize-group{margin-top:12px}.prize-group strong{font-size:12px}.empty{color:var(--muted);font-size:12px}.balance-actions{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,auto);gap:8px;margin-top:10px}.balance-actions input{min-width:0}.balance-search{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:14px}@media(max-width:620px){body{padding:14px}.grid,.checks{grid-template-columns:1fr}.setting{align-items:flex-start;flex-direction:column}.top{align-items:flex-start}.balance-actions{grid-template-columns:1fr 1fr}.balance-actions input{grid-column:1/-1}.balance-search{grid-template-columns:1fr}}
+  </style></head><body><main class="page">
+    <nav class="top"><a href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">← Painel de administração</a><span>${escapeHtml(groupType)} · ${escapeHtml(data.groupName)}</span></nav>
+    <header class="hero"><small>CONFIGURAÇÕES LOCAIS</small><h1>Economia</h1><p class="muted">Escolha uma função para gerenciar. Cada seção é exibida separadamente para facilitar a configuração.</p></header>
+    <nav class="tabs" role="tablist" aria-label="Funções da economia">
+      <button type="button" role="tab" aria-selected="true" aria-controls="rankingPanel" data-economy-tab="ranking">Ranking</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="storePanel" data-economy-tab="store">Loja Local</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="signalPanel" data-economy-tab="signal">Busca de Sinais</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="balancesPanel" data-economy-tab="balances">Editar saldo</button>
+    </nav>
+    <section id="rankingPanel" class="panel" role="tabpanel"><h2>Ranking de riqueza</h2><p class="muted">Escolha se o saldo guardado no cofre entra no valor e na posição dos rankings web e em imagem.</p><div class="setting"><label><input id="includeVault" type="checkbox"> Considerar cofre no ranking</label><span id="rankStatus" class="muted">Carregando...</span></div><p id="rankFeedback" class="feedback" role="status"></p></section>
+    <section id="storePanel" class="panel" role="tabpanel" hidden><h2>Loja Local</h2><p class="muted">Gerencie o catálogo, os pedidos e os textos exibidos no mercado deste grupo.</p>
+      <form id="storeDetails" class="grid"><label>Título<input name="title" maxlength="120" required></label><label>Aviso<textarea name="notice" maxlength="1000" rows="2" required></textarea></label><div><button class="primary" type="submit">Salvar título e aviso</button></div></form>
+      <h3 style="margin-top:20px">Adicionar ou editar item</h3><form id="storeItem" class="grid">
+        <input type="hidden" name="id"><label>Nome<input name="name" maxlength="120" required></label><label>Categoria<input name="category" maxlength="80" required></label>
+        <label>Preço em SatCoins<input name="price" inputmode="decimal" placeholder="0,00" required></label><label>Quantidade<input name="quantity" placeholder="∞ para infinito" required></label>
+        <label>Raridade<select name="rarity"><option value="">Sem raridade</option><option value="comum">Comum</option><option value="incomum">Incomum</option><option value="raro">Raro</option><option value="epico">Épico</option><option value="lendario">Lendário</option></select></label>
+        <div class="actions"><button id="saveStoreItem" class="primary" type="submit">Adicionar item</button><button id="cancelStoreEdit" type="button" hidden>Cancelar edição</button></div>
+      </form><div id="storeItems" class="list"></div><p id="storeFeedback" class="feedback" role="status"></p>
+      <h3 style="margin-top:24px">Pedidos pendentes</h3><div id="storeOrders" class="list"></div>
+    </section>
+    <section id="signalPanel" class="panel" role="tabpanel" hidden><h2>Busca de Sinais Local</h2><p class="muted">Configure preço, chances, garantias e os prêmios possíveis de cada raridade. As chances devem totalizar 100%.</p>
+      <form id="signalForm"><label class="setting"><span><strong>Ativar Busca Local</strong><small class="muted">Disponibiliza a busca local no painel de Busca de Sinais.</small></span><input name="enabled" type="checkbox"></label>
+        <label style="margin-top:12px">Preço por busca em SatCoins<input name="price" inputmode="decimal" required></label>
+        <nav id="signalRarityTabs" class="tabs" role="tablist" aria-label="Raridade da Busca Local"></nav><div id="signalTiers"></div>
+        <label style="margin-top:14px">Destaques (até 2)<select id="signalFeatured" multiple size="6"></select><small class="muted">Use Ctrl ou Cmd para selecionar mais de um.</small></label>
+        <div class="actions"><button class="primary" type="submit">Salvar Busca Local</button></div>
+      </form><p id="signalFeedback" class="feedback" role="status"></p>
+    </section>
+    <section id="balancesPanel" class="panel" role="tabpanel" hidden><h2>Editar saldo dos membros</h2><p class="muted">Pesquise por nome, usuário ou ID. As ações alteram somente o saldo da carteira; o cofre permanece separado. Para cada membro, informe um valor e escolha definir, adicionar ou retirar.</p>
+      <form id="balanceSearchForm" class="balance-search"><input name="query" type="search" maxlength="100" autocomplete="off" placeholder="Nome, usuário ou ID do membro"><button class="primary" type="submit">Buscar</button></form>
+      <div id="balanceUsers" class="list" aria-live="polite"></div><p id="balanceFeedback" class="feedback" role="status" aria-live="polite"></p>
+    </section>
+  </main><script>
+    const context=${context},rarities=${rarityData};
+    const money=value=>(Number(value||0)/100).toFixed(2);
+    const formatMoney=value=>money(value).replace(/\\B(?=(\\d{3})+(?!\\d))/g," ")+"💷";
+    async function api(path,payload={}){
+      const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...context,...payload})});
+      const result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível salvar as configurações.");return result;
+    }
+    function show(id,message,error=false){const node=document.getElementById(id);node.textContent=message;node.classList.toggle("error",error)}
+    let balancesLoaded=false,balanceQuery="";
+    const balanceScope={level:context.platform==="whatsapp"?"chat":"server"};
+    async function loadBalanceUsers(query=balanceQuery){
+      balanceQuery=query;show("balanceFeedback","Carregando membros...");
+      try{
+        const result=await api("/api/account/local/admin-rp-state",{scope:balanceScope,setting:"economy",query});
+        balancesLoaded=true;renderBalanceUsers(result.users,result.total);
+        show("balanceFeedback",result.total+" membro(s) encontrado(s).");
+      }catch(error){show("balanceFeedback",error.message,true)}
+    }
+    function renderBalanceUsers(users,total){
+      const container=document.getElementById("balanceUsers");container.replaceChildren();
+      if(!users.length){const empty=document.createElement("p");empty.className="empty";empty.textContent="Nenhuma conta de economia encontrada. Pesquise pelo nome, usuário ou ID.";container.append(empty);return}
+      for(const user of users){
+        const card=document.createElement("article"),name=document.createElement("strong"),identity=document.createElement("p"),detail=document.createElement("p"),controls=document.createElement("div"),amount=document.createElement("input");
+        card.className="row";name.textContent=user.displayName||user.username||user.userId;identity.textContent=(user.username?"@"+user.username+" · ":"")+"ID: "+user.userId;identity.className="muted";detail.textContent=user.detail;
+        controls.className="balance-actions";amount.type="text";amount.inputMode="decimal";amount.placeholder="Valor em SatCoins";amount.autocomplete="off";amount.setAttribute("aria-label","Valor em SatCoins para "+name.textContent);
+        controls.append(amount);
+        for(const [action,label] of [["set","Definir carteira"],["add","Adicionar"],["subtract","Retirar"]]){
+          const button=document.createElement("button");button.type="button";button.textContent=label;
+          button.addEventListener("click",async()=>{
+            const value=amount.value.trim();
+            if(!/^\\d+(?:[.,]\\d{1,2})?$/.test(value)){show("balanceFeedback","Informe um valor válido com até duas casas decimais.",true);amount.focus();return}
+            if(action==="subtract"&&!window.confirm("Retirar "+value+" SatCoins da carteira de "+(user.displayName||user.userId)+"?"))return;
+            button.disabled=true;show("balanceFeedback","Atualizando carteira...");
+            try{
+              await api("/api/account/local/admin-rp-action",{scope:balanceScope,setting:"economy",userId:user.userId,action,amount:value});
+              await loadBalanceUsers();
+              if(!document.getElementById("balanceFeedback").classList.contains("error"))show("balanceFeedback","Carteira de "+(user.displayName||user.userId)+" atualizada.");
+            }catch(error){show("balanceFeedback",error.message,true)}
+            finally{button.disabled=false}
+          });
+          controls.append(button);
+        }
+        card.append(name,identity,detail,controls);container.append(card);
+      }
+      if(total>users.length){const more=document.createElement("p");more.className="empty";more.textContent="Mostrando "+users.length+" de "+total+" contas. Refine a busca.";container.append(more)}
+    }
+    document.getElementById("balanceSearchForm").addEventListener("submit",event=>{event.preventDefault();loadBalanceUsers(event.currentTarget.elements.query.value.trim())});
+    document.querySelectorAll("[data-economy-tab]").forEach(tab=>tab.addEventListener("click",()=>{
+      document.querySelectorAll("[data-economy-tab]").forEach(item=>item.setAttribute("aria-selected",String(item===tab)));
+      document.querySelectorAll('[role="tabpanel"]').forEach(panel=>{panel.hidden=panel.id!==tab.getAttribute("aria-controls")});
+      if(tab.dataset.economyTab==="balances"&&!balancesLoaded)loadBalanceUsers("");
+    }));
+    async function loadRanking(){
+      try{const state=await api("/api/account/local/admin-economy-ranking-state");const input=document.getElementById("includeVault");input.checked=state.includeVault;document.getElementById("rankStatus").textContent=state.includeVault?"Cofre incluído":"Somente carteira";
+        input.addEventListener("change",async()=>{input.disabled=true;show("rankFeedback","Salvando...");
+          try{const result=await api("/api/account/local/admin-economy-ranking",{includeVault:input.checked});document.getElementById("rankStatus").textContent=result.includeVault?"Cofre incluído":"Somente carteira";show("rankFeedback","Configuração salva.")}
+          catch(error){input.checked=!input.checked;show("rankFeedback",error.message,true)}
+          finally{input.disabled=false}
+        });
+      }catch(error){show("rankFeedback",error.message,true);document.getElementById("rankStatus").textContent="Indisponível"}
+    }
+    const storeItems=document.getElementById("storeItems"),storeOrders=document.getElementById("storeOrders"),storeItemForm=document.getElementById("storeItem");
+    let storeState=null;
+    function clearStoreForm(){storeItemForm.reset();storeItemForm.elements.id.value="";document.getElementById("saveStoreItem").textContent="Adicionar item";document.getElementById("cancelStoreEdit").hidden=true}
+    function renderStore(state){
+      storeState=state;document.getElementById("storeDetails").elements.title.value=state.store.title;document.getElementById("storeDetails").elements.notice.value=state.store.notice;storeItems.replaceChildren();
+      if(!state.store.items.length){const empty=document.createElement("p");empty.className="empty";empty.textContent="Nenhum item cadastrado.";storeItems.append(empty)}
+      for(const item of state.store.items){const row=document.createElement("article"),name=document.createElement("strong"),detail=document.createElement("p"),actions=document.createElement("div"),edit=document.createElement("button"),remove=document.createElement("button");
+        row.className="row";name.textContent=item.name;detail.textContent="#"+item.id+" · "+item.category+" · "+formatMoney(item.price)+" · Estoque: "+(item.quantity===null?"infinito":item.quantity)+(item.rarity?" · "+item.rarity:"");
+        actions.className="actions";edit.type="button";edit.textContent="Editar";edit.addEventListener("click",()=>{storeItemForm.elements.id.value=item.id;storeItemForm.elements.name.value=item.name;storeItemForm.elements.category.value=item.category;storeItemForm.elements.price.value=money(item.price);storeItemForm.elements.quantity.value=item.quantity===null?"infinito":String(item.quantity);storeItemForm.elements.rarity.value=item.rarity||"";document.getElementById("saveStoreItem").textContent="Salvar item";document.getElementById("cancelStoreEdit").hidden=false;storeItemForm.scrollIntoView({block:"center"})});
+        remove.type="button";remove.className="danger";remove.textContent="Remover";remove.addEventListener("click",async()=>{if(!window.confirm("Remover "+item.name+" do catálogo?"))return;await saveStore({action:"remove",itemId:item.id},"Item removido.")});
+        actions.append(edit,remove);row.append(name,detail,actions);storeItems.append(row);
+      }
+      storeOrders.replaceChildren();if(!state.orders.length){const empty=document.createElement("p");empty.className="empty";empty.textContent="Nenhum pedido pendente.";storeOrders.append(empty)}
+      for(const order of state.orders){const row=document.createElement("article"),name=document.createElement("strong"),detail=document.createElement("p"),actions=document.createElement("div"),done=document.createElement("button"),cancel=document.createElement("button");
+        row.className="row";name.textContent="#"+order.id+" · "+order.itemName;detail.textContent=(order.displayName||order.userId)+" · "+formatMoney(order.price)+(order.source==="local-signal-search"?" · Prêmio da Busca Local":"");
+        actions.className="actions";done.type="button";done.textContent="Marcar entregue";done.addEventListener("click",()=>saveStore({action:"delivered",orderId:order.id},"Pedido marcado como entregue."));
+        cancel.type="button";cancel.className="danger";cancel.textContent="Cancelar e estornar";cancel.addEventListener("click",()=>saveStore({action:"cancelled",orderId:order.id},"Pedido cancelado e estornado."));
+        actions.append(done,cancel);row.append(name,detail,actions);storeOrders.append(row);
+      }
+    }
+    async function saveStore(payload,message){
+      show("storeFeedback","Salvando...");
+      try{renderStore(await api("/api/account/local/admin-store2",payload));show("storeFeedback",message);return true}
+      catch(error){show("storeFeedback",error.message,true);return false}
+    }
+    async function loadStore(){try{renderStore(await api("/api/account/local/admin-store2-state"))}catch(error){show("storeFeedback",error.message,true)}}
+    document.getElementById("storeDetails").addEventListener("submit",event=>{event.preventDefault();const form=event.currentTarget;saveStore({action:"details",title:form.elements.title.value,notice:form.elements.notice.value},"Título e aviso salvos.")});
+    storeItemForm.addEventListener("submit",async event=>{event.preventDefault();const form=event.currentTarget,id=form.elements.id.value;const saved=await saveStore({action:id?"edit":"add",...(id?{itemId:Number(id)}:{}),item:{name:form.elements.name.value,category:form.elements.category.value,price:form.elements.price.value,quantity:form.elements.quantity.value,rarity:form.elements.rarity.value||null}},id?"Item atualizado.":"Item adicionado.");if(saved)clearStoreForm()});
+    document.getElementById("cancelStoreEdit").addEventListener("click",clearStoreForm);
+    const tiersNode=document.getElementById("signalTiers"),featuredNode=document.getElementById("signalFeatured"),rarityTabs=document.getElementById("signalRarityTabs");let activeRarity=rarities[0].key;
+    function checkboxGroup(parent,title,items,selected,type){
+      const group=document.createElement("div"),heading=document.createElement("strong"),list=document.createElement("div");group.className="prize-group";heading.textContent=title;list.className="checks";group.append(heading,list);
+      if(!items.length){const empty=document.createElement("small");empty.className="empty";empty.textContent="Nenhum item disponível.";list.append(empty)}
+      for(const item of items){const label=document.createElement("label"),input=document.createElement("input"),text=document.createElement("span");label.className="check";input.type="checkbox";input.dataset.prizeType=type;input.value=String(item.key??item.id);input.checked=selected.includes(input.value);text.textContent=(item.name||item.label)+(item.price===undefined?"":" · "+formatMoney(item.price));label.append(input,text);list.append(label)}
+      parent.append(group);
+    }
+    function renderSignal(state){
+      signalState=state;const cfg=state.localSignalSearch||state;document.getElementById("signalForm").elements.enabled.checked=cfg.enabled;document.getElementById("signalForm").elements.price.value=money(cfg.price);tiersNode.replaceChildren();
+      rarityTabs.replaceChildren();
+      for(const rarity of rarities){const tab=document.createElement("button");tab.type="button";tab.id="signalRarityTab-"+rarity.key;tab.setAttribute("role","tab");tab.setAttribute("aria-controls","signalRarityPanel-"+rarity.key);tab.setAttribute("aria-selected",String(rarity.key===activeRarity));tab.textContent=rarity.label;tab.addEventListener("click",()=>{activeRarity=rarity.key;renderSignalVisibility()});rarityTabs.append(tab)}
+      for(const rarity of rarities){const tier=cfg.tiers[rarity.key],fieldset=document.createElement("fieldset"),legend=document.createElement("legend"),grid=document.createElement("div");fieldset.className="tier";fieldset.id="signalRarityPanel-"+rarity.key;fieldset.setAttribute("role","tabpanel");fieldset.setAttribute("aria-labelledby","signalRarityTab-"+rarity.key);fieldset.dataset.rarity=rarity.key;fieldset.hidden=rarity.key!==activeRarity;legend.textContent=rarity.label;grid.className="grid";
+        const field=(labelText,name,type,value,min,max)=>{const label=document.createElement("label"),input=document.createElement("input");label.textContent=labelText;input.name=name;input.type=type;input.value=value;if(min!==undefined)input.min=min;if(max!==undefined)input.max=max;input.required=true;label.append(input);grid.append(label)};
+        field("Chance (%)","chance","number",tier.chance,0,100);field("Garantir após buscas (0 = sem garantia)","guaranteeAfter","number",tier.guaranteeAfter||0,0,10000);
+        field("SatCoins mínimo (opcional)","cashMin","text",tier.cashMin===null?"":money(tier.cashMin));field("SatCoins máximo (opcional)","cashMax","text",tier.cashMax===null?"":money(tier.cashMax));
+        fieldset.append(legend,grid);
+        checkboxGroup(fieldset,"Itens da Loja do Bot",cfg.botItems,tier.botItems,"bot");
+        checkboxGroup(fieldset,"Itens do Mercado Local",cfg.marketItems,tier.marketItems.map(String),"market");
+        checkboxGroup(fieldset,"Fundos de perfil",cfg.backgrounds,tier.backgrounds,"background");
+        checkboxGroup(fieldset,"Outlines de perfil",cfg.outlines,tier.outlines,"outline");tiersNode.append(fieldset);
+      }
+      featuredNode.replaceChildren();const selected=cfg.featured.map(item=>item.type==="market"?"market:"+item.id:item.type+":"+item.key),options=[];
+      for(const rarity of rarities){const tier=cfg.tiers[rarity.key];for(const key of tier.botItems)options.push({type:"bot",key,label:cfg.botItems.find(item=>item.key===key)?.name});
+        for(const id of tier.marketItems)options.push({type:"market",key:id,label:cfg.marketItems.find(item=>item.id===id)?.name});
+        for(const key of tier.backgrounds)options.push({type:"background",key,label:"Fundo "+cfg.backgrounds.find(item=>item.key===key)?.name});
+        for(const key of tier.outlines)options.push({type:"outline",key,label:"Outline "+cfg.outlines.find(item=>item.key===key)?.name});
+      }
+      const seen=new Set();for(const option of options){const value=option.type+":"+option.key;if(seen.has(value))continue;seen.add(value);const node=new Option(option.label||value,value);node.selected=selected.includes(value);featuredNode.add(node)}
+    }
+    function renderSignalVisibility(){
+      for(const tab of rarityTabs.querySelectorAll('[role="tab"]'))tab.setAttribute("aria-selected",String(tab.id==="signalRarityTab-"+activeRarity));
+      for(const panel of tiersNode.querySelectorAll('[role="tabpanel"]'))panel.hidden=panel.dataset.rarity!==activeRarity;
+    }
+    async function loadSignal(){try{renderSignal(await api("/api/account/local/admin-local-signal-search-state"))}catch(error){show("signalFeedback",error.message,true)}}
+    document.getElementById("signalForm").addEventListener("submit",async event=>{event.preventDefault();const form=event.currentTarget,tiers={};
+      for(const fieldset of tiersNode.querySelectorAll("[data-rarity]")){const rarity=fieldset.dataset.rarity,cashMin=fieldset.elements.cashMin.value.trim(),cashMax=fieldset.elements.cashMax.value.trim();
+        if(Boolean(cashMin)!==Boolean(cashMax)){show("signalFeedback","Informe mínimo e máximo de SatCoins ou deixe ambos vazios.",true);return}
+        const selected=type=>[...fieldset.querySelectorAll('[data-prize-type="'+type+'"]:checked')].map(input=>input.value);
+        tiers[rarity]={chance:Number(fieldset.elements.chance.value),guaranteeAfter:Number(fieldset.elements.guaranteeAfter.value)||null,cashMin:cashMin||null,cashMax:cashMax||null,botItems:selected("bot"),marketItems:selected("market").map(Number),backgrounds:selected("background"),outlines:selected("outline")};
+      }
+      const featured=[...featuredNode.selectedOptions].map(option=>{const [type,value]=option.value.split(":");return type==="market"?{type,id:Number(value)}:{type,key:value}});
+      if(featured.length>2){show("signalFeedback","Escolha no máximo dois destaques.",true);return}
+      const button=form.querySelector('[type="submit"]');button.disabled=true;show("signalFeedback","Salvando...");
+      try{renderSignal(await api("/api/account/local/admin-local-signal-search",{config:{enabled:form.elements.enabled.checked,price:form.elements.price.value,tiers,featured}}));show("signalFeedback","Busca Local salva.")}
+      catch(error){show("signalFeedback",error.message,true)}finally{button.disabled=false}
+    });
+    Promise.all([loadRanking(),loadStore(),loadSignal()]);
+  </script></body></html>`;
 }
 
 function renderGroupAdmin(data) {
-  const cosmeticThemeStyles = getCosmeticPanelStyles(data.profileBackground, "admin");
+  const cosmeticThemeStyles = getCosmeticPanelStyles(data.profileBackground, "admin", data.profileOutline);
   const groupType = data.platform === "discord" ? "Servidor" : "Grupo";
   const warningRows = data.moderation.entries.map(item =>
     `<li><div class="warning-identity"><strong>${escapeHtml(item.name || item.userId)}</strong><small>ID: ${escapeHtml(item.userId)}</small></div><strong class="warning-count">${item.count}/${data.moderation.max}</strong><details class="warning-history"><summary>Motivos das advertências (${item.count})</summary><ul>${item.legacyCount ? `<li>${item.legacyCount} advertência(s) antiga(s) sem motivo registrado</li>` : ""}${(item.records || []).map(record => `<li>${escapeHtml(record.reason || "Motivo não informado")}<small>${escapeHtml(formatWarningDate(record.createdAt))}</small></li>`).join("")}</ul></details><button type="button" class="moderation-action danger" data-warning-user="${escapeHtml(item.userId)}">Remover advertências</button></li>`
@@ -3663,6 +3887,8 @@ function renderGroupAdmin(data) {
       </div>
       <div class="local-signal-choice-group"><strong>Itens do Bot que podem sair</strong><div class="local-signal-check-list" data-local-bot-items></div></div>
       <div class="local-signal-choice-group"><strong>Itens do Mercado Local que podem sair</strong><div class="local-signal-check-list" data-local-market-items></div><small>Ao ganhar um item do Mercado Local, um pedido gratuito será criado para os administradores.</small></div>
+      <div class="local-signal-choice-group"><strong>Fundos de perfil que podem sair</strong><div class="local-signal-check-list" data-local-background-items></div></div>
+      <div class="local-signal-choice-group"><strong>Outlines de perfil que podem sair</strong><div class="local-signal-check-list" data-local-outline-items></div></div>
     </fieldset>`).join("");
   const localSignalDialog = `<dialog class="antilink-dialog store2-dialog local-signal-dialog" id="localSignalDialog" aria-labelledby="localSignalTitle">
     <form id="localSignalForm">
@@ -3710,7 +3936,7 @@ function renderGroupAdmin(data) {
       const configButton = configurableSettings.includes(setting.key)
         ? `<button type="button" class="setting-icon-button" data-${setting.key.toLowerCase()}-config data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Configurar ${setting.key} neste escopo" title="Configurações do ${setting.key}">${ADMIN_SETTINGS_GEAR_ICON}</button>`
         : ["economy", "xp", "activity"].includes(setting.key)
-          ? `<button type="button" class="setting-icon-button" data-rp-config="${setting.key}" data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Gerenciar ${setting.label}" title="Gerenciar ${setting.label}">${ADMIN_SETTINGS_GEAR_ICON}</button>${setting.key === "economy" ? `<button type="button" class="setting-icon-button setting-store2-button" data-store2-config><span aria-hidden="true">${ADMIN_SETTINGS_GEAR_ICON}</span><span>Configurar Loja 2</span></button><button type="button" class="setting-icon-button setting-store2-button" data-local-signal-config><span aria-hidden="true">✦</span><span>Configurar Busca Local</span></button>` : ""}`
+          ? `<button type="button" class="setting-icon-button" data-rp-config="${setting.key}" data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Gerenciar ${setting.label}" title="Gerenciar ${setting.label}">${ADMIN_SETTINGS_GEAR_ICON}</button>${setting.key === "economy" ? `<a href="/painel-economia?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}" style="display:inline-flex;align-items:center;width:auto;height:auto;padding:8px 10px;text-decoration:none;border:1px solid #6f7fa5;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-size:11px;font-weight:700">Economia, loja e busca</a>` : ""}`
         : setting.key === "agendar"
           ? `<button type="button" class="setting-icon-button" data-schedule-config data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Gerenciar agendamentos neste escopo" title="Gerenciar agendamentos">${ADMIN_SETTINGS_GEAR_ICON}</button>`
         : isMonitor
@@ -4815,19 +5041,27 @@ function renderGroupAdmin(data) {
         fieldset.elements.cashMax.value=tier.cashMax===null?"":(tier.cashMax/100).toFixed(2);
         const botItems=config.botItems.map(item=>({value:item.key,label:item.name,detail:formatStoreMoney(item.price)}));
         const marketItems=config.marketItems.map(item=>({value:item.id,label:"#"+item.id+" · "+item.name,detail:formatStoreMoney(item.price)}));
+        const backgrounds=config.backgrounds.map(item=>({value:item.key,label:"Fundo "+item.name,detail:formatStoreMoney(item.price)}));
+        const outlines=config.outlines.map(item=>({value:item.key,label:"Outline "+item.name,detail:formatStoreMoney(item.price)}));
         renderLocalSignalChecks(fieldset.querySelector("[data-local-bot-items]"),botItems,tier.botItems,"botItem");
         renderLocalSignalChecks(fieldset.querySelector("[data-local-market-items]"),marketItems,tier.marketItems,"marketItem");
+        renderLocalSignalChecks(fieldset.querySelector("[data-local-background-items]"),backgrounds,tier.backgrounds,"backgroundItem");
+        renderLocalSignalChecks(fieldset.querySelector("[data-local-outline-items]"),outlines,tier.outlines,"outlineItem");
       }
       const featuredOptions=[
         ...config.botItems.filter(item=>Object.values(config.tiers).some(tier=>tier.botItems.includes(item.key)))
           .map(item=>({value:"bot:"+item.key,label:item.name,detail:"Loja do Bot"})),
         ...config.marketItems.filter(item=>Object.values(config.tiers).some(tier=>tier.marketItems.includes(item.id)))
-          .map(item=>({value:"market:"+item.id,label:item.name,detail:"Mercado Local"}))
+          .map(item=>({value:"market:"+item.id,label:item.name,detail:"Mercado Local"})),
+        ...config.backgrounds.filter(item=>Object.values(config.tiers).some(tier=>tier.backgrounds.includes(item.key)))
+          .map(item=>({value:"background:"+item.key,label:"Fundo "+item.name,detail:"Cosmético de perfil"})),
+        ...config.outlines.filter(item=>Object.values(config.tiers).some(tier=>tier.outlines.includes(item.key)))
+          .map(item=>({value:"outline:"+item.key,label:"Outline "+item.name,detail:"Cosmético de perfil"}))
       ];
       renderLocalSignalChecks(
         localSignalFeatured,
         featuredOptions,
-        config.featured.map(item=>item.type==="bot"?"bot:"+item.key:"market:"+item.id),
+        config.featured.map(item=>item.type==="market"?"market:"+item.id:item.type+":"+item.key),
         "featuredItem"
       );
     }
@@ -4859,12 +5093,14 @@ function renderGroupAdmin(data) {
           guaranteeAfter:Number(fieldset.elements.guaranteeAfter.value)||null,
           cashMin:cashMin||null,cashMax:cashMax||null,
           botItems:[...fieldset.querySelectorAll("[data-local-bot-items] input:checked")].map(input=>input.value),
-          marketItems:[...fieldset.querySelectorAll("[data-local-market-items] input:checked")].map(input=>Number(input.value))
+          marketItems:[...fieldset.querySelectorAll("[data-local-market-items] input:checked")].map(input=>Number(input.value)),
+          backgrounds:[...fieldset.querySelectorAll("[data-local-background-items] input:checked")].map(input=>input.value),
+          outlines:[...fieldset.querySelectorAll("[data-local-outline-items] input:checked")].map(input=>input.value)
         };
       }
       const featured=[...localSignalFeatured.querySelectorAll('input[type="checkbox"]:checked')].map(input=>{
         const [type,value]=input.value.split(":");
-        return type==="bot"?{type,key:value}:{type,id:Number(value)};
+        return type==="market"?{type,id:Number(value)}:{type,key:value};
       });
       if(featured.length>2){setLocalSignalFeedback("Escolha no máximo dois destaques.",true);return}
       submit.disabled=true;setLocalSignalFeedback("Salvando configuração...");
@@ -6450,16 +6686,30 @@ function renderProfile(profile) {
   const profileOutline = profileCosmetics.getProfileOutline(profile.economy.outline);
   const profileStyle = [
     profileTheme
-      ? `--profile-surface:${profileTheme.stops[1]}ee;--profile-deep:${profileTheme.stops[2]}f2;--profile-accent:${profileTheme.accent};--profile-border:${profileTheme.stops[0]};background:${profileCosmetics.getProfileBackgroundCss(profileTheme.key)}`
+      ? `--profile-surface:${profileTheme.stops[1]};--profile-deep:${profileTheme.stops[2]};--profile-accent:${profileTheme.accent};--profile-border:${profileTheme.stops[0]};--profile-background:${profileCosmetics.getProfileBackgroundCss(profileTheme.key)}`
       : "",
     profileOutline ? `--profile-outline:${profileOutline.color}` : ""
   ].filter(Boolean).join(";");
   const profileClasses = [
+    profileTheme ? "profile-themed-background" : "",
     profileTheme?.rainbow ? "rainbow-background" : "",
+    profileOutline ? "profile-outline" : "",
     profileOutline?.rainbow ? "rainbow-outline" : ""
   ].filter(Boolean).join(" ");
   const profileAnimationStyles = profileClasses
-    ? `<style>@keyframes profile-rainbow-cycle{to{background-position:100% 50%}}.card.rainbow-background{background:linear-gradient(110deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744)!important;background-size:300% 300%!important;animation:profile-rainbow-cycle 5s linear infinite}.card.rainbow-outline .grid article{border:2px solid transparent;background:linear-gradient(var(--profile-surface,#202a40),var(--profile-surface,#202a40)) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:profile-rainbow-cycle 5s linear infinite}@media(prefers-reduced-motion:reduce){.card.rainbow-background,.card.rainbow-outline .grid article{animation:none}}</style>`
+    ? `<style>
+      @keyframes profile-rainbow-background{to{background-position:100% 50%}}
+      @keyframes profile-rainbow-outline{to{background-position:100% 50%,100% 50%}}
+      .card.profile-themed-background{background:var(--profile-background)!important}
+      .card.rainbow-background{background:var(--profile-background)!important;background-size:300% 300%!important;animation:profile-rainbow-background 5s linear infinite}
+      .card.profile-outline{border:4px solid var(--profile-outline)}
+      .card.profile-outline .grid article{border:4px solid var(--profile-outline)}
+      .card.profile-outline .avatar{border:4px solid var(--profile-outline)}
+      .card.rainbow-outline{border:8px solid transparent;background:var(--profile-background,linear-gradient(145deg,var(--profile-surface,#1c2438),var(--profile-deep,#111521))) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box!important;background-size:300% 300%,300% 100%;animation:profile-rainbow-outline 5s linear infinite}
+      .card.rainbow-outline .grid article{border:8px solid transparent;background:linear-gradient(var(--profile-surface,#202a40),var(--profile-surface,#202a40)) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:profile-rainbow-outline 5s linear infinite}
+      .card.rainbow-outline .avatar{border:7px solid transparent;background:linear-gradient(var(--profile-surface,#202a40),var(--profile-surface,#202a40)) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:profile-rainbow-outline 5s linear infinite}
+      @media(prefers-reduced-motion:reduce){.card.rainbow-background,.card.rainbow-outline,.card.rainbow-outline .grid article,.card.rainbow-outline .avatar{animation:none}}
+    </style>`
     : "";
   const pageBackground = profileTheme
     ? `style="background:radial-gradient(circle at top, ${profileTheme.stops[0]} 0, ${profileTheme.stops[2]} 55%, #090b10 100%)"`
@@ -6514,7 +6764,8 @@ async function readRanking(url, type, order = "rich") {
         userId: user.userId,
         xp: Number(user.xp) || 0,
         level: xp.levelForXp(user.xp).level,
-        background: economy.getProfileCosmetics(message, user.userId).background
+        background: economy.getProfileCosmetics(message, user.userId).background,
+        outline: economy.getProfileCosmetics(message, user.userId).outline
       }))
     };
   }
@@ -6525,6 +6776,7 @@ async function readRanking(url, type, order = "rich") {
     platform,
     groupId,
     groupName,
+    includesVault: economy.getIncludeVaultInRanking(message),
     entries: economy.getRanking(message, order === "poor" ? "poor" : "rich").map((account, index) => ({
       position: index + 1,
       name: account.name || account.username || account.userId,
@@ -6532,7 +6784,9 @@ async function readRanking(url, type, order = "rich") {
       balance: Number(account.balance) || 0,
       walletBalance: Number(account.walletBalance) || 0,
       vaultBalance: Number(account.vaultBalance) || 0,
-      background: economy.getProfileCosmetics(message, account.userId).background
+      includesVault: account.includesVault === true,
+      background: economy.getProfileCosmetics(message, account.userId).background,
+      outline: economy.getProfileCosmetics(message, account.userId).outline
     }))
   };
 }
@@ -6615,6 +6869,7 @@ async function readActivityRanking(url, includeAll = false, order = "rich") {
       stickers: user.stickers,
       files: user.files,
       background: economy.getProfileCosmetics(message, user.userId).background,
+      outline: economy.getProfileCosmetics(message, user.userId).outline,
       profileAvailable: user.profileAvailable !== false
     })).sort((a, b) => (order === "poor" ? a.total - b.total : b.total - a.total) ||
       String(a.name).localeCompare(String(b.name)))
@@ -6630,28 +6885,38 @@ function renderRanking(ranking) {
 
   const isXp = ranking.type === "xp";
   const isActivity = ranking.type === "activity";
-  const title = isXp ? "Ranking XP" : isActivity ? (ranking.includeAll ? "Ranking de atividade — todos" : "Ranking de atividade") : "Ranking de carteira";
+  const title = isXp ? "Ranking XP" : isActivity ? (ranking.includeAll ? "Ranking de atividade — todos" : "Ranking de atividade") : ranking.includesVault ? "Ranking de patrimônio total" : "Ranking de carteira";
   const rows = ranking.entries.length
     ? ranking.entries.map(entry => isXp
       ? renderRankingEntry(ranking, entry, `<b>${entry.xp} XP</b><em>Nível ${entry.level}</em>`)
       : isActivity
         ? renderRankingEntry(ranking, entry, `<b>${entry.total} atividades</b><em>💬 ${entry.messages} • ⚙️ ${entry.commands} • 🎨 ${entry.stickers} • 📎 ${entry.files}</em>`)
-      : renderRankingEntry(ranking, entry, `<b class="money">${formatMoney(entry.balance)}</b><em>Carteira: ${formatMoney(entry.walletBalance)} · Cofre (fora do ranking): ${formatMoney(entry.vaultBalance)}</em>`)
+      : renderRankingEntry(ranking, entry, `<b class="money">${formatMoney(entry.balance)}</b><em>${entry.includesVault ? `Carteira: ${formatMoney(entry.walletBalance)} · Cofre: ${formatMoney(entry.vaultBalance)}` : `Saldo da carteira · Cofre fora do ranking: ${formatMoney(entry.vaultBalance)}`}</em>`)
     ).join("")
     : `<p class="muted">Ainda não há usuários neste ranking.</p>`;
 
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)} - ${escapeHtml(botName)}</title><style>${styles()} .ranking{margin-top:22px;display:grid;gap:10px}.rank-row{display:grid;grid-template-columns:60px 1fr auto auto;align-items:center;gap:14px;padding:17px 18px;border:1px solid #334566;border-radius:14px;background:#202a40;color:inherit;text-decoration:none;transition:transform .15s ease,border-color .15s ease,filter .15s ease}.rank-row:hover,.rank-row:focus-visible{transform:translateY(-2px);border-color:#7ea7ff;filter:brightness(1.12);outline:none}.rank-row strong{font-size:22px;color:#8eaaff}.rank-row span{font-weight:700}.rank-row small{display:block;color:#8998b3;font-weight:400;font-size:11px;margin-top:4px}.rank-row b{white-space:nowrap}.rank-row em{font-style:normal;color:#b8c3d9;font-size:13px}@media(max-width:600px){.rank-row{grid-template-columns:42px 1fr auto}.rank-row em{grid-column:2}.rank-row b{font-size:13px}}</style></head><body><main class="card"><div class="brand">${escapeHtml(botName)} <span>RANKING</span></div><header><div><h1>${escapeHtml(title)}</h1><p class="muted">${escapeHtml(ranking.groupName)}</p></div></header><div class="scope">Plataforma: ${escapeHtml(ranking.platform)} <span>•</span> ID: ${escapeHtml(ranking.groupId)}</div><section class="ranking">${rows}</section><footer>Ranking local do grupo/servidor • ${escapeHtml(botName)}</footer></main></body></html>`;
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)} - ${escapeHtml(botName)}</title><style>${styles()} @keyframes rank-rainbow-cycle{to{background-position:100% 50%,100% 50%}}.ranking{margin-top:22px;display:grid;gap:10px}.rank-row{display:grid;grid-template-columns:60px 1fr auto auto;align-items:center;gap:14px;padding:17px 18px;border:1px solid #334566;border-radius:14px;background:var(--rank-background,#202a40);color:inherit;text-decoration:none;transition:transform .15s ease,border-color .15s ease,filter .15s ease}.rank-row.rainbow-background{background-size:300% 300%;animation:rank-rainbow-cycle 5s linear infinite}.rank-row.rainbow-outline{border:6px solid transparent;background:var(--rank-background,linear-gradient(#202a40,#202a40)) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:rank-rainbow-cycle 5s linear infinite}.rank-row.rainbow-outline.rainbow-background{background-size:300% 300%,300% 100%}.rank-row:hover,.rank-row:focus-visible{transform:translateY(-2px);border-color:#7ea7ff;filter:brightness(1.12);outline:none}.rank-row.rainbow-outline:hover,.rank-row.rainbow-outline:focus-visible{border-color:transparent}.rank-row strong{font-size:22px;color:#8eaaff}.rank-row span{font-weight:700}.rank-row small{display:block;color:#8998b3;font-weight:400;font-size:11px;margin-top:4px}.rank-row b{white-space:nowrap}.rank-row em{font-style:normal;color:#b8c3d9;font-size:13px}@media(prefers-reduced-motion:reduce){.rank-row.rainbow-background,.rank-row.rainbow-outline{animation:none}}@media(max-width:600px){.rank-row{grid-template-columns:42px 1fr auto}.rank-row em{grid-column:2}.rank-row b{font-size:13px}}</style></head><body><main class="card"><div class="brand">${escapeHtml(botName)} <span>RANKING</span></div><header><div><h1>${escapeHtml(title)}</h1><p class="muted">${escapeHtml(ranking.groupName)}</p></div></header><div class="scope">Plataforma: ${escapeHtml(ranking.platform)} <span>•</span> ID: ${escapeHtml(ranking.groupId)}</div><section class="ranking">${rows}</section><footer>Ranking local do grupo/servidor • ${escapeHtml(botName)}</footer></main></body></html>`;
 }
 
 function renderRankingEntry(ranking, entry, metrics) {
   const profileUrl = `/perfil?grupo=${encodeURIComponent(ranking.groupId)}&plataforma=${encodeURIComponent(ranking.platform)}&usuario=${encodeURIComponent(entry.userId)}`;
-  const background = entry.background
-    ? `style="background:${profileCosmetics.getProfileBackgroundCss(entry.background)}"`
-    : "";
+  const outline = profileCosmetics.getProfileOutline(entry.outline);
+  const styleProperties = [
+    entry.background ? `--rank-background:${profileCosmetics.getProfileBackgroundCss(entry.background)}` : "",
+    outline ? `--rank-outline:${outline.color}` : "",
+    outline && !outline.rainbow ? `border:4px solid ${outline.color}` : ""
+  ].filter(Boolean).join(";");
+  const style = styleProperties ? `style="${styleProperties}"` : "";
+  const classes = [
+    "rank-row",
+    profileCosmetics.getProfileBackground(entry.background)?.rainbow ? "rainbow-background" : "",
+    outline ? "profile-outline" : "",
+    outline?.rainbow ? "rainbow-outline" : ""
+  ].filter(Boolean).join(" ");
   const row = `<strong>#${entry.position}</strong><span>${escapeHtml(entry.name)}<small>ID: ${escapeHtml(entry.userId)}</small></span>${metrics}`;
   return entry.profileAvailable === false
-    ? `<div class="rank-row" ${background}>${row}</div>`
-    : `<a class="rank-row" ${background} href="${profileUrl}" aria-label="Abrir perfil de ${escapeHtml(entry.name)}">${row}</a>`;
+    ? `<div class="${classes}" ${style}>${row}</div>`
+    : `<a class="${classes}" ${style} href="${profileUrl}" aria-label="Abrir perfil de ${escapeHtml(entry.name)}">${row}</a>`;
 }
 
 function renderCredentialSetupPage(botName, tokenIsValid) {
@@ -7335,6 +7600,38 @@ function start() {
         return;
       }
 
+      if (requestUrl.pathname === "/api/account/local/admin-economy-ranking-state" ||
+          requestUrl.pathname === "/api/account/local/admin-economy-ranking") {
+        const platform = typeof payload?.platform === "string" ? payload.platform : "";
+        const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
+        const isStateRequest = requestUrl.pathname.endsWith("-state");
+        try {
+          await getGroupAdminData(central, platform, groupId);
+          const platformAccount = central.platformAccounts.find(account => account.platform === platform);
+          const message = getLocalGroupMessage(platform, groupId, String(platformAccount.platformId));
+          if (!isStateRequest) {
+            if (typeof payload?.includeVault !== "boolean") {
+              throw new Error("Informe se o cofre deve ser considerado no ranking.");
+            }
+            economy.setIncludeVaultInRanking(message, payload.includeVault);
+          }
+          sendJson(response, 200, {
+            success: true,
+            includeVault: economy.getIncludeVaultInRanking(message)
+          });
+        } catch (error) {
+          const reason = String(error?.message || "");
+          const statusCode = /não participa|não está vinculada|permissão administrativa/i.test(reason) ? 403
+            : /offline/i.test(reason) ? 503
+              : /informe/i.test(reason) ? 400 : 500;
+          if (statusCode === 500 || statusCode === 503) console.error("[WEB] Falha ao configurar o ranking da economia:", error.message || error);
+          sendJson(response, statusCode, {
+            error: statusCode === 500 ? "Não foi possível carregar ou salvar a configuração do ranking." : reason
+          });
+        }
+        return;
+      }
+
       if (requestUrl.pathname === "/api/account/local/admin-local-signal-search-state" ||
           requestUrl.pathname === "/api/account/local/admin-local-signal-search") {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
@@ -7358,7 +7655,8 @@ function start() {
           for (const rarity of economy.LOCAL_SIGNAL_RARITIES) {
             const tier = input.tiers[rarity];
             if (!tier || typeof tier !== "object" || Array.isArray(tier) ||
-                !Array.isArray(tier.botItems) || !Array.isArray(tier.marketItems)) {
+                !Array.isArray(tier.botItems) || !Array.isArray(tier.marketItems) ||
+                !Array.isArray(tier.backgrounds) || !Array.isArray(tier.outlines)) {
               throw new Error("Configure as chances e os prêmios de todas as raridades.");
             }
             const cashMin = tier.cashMin === null || tier.cashMin === "" ? null : parseAdminStorePrice(tier.cashMin);
@@ -7373,7 +7671,9 @@ function start() {
               cashMin,
               cashMax,
               botItems: tier.botItems,
-              marketItems: tier.marketItems.map(Number)
+              marketItems: tier.marketItems.map(Number),
+              backgrounds: tier.backgrounds,
+              outlines: tier.outlines
             };
           }
           const config = {
@@ -8454,6 +8754,41 @@ function start() {
       return;
     }
 
+    if (request.method === "GET" && requestUrl.pathname === "/painel-economia") {
+      const central = await getSessionCentral(request);
+      if (!central) {
+        response.writeHead(302, { Location: "/dashboard", "Cache-Control": "no-store" });
+        response.end();
+        return;
+      }
+      const platform = String(requestUrl.searchParams.get("plataforma") || "").toLowerCase();
+      const groupId = String(requestUrl.searchParams.get("grupo") || "");
+      try {
+        const data = await getGroupAdminData(central, platform, groupId);
+        response.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Referrer-Policy": "no-referrer",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(renderEconomyAdmin(data));
+      } catch (error) {
+        const reason = String(error?.message || "");
+        const statusCode = /não participa|não está vinculada|permissão administrativa/i.test(reason) ? 403
+          : /offline/i.test(reason) ? 503 : /inválid/i.test(reason) ? 400 : 500;
+        if (statusCode === 503 || statusCode === 500) {
+          console.error("[WEB] Falha ao abrir as configurações da economia:", error.message || error);
+        }
+        response.writeHead(statusCode, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Configurações indisponíveis</title><body style="font-family:Segoe UI,Arial;background:#10131c;color:#f5f7fb;padding:40px"><h1>Configurações da economia indisponíveis</h1><p>${escapeHtml(reason || "Não foi possível carregar as configurações.")}</p><a href="/dashboard" style="color:#b9c6ff">Voltar à Conta Central</a></body></html>`);
+      }
+      return;
+    }
+
     if (request.method === "GET" && requestUrl.pathname === "/painel-admin") {
       const central = await getSessionCentral(request);
       if (!central) {
@@ -8499,4 +8834,4 @@ function start() {
   return server;
 }
 
-module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking, renderLocalAccount, renderSignalSearch, renderCosmeticsStore, renderShopCatalog, renderGroupAdmin, canManagePlatformGroup };
+module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking, renderLocalAccount, renderSignalSearch, renderCosmeticsStore, renderShopCatalog, renderGroupAdmin, renderEconomyAdmin, canManagePlatformGroup };

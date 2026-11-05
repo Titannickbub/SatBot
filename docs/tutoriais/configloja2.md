@@ -19,8 +19,8 @@ O prefixo nos exemplos é `!`. Se o prefixo do bot foi alterado, substitua-o pel
 ## Gerenciar pelo dashboard
 
 Administradores também podem abrir o painel administrativo do grupo ou
-servidor, localizar o cartão **Economia** e selecionar o botão de configurações
-da **Loja 2** ao lado dele. Pelo painel é possível alterar o título e o aviso,
+servidor, localizar o cartão **Economia** e abrir a página **Economia, loja e
+busca**. Pelo painel é possível alterar o título e o aviso,
 cadastrar, editar e remover itens do catálogo, definir uma importância opcional
 para cada item e marcar pedidos pendentes como entregues ou cancelá-los com
 estorno.

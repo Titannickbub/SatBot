@@ -188,8 +188,6 @@ function addMessageXp(message) {
 
 async function addActivityXp(message, activity, result) {
     const economy = require("./economy");
-    if (!economy.isEnabled(message)) return null;
-
     const data = load(message);
     if (!data || !data.enabled || !message.userId) return null;
 

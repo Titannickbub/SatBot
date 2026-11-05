@@ -72,7 +72,7 @@ const PROFILE_BACKGROUNDS = Object.freeze({
         label: "RGB",
         rarity: itemRarity.EPIC,
         price: 400000,
-        stops: Object.freeze(["#ff1744", "#9c27b0", "#311b92"]),
+        stops: Object.freeze(["#62676f", "#42474f", "#24282e"]),
         accent: "#ff70cf",
         rainbow: true
     })

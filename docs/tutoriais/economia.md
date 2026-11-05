@@ -106,9 +106,15 @@ Os contadores são independentes por categoria e ficam salvos na economia local.
 
 ### Busca Local
 
-Administradores podem configurar a **Busca Local** no painel administrativo do grupo ou servidor, pelo botão **Configurar Busca Local** na configuração da economia. Ela é uma terceira opção na página **Busca de Sinais** e só aparece quando estiver ativada. A configuração — incluindo preço, probabilidades, garantias e prêmios — fica salva junto à economia daquele grupo ou servidor.
+Administradores podem configurar a **Busca Local** na página separada **Economia, loja e busca**, acessada pelo painel administrativo do grupo ou servidor. Ela é uma terceira opção na página **Busca de Sinais** e só aparece quando estiver ativada. A configuração — incluindo preço, probabilidades, garantias e prêmios — fica salva junto à economia daquele grupo ou servidor.
 
-Defina o preço de uma tentativa (o x10 custa automaticamente dez vezes esse valor) e as chances de cada raridade — **Comum, Incomum, Raro, Épico e Lendário** — que devem somar 100%. Para cada raridade com chance maior que zero, escolha ao menos um prêmio: dinheiro (valor mínimo e máximo), itens da Loja do Bot ou itens cadastrados no Mercado Local. Os itens do Mercado Local sorteados geram pedidos pendentes gratuitos para a equipe entregar; o estoque é reservado no sorteio. Itens da Loja do Bot são aplicados quando possíveis e, caso contrário, convertidos em 50% do preço da loja. Também é possível configurar garantias por raridade e selecionar até dois destaques entre os prêmios configurados. Os destaques substituem os prêmios em destaque na apresentação da busca.
+Essa página organiza as funções em abas superiores — **Ranking**, **Loja Local**, **Busca de Sinais** e **Editar saldo** — e exibe uma seção por vez. Em **Editar saldo**, pesquise por nome, usuário ou ID e escolha definir, adicionar ou retirar valor da carteira do membro; o saldo do cofre não é alterado por essas ações.
+
+Defina o preço de uma tentativa (o x10 custa automaticamente dez vezes esse valor) e as chances de cada raridade — **Comum, Incomum, Raro, Épico e Lendário** — que devem somar 100%. Use as abas de raridade para editar uma categoria por vez; as outras categorias permanecem salvas enquanto você alterna entre elas. Para cada raridade com chance maior que zero, escolha ao menos um prêmio: dinheiro (valor mínimo e máximo), itens da Loja do Bot, itens cadastrados no Mercado Local, fundos ou outlines de perfil. Os itens do Mercado Local sorteados geram pedidos pendentes gratuitos para a equipe entregar; o estoque é reservado no sorteio. Itens da Loja do Bot são aplicados quando possíveis, e cosméticos já possuídos são convertidos em 50% do preço da loja. Também é possível configurar garantias por raridade e selecionar até dois destaques entre os prêmios configurados. Os destaques substituem os prêmios em destaque na apresentação da busca.
+
+### Cofre nos rankings
+
+Na mesma página **Economia, loja e busca**, administradores podem ativar **Considerar cofre no ranking**. Quando ativa, o ranking de riqueza usa o patrimônio total (carteira + cofre), tanto nas páginas web quanto nas imagens. Quando desativada, usa somente o saldo da carteira. A opção é independente para cada grupo ou servidor.
 
 ---
 

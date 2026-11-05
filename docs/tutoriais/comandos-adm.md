@@ -63,6 +63,7 @@ categoria e abra o guia desejado:
   <a href="./gerenciar-satcoins.md"><img src="https://img.shields.io/badge/Saldos%20de%20membros-guia-F57C00?style=for-the-badge" alt="Gerenciar saldos de membros"></a><br>
   <a href="./gerarlink-rankcoins.md"><img src="https://img.shields.io/badge/Ranking%20web%20de%20economia-guia-F57C00?style=for-the-badge" alt="Links web do ranking de economia"></a><br>
   <a href="./resetsatcoins.md"><img src="https://img.shields.io/badge/Redefinir%20saldos-guia-F57C00?style=for-the-badge" alt="Zerar e resetar saldos de economia"></a><br>
+  <a href="./configbuscasinais.md"><img src="https://img.shields.io/badge/Busca%20de%20Sinais%20Local-guia-F57C00?style=for-the-badge" alt="Configurar a Busca de Sinais Local"></a><br>
 </p>
 
 ## 👥 Membros

@@ -35,25 +35,43 @@ function text(value, x, y, size, color = "#f5f7fb", weight = 400, anchor = "star
 }
 
 function card(x, y, width, label, value, detail, valueColor = "#f5f7fb", theme, outlineColor) {
+    const outlineWidth = outlineColor === "url(#rainbow)" ? 8 : outlineColor ? 4 : 2;
     return [
-        `<rect x="${x}" y="${y}" width="${width}" height="130" rx="18" fill="${theme?.stops[1] || "#202a40"}" stroke="${outlineColor || theme?.accent || "#334566"}"/>`,
+        `<rect x="${x}" y="${y}" width="${width}" height="130" rx="18" fill="${theme?.stops[1] || "#202a40"}" stroke="${outlineColor || theme?.accent || "#334566"}" stroke-width="${outlineWidth}"/>`,
         text(label, x + 22, y + 32, 14, "#9da8bd", 700),
         text(value, x + 22, y + 76, 28, valueColor, 800),
         text(detail, x + 22, y + 108, 14, "#b8c3d9")
     ].join("");
 }
 
-function baseSvg(width, height, title, subtitle, body, titleX = 70, theme) {
+function walletCard(x, y, width, walletBalance, vaultBalance, position, theme, outlineColor) {
+    const fill = theme?.stops[1] || "#202a40";
+    const border = outlineColor || theme?.accent || "#334566";
+    const cornerX = x + width - 190;
+    const rainbowOutline = outlineColor === "url(#rainbow)";
+    return [
+        `<rect x="${x}" y="${y}" width="${width}" height="130" rx="18" fill="${fill}" stroke="${border}" stroke-width="${rainbowOutline ? 8 : 4}"/>`,
+        text("CARTEIRA", x + 22, y + 34, 14, "#9da8bd", 700),
+        text(formatMoney(walletBalance), x + 22, y + 82, 30, "#8ff0bf", 800),
+        `<rect x="${cornerX}" y="${y + 14}" width="174" height="102" rx="12" fill="#080b12" stroke="${outlineColor ? border : "#ffffff18"}" stroke-width="${rainbowOutline ? 4 : outlineColor ? 2 : 1}"/>`,
+        text("COFRE", cornerX + 13, y + 37, 10, "#9da8bd", 700),
+        text(formatMoney(vaultBalance), cornerX + 13, y + 58, 16, "#f5f7fb", 800),
+        text("COLOCAÇÃO NO RANK", cornerX + 13, y + 81, 9, "#9da8bd", 700),
+        text(position ? `#${position}` : "Não classificado", cornerX + 13, y + 103, 14, "#b8c3d9", 700)
+    ].join("");
+}
+
+function baseSvg(width, height, title, subtitle, body, titleX = 70, theme, outlineColor) {
     const botName = config.getBotName();
     const stops = theme?.stops || ["#27365d", "#111827", "#090b10"];
     const panelFill = theme ? `${stops[2]}dd` : "#111521dd";
     const rainbow = Boolean(theme?.rainbow);
-    const panelStroke = rainbow ? "url(#rainbow)" : theme?.accent || "#334366";
+    const panelStroke = outlineColor || theme?.accent || "#334366";
     const brandColor = rainbow ? "url(#rainbow)" : theme?.accent || "#7ea7ff";
     return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
 <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${stops[0]}"/><stop offset="0.55" stop-color="${stops[1]}"/><stop offset="1" stop-color="${stops[2]}"/></linearGradient><linearGradient id="rainbow" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff1744"/><stop offset=".17" stop-color="#ff9100"/><stop offset=".34" stop-color="#ffea00"/><stop offset=".51" stop-color="#00e676"/><stop offset=".68" stop-color="#00b0ff"/><stop offset=".85" stop-color="#651fff"/><stop offset="1" stop-color="#ff1744"/></linearGradient></defs>
 <rect width="${width}" height="${height}" fill="${rainbow ? "url(#rainbow)" : "url(#bg)"}"/>
-<rect x="28" y="28" width="${width - 56}" height="${height - 56}" rx="26" fill="${panelFill}" stroke="${panelStroke}"/>
+<rect x="28" y="28" width="${width - 56}" height="${height - 56}" rx="26" fill="${panelFill}" stroke="${panelStroke}" stroke-width="${outlineColor === "url(#rainbow)" ? 8 : outlineColor ? 4 : 1}"/>
 ${text(botName, 70, 88, 24, brandColor, 800)}
     ${text(title, titleX, 140, 38, "#f5f7fb", 800)}
     ${text(subtitle, titleX, 174, 16, "#9da8bd")}
@@ -155,12 +173,12 @@ async function renderProfile(message) {
         : backgroundTheme;
     const marriageCard = marriages.length > 1
         ? [
-            `<rect x="600" y="445" width="530" height="130" rx="18" fill="${backgroundTheme?.stops[1] || "#202a40"}" stroke="${outlineColor || backgroundTheme?.accent || "#334566"}"/>`,
+            `<rect x="600" y="445" width="530" height="130" rx="18" fill="${backgroundTheme?.stops[1] || "#202a40"}" stroke="${outlineColor || backgroundTheme?.accent || "#334566"}" stroke-width="${outlineColor === "url(#rainbow)" ? 8 : outlineColor ? 4 : 2}"/>`,
             text("CASAMENTO", 622, 477, 14, "#9da8bd", 700)
         ].join("")
         : currentMarriage && !currentMarriage.selfMarriage
             ? [
-                `<rect x="600" y="445" width="530" height="130" rx="18" fill="${marriageTheme?.stops[1] || "#202a40"}" stroke="${outlineColor || marriageTheme?.accent || "#334566"}"/>`,
+                `<rect x="600" y="445" width="530" height="130" rx="18" fill="${marriageTheme?.stops[1] || "#202a40"}" stroke="${outlineColor || marriageTheme?.accent || "#334566"}" stroke-width="${outlineColor === "url(#rainbow)" ? 8 : outlineColor ? 4 : 2}"/>`,
                 text("CASAMENTO", 622, 477, 14, "#9da8bd", 700),
                 `<circle cx="660" cy="526" r="42" fill="${marriageTheme?.stops[2] || "#0e1422"}" stroke="${marriageTheme?.accent || "#e9a8c6"}" stroke-width="3"/>`,
                 text(fitCoupleName(currentMarriage.partnerName, 22), 716, 530, 19, "#f5f7fb", 800),
@@ -168,9 +186,9 @@ async function renderProfile(message) {
             ].join("")
             : card(600, 445, 530, "CASAMENTO", marriageValue, marriageDetail, "#f5f7fb", backgroundTheme, outlineColor);
     const body = [
-        `<rect x="70" y="205" width="1060" height="64" rx="14" fill="${backgroundTheme?.stops[2] || "#0e1422"}"/>`,
+        `<rect x="70" y="205" width="1060" height="64" rx="14" fill="${backgroundTheme?.stops[2] || "#0e1422"}" stroke="${outlineColor || "none"}" stroke-width="${outlineColor === "url(#rainbow)" ? 6 : outlineColor ? 4 : 0}"/>`,
         text(`${profile.groupName} • ${profile.platform} • ID ${profile.userId}`, 94, 245, 16, "#b7c5e7"),
-        card(70, 295, 510, "PATRIMÔNIO TOTAL", formatMoney(profile.economy.balance), `Carteira ${formatMoney(profile.economy.walletBalance)} • Cofre ${formatMoney(profile.economy.vaultBalance)} • Posição na carteira ${moneyPosition}`, "#8ff0bf", backgroundTheme, outlineColor),
+        walletCard(70, 295, 510, profile.economy.walletBalance, profile.economy.vaultBalance, profile.economy.position, backgroundTheme, outlineColor),
         card(600, 295, 530, "XP • NÍVEL", `${profile.xp.value} XP • Nível ${profile.xp.level}`, `Posição no XP: ${xpPosition}`, "#f5f7fb", backgroundTheme, outlineColor),
         card(70, 445, 510, "ATIVIDADE", profile.activity.total, `Posição no ranking: ${profile.activity.position ? `#${profile.activity.position}` : "Não classificado"}`, "#f5f7fb", backgroundTheme, outlineColor),
         marriageCard
@@ -182,7 +200,8 @@ async function renderProfile(message) {
         `Perfil de ${profile.name}`,
         body,
         avatarBuffer ? 190 : 70,
-        backgroundTheme
+        backgroundTheme,
+        outlineColor
     )));
     const composites = [];
     if (avatarBuffer) composites.push({ input: avatarBuffer, left: 70, top: 102 });
@@ -209,6 +228,13 @@ async function renderProfile(message) {
         }
         composites.push({
             input: Buffer.from(`<svg width="1200" height="650" xmlns="http://www.w3.org/2000/svg">${frames.join("")}</svg>`)
+        });
+    }
+    if (avatarBuffer) {
+        const avatarStroke = outlineColor || backgroundTheme?.accent || "#334566";
+        const avatarStrokeWidth = outlineColor === "url(#rainbow)" ? 7 : 3;
+        composites.push({
+            input: Buffer.from(`<svg width="1200" height="650" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="rainbow"><stop offset="0" stop-color="#ff1744"/><stop offset=".17" stop-color="#ff9100"/><stop offset=".34" stop-color="#ffea00"/><stop offset=".51" stop-color="#00e676"/><stop offset=".68" stop-color="#00b0ff"/><stop offset=".85" stop-color="#651fff"/><stop offset="1" stop-color="#ff1744"/></linearGradient></defs><circle cx="118" cy="150" r="50" fill="none" stroke="${avatarStroke}" stroke-width="${avatarStrokeWidth}"/></svg>`)
         });
     }
     if (composites.length) image.composite(composites);
@@ -385,10 +411,12 @@ async function renderRanking(message, type, order = "rich") {
         if (!entry) return { entry: null, avatar: null };
         if (scope.platform === "whatsapp" && isPoor) {
             const avatar = await loadCoupleAvatar(null, entry.userId);
+            const cosmetics = economy.getProfileCosmetics(message, entry.userId);
             return {
                 entry,
                 avatar: avatar ? await sharp(avatar).resize(136, 136).png().toBuffer() : null,
-                background: economy.getProfileCosmetics(message, entry.userId).background
+                background: cosmetics.background,
+                outline: cosmetics.outline
             };
         }
 
@@ -399,10 +427,12 @@ async function renderRanking(message, type, order = "rich") {
             centralAccounts: message.functions?.centralAccounts
         });
         const avatar = await loadCoupleAvatar(profile?.avatarUrl, entry.userId);
+        const cosmetics = economy.getProfileCosmetics(message, entry.userId);
         return {
             entry,
             avatar: avatar ? await sharp(avatar).resize(136, 136).png().toBuffer() : null,
-            background: economy.getProfileCosmetics(message, entry.userId).background
+            background: cosmetics.background,
+            outline: cosmetics.outline
         };
     }));
 
@@ -415,12 +445,17 @@ async function renderRanking(message, type, order = "rich") {
         ? "RANKING DE XP"
         : isActivity
             ? "RANKING DE ATIVIDADE"
-            : "RANKING DE CARTEIRA";
-    const cardSvg = cards.map(({ entry, background }, index) => {
+            : economy.getIncludeVaultInRanking(message)
+                ? "RANKING DE PATRIMÔNIO"
+                : "RANKING DE CARTEIRA";
+    const cardSvg = cards.map(({ entry, background, outline }, index) => {
         const x = startX + index * (cardWidth + cardGap);
         const colors = ["#667c27", "#a9345c", "#9b4939", "#315d83", "#6d4c8d"];
         const color = colors[index];
         const theme = profileCosmetics.getProfileBackground(background);
+        const profileOutline = profileCosmetics.getProfileOutline(outline);
+        const outlineColor = profileOutline?.rainbow ? "url(#rainbow)" : profileOutline?.color || color;
+        const outlineWidth = profileOutline?.rainbow ? 8 : 4;
         const name = entry?.name || "Perfil não encontrado";
         const clippedName = Array.from(String(name)).slice(0, 20).join("");
         const position = entry?.position === "—" ? "—" : `#${entry?.position || index + 1}`;
@@ -440,10 +475,10 @@ async function renderRanking(message, type, order = "rich") {
                 : isActivity
                     ? `HOJE ${entry.dailyTotal || 0}`
                     : isPoor
-                        ? "MENOR SALDO DE CARTEIRA"
-                        : "SALDO DE CARTEIRA";
+                        ? (entry.includesVault ? "MENOR PATRIMÔNIO TOTAL" : "MENOR SALDO DE CARTEIRA")
+                        : (entry.includesVault ? "PATRIMÔNIO TOTAL" : "SALDO DE CARTEIRA");
         return [
-            `<rect x="${x}" y="${cardY}" width="${cardWidth}" height="${cardHeight}" rx="22" fill="${theme?.stops[1] || "#161b24"}" stroke="${color}" stroke-width="4"/>`,
+            `<rect x="${x}" y="${cardY}" width="${cardWidth}" height="${cardHeight}" rx="22" fill="${theme?.stops[1] || "#161b24"}" stroke="${outlineColor}" stroke-width="${outlineWidth}"/>`,
             `<path d="M${x + 2} ${cardY + 22} Q${x + 2} ${cardY + 2} ${x + 22} ${cardY + 2} H${x + cardWidth - 22} Q${x + cardWidth - 2} ${cardY + 2} ${x + cardWidth - 2} ${cardY + 22} V${cardY + 178} H${x + 2} Z" fill="${theme?.stops[0] || color}" opacity="0.76"/>`,
             `<circle cx="${x + cardWidth / 2}" cy="${cardY + 91}" r="68" fill="#0c1018" stroke="#f4f1e9" stroke-width="4"/>`,
             text(entry ? position : `#${index + 1}`, x + 18, cardY + 220, 20, "#f4d66b", 800),
@@ -487,12 +522,15 @@ function getRequesterRankingEntry(message, type) {
         const users = xp.ranking(message);
         const index = users.findIndex(user => String(user.userId) === userId);
         const user = index >= 0 ? users[index] : null;
+        const cosmetics = economy.getProfileCosmetics(message, userId);
         return {
             userId,
             name: user?.displayName || user?.username || displayName,
             xp: Number(user?.xp) || 0,
             level: xp.levelForXp(user?.xp || 0).level,
             position: index >= 0 ? index + 1 : "—",
+            background: cosmetics.background,
+            outline: cosmetics.outline,
             isRequester: true
         };
     }
@@ -501,24 +539,33 @@ function getRequesterRankingEntry(message, type) {
         const users = activity.ranking(message)?.users || [];
         const index = users.findIndex(user => String(user.userId) === userId);
         const user = index >= 0 ? users[index] : null;
+        const cosmetics = economy.getProfileCosmetics(message, userId);
         return {
             userId,
             name: user?.displayName || user?.username || displayName,
             total: Number(user?.total) || 0,
             dailyTotal: Number(user?.dailyTotal) || 0,
             position: index >= 0 ? index + 1 : "—",
+            background: cosmetics.background,
+            outline: cosmetics.outline,
             isRequester: true
         };
     }
 
     const account = economy.getAccountByUser(message, userId);
+    const cosmetics = economy.getProfileCosmetics(message, userId);
     return {
         userId,
         name: account?.displayName || account?.username || displayName,
-        balance: economy.getTotalBalance(account),
+        balance: economy.getIncludeVaultInRanking(message)
+            ? economy.getTotalBalance(account)
+            : Number(account?.balance) || 0,
         walletBalance: Number(account?.balance) || 0,
         vaultBalance: Number(account?.vaultBalance) || 0,
+        includesVault: economy.getIncludeVaultInRanking(message),
         position: economy.getBalancePosition(message, userId) || "—",
+        background: cosmetics.background,
+        outline: cosmetics.outline,
         isRequester: true
     };
 }

@@ -103,7 +103,9 @@ function createLocalSignalSearch() {
             cashMin: null,
             cashMax: null,
             botItems: [],
-            marketItems: []
+            marketItems: [],
+            backgrounds: [],
+            outlines: []
         }])),
         featured: []
     };
@@ -128,6 +130,12 @@ function normalizeLocalSignalSearch(value) {
                 : [],
             marketItems: Array.isArray(tier?.marketItems)
                 ? [...new Set(tier.marketItems.filter(id => Number.isSafeInteger(id) && id >= COMMUNITY_STORE_FIRST_ITEM_ID))]
+                : [],
+            backgrounds: Array.isArray(tier?.backgrounds)
+                ? [...new Set(tier.backgrounds.map(profileCosmetics.normalizeProfileBackground).filter(Boolean))]
+                : [],
+            outlines: Array.isArray(tier?.outlines)
+                ? [...new Set(tier.outlines.map(profileCosmetics.normalizeProfileOutline).filter(Boolean))]
                 : []
         };
         if (tiers[rarity].cashMin === null || tiers[rarity].cashMax === null ||
@@ -140,8 +148,14 @@ function normalizeLocalSignalSearch(value) {
         ? value.featured.slice(0, 2).filter(item =>
             item && typeof item === "object" &&
             (item.type === "bot" && STORE_ITEMS.some(candidate => candidate.key === item.key) ||
-                item.type === "market" && Number.isSafeInteger(item.id) && item.id >= COMMUNITY_STORE_FIRST_ITEM_ID)
-        ).map(item => item.type === "bot" ? { type: "bot", key: item.key } : { type: "market", id: item.id })
+                item.type === "market" && Number.isSafeInteger(item.id) && item.id >= COMMUNITY_STORE_FIRST_ITEM_ID ||
+                item.type === "background" && Boolean(profileCosmetics.normalizeProfileBackground(item.key)) ||
+                item.type === "outline" && Boolean(profileCosmetics.normalizeProfileOutline(item.key)))
+        ).map(item => item.type === "bot"
+            ? { type: "bot", key: item.key }
+            : item.type === "market"
+                ? { type: "market", id: item.id }
+                : { type: item.type, key: item.key })
         : [];
     return {
         enabled: value.enabled === true,
@@ -217,6 +231,7 @@ function loadScope(scope) {
         scopeId: scope.id,
         scopeName: scope.name,
         enabled: false,
+        includeVaultInRanking: false,
         accounts: {},
         communityStore: createCommunityStore()
     };
@@ -230,6 +245,7 @@ function loadScope(scope) {
                     scopeId: parsed.scopeId || scope.id,
                     scopeName: parsed.scopeName || scope.name,
                     enabled: parsed.enabled === true,
+                    includeVaultInRanking: parsed.includeVaultInRanking === true,
                     accounts: parsed.accounts && typeof parsed.accounts === "object" && !Array.isArray(parsed.accounts)
                         ? parsed.accounts
                         : {},
@@ -314,6 +330,20 @@ function setEnabled(message, enabled) {
     data.enabled = Boolean(enabled);
     saveScope(scope, data);
     return data.enabled;
+}
+
+function getIncludeVaultInRanking(message) {
+    const scope = getScope(message);
+    return scope ? loadScope(scope).includeVaultInRanking === true : false;
+}
+
+function setIncludeVaultInRanking(message, enabled) {
+    const scope = getScope(message);
+    if (!scope) return false;
+    const data = loadScope(scope);
+    data.includeVaultInRanking = Boolean(enabled);
+    saveScope(scope, data);
+    return data.includeVaultInRanking;
 }
 
 function rewardLevelUp(message, level) {
@@ -774,7 +804,12 @@ function getBalancePosition(message, userId) {
     const store = loadScope(scope);
     const accounts = Object.values(store.accounts)
         .filter(account => account && typeof account === "object")
-        .sort((a, b) => (Number(b.balance) || 0) - (Number(a.balance) || 0));
+        .sort((a, b) => {
+            const balance = account => store.includeVaultInRanking
+                ? getTotalBalance(account)
+                : Number(account.balance) || 0;
+            return balance(b) - balance(a);
+        });
     const index = accounts.findIndex(account => String(account.userId) === String(userId));
     return index === -1 ? null : index + 1;
 }
@@ -901,7 +936,10 @@ function getRanking(message, order = "rich", limit = 5) {
     return Object.values(store.accounts)
         .filter(account => account && typeof account === "object")
         .sort((a, b) => {
-            const difference = (Number(b.balance) || 0) - (Number(a.balance) || 0);
+            const getRankBalance = account => store.includeVaultInRanking
+                ? getTotalBalance(account)
+                : Number(account.balance) || 0;
+            const difference = getRankBalance(b) - getRankBalance(a);
             return order === "poor" ? -difference : difference;
         })
         .slice(0, limit)
@@ -917,9 +955,12 @@ function getRanking(message, order = "rich", limit = 5) {
                 userId: String(account.userId),
                 username: account.username || platformAccount?.username || null,
                 name: account.displayName || account.username || platformAccount?.displayName || platformAccount?.username || central?.name || "Usuário",
-                balance: Number(account.balance) || 0,
+                balance: store.includeVaultInRanking
+                    ? getTotalBalance(account)
+                    : Number(account.balance) || 0,
                 walletBalance: Number(account.balance) || 0,
-                vaultBalance: Number(account.vaultBalance) || 0
+                vaultBalance: Number(account.vaultBalance) || 0,
+                includesVault: store.includeVaultInRanking
             };
         });
 }
@@ -1365,6 +1406,18 @@ function getLocalSignalSearch(message) {
             rarity: item.rarity,
             product: Boolean(item.product)
         })),
+        backgrounds: Object.entries(profileCosmetics.PROFILE_BACKGROUNDS).map(([key, item]) => ({
+            key,
+            name: item.label,
+            rarity: item.rarity,
+            price: profileCosmetics.getProfileBackgroundPrice(key)
+        })),
+        outlines: Object.entries(profileCosmetics.PROFILE_OUTLINES).map(([key, item]) => ({
+            key,
+            name: item.label,
+            rarity: item.rarity,
+            price: profileCosmetics.getProfileOutlinePrice(key)
+        })),
         pullsUntilGuarantee: Object.fromEntries(LOCAL_SIGNAL_RARITIES.map(rarity => {
             const guaranteeAfter = config.tiers[rarity].guaranteeAfter;
             const pullsSince = Number(progress.pullsSinceRarity?.[rarity]) || 0;
@@ -1389,37 +1442,119 @@ function updateLocalSignalSearch(message, updates) {
     for (const rarity of LOCAL_SIGNAL_RARITIES) {
         const tier = config.tiers[rarity];
         const rawTier = updates.tiers[rarity];
+        if (!Array.isArray(rawTier.botItems) || !Array.isArray(rawTier.marketItems) ||
+            !Array.isArray(rawTier.backgrounds) || !Array.isArray(rawTier.outlines)) return null;
+        if (tier.backgrounds.length !== rawTier.backgrounds.length ||
+            tier.outlines.length !== rawTier.outlines.length) return null;
         if (rawTier.guaranteeAfter !== null && rawTier.guaranteeAfter !== undefined &&
             (!Number.isSafeInteger(rawTier.guaranteeAfter) || rawTier.guaranteeAfter < 1 || rawTier.guaranteeAfter > 10000)) return null;
         if (tier.chance === 0 && tier.guaranteeAfter !== null) return null;
         if ((tier.cashMin === null) !== (tier.cashMax === null)) return null;
         if (tier.cashMin !== null && (tier.cashMax < tier.cashMin || tier.cashMin < 0)) return null;
         if (tier.marketItems.some(id => !store.communityStore.items.some(item => item.id === id))) return null;
+        if (tier.backgrounds.some(key => !profileCosmetics.PROFILE_BACKGROUNDS[key])) return null;
+        if (tier.outlines.some(key => !profileCosmetics.PROFILE_OUTLINES[key])) return null;
         if (tier.chance > 0) {
             const hasCash = tier.cashMin !== null;
             const hasBotItem = tier.botItems.length > 0;
             const hasMarketItem = tier.marketItems.length > 0;
-            if (!hasCash && !hasBotItem && !hasMarketItem) return null;
+            const hasCosmetic = tier.backgrounds.length > 0 || tier.outlines.length > 0;
+            if (!hasCash && !hasBotItem && !hasMarketItem && !hasCosmetic) return null;
         }
     }
     if (!Array.isArray(updates.featured) || updates.featured.length > 2) return null;
     const featuredKeys = new Set();
     for (const item of config.featured) {
-        const key = item.type === "bot" ? `bot:${item.key}` : `market:${item.id}`;
+        const key = item.type === "market" ? `market:${item.id}` : `${item.type}:${item.key}`;
         if (featuredKeys.has(key)) return null;
         featuredKeys.add(key);
         const exists = item.type === "bot"
             ? STORE_ITEMS.some(candidate => candidate.key === item.key)
-            : store.communityStore.items.some(candidate => candidate.id === item.id);
+            : item.type === "market"
+                ? store.communityStore.items.some(candidate => candidate.id === item.id)
+                : item.type === "background"
+                    ? Boolean(profileCosmetics.normalizeProfileBackground(item.key))
+                    : Boolean(profileCosmetics.normalizeProfileOutline(item.key));
         const configuredAsPrize = Object.values(config.tiers).some(tier => item.type === "bot"
             ? tier.botItems.includes(item.key)
-            : tier.marketItems.includes(item.id));
+            : item.type === "market"
+                ? tier.marketItems.includes(item.id)
+                : item.type === "background"
+                    ? tier.backgrounds.includes(item.key)
+                    : tier.outlines.includes(item.key));
         if (!exists || !configuredAsPrize) return null;
     }
     if (config.featured.length !== updates.featured.length) return null;
     config.enabled = updates.enabled === true;
     store.communityStore.localSignalSearch = config;
     saveScope(scope, loadScope(scope));
+    return getLocalSignalSearch(message);
+}
+
+function updateLocalSignalSearchDraft(message, updates) {
+    const scope = getScope(message);
+    if (!scope || !updates || typeof updates !== "object" || Array.isArray(updates)) return null;
+    const store = loadScope(scope);
+    if (!Number.isSafeInteger(updates.price) || updates.price <= 0 ||
+        typeof updates.enabled !== "boolean" ||
+        !updates.tiers || typeof updates.tiers !== "object" || Array.isArray(updates.tiers) ||
+        !Array.isArray(updates.featured)) return null;
+
+    const tierKeys = new Set(LOCAL_SIGNAL_RARITIES);
+    if (Object.keys(updates.tiers).length !== tierKeys.size ||
+        Object.keys(updates.tiers).some(rarity => !tierKeys.has(rarity))) return null;
+    const validMarketIds = new Set(store.communityStore.items.map(item => item.id));
+    for (const rarity of LOCAL_SIGNAL_RARITIES) {
+        const tier = updates.tiers[rarity];
+        if (!tier || typeof tier !== "object" || Array.isArray(tier) ||
+            !Number.isSafeInteger(tier.chance) || tier.chance < 0 || tier.chance > 100 ||
+            !(tier.guaranteeAfter === null || tier.guaranteeAfter === undefined ||
+                Number.isSafeInteger(tier.guaranteeAfter) && tier.guaranteeAfter >= 1 && tier.guaranteeAfter <= 10000) ||
+            ![tier.botItems, tier.marketItems, tier.backgrounds, tier.outlines].every(Array.isArray) ||
+            ![tier.botItems, tier.marketItems, tier.backgrounds, tier.outlines].every(items => new Set(items).size === items.length) ||
+            !(tier.cashMin === null && tier.cashMax === null ||
+                Number.isSafeInteger(tier.cashMin) && tier.cashMin >= 0 &&
+                Number.isSafeInteger(tier.cashMax) && tier.cashMax >= tier.cashMin) ||
+            tier.botItems.some(key => !STORE_ITEMS.some(item => item.key === key)) ||
+            tier.marketItems.some(id => !validMarketIds.has(id)) ||
+            tier.backgrounds.some(key => !profileCosmetics.PROFILE_BACKGROUNDS[key]) ||
+            tier.outlines.some(key => !profileCosmetics.PROFILE_OUTLINES[key]) ||
+            tier.chance === 0 && tier.guaranteeAfter !== null && tier.guaranteeAfter !== undefined) return null;
+    }
+
+    if (updates.featured.length > 2) return null;
+    const featuredKeys = new Set();
+    for (const item of updates.featured) {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+        const key = item.type === "market" && Number.isSafeInteger(item.id)
+            ? `market:${item.id}`
+            : ["bot", "background", "outline"].includes(item.type) && typeof item.key === "string"
+                ? `${item.type}:${item.key}`
+                : null;
+        if (!key || featuredKeys.has(key)) return null;
+        featuredKeys.add(key);
+        const exists = item.type === "bot"
+            ? STORE_ITEMS.some(candidate => candidate.key === item.key)
+            : item.type === "market"
+                ? validMarketIds.has(item.id)
+                : item.type === "background"
+                    ? Boolean(profileCosmetics.normalizeProfileBackground(item.key))
+                    : Boolean(profileCosmetics.normalizeProfileOutline(item.key));
+        const configuredAsPrize = Object.values(updates.tiers).some(tier => item.type === "bot"
+            ? tier.botItems.includes(item.key)
+            : item.type === "market"
+                ? tier.marketItems.includes(item.id)
+                : item.type === "background"
+                    ? tier.backgrounds.includes(item.key)
+                    : tier.outlines.includes(item.key));
+        if (!exists || !configuredAsPrize) return null;
+    }
+
+    const config = normalizeLocalSignalSearch(updates);
+    config.enabled = updates.enabled === true;
+    if (config.enabled) return updateLocalSignalSearch(message, config);
+    store.communityStore.localSignalSearch = config;
+    saveScope(scope, store);
     return getLocalSignalSearch(message);
 }
 
@@ -1986,6 +2121,14 @@ function getLocalSignalTierPrizes(config, tier, store) {
         const item = store.communityStore.items.find(candidate => candidate.id === id);
         if (item && item.quantity !== 0) prizes.push({ type: "market", item });
     }
+    for (const key of tier.backgrounds) {
+        const item = profileCosmetics.PROFILE_BACKGROUNDS[key];
+        if (item) prizes.push({ type: "cosmetic", cosmeticType: "background", key, item, rarity: item.rarity });
+    }
+    for (const key of tier.outlines) {
+        const item = profileCosmetics.PROFILE_OUTLINES[key];
+        if (item) prizes.push({ type: "cosmetic", cosmeticType: "outline", key, item, rarity: item.rarity });
+    }
     return prizes;
 }
 
@@ -2095,6 +2238,34 @@ function awardLocalSignalPrize(account, prize, rarity, guarantee, today, store) 
             itemId: item.id,
             category: item.category,
             orderId: order.id,
+            rarity,
+            guarantee: guarantee ? rarity : null,
+            isNew: true
+        };
+    }
+    if (prize.type === "cosmetic") {
+        if (!grantSignalCosmetic(account, prize)) {
+            const price = prize.cosmeticType === "outline"
+                ? profileCosmetics.getProfileOutlinePrice(prize.key)
+                : profileCosmetics.getProfileBackgroundPrice(prize.key);
+            const amount = Math.floor(price / 2);
+            account.balance += amount;
+            recordDailyProfit(account, "busca", amount);
+            return {
+                type: "money",
+                name: `${prize.cosmeticType === "outline" ? "Outline" : "Fundo"} ${prize.item.label} (duplicado)`,
+                amount,
+                rarity,
+                guarantee: guarantee ? rarity : null,
+                converted: true,
+                isNew: false
+            };
+        }
+        return {
+            type: "cosmetic",
+            name: `${prize.cosmeticType === "outline" ? "Outline" : "Fundo"} ${prize.item.label}`,
+            cosmeticType: prize.cosmeticType,
+            cosmeticKey: prize.key,
             rarity,
             guarantee: guarantee ? rarity : null,
             isNew: true
@@ -2291,6 +2462,8 @@ module.exports = {
     resetBalance,
     resetAllBalances,
     getBalancePosition,
+    getIncludeVaultInRanking,
+    setIncludeVaultInRanking,
     adjustBalance,
     getDailyProfits,
     findAccount,
@@ -2327,6 +2500,7 @@ module.exports = {
     searchLocalSignals,
     getLocalSignalSearch,
     updateLocalSignalSearch,
+    updateLocalSignalSearchDraft,
     getCommunityStore,
     setCommunityStoreText,
     updateCommunityStoreDetails,

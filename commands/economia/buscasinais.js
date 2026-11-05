@@ -24,14 +24,25 @@ module.exports = {
         "busca_sinal"
     ],
     category: "economia",
-    description: `✦ Faça buscas de sinais e receba SatCoins, resets ou cosméticos.
+    description: `✦ Faça buscas de sinais e receba SatCoins, resets ou cosméticos nesta comunidade.
 
-{prefix}buscasinais recruta [x10]
-{prefix}buscasinais especializada [x10]
+📝 1. Escolha um nível e faça uma busca:
+{prefix}buscasinais recruta
+{prefix}buscasinais especializada
 
-Busca Recruta: ${economy.formatMoney(economy.SIGNAL_SEARCH_LEVELS.recruta.price)} por tentativa; garante um reset de trabalho a cada 5 e um épico a cada 10.
-Busca Especializada: ${economy.formatMoney(economy.SIGNAL_SEARCH_LEVELS.especializada.price)} por tentativa; inclui prêmios em dinheiro e cosméticos, com um épico garantido a cada 10.
-A busca x10 custa dez vezes o valor unitário. Contadores são separados por nível. Recompensas repetidas ou resets indisponíveis convertem-se em 50% do preço da loja.`,
+🎁 Recompensas e garantias
+• Recruta: ${economy.formatMoney(economy.SIGNAL_SEARCH_LEVELS.recruta.price)} por busca, com reset de trabalho garantido a cada 5 e prêmio épico a cada 10.
+• Especializada: ${economy.formatMoney(economy.SIGNAL_SEARCH_LEVELS.especializada.price)} por busca, com prêmios em dinheiro e cosméticos e um prêmio épico garantido a cada 10.
+
+🔟 Para fazer dez buscas de uma vez, acrescente x10:
+{prefix}buscasinais recruta x10
+{prefix}buscasinais especializada x10
+
+📌 Regras
+• O pagamento é retirado da carteira; o saldo do cofre não pode ser usado.
+• As garantias têm contadores independentes para cada nível.
+• A busca x10 custa dez vezes o valor unitário.
+• Cosméticos repetidos e resets que não podem ser aplicados são convertidos em 50% do preço da loja.`,
     usage: "{prefix}buscasinais [recruta|especializada] [x10]",
 
     async execute(message) {
@@ -87,17 +98,20 @@ function replyHelp(message, state, prefix) {
     const recruit = state.levels.recruta;
     const specialized = state.levels.especializada;
     const lines = [
-        `Busca Recruta: ${economy.formatMoney(recruit.price)} por tentativa`,
-        `• Reset de trabalho garantido em até ${recruit.pullsUntilWorkReset} busca(s)`,
-        `• Épico garantido em até ${recruit.pullsUntilEpic} busca(s)`,
-        `Busca Especializada: ${economy.formatMoney(specialized.price)} por tentativa`,
-        `• Épico garantido em até ${specialized.pullsUntilEpic} busca(s)`,
-        "• Prêmios em dinheiro maiores e cosméticos",
-        "Os contadores de garantia são separados por nível.",
-        "x10 custa dez vezes o valor unitário. Itens repetidos ou resets indisponíveis viram 50% do preço da loja.",
+        "📝 Escolha um nível:",
+        `• Recruta: ${economy.formatMoney(recruit.price)} por busca`,
+        `  Reset de trabalho garantido em até ${recruit.pullsUntilWorkReset} busca(s)`,
+        `  Prêmio épico garantido em até ${recruit.pullsUntilEpic} busca(s)`,
+        `• Especializada: ${economy.formatMoney(specialized.price)} por busca`,
+        `  Prêmio épico garantido em até ${specialized.pullsUntilEpic} busca(s)`,
+        "  Prêmios em dinheiro e cosméticos",
         "",
-        `Use ${prefix}buscasinais recruta [x10]`,
-        `Use ${prefix}buscasinais especializada [x10]`
+        "🔟 Faça dez buscas de uma vez acrescentando x10; o custo é dez vezes o valor unitário.",
+        "📌 O pagamento sai da carteira, nunca do cofre. As garantias são independentes por nível.",
+        "Cosméticos repetidos e resets indisponíveis são convertidos em 50% do preço da loja.",
+        "",
+        `Ex.: ${prefix}buscasinais recruta x10`,
+        `     ${prefix}buscasinais especializada x10`
     ];
     return replyNativeText(message, "✦ Busca de Sinais", lines.join("\n"), 0xb68bff);
 }
@@ -122,12 +136,16 @@ async function replyHighlights(message) {
     try {
         const cosmetics = economy.getProfileCosmetics(message);
         const image = await signalSearchBanner.renderHighlightsBanner(cosmetics);
+        const prefix = message.prefix || "!";
         return await message.replyImg({
             image,
             caption: nativeCaption(message.platform, [
                 ["**✦ Destaques atuais da Busca de Sinais**", "<b>✦ Destaques atuais da Busca de Sinais</b>", "*✦ Destaques atuais da Busca de Sinais*"],
                 "Fundo RGB e Outline RGB são os prêmios épicos em destaque.",
-                "Use buscasinais recruta ou buscasinais especializada para começar."
+                "Exemplos de uso:",
+                `${prefix}buscasinais recruta — fazer 1 busca Recruta`,
+                `${prefix}buscasinais especializada — fazer 1 busca Especializada`,
+                `${prefix}buscasinais recruta x10 — fazer 10 buscas Recruta`
             ]),
             parse_mode: message.platform === "telegram" ? "HTML" : undefined,
             fileName: "busca-sinais-destaques.png"

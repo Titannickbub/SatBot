@@ -1,7 +1,7 @@
 {
   "name": "SatBot",
-  "version": "1.2.68",
-  "description": "auth",
+  "version": "1.2.69",
+  "description": "cofre,outline sinal, rgb refix,  ",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
