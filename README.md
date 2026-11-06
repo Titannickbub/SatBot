@@ -113,7 +113,7 @@ Consulte [VIP e `set_vip`](./docs/setvip.md) para detalhes sobre as opções VIP
 
 ## 📚 Instalação e documentação
 
-<p><a href="./docs/instalacao.md"><img src="https://img.shields.io/badge/🚀%20Instalação-guia%20de%20instalação-4CAF50" alt="Guia de instalação"></a></p>
+<p><a href="./docs/instalacao.md"><img src="https://img.shields.io/badge/🚀%20Instalação-escolha%20seu%20guia-4CAF50" alt="Escolha seu guia de instalação"></a></p>
 <p><a href="./docs/configuracao.md"><img src="https://img.shields.io/badge/⚙️%20Configuração-configure%20o%20SatBot-2196F3" alt="Guia de configuração"></a></p>
 <p><a href="./docs/antipv-onlychats.md"><img src="https://img.shields.io/badge/🛡️%20Anti--PV%20e%20OnlyChats-entenda%20as%20proteções-673AB7" alt="Documentação de Anti-PV e OnlyChats"></a></p>
 <p><a href="./docs/setvip.md"><img src="https://img.shields.io/badge/⭐%20VIP%20e%20set__vip-gerencie%20recursos%20VIP-FF9800" alt="Documentação VIP e set_vip"></a></p>
