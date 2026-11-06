@@ -13,20 +13,8 @@ module.exports = {
     name: "cosmeticos",
     aliases: ["cosmético", "cosmetico", "cosméticos", "cosmetics"],
     category: "economia",
-    description: `🎨 Loja de cosméticos do perfil, organizada por categorias.
-
-{prefix}cosmeticos
-{prefix}cosmeticos fundo
-{prefix}cosmeticos fundo <cor>
-{prefix}cosmeticos previa fundo <cor>
-{prefix}cosmeticos linha
-{prefix}cosmeticos linha <cor>
-{prefix}cosmeticos linha padrao
-
-Compre cosméticos com {prefix}comprar <id>, {prefix}comprar fundo <cor> ou {prefix}comprar linha <cor>. A linha das bolhas do perfil usa IDs a partir de 3000.
-As cores tradicionais custam ${economy.formatMoney(economy.PROFILE_BACKGROUND_PRICE)} e RGB custa ${economy.formatMoney(economy.getProfileBackgroundPrice("rgb"))}. As cores tradicionais são Raras; RGB é Épico. Cosméticos comprados podem ser equipados novamente sem custo.
-Use "{prefix}cosmeticos linha padrao" para fazer o outline acompanhar o fundo atual.`,
-    usage: "{prefix}cosmeticos [fundo|linha [cor|padrao] | previa fundo|linha <cor>]",
+    description: "Consulte e equipe fundos e contornos cosméticos no seu perfil.",
+    usage: "{prefix}cosmeticos help",
 
     async execute(message) {
         if (!economy.getScope(message)) {
@@ -34,6 +22,13 @@ Use "{prefix}cosmeticos linha padrao" para fazer o outline acompanhar o fundo at
         }
 
         const [action, category, colorArgument] = message.args || [];
+        const prefix = message.prefix || "!";
+        const normalizedAction = normalizeCommand(action);
+
+        if (["help", "ajuda"].includes(normalizedAction)) {
+            return message.reply({ text: formatHelp(prefix) });
+        }
+
         const state = economy.getProfileCosmetics(message);
         const currentBackground = state.background
             ? economy.PROFILE_BACKGROUNDS[state.background].label
@@ -41,8 +36,6 @@ Use "{prefix}cosmeticos linha padrao" para fazer o outline acompanhar o fundo at
         const currentOutline = state.outline
             ? economy.PROFILE_OUTLINES[state.outline].label
             : "Padrão (acompanha o fundo)";
-        const prefix = message.prefix || "!";
-        const normalizedAction = normalizeCommand(action);
 
         if (normalizedAction === "previa" || normalizedAction === "preview") {
             const type = cosmeticType(category);
@@ -187,6 +180,33 @@ function replyMenu(message, currentBackground, currentOutline, prefix) {
             currentLine
         ].join("\n")
     });
+}
+
+function formatHelp(prefix) {
+    return [
+        "🎨 COSMÉTICOS DO PERFIL",
+        "Consulte fundos e a linha colorida das bolhas do perfil.",
+        "",
+        "Abra a loja e veja as opções:",
+        `${prefix}cosmeticos`,
+        `${prefix}cosmeticos fundo`,
+        `${prefix}cosmeticos linha`,
+        "",
+        "Veja a prévia de uma cor:",
+        `${prefix}cosmeticos previa fundo <cor>`,
+        `${prefix}cosmeticos previa linha <cor>`,
+        "",
+        "Equipe um cosmético que já possui:",
+        `${prefix}cosmeticos fundo <cor>`,
+        `${prefix}cosmeticos linha <cor>`,
+        "A linha pode acompanhar o fundo atual com:",
+        `${prefix}cosmeticos linha padrao`,
+        "",
+        "Para comprar, use o ID na loja ou:",
+        `${prefix}comprar fundo <cor>`,
+        `${prefix}comprar linha <cor>`,
+        `Fundos tradicionais custam ${economy.formatMoney(economy.PROFILE_BACKGROUND_PRICE)} e linhas tradicionais ${economy.formatMoney(economy.PROFILE_OUTLINE_PRICE)}. RGB custa ${economy.formatMoney(economy.getProfileBackgroundPrice("rgb"))} para fundos e ${economy.formatMoney(economy.getProfileOutlinePrice("rgb"))} para linhas. Cosméticos comprados podem ser equipados novamente sem custo.`
+    ].join("\n");
 }
 
 function replyCosmeticCatalog(message, state, type, currentBackground, currentOutline, prefix) {

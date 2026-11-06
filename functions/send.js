@@ -2,7 +2,8 @@ async function text(
     platform,
     chatId,
     threadId,
-    text
+    text,
+    options
 ) {
 
     const target =
@@ -21,7 +22,8 @@ async function text(
     return await target.sendText(
         chatId,
         threadId,
-        text
+        text,
+        options
     );
 
 }

@@ -33,35 +33,8 @@ module.exports = {
         "busca_sinal"
     ],
     category: "economia",
-    description: `✦ Faça buscas de sinais e receba SatCoins, resets, itens ou cosméticos nesta comunidade.
-
-📝 Escolha uma modalidade e faça uma busca:
-{prefix}buscasinais recruta
-{prefix}buscasinais especializada
-{prefix}buscasinais local
-
-🎁 Como funciona
-• Recruta: mais barata; sorteia dinheiro ou resets da Loja do Bot, com reset de trabalho garantido em até 5 buscas e prêmio épico em até 10.
-• Especializada: mais cara; pode sortear dinheiro, resets ou cosméticos, com prêmio épico garantido em até 10 buscas.
-• Local: prêmios, chances e garantias personalizados pelos administradores deste grupo/servidor; precisa estar ativada.
-
-🔎 Consulte os prêmios possíveis:
-{prefix}buscasinais itens
-{prefix}buscasinais itens recruta
-{prefix}buscasinais itens especializada
-{prefix}buscasinais itens local
-
-🔟 Para fazer dez buscas de uma vez, acrescente x10:
-{prefix}buscasinais recruta x10
-{prefix}buscasinais especializada x10
-{prefix}buscasinais local x10
-
-📌 Regras
-• O pagamento é retirado da carteira; o saldo do cofre não pode ser usado.
-• As garantias têm contadores independentes para cada nível.
-• A busca x10 custa dez vezes o valor unitário.
-• Cosméticos repetidos e resets que não podem ser aplicados são convertidos em 50% do preço da loja.`,
-    usage: "{prefix}buscasinais [recruta|especializada|local] [x10]",
+    description: "Faça buscas de sinais para obter SatCoins, itens, resets e cosméticos.",
+    usage: "{prefix}buscasinais help",
 
     async execute(message) {
         if (!economy.getScope(message)) {

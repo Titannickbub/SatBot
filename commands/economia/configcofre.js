@@ -15,22 +15,8 @@ module.exports = {
     name: "configcofre",
     aliases: ["cofreconfig", "configurarcofre"],
     category: "adm/economia",
-    description: `⚙️ Configura o modo e as regras do cofre deste grupo/servidor.
-
-🔐 Apenas administradores podem usar este comando.
-
-📝 Exemplos:
-{prefix}configcofre status
-{prefix}configcofre modo impenetravel
-{prefix}configcofre modo imposto
-{prefix}configcofre modo roubo
-{prefix}configcofre minimo 500
-{prefix}configcofre imposto percentual 1,5
-{prefix}configcofre imposto fixo 25
-{prefix}configcofre chancecofre 40
-
-O imposto é aplicado por período completo de 24 horas desde a última movimentação; movimentações com menos de 1 hora de intervalo não geram imposto. A chance da carteira é o restante até 100%.`,
-    usage: "{prefix}configcofre [status|modo|minimo|imposto|chancecofre]",
+    description: "Configura o modo e as regras do cofre do grupo ou servidor.",
+    usage: "{prefix}configcofre help",
 
     async execute(message) {
         if (!economy.getScope(message)) {
@@ -43,8 +29,11 @@ O imposto é aplicado por período completo de 24 horas desde a última moviment
         const [rawAction, ...args] = message.args || [];
         const action = normalizeText(rawAction);
         const config = economy.getVaultConfig(message);
-        if (!action || ["help", "ajuda", "status"].includes(action)) {
+        if (!action || ["status", "estado"].includes(action)) {
             return message.reply({ text: formatStatus(config, message.prefix || "!") });
+        }
+        if (["help", "ajuda"].includes(action)) {
+            return message.reply({ text: formatHelp(message.prefix || "!") });
         }
 
         if (action === "modo") {
@@ -116,6 +105,33 @@ function formatStatus(config, prefix) {
         `${prefix}configcofre minimo <valor>`,
         `${prefix}configcofre imposto <percentual <0-100>|fixo <valor>>`,
         `${prefix}configcofre chancecofre <0-100>`
+    ].join("\n");
+}
+
+function formatHelp(prefix) {
+    return [
+        "⚙️ CONFIGURAÇÃO DO COFRE",
+        "Disponível para administradores do grupo ou servidor.",
+        "",
+        "Consulte o estado:",
+        `${prefix}configcofre status`,
+        "",
+        "Escolha o modo:",
+        `${prefix}configcofre modo impenetravel`,
+        `${prefix}configcofre modo imposto`,
+        `${prefix}configcofre modo roubo`,
+        "",
+        "Defina o mínimo por movimentação:",
+        `${prefix}configcofre minimo 500`,
+        "",
+        "Configure o imposto (percentual por período ou valor fixo):",
+        `${prefix}configcofre imposto percentual 1,5`,
+        `${prefix}configcofre imposto fixo 25`,
+        "",
+        "Defina a chance de o roubo atingir o cofre (a carteira recebe o restante até 100%):",
+        `${prefix}configcofre chancecofre 40`,
+        "",
+        "O imposto é aplicado após períodos completos de 24 horas desde a última movimentação. Movimentações com menos de 1 hora de intervalo não geram imposto."
     ].join("\n");
 }
 

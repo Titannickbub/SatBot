@@ -3,6 +3,20 @@ const path = require("path");
 const centralAccounts = require("./centralAccounts");
 const itemRarity = require("./itemRarity");
 const profileCosmetics = require("./profileCosmetics");
+const auditLogs = require("./auditLogs");
+
+function recordAuditLog(message, category, detail) {
+    auditLogs.log(message, category, detail).catch(error => {
+        console.error(`[AUDIT_LOG] Falha ao registrar ${category}:`, error.message || error);
+    });
+}
+
+function formatAuditValue(value) {
+    if (value === null) return "infinito/nenhum";
+    if (typeof value === "number") return value;
+    if (typeof value === "string") return value;
+    return JSON.stringify(value);
+}
 
 const economyDir = path.join(__dirname, "..", "settings", "economy");
 const DAILY_REWARD = 2000;
@@ -70,7 +84,8 @@ const DAILY_PROFIT_KEYS = [
     "roubo",
     "rouboSofrido",
     "loja",
-    "busca"
+    "busca",
+    "impostoCofre"
 ];
 
 const scopeCache = new Map();
@@ -386,6 +401,26 @@ function getVaultConfig(message) {
     return scope ? normalizeVaultConfig(loadScope(scope).vaultConfig) : null;
 }
 
+function getVaultTaxPreview(message) {
+    const scope = getScope(message);
+    if (!scope) return null;
+    const store = loadScope(scope);
+    const account = store.accounts[String(message.userId)];
+    const config = normalizeVaultConfig(store.vaultConfig);
+    if (!account || typeof account !== "object") {
+        return { amount: 0, periods: 0, mode: config.mode };
+    }
+    const tax = config.mode === "tax"
+        ? calculateVaultTax(
+            Math.max(0, Number(account.vaultBalance) || 0),
+            account.vaultLastOperationAt,
+            config,
+            Date.now()
+        )
+        : { amount: 0, periods: 0 };
+    return { ...tax, mode: config.mode };
+}
+
 function updateVaultConfig(message, updates) {
     const scope = getScope(message);
     if (!scope || !updates || typeof updates !== "object" || Array.isArray(updates)) return null;
@@ -648,6 +683,7 @@ function moveToVault(message, amount, operation) {
 
     account[dateField] = today;
     account.vaultLastOperationAt = now;
+    if (tax.amount > 0) recordDailyProfit(account, "impostoCofre", -tax.amount);
     saveScope(scope, loadScope(scope));
     return {
         ...result,
@@ -917,6 +953,11 @@ function resetBalance(message, userId) {
     account.balance = 0;
     account.vaultBalance = 0;
     saveScope(scope, store);
+    recordAuditLog(message, "balance",
+        `👤 ${auditLogs.describeActor(message)}\n` +
+        `👥 Membro: ${auditLogs.formatMember(message, userId, account.displayName || account.username)}\n` +
+        `💳 Carteira: ${formatMoney(previousBalance)} → ${formatMoney(0)}\n` +
+        `🔒 Cofre: ${formatMoney(previousVaultBalance)} → ${formatMoney(0)}`);
     return { ...account, previousBalance, previousVaultBalance };
 }
 
@@ -931,6 +972,8 @@ function resetAllBalances(message) {
         account.vaultBalance = 0;
     }
     saveScope(scope, store);
+    recordAuditLog(message, "balance",
+        `${auditLogs.describeActor(message)} zerou os saldos de todos os membros (${accounts.length} contas).`);
     return accounts.length;
 }
 
@@ -976,6 +1019,13 @@ function adjustBalance(message, target, amount, operation) {
     }
 
     saveScope(scope, store);
+    const change = account.balance - previousBalance;
+    recordAuditLog(message, "balance",
+        `👤 Responsável: ${auditLogs.describeActor(message)}\n` +
+        `👥 Membro: ${auditLogs.formatMember(message, target.userId, target.displayName || target.username || account.displayName || account.username)}\n` +
+        `💰 Ação: ${operation === "set" ? "saldo definido" : operation === "add" ? "saldo adicionado" : "saldo removido"}\n` +
+        `📊 Saldo: ${formatMoney(previousBalance)} → ${formatMoney(account.balance)}\n` +
+        `↕️ Variação: ${change >= 0 ? "+" : ""}${formatMoney(change)}`);
     return {
         previousBalance,
         balance: account.balance,
@@ -1628,8 +1678,11 @@ function updateLocalSignalSearch(message, updates) {
     }
     if (config.featured.length !== updates.featured.length) return null;
     config.enabled = updates.enabled === true;
+    const previousConfig = normalizeLocalSignalSearch(store.communityStore.localSignalSearch);
     store.communityStore.localSignalSearch = config;
     saveScope(scope, loadScope(scope));
+    recordAuditLog(message, "signals",
+        `${auditLogs.describeActor(message)} atualizou a loja de sinais local. Alterações: ${describeSignalChanges(previousConfig, config)}.`);
     return getLocalSignalSearch(message);
 }
 
@@ -1695,9 +1748,27 @@ function updateLocalSignalSearchDraft(message, updates) {
     const config = normalizeLocalSignalSearch(updates);
     config.enabled = updates.enabled === true;
     if (config.enabled) return updateLocalSignalSearch(message, config);
+    const previousConfig = normalizeLocalSignalSearch(store.communityStore.localSignalSearch);
     store.communityStore.localSignalSearch = config;
     saveScope(scope, store);
+    recordAuditLog(message, "signals",
+        `${auditLogs.describeActor(message)} atualizou a loja de sinais local. Alterações: ${describeSignalChanges(previousConfig, config)}.`);
     return getLocalSignalSearch(message);
+}
+
+function describeSignalChanges(previous, current) {
+    const changes = [];
+    if (previous.enabled !== current.enabled) changes.push(`status: ${previous.enabled ? "ativado" : "desativado"} → ${current.enabled ? "ativado" : "desativado"}`);
+    if (previous.price !== current.price) changes.push(`preço: ${formatMoney(previous.price)} → ${formatMoney(current.price)}`);
+    for (const rarity of LOCAL_SIGNAL_RARITIES) {
+        if (JSON.stringify(previous.tiers[rarity]) !== JSON.stringify(current.tiers[rarity])) {
+            changes.push(`nível ${rarity}: ${JSON.stringify(previous.tiers[rarity])} → ${JSON.stringify(current.tiers[rarity])}`);
+        }
+    }
+    if (JSON.stringify(previous.featured) !== JSON.stringify(current.featured)) {
+        changes.push(`destaques: ${JSON.stringify(previous.featured)} → ${JSON.stringify(current.featured)}`);
+    }
+    return changes.length ? changes.join("; ").slice(0, 3000) : "configuração salva sem diferenças detectáveis";
 }
 
 function setCommunityStoreText(message, field, value) {
@@ -1707,8 +1778,12 @@ function setCommunityStoreText(message, field, value) {
     const scope = getScope(message);
     if (!scope) return false;
     const data = loadScope(scope);
+    const previousValue = data.communityStore[field];
     data.communityStore[field] = value.trim();
     saveScope(scope, data);
+    recordAuditLog(message, "store",
+        `${auditLogs.describeActor(message)} editou ${field === "title" ? "o título" : "o aviso"} da loja local: ` +
+        `${JSON.stringify(previousValue)} → ${JSON.stringify(data.communityStore[field])}.`);
     return true;
 }
 
@@ -1718,9 +1793,14 @@ function updateCommunityStoreDetails(message, title, notice) {
     const scope = getScope(message);
     if (!scope) return false;
     const data = loadScope(scope);
+    const previousTitle = data.communityStore.title;
+    const previousNotice = data.communityStore.notice;
     data.communityStore.title = title.trim();
     data.communityStore.notice = notice.trim();
     saveScope(scope, data);
+    recordAuditLog(message, "store",
+        `${auditLogs.describeActor(message)} editou os detalhes da loja local: título ${JSON.stringify(previousTitle)} → ${JSON.stringify(data.communityStore.title)}; ` +
+        `aviso ${JSON.stringify(previousNotice)} → ${JSON.stringify(data.communityStore.notice)}.`);
     return true;
 }
 
@@ -1746,6 +1826,9 @@ function addCommunityStoreItem(message, item) {
     };
     store.items.push(newItem);
     saveScope(scope, data);
+    recordAuditLog(message, "store",
+        `${auditLogs.describeActor(message)} criou o item #${newItem.id} "${newItem.name}" na loja local: ` +
+        `${formatMoney(newItem.price)}, categoria ${newItem.category}, estoque ${formatAuditValue(newItem.quantity)}, importância ${formatAuditValue(newItem.rarity)}.`);
     return { ...newItem };
 }
 
@@ -1756,6 +1839,7 @@ function editCommunityStoreItem(message, itemId, field, value) {
     const item = data.communityStore.items.find(candidate => candidate.id === Number(itemId));
     if (!item) return null;
 
+    const previousValue = item[field];
     if (field === "name" || field === "category") {
         if (typeof value !== "string" || !value.trim()) return null;
         item[field] = value.trim();
@@ -1772,6 +1856,9 @@ function editCommunityStoreItem(message, itemId, field, value) {
         return null;
     }
     saveScope(scope, data);
+    recordAuditLog(message, "store",
+        `${auditLogs.describeActor(message)} editou o item #${item.id} "${item.name}" na loja local: ` +
+        `${field} ${formatAuditValue(previousValue)} → ${formatAuditValue(item[field])}.`);
     return { ...item };
 }
 
@@ -1783,6 +1870,7 @@ function updateCommunityStoreItem(message, itemId, updates) {
     const data = loadScope(scope);
     const item = data.communityStore.items.find(candidate => candidate.id === Number(itemId));
     if (!item) return null;
+    const previousItem = { ...item };
 
     const updatedItem = {
         name: updates.name,
@@ -1808,6 +1896,12 @@ function updateCommunityStoreItem(message, itemId, updates) {
         rarity: updatedItem.rarity
     });
     saveScope(scope, data);
+    const changes = Object.keys(updatedItem)
+        .filter(field => previousItem[field] !== item[field])
+        .map(field => `${field}: ${formatAuditValue(previousItem[field])} → ${formatAuditValue(item[field])}`);
+    recordAuditLog(message, "store",
+        `${auditLogs.describeActor(message)} editou o item #${item.id} "${item.name}" na loja local: ` +
+        `${changes.length ? changes.join("; ") : "nenhum campo foi alterado"}.`);
     return { ...item };
 }
 
@@ -1825,6 +1919,8 @@ function removeCommunityStoreItem(message, itemId) {
     config.featured = config.featured.filter(item => item.type !== "market" || item.id !== removed.id);
     data.communityStore.localSignalSearch = config;
     saveScope(scope, data);
+    recordAuditLog(message, "store",
+        `${auditLogs.describeActor(message)} excluiu o item #${removed.id} "${removed.name}" da loja local.`);
     return { ...removed };
 }
 
@@ -2608,6 +2704,7 @@ module.exports = {
     getIncludeVaultInRanking,
     setIncludeVaultInRanking,
     getVaultConfig,
+    getVaultTaxPreview,
     updateVaultConfig,
     adjustBalance,
     getDailyProfits,

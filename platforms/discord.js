@@ -947,7 +947,8 @@ async function getDiscordChannel(chatId) {
 async function sendText(
     chatId,
     threadId,
-    text
+    text,
+    options = {}
 ) {
 
     if (!global.discordClient) {
@@ -968,7 +969,9 @@ async function sendText(
 
     }
 
-    const msg = await channel.send(text);
+    const msg = await channel.send(options.disableMentions
+        ? { content: text, allowedMentions: { parse: [] } }
+        : text);
 
     return msg.id;
 

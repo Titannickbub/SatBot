@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { loadSettings, saveSettings } = require("./groupSettings");
 const { kickMember, banMember } = require("./moderationHelper");
+const auditLogs = require("./auditLogs");
 
 const groupsDir = path.join(__dirname, "..", "settings", "groups");
 
@@ -86,6 +87,12 @@ function getWarnHistory(value, storedHistory) {
     return { count, records, legacyCount: Math.max(0, count - records.length) };
 }
 
+function recordWarningLog(message, detail) {
+    auditLogs.log(message, "warnings", detail).catch(error => {
+        console.error("[AUDIT_LOG] Falha ao registrar advertência:", error.message || error);
+    });
+}
+
 /**
  * Define a configuração do sistema de warn.
  * @param {object} message 
@@ -162,6 +169,11 @@ async function addWarn(message, userId, reason = "Sem motivo") {
     if (!saveSettings(message.platform, target.id, target.type, data, message)) {
         throw new Error("Não foi possível salvar a advertência.");
     }
+    recordWarningLog(message,
+        `👤 Responsável: ${auditLogs.describeActor(message)}\n` +
+        `👥 Membro: ${auditLogs.formatMember(message, uid)}\n` +
+        `⚠️ Advertências: ${currentWarns}/${max}\n` +
+        `📝 Motivo: ${String(reason || "Sem motivo informado").trim().slice(0, 500)}`);
 
     const result = {
         currentWarns,
@@ -208,6 +220,9 @@ function removeWarns(message, userId, amount = 0) {
         return true; // nada para remover
     }
 
+    const history = getWarnHistory(data.settings.warnsData[uid], data.settings.warnsHistory[uid]);
+    const previousCount = history.count;
+    const removedCount = amount <= 0 ? previousCount : Math.min(Math.floor(amount), previousCount);
     if (amount <= 0) {
         delete data.settings.warnsData[uid];
         delete data.settings.warnsHistory[uid];
@@ -231,7 +246,15 @@ function removeWarns(message, userId, amount = 0) {
         }
     }
 
-    return saveSettings(message.platform, target.id, target.type, data, message);
+    const saved = saveSettings(message.platform, target.id, target.type, data, message);
+    if (saved && removedCount > 0) {
+        recordWarningLog(message,
+            `👤 Responsável: ${auditLogs.describeActor(message)}\n` +
+            `👥 Membro: ${auditLogs.formatMember(message, uid)}\n` +
+            `🧹 Removidas: ${removedCount} advertência(s)\n` +
+            `📊 Total: ${previousCount} → ${Math.max(0, previousCount - removedCount)}`);
+    }
+    return saved;
 }
 
 module.exports = {

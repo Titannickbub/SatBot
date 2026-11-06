@@ -10,7 +10,9 @@ const LABELS = {
     transferenciaRecebida: "Transferências recebidas",
     roubo: "Roubos realizados",
     rouboSofrido: "Roubos sofridos",
-    loja: "Gastos na loja"
+    loja: "Gastos na loja",
+    busca: "Busca de Sinais",
+    impostoCofre: "Impostos pagos no cofre"
 };
 
 module.exports = {

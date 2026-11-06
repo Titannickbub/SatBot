@@ -79,8 +79,8 @@ module.exports = {
     name: "configbuscasinais",
     aliases: ["configbuscalocal", "buscasinaisconfig"],
     category: "adm/economia",
-    description: DESCRIPTION,
-    usage: "{prefix}configbuscasinais [status|itens|preco|chances|garantia|dinheiro|premio|destaque|ativar|desativar]",
+    description: "Configura preço, chances, garantias e prêmios da Busca de Sinais Local.",
+    usage: "{prefix}configbuscasinais help",
 
     async execute(message) {
         if (!economy.getScope(message)) {

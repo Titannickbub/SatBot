@@ -22,6 +22,26 @@ por intervalo bloqueado e pode ser desligado com `!antispam aviso off`.
 O limite é independente por usuário e chat, aplica-se a todos os comandos, e
 Super Usuários são isentos. Use `!antispam off` para desativar a proteção.
 
+## Logs de auditoria
+
+Administradores podem consultar e configurar os logs no grupo ou servidor:
+
+```text
+!logs status
+!logs on
+!logs saldo off
+!logs loja on
+!logs sinais on
+!logs advertencias off
+```
+
+As categorias são saldo, loja local, loja de sinais local e advertências.
+`!logs off` desativa todos os registros sem apagar as escolhas por categoria.
+No Discord, os registros usam o canal escolhido no painel ou por
+`!logs_chanel`. No WhatsApp, são enviados no mesmo grupo. No Telegram, vão ao
+chat principal por padrão; use `!logs topico` dentro do tópico desejado para
+selecioná-lo ou `!logs topico off` para voltar ao chat principal.
+
 ## Super Usuários
 
 Super Usuários (SU) são as pessoas com privilégios globais de administração

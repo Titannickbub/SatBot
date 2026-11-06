@@ -9,6 +9,7 @@ const centralAccounts = require("./centralAccounts");
 const nofapHelper = require("./nofapHelper");
 const marriage = require("./marriageService");
 const groupSettings = require("./groupSettings");
+const auditLogs = require("./auditLogs");
 const config = require("./config");
 const activity = require("./activity");
 const antilinkHelper = require("./antilinkHelper");
@@ -2694,7 +2695,8 @@ function renderLocalBank(data) {
     ["transferenciaEnviada", "Transferências enviadas"],
     ["transferenciaRecebida", "Transferências recebidas"],
     ["roubo", "Roubos feitos"], ["rouboSofrido", "Roubos sofridos"],
-    ["loja", "Loja"], ["busca", "Busca de Sinais"]
+    ["loja", "Loja"], ["busca", "Busca de Sinais"],
+    ["impostoCofre", "Impostos pagos no cofre"]
   ];
   const profitRows = data.dailyProfits
     ? profitLabels.map(([key, label]) => {
@@ -4290,7 +4292,7 @@ function renderGroupAdmin(data) {
         <article class="moderation-card"><h3>Usuários com advertências</h3><p class="moderation-help">Abra “Ver motivos” para consultar o histórico. Advertências anteriores à atualização aparecem sem motivo registrado. Remover pela lista apaga todas as advertências da pessoa.</p><ul class="warning-list" id="warningList">${warningRows || ""}</ul><p class="warning-empty" id="warningEmpty" ${warningRows ? "hidden" : ""}>Nenhum usuário com advertências registradas.</p><p class="warning-empty" id="warningMore" ${data.moderation.total > data.moderation.entries.length ? "" : "hidden"}>Mostrando ${data.moderation.entries.length} de ${data.moderation.total}. Pesquise pelo ID para localizar outros registros.</p></article>
       </div>
     </section>
-    <section class="overview-section" id="systemSettings" aria-labelledby="systemSettingsTitle"><h2 class="section-title" id="systemSettingsTitle">Sistemas do grupo</h2><p class="section-intro">${data.platform === "whatsapp" ? "Ative ou desative os recursos disponíveis neste grupo. Cada alteração será anunciada no próprio grupo." : "Escolha o escopo e filtre a lista para ver somente as funções configuráveis nele."}</p><div class="scope-panel scope-toolbar"><div class="scope-picker"><label>Mostrar configurações de<select id="scopeFilter">${data.platform === "discord" ? '<option value="server">Servidor</option><option value="categoria">Categoria</option><option value="chat">Chat</option>' : data.platform === "telegram" ? '<option value="server">Grupo</option><option value="topic" hidden>Tópico</option>' : '<option value="chat">Grupo</option><option value="server" hidden>Comunidade</option>'}</select></label>${data.platform === "discord" ? `<label>Categoria<select id="categorySelect"><option value="">Selecione uma categoria</option></select></label><label id="channelPicker">Chat<select id="channelSelect"><option value="">Selecione um chat</option></select></label><label>Canal de logs<select id="logsChannelSelect"><option value="">Desativado — não registrar avisos</option></select></label>` : data.platform === "telegram" ? `<label id="topicPicker" hidden>Tópico<select id="topicSelect"><option value="">Selecione um tópico</option></select></label>` : ""}</div><p class="scope-note" id="scopeNote">${data.platform === "discord" ? "A escolha de uma categoria ou chat ajusta o filtro automaticamente. Os avisos do dashboard serão enviados ao canal de logs selecionado." : data.platform === "telegram" ? "A escolha de um tópico ajusta o filtro automaticamente. Avisos de alteração são enviados no chat principal, sem tópico." : "Escopo: grupo."}</p></div><section class="settings" id="rootSettings" aria-label="Configurações do escopo selecionado">${settingCards}</section></section>
+    <section class="overview-section" id="systemSettings" aria-labelledby="systemSettingsTitle"><h2 class="section-title" id="systemSettingsTitle">Sistemas do grupo</h2><p class="section-intro">${data.platform === "whatsapp" ? "Ative ou desative os recursos disponíveis neste grupo. Cada alteração será anunciada no próprio grupo." : "Escolha o escopo e filtre a lista para ver somente as funções configuráveis nele."}</p><div class="scope-panel scope-toolbar"><div class="scope-picker"><label>Mostrar configurações de<select id="scopeFilter">${data.platform === "discord" ? '<option value="server">Servidor</option><option value="categoria">Categoria</option><option value="chat">Chat</option>' : data.platform === "telegram" ? '<option value="server">Grupo</option><option value="topic" hidden>Tópico</option>' : '<option value="chat">Grupo</option><option value="server" hidden>Comunidade</option>'}</select></label>${data.platform === "discord" ? `<label>Categoria<select id="categorySelect"><option value="">Selecione uma categoria</option></select></label><label id="channelPicker">Chat<select id="channelSelect"><option value="">Selecione um chat</option></select></label><label>Canal de logs<select id="logsChannelSelect"><option value="">Desativado — não registrar avisos</option></select></label>` : data.platform === "telegram" ? `<label id="topicPicker" hidden>Tópico<select id="topicSelect"><option value="">Selecione um tópico</option></select></label>` : ""}</div><p class="scope-note" id="scopeNote">${data.platform === "discord" ? "A escolha de uma categoria ou chat ajusta o filtro automaticamente. Os avisos do dashboard serão enviados ao canal de logs selecionado." : data.platform === "telegram" ? "A escolha de um tópico ajusta o filtro automaticamente. Avisos de alteração são enviados no chat principal, sem tópico." : "Escopo: grupo."}</p></div><article class="moderation-card" style="margin:12px 0"><h3>Logs de auditoria</h3><p class="moderation-help">Registra alterações de saldo, loja local, loja de sinais e advertências. ${data.platform === "discord" ? "Os registros são enviados ao canal de logs escolhido acima." : data.platform === "telegram" ? "Os registros vão para o chat principal ou para o tópico selecionado no comando de logs." : "Os registros são enviados neste grupo."}</p><label><input id="auditLogsEnabled" type="checkbox"> Ativar todos os logs</label><div class="moderation-fields" style="margin-top:10px"><label><input data-audit-category="balance" type="checkbox"> Alterações de saldo</label><label><input data-audit-category="store" type="checkbox"> Loja local</label><label><input data-audit-category="signals" type="checkbox"> Loja de sinais local</label><label><input data-audit-category="warnings" type="checkbox"> Advertências</label></div><p class="moderation-feedback" id="auditLogsFeedback" role="status" aria-live="polite"></p></article><section class="settings" id="rootSettings" aria-label="Configurações do escopo selecionado">${settingCards}</section></section>
     <dialog class="antilink-dialog" id="antilinkDialog" aria-labelledby="antilinkDialogTitle"><form id="antilinkForm"><header class="antilink-dialog-heading"><div><h2 id="antilinkDialogTitle">Configurações do antilink</h2><p id="antilinkScopeLabel"></p></div><button type="button" class="dialog-close" data-close-antilink aria-label="Fechar">×</button></header><div class="antilink-form-grid"><label>Ação ao detectar link<select name="action"><option value="delete">Deletar mensagem</option><option value="warn">Deletar e avisar</option><option value="kick">Deletar e expulsar</option><option value="ban">Deletar e banir</option></select></label><label class="antilink-message-field">Mensagem de aviso<textarea name="message" maxlength="2000" rows="3" placeholder="Mensagem enviada quando a ação avisa o usuário"></textarea></label></div><fieldset class="antilink-options"><legend>Exceções e herança</legend><label><input type="checkbox" name="ignoreParent"> Ignorar as regras dos escopos superiores</label><label><input type="checkbox" name="ignoreSameGroup"> Permitir links do próprio grupo/servidor</label><label><input type="checkbox" name="ignoreMedia"> Ignorar links identificados como mídia (YouTube, TikTok, Instagram)</label></fieldset><div class="antilink-list-grid"><label>Domínios permitidos<textarea name="whitelist" rows="4" placeholder="um domínio por linha"></textarea><small>Links desses domínios não são tratados como infração.</small></label><label>Usuários isentos<textarea name="userWhitelist" rows="4" placeholder="um ID por linha"></textarea><small>Esses usuários podem enviar links sem punição.</small></label><label>Usuários sem exceção de links de mídia<textarea name="userBlacklist" rows="4" placeholder="um ID por linha"></textarea><small>Aplicável quando a regra ignora links de mídia.</small></label>${data.platform === "discord" ? `<label>Cargos isentos<textarea name="roleWhitelist" rows="4" placeholder="um ID de cargo por linha"></textarea></label><label>Cargos sem exceção de links de mídia<textarea name="roleBlacklist" rows="4" placeholder="um ID de cargo por linha"></textarea></label>` : ""}</div><p class="antilink-form-feedback" id="antilinkFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-antilink>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>
     <dialog class="antilink-dialog" id="antimediaDialog" aria-labelledby="antimediaDialogTitle"><form id="antimediaForm"><header class="antilink-dialog-heading"><div><h2 id="antimediaDialogTitle">Configurações do antimídia</h2><p id="antimediaScopeLabel"></p></div><button type="button" class="dialog-close" data-close-antimedia aria-label="Fechar">×</button></header><div class="antilink-form-grid"><label>Ação ao detectar mídia<select name="action"><option value="delete">Deletar mensagem</option><option value="warn">Deletar e avisar</option><option value="kick">Deletar e expulsar</option><option value="ban">Deletar e banir</option></select></label><label>Mensagem de aviso<textarea name="message" maxlength="2000" rows="3" placeholder="Opcional; usada quando a ação avisa o usuário"></textarea></label></div><fieldset class="antilink-options"><legend>Tipos de mídia bloqueados</legend><div class="antimedia-media-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 14px">${[["image","Imagem / foto"],["video","Vídeo"],["audio","Áudio / música"],["document","Documento / arquivo"],["sticker","Figurinha"],["location","Localização"],["contact","Contato"],["voice","Mensagem de voz"],["gif","GIF"]].map(([value,label]) => `<label><input type="checkbox" name="mediaTypes" value="${value}"> ${label}</label>`).join("")}</div><small>Se nenhum tipo for marcado, todos os tipos de mídia serão bloqueados.</small></fieldset><fieldset class="antilink-options"><legend>Herança</legend><label><input type="checkbox" name="ignoreParent"> Ignorar as regras dos escopos superiores</label></fieldset><div class="antilink-list-grid"><label>Usuários isentos<textarea name="userWhitelist" rows="4" placeholder="um ID por linha"></textarea><small>Esses usuários não serão punidos.</small></label><label>Usuários na lista negra<textarea name="userBlacklist" rows="4" placeholder="um ID por linha"></textarea><small>Esses usuários serão punidos ao enviar qualquer mídia.</small></label>${data.platform === "discord" ? `<label>Cargos isentos<textarea name="roleWhitelist" rows="4" placeholder="um ID de cargo por linha"></textarea></label><label>Cargos na lista negra<textarea name="roleBlacklist" rows="4" placeholder="um ID de cargo por linha"></textarea></label>` : ""}</div><p class="antilink-form-feedback" id="antimediaFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-antimedia>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>
     <dialog class="antilink-dialog" id="antipalavrasDialog" aria-labelledby="antipalavrasDialogTitle"><form id="antipalavrasForm"><header class="antilink-dialog-heading"><div><h2 id="antipalavrasDialogTitle">Configurações do antipalavras</h2><p id="antipalavrasScopeLabel"></p></div><button type="button" class="dialog-close" data-close-antipalavras aria-label="Fechar">×</button></header><div class="antilink-form-grid"><label>Ação ao detectar palavra/frase<select name="action"><option value="delete">Deletar mensagem</option><option value="warn">Deletar e avisar</option><option value="kick">Deletar e expulsar</option><option value="ban">Deletar e banir</option></select></label><label>Mensagem de aviso<textarea name="message" maxlength="2000" rows="3" placeholder="Opcional; usada quando a ação avisa o usuário"></textarea></label></div><label class="antipalavras-words-field">Palavras e frases bloqueadas<textarea name="words" rows="8" maxlength="100500" placeholder="Uma palavra/frase por linha (ou separadas por vírgula)"></textarea><small>Cada entrada é verificada individualmente nas mensagens.</small></label><fieldset class="antilink-options"><legend>Herança</legend><label><input type="checkbox" name="ignoreParent"> Ignorar as regras dos escopos superiores</label></fieldset><div class="antilink-list-grid"><label>Usuários isentos<textarea name="userWhitelist" rows="4" placeholder="um ID por linha"></textarea></label><label>Usuários sempre monitorados<textarea name="userBlacklist" rows="4" placeholder="um ID por linha"></textarea></label>${roleListFields}</div><p class="antilink-form-feedback" id="antipalavrasFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-antipalavras>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>
@@ -4324,6 +4326,39 @@ function renderGroupAdmin(data) {
       if(!response.ok)throw new Error(result.error||"Não foi possível carregar as configurações.");
       return result;
     }
+    const auditLogsToggle=document.getElementById("auditLogsEnabled");
+    const auditLogCategories=[...document.querySelectorAll("[data-audit-category]")];
+    const auditLogsFeedback=document.getElementById("auditLogsFeedback");
+    let auditLogsConfig=null;
+    function renderAuditLogs(config){
+      auditLogsConfig=config;
+      auditLogsToggle.checked=config.enabled;
+      for(const input of auditLogCategories)input.checked=config.categories[input.dataset.auditCategory]!==false;
+    }
+    async function saveAuditLogs(){
+      if(!auditLogsConfig)return;
+      auditLogsToggle.disabled=true;
+      for(const input of auditLogCategories)input.disabled=true;
+      auditLogsFeedback.classList.remove("error");
+      auditLogsFeedback.textContent="";
+      try{
+        const categories=Object.fromEntries(auditLogCategories.map(input=>[input.dataset.auditCategory,input.checked]));
+        const result=await requestAdminApi("/api/account/local/admin-audit-logs",{auditLogs:{enabled:auditLogsToggle.checked,categories}});
+        renderAuditLogs(result.auditLogs);
+        auditLogsFeedback.textContent="Configurações dos logs salvas.";
+      }catch(error){
+        renderAuditLogs(auditLogsConfig);
+        auditLogsFeedback.classList.add("error");
+        auditLogsFeedback.textContent=error.message;
+      }finally{
+        auditLogsToggle.disabled=false;
+        for(const input of auditLogCategories)input.disabled=false;
+      }
+    }
+    requestAdminApi("/api/account/local/admin-audit-logs").then(({auditLogs})=>renderAuditLogs(auditLogs))
+      .catch(error=>{auditLogsFeedback.classList.add("error");auditLogsFeedback.textContent=error.message;auditLogsToggle.disabled=true;for(const input of auditLogCategories)input.disabled=true});
+    auditLogsToggle.addEventListener("change",saveAuditLogs);
+    for(const input of auditLogCategories)input.addEventListener("change",saveAuditLogs);
     let chatControlChannel=null;
     if(context.platform==="discord"||context.platform==="whatsapp"){
       const chatControlPanel=document.createElement("section");chatControlPanel.className="moderation-card";chatControlPanel.style.marginBottom="12px";
@@ -7413,6 +7448,47 @@ function start() {
             error: statusCode === 403 || statusCode === 503 || statusCode === 400
               ? reason
               : "Não foi possível alterar a abertura deste chat."
+          });
+        }
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/account/local/admin-audit-logs") {
+        const platform = typeof payload?.platform === "string" ? payload.platform : "";
+        const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
+        try {
+          await getGroupAdminData(central, platform, groupId);
+          const platformAccount = central.platformAccounts.find(account => account.platform === platform);
+          const message = getLocalGroupMessage(platform, groupId, String(platformAccount.platformId));
+          if (payload?.auditLogs === undefined) {
+            sendJson(response, 200, { auditLogs: auditLogs.getConfig(message) });
+            return;
+          }
+
+          const settings = payload.auditLogs;
+          const categoryKeys = Object.keys(auditLogs.CATEGORIES);
+          if (!settings || typeof settings !== "object" || Array.isArray(settings) ||
+              typeof settings.enabled !== "boolean" ||
+              !settings.categories || typeof settings.categories !== "object" || Array.isArray(settings.categories) ||
+              categoryKeys.some(key => typeof settings.categories[key] !== "boolean") ||
+              Object.keys(settings.categories).some(key => !categoryKeys.includes(key))) {
+            sendJson(response, 400, { error: "Configuração de logs inválida." });
+            return;
+          }
+          const saved = auditLogs.updateConfig(message, {
+            enabled: settings.enabled,
+            categories: settings.categories
+          });
+          sendJson(response, 200, { success: true, auditLogs: saved });
+        } catch (error) {
+          const reason = String(error?.message || "");
+          const statusCode = /não participa|não está vinculada|permissão administrativa/i.test(reason) ? 403
+            : /offline/i.test(reason) ? 503 : /inválido/i.test(reason) ? 400 : 500;
+          if (statusCode === 500) console.error("[WEB] Falha ao carregar ou salvar logs de auditoria:", error.message || error);
+          sendJson(response, statusCode, {
+            error: statusCode === 403 || statusCode === 503 || statusCode === 400
+              ? reason
+              : "Não foi possível salvar as configurações dos logs."
           });
         }
         return;

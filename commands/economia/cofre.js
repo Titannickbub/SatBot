@@ -4,26 +4,25 @@ module.exports = {
     name: "cofre",
     aliases: ["banco", "vault"],
     category: "economia",
-    description: `🏦 Guarda satcoins em um cofre separado da carteira.
-
-📝 Consulte, deposite ou saque:
-{prefix}cofre
-{prefix}cofre depositar 500
-{prefix}cofre sacar 500
-
-O limite é de um depósito e um saque por dia, com o mínimo definido pelos administradores. Conforme o modo configurado, o saldo pode ser seguro, sofrer imposto ou ficar exposto a roubos.`,
-    usage: "{prefix}cofre [depositar|sacar] [valor]",
+    description: "Consulte o cofre e transfira SatCoins entre ele e sua carteira.",
+    usage: "{prefix}cofre help",
 
     async execute(message) {
         if (!economy.getScope(message)) {
             return message.reply({ text: "❌ O cofre só funciona em grupos ou servidores." });
         }
 
+        if (["help", "ajuda"].includes(normalizeCommand(message.args?.[0]))) {
+            return message.reply({ text: formatHelp(message.prefix || "!", economy.getVaultConfig(message)) });
+        }
+
         const action = normalizeAction(message.args?.[0]);
         if (!action) {
             const { account } = economy.getAccount(message);
             const config = economy.getVaultConfig(message);
+            const taxPreview = economy.getVaultTaxPreview(message);
             const today = economy.getLocalDate();
+            const prefix = message.prefix || "!";
             return message.reply({
                 text: [
                     "🏦 SEU COFRE",
@@ -32,8 +31,14 @@ O limite é de um depósito e um saque por dia, com o mínimo definido pelos adm
                     `💰 Patrimônio total: ${economy.formatMoney(economy.getTotalBalance(account))}`,
                     "",
                     `Modo: ${modeLabel(config.mode)}`,
+                    ...(config.mode === "tax"
+                        ? [`🧾 Impostos acumulados desde a última movimentação: ${economy.formatMoney(taxPreview.amount)} (${taxPreview.periods} período(s) completo(s) de 24h).`]
+                        : ["🧾 Impostos acumulados: não há cobrança no modo atual."]),
                     `Mínimo por movimentação: ${economy.formatMoney(config.minimumMovement)}`,
                     `Depósito hoje: ${account.vaultDepositDate === today ? "já utilizado" : "disponível"} · Saque hoje: ${account.vaultWithdrawDate === today ? "já utilizado" : "disponível"}`,
+                    "",
+                    `➕ Depositar: ${prefix}cofre depositar <valor>`,
+                    `➖ Sacar: ${prefix}cofre sacar <valor>`,
                     ...(config.mode === "tax" ? [`Imposto: ${config.taxType === "percent" ? `${formatPercent(config.taxRateBasisPoints)} por 24h` : `${economy.formatMoney(config.taxFixedAmount)} por 24h`}`] : []),
                     ...(config.mode === "robbery" ? [`Chance do roubo atingir o cofre: ${config.robberyVaultChance}%`] : [])
                 ].join("\n")
@@ -94,11 +99,42 @@ function formatPercent(basisPoints) {
     return `${(basisPoints / 100).toFixed(2).replace(/\.?0+$/, "").replace(".", ",")}%`;
 }
 
+function formatHelp(prefix, config) {
+    return [
+        "🏦 COFRE",
+        "Guarde SatCoins separadamente da carteira.",
+        "",
+        "Consulte o saldo e as regras atuais:",
+        `${prefix}cofre`,
+        "",
+        "Faça um depósito ou saque (substitua <valor> pela quantia desejada):",
+        `${prefix}cofre depositar <valor>`,
+        `${prefix}cofre sacar <valor>`,
+        "",
+        `O mínimo por movimentação é ${economy.formatMoney(config.minimumMovement)}. Você pode fazer um depósito e um saque por dia.`,
+        `Modo atual: ${modeLabel(config.mode)}.`,
+        ...(config.mode === "tax"
+            ? [`Imposto: ${config.taxType === "percent" ? `${formatPercent(config.taxRateBasisPoints)} por período de 24 horas` : `${economy.formatMoney(config.taxFixedAmount)} por período de 24 horas`}.`]
+            : []),
+        ...(config.mode === "robbery"
+            ? [`Chance de o roubo atingir o cofre: ${config.robberyVaultChance}%.`]
+            : []),
+        "",
+        `Use ${prefix}cofre help para rever estas instruções.`
+    ].join("\n");
+}
+
 function normalizeAction(value) {
     const action = String(value || "").trim().toLowerCase();
     if (["depositar", "depósito", "deposito", "deposit", "guardar"].includes(action)) return "deposit";
     if (["sacar", "saque", "retirar", "retirada", "withdraw"].includes(action)) return "withdraw";
     return null;
+}
+
+function normalizeCommand(value) {
+    return String(value || "").trim().normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
 }
 
 function parseAmount(value) {

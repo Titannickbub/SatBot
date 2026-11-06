@@ -32,6 +32,8 @@ O cofre guarda satcoins separadamente da carteira. O saldo guardado não pode se
 !cofre sacar 500
 ```
 
+Ao consultar `!cofre`, o bot também mostra o imposto acumulado desde a última movimentação e os comandos de depósito e saque. No modo de imposto, a cobrança é calculada em períodos completos de 24 horas; consultar o cofre não desconta o imposto. A cobrança é aplicada quando uma movimentação é realizada e aparece como despesa no comando `!lucro` e no extrato do banco web, na data em que foi paga.
+
 Cada membro pode fazer **um depósito e um saque por dia local**. O valor mínimo por movimentação é configurável pelos administradores; se o imposto reduzir o saldo antes de um saque, o cofre informa o valor descontado e transfere o que restar. A carteira, o cofre e o patrimônio total aparecem no comando `!carteira` e no banco web local.
 
 Administradores configuram o cofre pelos comandos `!configcofre status`, `!configcofre modo impenetravel|imposto|roubo`, `!configcofre minimo <valor>`, `!configcofre imposto percentual <0-100>` ou `!configcofre imposto fixo <valor>`, e `!configcofre chancecofre <0-100>`. A chance restante é automaticamente atribuída à carteira. `!rankcofre on|off` controla se o saldo do cofre entra nos rankings de riqueza; os mesmos ajustes estão na aba **Cofre** do painel de economia.
