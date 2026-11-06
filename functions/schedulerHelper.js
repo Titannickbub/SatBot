@@ -26,13 +26,20 @@ function loadSchedules() {
     if (!fs.existsSync(SCHEDULES_PATH)) {
         fs.writeFileSync(SCHEDULES_PATH, JSON.stringify({ schedules: [] }, null, 2), "utf8");
     }
+    let parsed;
     try {
         const raw = fs.readFileSync(SCHEDULES_PATH, "utf8");
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed.schedules) ? parsed.schedules : [];
+        parsed = JSON.parse(raw);
     } catch {
         return [];
     }
+    if (!Array.isArray(parsed.schedules)) return [];
+    const schedules = parsed.schedules.filter(schedule => schedule.meta?.kind !== "election-monitor");
+    if (schedules.length !== parsed.schedules.length) {
+        saveSchedules(schedules);
+        console.log("ℹ️[SCHEDULER] Agendamentos antigos do monitor eleitoral removidos.");
+    }
+    return schedules;
 }
 
 function saveSchedules(list) {
@@ -145,6 +152,8 @@ function calcNextFire(schedule, now = Date.now()) {
 async function fireSchedule(schedule, options = {}) {
     const { platform, chatId, threadId, message: msg } = schedule;
 
+    if (schedule.meta?.kind === "election-monitor") return;
+
     if (schedule.meta?.kind === "auto-chat-state" || schedule.meta?.kind === "chat-control-temp") {
         await require("./chatControl").fireSchedule(schedule);
         return;
@@ -197,32 +206,6 @@ async function fireSchedule(schedule, options = {}) {
             return;
         } catch (error) {
             console.error("❌[SCHEDULER] Erro ao disparar monitor do clima:", error.message || error);
-            return;
-        }
-    }
-
-    if (schedule.meta?.kind === "election-monitor") {
-        try {
-            const electionMonitor = require("./electionMonitor");
-            const config = electionMonitor.loadMonitorConfig({
-                platform,
-                chatId,
-                threadId: threadId || null
-            });
-            await electionMonitor.runElectionMonitor({
-                config,
-                jobId: schedule.meta.jobId,
-                send: true,
-                target: {
-                    platform,
-                    chatId,
-                    threadId: threadId || null
-                },
-                adapter: global.platformRegistry?.[platform]
-            });
-            return;
-        } catch (error) {
-            console.error("❌[SCHEDULER] Erro ao disparar monitor eleitoral:", error.message || error);
             return;
         }
     }

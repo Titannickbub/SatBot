@@ -73,7 +73,7 @@ Use {prefix}configbuscasinais itens para consultar os nomes e IDs disponíveis.
 {prefix}configbuscasinais desativar
 
 📌 Regras: as chances devem totalizar 100%; cada raridade com chance precisa ter ao menos um prêmio; garantias só podem ser usadas em raridades com chance maior que zero. Preços e valores aceitam, por exemplo, 250, 250,50 ou 1.000,00.
-A Busca Local só pode ser ativada quando a configuração estiver completa. A loja pertence a este grupo/servidor e não altera as buscas Recruta ou Especializada.`;
+A Busca Local só pode ser ativada quando a configuração estiver completa. Se uma alteração for recusada, a resposta informa a regra que falhou e o próximo comando para corrigi-la. Cada alteração salva também indica a próxima configuração sugerida. A loja pertence a este grupo/servidor e não altera as buscas Recruta ou Especializada.`;
 
 module.exports = {
     name: "configbuscasinais",
@@ -185,13 +185,14 @@ module.exports = {
             return usageError(message, `Ação desconhecida. Consulte ${prefix}configbuscasinais help.`);
         }
 
+        const validationError = getDraftValidationError(config, state);
+        if (validationError) return usageError(message, validationError);
+
         const updated = economy.updateLocalSignalSearchDraft(message, config);
         if (!updated) {
-            return message.reply({
-                text: "❌ A alteração não foi salva. Revise os itens cadastrados, os destaques e as regras da raridade. Para ativar, as chances precisam somar 100% e toda raridade com chance precisa ter um prêmio."
-            });
+            return usageError(message, "A configuração foi recusada por uma inconsistência que não consegui identificar. Consulte status; confira se cada prêmio ainda existe no catálogo e se todo destaque está configurado em alguma raridade. Se a Busca Local estiver ativa, desative-a antes de alterar chances ou prêmios.");
         }
-        return message.reply({ text: successMessage });
+        return message.reply({ text: `${successMessage}\n\n${getNextStep(updated, prefix)}` });
     }
 };
 
@@ -359,6 +360,91 @@ function renderCatalog(state, prefix) {
         "",
         `Use ${prefix}configbuscasinais premio add <raridade> <tipo> <item>.`
     ].join("\n");
+}
+
+function getDraftValidationError(config, state) {
+    if (!Number.isSafeInteger(config.price) || config.price <= 0) {
+        return "O preço salvo está inválido. Defina um valor maior que zero, por exemplo: preco 250,00.";
+    }
+
+    for (const rarity of economy.LOCAL_SIGNAL_RARITIES) {
+        const tier = config.tiers[rarity];
+        if (!tier) return `A configuração da raridade ${RARITY_LABELS[rarity]} está ausente. Consulte status; se continuar assim, abra a seção Busca de Sinais no painel web e salve novamente.`;
+        if (!Number.isSafeInteger(tier.chance) || tier.chance < 0 || tier.chance > 100) {
+            return `A chance de ${RARITY_LABELS[rarity]} está inválida. Configure novamente as cinco chances, na ordem comum, incomum, raro, épico e lendário, com chances <comum> <incomum> <raro> <epico> <lendario>.`;
+        }
+        if (tier.chance === 0 && tier.guaranteeAfter !== null) {
+            return `${RARITY_LABELS[rarity]} está com chance 0%, mas tem garantia de ${tier.guaranteeAfter} busca(s). Remova a garantia com: garantia ${rarity} off — ou dê uma chance maior que zero antes de configurar a garantia.`;
+        }
+        if ((tier.cashMin === null) !== (tier.cashMax === null)) {
+            return `O prêmio em SatCoins de ${RARITY_LABELS[rarity]} está incompleto. Configure mínimo e máximo juntos com dinheiro ${rarity} <mínimo> <máximo>, ou remova-o com dinheiro ${rarity} remover.`;
+        }
+        if (tier.cashMin !== null && (!Number.isSafeInteger(tier.cashMin) || !Number.isSafeInteger(tier.cashMax) || tier.cashMin < 0 || tier.cashMax < tier.cashMin)) {
+            return `Os valores em SatCoins de ${RARITY_LABELS[rarity]} são inválidos. O mínimo deve ser válido e o máximo deve ser igual ou maior; use dinheiro ${rarity} <mínimo> <máximo>.`;
+        }
+        for (const type of ["bot", "market", "background", "outline"]) {
+            const values = rewardArray(tier, type);
+            if (!Array.isArray(values)) return `A lista de prêmios ${TYPE_LABELS[type]} de ${RARITY_LABELS[rarity]} está inválida. Consulte itens e adicione o prêmio novamente.`;
+            if (new Set(values).size !== values.length) return `${RARITY_LABELS[rarity]} contém prêmios duplicados do tipo ${TYPE_LABELS[type]}. Remova a entrada duplicada e consulte status.`;
+            for (const value of values) {
+                if (!findCatalogItem(type, value, state)) {
+                    return `O prêmio "${value}" de ${RARITY_LABELS[rarity]} não existe mais no catálogo de ${TYPE_LABELS[type]}. Consulte itens e remova ou substitua esse prêmio.`;
+                }
+            }
+        }
+    }
+
+    if (config.enabled) {
+        const totalChance = economy.LOCAL_SIGNAL_RARITIES.reduce((sum, rarity) => sum + config.tiers[rarity].chance, 0);
+        if (totalChance !== 100) {
+            return `As chances somam ${totalChance}%, não 100%. Corrija com chances <comum> <incomum> <raro> <epico> <lendario> (os cinco valores devem somar 100) ou desative a busca antes de editar.`;
+        }
+        for (const rarity of economy.LOCAL_SIGNAL_RARITIES) {
+            const tier = config.tiers[rarity];
+            if (tier.chance > 0 && !hasConfiguredPrize(tier)) {
+                return `${RARITY_LABELS[rarity]} tem ${tier.chance}% de chance, mas nenhum prêmio configurado. Adicione SatCoins (dinheiro ${rarity} <mínimo> <máximo>) ou um item (premio add ${rarity} <bot|mercado|fundo|linha> <item>), ou desative a busca enquanto configura.`;
+            }
+        }
+    }
+
+    if (config.featured.length > 2) return "Há mais de dois destaques configurados. Use destaque limpar e adicione no máximo dois prêmios.";
+    const featuredKeys = new Set();
+    for (const item of config.featured) {
+        const type = item.type;
+        const key = type === "market" ? `market:${item.id}` : `${type}:${item.key}`;
+        if (featuredKeys.has(key)) return "O mesmo prêmio foi selecionado mais de uma vez nos destaques. Remova a repetição com destaque remover <tipo> <item>.";
+        featuredKeys.add(key);
+        if (!findCatalogItem(type, type === "market" ? item.id : item.key, state)) {
+            return `Um destaque configurado não existe mais no catálogo de ${TYPE_LABELS[type] || "prêmios"}. Consulte status e itens, depois remova ou substitua o destaque.`;
+        }
+        const value = rewardValue(item);
+        if (!Object.values(config.tiers).some(tier => rewardArray(tier, type).includes(value))) {
+            return `O destaque ${TYPE_LABELS[type] || "selecionado"} não está configurado como prêmio em nenhuma raridade. Adicione-o primeiro com premio add <raridade> <tipo> <item>, ou remova-o com destaque remover <tipo> <item>.`;
+        }
+    }
+    return null;
+}
+
+function hasConfiguredPrize(tier) {
+    return tier.cashMin !== null || tier.botItems.length > 0 || tier.marketItems.length > 0 ||
+        tier.backgrounds.length > 0 || tier.outlines.length > 0;
+}
+
+function getNextStep(state, prefix) {
+    const totalChance = economy.LOCAL_SIGNAL_RARITIES.reduce((sum, rarity) => sum + state.tiers[rarity].chance, 0);
+    if (!state.enabled && totalChance !== 100) {
+        return `➡️ Próxima configuração: distribua as chances até somarem 100% com ${prefix}configbuscasinais chances <comum> <incomum> <raro> <epico> <lendario>. Agora somam ${totalChance}%.`;
+    }
+    const missingPrize = economy.LOCAL_SIGNAL_RARITIES.find(rarity =>
+        state.tiers[rarity].chance > 0 && !hasConfiguredPrize(state.tiers[rarity])
+    );
+    if (missingPrize) {
+        return `➡️ Próxima configuração: escolha ao menos um prêmio para ${RARITY_LABELS[missingPrize]} (${state.tiers[missingPrize].chance}%). Use ${prefix}configbuscasinais dinheiro ${missingPrize} <mínimo> <máximo> ou ${prefix}configbuscasinais premio add ${missingPrize} <bot|mercado|fundo|linha> <item>. Consulte ${prefix}configbuscasinais itens.`;
+    }
+    if (!state.enabled) {
+        return `✅ Configuração pronta para uso. Próximo passo: ative com ${prefix}configbuscasinais ativar e teste com ${prefix}buscasinais local. Garantias e destaques são opcionais e também podem ser ajustados depois.`;
+    }
+    return `✅ Busca Local pronta. Próximo passo: teste com ${prefix}buscasinais local ou confira a configuração com ${prefix}configbuscasinais status.`;
 }
 
 function usageError(message, details) {

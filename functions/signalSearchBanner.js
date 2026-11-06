@@ -152,11 +152,11 @@ function rewardCard(reward, index, quantity) {
                 ? isSingle ? `Cosmético repetido · ${formatBannerMoney(reward.amount)}` : `Convertido · ${formatBannerMoney(reward.amount)}`
                 : isSingle ? "Cosmético adicionado à coleção" : "Adicionado à coleção";
     const guaranteeLabel = reward.guarantee
-        ? isSingle && reward.guarantee === "work"
-            ? "GARANTIA · RESET DE TRABALHO"
-            : isSingle
-                ? "GARANTIA ÉPICA"
-                : "GARANTIA"
+        ? reward.guarantee === "work"
+            ? isSingle ? "GARANTIA · RESET DE TRABALHO" : "GARANTIA"
+            : RARITY_LABELS[reward.guarantee]
+                ? `GARANTIA · ${RARITY_LABELS[reward.guarantee]}`
+                : isSingle ? "GARANTIA ÉPICA" : "GARANTIA"
         : "";
     const icon = reward.type === "reset" ? "↻" : reward.cosmeticType === "outline" ? "◫" : "▧";
     const nameMaxY = isSingle ? y + 192 : y + 152;
@@ -214,12 +214,16 @@ ${badge}${swatch}${ornament}
 }
 
 async function renderResultBanner(result, cosmetics) {
-    const level = economy.SIGNAL_SEARCH_LEVELS[result.level];
+    const level = result.level === "local"
+        ? { label: "Local" }
+        : economy.SIGNAL_SEARCH_LEVELS[result.level];
     if (!level || !Array.isArray(result.rewards) || result.rewards.length !== result.quantity) {
         throw new Error("Os dados da busca não correspondem às recompensas recebidas.");
     }
     const isBatch = result.quantity === 10;
-    const state = result.state.levels[result.level];
+    const state = result.level === "local"
+        ? result.state
+        : result.state.levels[result.level];
     const subtitle = `${level.label} · ${isBatch ? "10 sinais" : "1 sinal"} · Custo ${formatBannerMoney(result.price)}`;
     let content = bannerFrame(
         isBatch ? "RESULTADO DA BUSCA X10" : "RESULTADO DA BUSCA",
@@ -228,10 +232,15 @@ async function renderResultBanner(result, cosmetics) {
         cosmetics
     );
     content += result.rewards.map((reward, index) => rewardCard(reward, index, result.quantity)).join("");
-    const guarantees = [
-        `Épico em até ${state.pullsUntilEpic} busca(s)`,
-        state.pullsUntilWorkReset === null ? "" : `Reset de trabalho em até ${state.pullsUntilWorkReset} busca(s)`
-    ].filter(Boolean).join(" · ");
+    const guarantees = result.level === "local"
+        ? Object.entries(state.pullsUntilGuarantee || {})
+            .filter(([, pulls]) => pulls !== null)
+            .map(([rarity, pulls]) => `${RARITY_LABELS[rarity] || rarity} em até ${pulls} busca(s)`)
+            .join(" · ")
+        : [
+            `Épico em até ${state.pullsUntilEpic} busca(s)`,
+            state.pullsUntilWorkReset === null ? "" : `Reset de trabalho em até ${state.pullsUntilWorkReset} busca(s)`
+        ].filter(Boolean).join(" · ");
     const footer = `Carteira: ${formatBannerMoney(result.balance)} · ${guarantees}`;
     return finishBanner(content, footer, cosmetics);
 }

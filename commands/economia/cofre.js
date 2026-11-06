@@ -4,14 +4,14 @@ module.exports = {
     name: "cofre",
     aliases: ["banco", "vault"],
     category: "economia",
-    description: `🏦 Guarda satcoins em um cofre protegido, separado da carteira.
+    description: `🏦 Guarda satcoins em um cofre separado da carteira.
 
 📝 Consulte, deposite ou saque:
 {prefix}cofre
 {prefix}cofre depositar 500
-{prefix}cofre sacar 200
+{prefix}cofre sacar 500
 
-O depósito mínimo é de ${economy.formatMoney(economy.MIN_VAULT_DEPOSIT)}. O saldo do cofre não pode ser usado em compras, apostas, transferências ou roubos; só fica disponível após um saque.`,
+O limite é de um depósito e um saque por dia, com o mínimo definido pelos administradores. Conforme o modo configurado, o saldo pode ser seguro, sofrer imposto ou ficar exposto a roubos.`,
     usage: "{prefix}cofre [depositar|sacar] [valor]",
 
     async execute(message) {
@@ -22,15 +22,20 @@ O depósito mínimo é de ${economy.formatMoney(economy.MIN_VAULT_DEPOSIT)}. O s
         const action = normalizeAction(message.args?.[0]);
         if (!action) {
             const { account } = economy.getAccount(message);
+            const config = economy.getVaultConfig(message);
+            const today = economy.getLocalDate();
             return message.reply({
                 text: [
                     "🏦 SEU COFRE",
                     `💳 Carteira disponível: ${economy.formatMoney(account.balance)}`,
-                    `🔒 Cofre protegido: ${economy.formatMoney(account.vaultBalance)}`,
+                    `🔒 Cofre: ${economy.formatMoney(account.vaultBalance)}`,
                     `💰 Patrimônio total: ${economy.formatMoney(economy.getTotalBalance(account))}`,
                     "",
-                    `Depósito mínimo: ${economy.formatMoney(economy.MIN_VAULT_DEPOSIT)}`,
-                    "O dinheiro no cofre é inutilizável até ser sacado."
+                    `Modo: ${modeLabel(config.mode)}`,
+                    `Mínimo por movimentação: ${economy.formatMoney(config.minimumMovement)}`,
+                    `Depósito hoje: ${account.vaultDepositDate === today ? "já utilizado" : "disponível"} · Saque hoje: ${account.vaultWithdrawDate === today ? "já utilizado" : "disponível"}`,
+                    ...(config.mode === "tax" ? [`Imposto: ${config.taxType === "percent" ? `${formatPercent(config.taxRateBasisPoints)} por 24h` : `${economy.formatMoney(config.taxFixedAmount)} por 24h`}`] : []),
+                    ...(config.mode === "robbery" ? [`Chance do roubo atingir o cofre: ${config.robberyVaultChance}%`] : [])
                 ].join("\n")
             });
         }
@@ -49,10 +54,11 @@ O depósito mínimo é de ${economy.formatMoney(economy.MIN_VAULT_DEPOSIT)}. O s
         if (!result.moved) {
             const errors = {
                 invalid_amount: action === "deposit"
-                    ? `O depósito mínimo é ${economy.formatMoney(economy.MIN_VAULT_DEPOSIT)}.`
-                    : "Informe um valor maior que zero.",
+                    ? `O valor mínimo por movimentação é ${economy.formatMoney(result.minimumMovement)}.`
+                    : `O valor mínimo por movimentação é ${economy.formatMoney(result.minimumMovement)}.`,
                 insufficient_balance: "Sua carteira não tem saldo suficiente para esse depósito.",
-                insufficient_vault: "O cofre não tem saldo suficiente para esse saque."
+                insufficient_vault: "O cofre não tem saldo suficiente para esse saque.",
+                daily_limit: `Você já fez ${action === "deposit" ? "um depósito" : "um saque"} hoje. Tente novamente amanhã.`
             };
             return message.reply({
                 text: `❌ ${errors[result.reason] || "Não foi possível movimentar o saldo do cofre."}`
@@ -61,14 +67,32 @@ O depósito mínimo é de ${economy.formatMoney(economy.MIN_VAULT_DEPOSIT)}. O s
 
         return message.reply({
             text: [
-                action === "deposit" ? "✅ Depósito realizado." : "✅ Saque realizado.",
+                action === "deposit"
+                    ? "✅ Depósito realizado."
+                    : result.shortfall > 0
+                        ? "⚠️ O imposto reduziu o saldo disponível. Sacamos o máximo possível."
+                        : result.amount > 0
+                            ? "✅ Saque realizado."
+                            : "⚠️ O imposto consumiu o saldo disponível; nenhum valor restou para sacar.",
+                result.taxPaid > 0 ? `Imposto descontado do saldo anterior: ${economy.formatMoney(result.taxPaid)} (${result.taxPeriods} período(s) de 24h).` : null,
+                action === "withdraw" && result.shortfall > 0
+                    ? `Valor solicitado: ${economy.formatMoney(result.requestedAmount)} · Sacado: ${economy.formatMoney(result.amount)}`
+                    : null,
                 `💳 Carteira disponível: ${economy.formatMoney(result.balance)}`,
-                `🔒 Cofre protegido: ${economy.formatMoney(result.vaultBalance)}`,
+                `${result.mode === "secure" ? "🔒 Cofre protegido" : "🔒 Saldo no cofre"}: ${economy.formatMoney(result.vaultBalance)}`,
                 `💰 Patrimônio total: ${economy.formatMoney(result.totalBalance)}`
-            ].join("\n")
+            ].filter(Boolean).join("\n")
         });
     }
 };
+
+function modeLabel(mode) {
+    return ({ secure: "Impenetrável", tax: "Imposto progressivo", robbery: "Roubo permitido" })[mode] || mode;
+}
+
+function formatPercent(basisPoints) {
+    return `${(basisPoints / 100).toFixed(2).replace(/\.?0+$/, "").replace(".", ",")}%`;
+}
 
 function normalizeAction(value) {
     const action = String(value || "").trim().toLowerCase();

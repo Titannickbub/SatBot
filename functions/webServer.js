@@ -27,7 +27,6 @@ const stockMonitor = require("./stockMonitor");
 const cafeMonitor = require("./cafeMonitor");
 const weatherMonitor = require("./weatherMonitor");
 const randomWeatherMonitor = require("./randomWeatherMonitor");
-const electionMonitor = require("./electionMonitor");
 const schedulerHelper = require("./schedulerHelper");
 const { MARKET_ASSETS, normalizeMarketSymbols } = require("./mercado");
 const { PermissionFlagsBits, ChannelType } = require("discord.js");
@@ -69,7 +68,6 @@ const ADMIN_SYSTEM_SETTINGS = [
   { key: "monitorCafe", label: "Monitor do café", description: "Envia cotações em horários fixos ou alerta quando os preços mudam.", category: "Monitores", scopes: { whatsapp: ["chat"], discord: ["chat"], telegram: ["server", "topic"] } },
   { key: "monitorWeather", label: "Monitor do clima", description: "Envia a previsão da cidade selecionada nos horários configurados.", category: "Monitores", scopes: { whatsapp: ["chat"], discord: ["chat"], telegram: ["server", "topic"] } },
   { key: "monitorRandomWeather", label: "Previsão aleatória", description: "Sorteia uma cidade cadastrada e envia a previsão nos horários configurados.", category: "Monitores", scopes: { whatsapp: ["chat"], discord: ["chat"], telegram: ["server", "topic"] } },
-  { key: "monitorElection", label: "Monitor eleitoral", description: "Agenda consultas de apuração presidencial por estado e município.", category: "Monitores", scopes: { whatsapp: ["chat"], discord: ["chat"], telegram: ["server", "topic"] } },
   { key: "activity", label: "Registro de atividade", description: "Contabiliza mensagens, comandos, figurinhas e arquivos para os rankings.", category: "Sistemas", scopes: { whatsapp: ["chat"], discord: ["server"], telegram: ["server"] } },
   { key: "xp", label: "Sistema de XP", description: "Concede experiência e mantém o progresso dos membros.", category: "Sistemas", scopes: { whatsapp: ["chat"], discord: ["server"], telegram: ["server"] } },
   { key: "economy", label: "Economia", description: "Ativa os comandos econômicos sem apagar os saldos existentes.", category: "Sistemas", scopes: { whatsapp: ["chat"], discord: ["server"], telegram: ["server"] } }
@@ -950,8 +948,7 @@ const ADMIN_MONITOR_HELPERS = {
   monitorStock: stockMonitor,
   monitorCafe: cafeMonitor,
   monitorWeather: weatherMonitor,
-  monitorRandomWeather: randomWeatherMonitor,
-  monitorElection: electionMonitor
+  monitorRandomWeather: randomWeatherMonitor
 };
 
 function getAdminMonitorTarget(message) {
@@ -2172,22 +2169,6 @@ function validateAdminMonitorTimes(values) {
   return [...new Set(times)];
 }
 
-function parseAdminMonitorDuration(value, allowZero = false) {
-  const normalized = String(value || "").replace(/\s+/g, "").toLowerCase();
-  if (allowZero && /^0+(s|m|h|d)?$/.test(normalized)) return 0;
-  if (!/^(?:\d+[dhms])+$/.test(normalized)) {
-    throw new Error("Use um intervalo no formato 5m, 2h ou 1h30m.");
-  }
-  const parts = normalized.match(/\d+[dhms]/g) || [];
-  const multipliers = { d: 86400000, h: 3600000, m: 60000, s: 1000 };
-  const milliseconds = parts.reduce((total, part) =>
-    total + Number.parseInt(part, 10) * multipliers[part.slice(-1)], 0);
-  if (!Number.isSafeInteger(milliseconds) || milliseconds <= 0) {
-    throw new Error("O intervalo precisa ser maior que zero.");
-  }
-  return milliseconds;
-}
-
 async function saveAdminMonitorConfig(message, scope, setting, input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new Error("Configuração do monitor inválida.");
@@ -2246,54 +2227,13 @@ async function saveAdminMonitorConfig(message, scope, setting, input) {
     if (current.enabled && !patch.cities.length) {
       throw new Error("Cadastre ao menos uma cidade antes de salvar as configurações do monitor ativado.");
     }
-  } else if (setting === "monitorElection") {
-    if (!Array.isArray(input.jobs) || input.jobs.length > 20) {
-      throw new Error("O monitor eleitoral aceita até 20 consultas.");
-    }
-    const existingIds = new Set(current.jobs.map(job => String(job.id)));
-    const jobs = input.jobs.map(job => {
-      if (!job || typeof job !== "object" || Array.isArray(job)) {
-        throw new Error("Uma das consultas eleitorais está inválida.");
-      }
-      const state = typeof job.state === "string" ? job.state.trim().toUpperCase() : "";
-      const municipality = typeof job.municipality === "string" ? job.municipality.trim() : "";
-      const query = typeof job.query === "string" ? job.query.trim() : "";
-      if ((state && !/^[A-Z]{2}$/.test(state)) || municipality.length > 100 || query.length > 100) {
-        throw new Error("Use uma UF de duas letras e limites de 100 caracteres para município/busca.");
-      }
-      if (!state && !municipality && !query) {
-        throw new Error("Cada consulta precisa de uma UF, município ou termo de busca.");
-      }
-      const intervalMs = parseAdminMonitorDuration(job.interval);
-      if (intervalMs < 60000 || intervalMs > 30 * 86400000) {
-        throw new Error("O intervalo eleitoral deve ser de 1 minuto a 30 dias.");
-      }
-      const initialDelayMs = job.delay === "" || job.delay === undefined
-        ? intervalMs
-        : parseAdminMonitorDuration(job.delay, true);
-      if (initialDelayMs > 30 * 86400000) {
-        throw new Error("O atraso inicial máximo do monitor eleitoral é 30 dias.");
-      }
-      const created = electionMonitor.createJob({
-        state, municipality, query, intervalMs, initialDelayMs
-      });
-      return {
-        ...created,
-        id: typeof job.id === "string" && existingIds.has(job.id) ? job.id : created.id
-      };
-    });
-    if (current.enabled && !jobs.length) {
-      throw new Error("Cadastre ao menos uma consulta antes de salvar as configurações do monitor ativado.");
-    }
-    patch = { jobs };
   } else {
     throw new Error("Monitor inválido.");
   }
 
   const saved = helper.saveMonitorConfig(patch, target);
   const schedules = await helper.syncMonitorSchedules(saved, target);
-  const expectedSchedules = setting === "monitorElection" ? saved.jobs.length : 1;
-  if (saved.enabled && expectedSchedules > 0 && schedules.length !== expectedSchedules) {
+  if (saved.enabled && schedules.length !== 1) {
     throw new Error("As configurações foram salvas, mas não foi possível atualizar todos os agendamentos do monitor.");
   }
   return saved;
@@ -2343,9 +2283,6 @@ async function setAdminSystemSetting(message, setting, enabled, level) {
       if (setting === "monitorRandomWeather" && !current.cities?.length) {
         throw new Error("Cadastre ao menos uma cidade antes de ativar a previsão aleatória.");
       }
-      if (setting === "monitorElection" && !current.jobs?.length) {
-        throw new Error("Cadastre ao menos uma consulta antes de ativar o monitor eleitoral.");
-      }
     }
     const saved = helper.saveMonitorConfig({
       enabled,
@@ -2354,8 +2291,7 @@ async function setAdminSystemSetting(message, setting, enabled, level) {
       threadId: target.threadId
     }, target);
     const schedules = await helper.syncMonitorSchedules(saved, target);
-    const expectedSchedules = setting === "monitorElection" ? saved.jobs.length : 1;
-    if (enabled && expectedSchedules > 0 && schedules.length !== expectedSchedules) {
+    if (enabled && schedules.length !== 1) {
       throw new Error("O estado foi salvo, mas não foi possível atualizar os agendamentos do monitor.");
     }
   } else {
@@ -2428,12 +2364,12 @@ function isValidPlatformGroupId(groupId) {
     /^-?[A-Za-z0-9][A-Za-z0-9._:-]{0,99}(?:@[A-Za-z0-9._-]{1,30})?$/.test(groupId);
 }
 
-function parseSatcoinAmount(value) {
+function parseSatcoinAmount(value, minimum = economy.MIN_TRANSFER_AMOUNT) {
   const normalized = String(value ?? "").trim().replace(",", ".");
   if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) return null;
   const [whole, cents = ""] = normalized.split(".");
   const amount = Number(whole) * 100 + Number(cents.padEnd(2, "0") || 0);
-  return Number.isSafeInteger(amount) && amount >= economy.MIN_TRANSFER_AMOUNT
+  return Number.isSafeInteger(amount) && amount >= minimum
     ? amount
     : null;
 }
@@ -2472,6 +2408,7 @@ async function getLocalAccountData(central, platform, groupId) {
     canManage: await canManagePlatformGroup(platform, groupId, platformId),
     signalSearch: economy.getSignalSearchState(message, platformId),
     localSignalSearch: economy.getLocalSignalSearch(message),
+    vaultConfig: economy.getVaultConfig(message),
     groupName: profile.groupName || `Grupo ${groupId}`,
     userName: profile.name || platformAccount.displayName || platformAccount.username || "Sua conta",
     profileBackground: cosmetics.background,
@@ -2484,6 +2421,7 @@ async function getLocalAccountData(central, platform, groupId) {
       vaultBalance: Number(account.vaultBalance) || 0,
       dailyClaimed: account.lastClaimDate === today,
       workCount: account.workDate === today ? Number(account.workCount) || 0 : 0,
+      lastJob: account.workDate === today ? account.lastJob || null : null,
       fishingCount: account.fishingDate === today ? Number(account.fishingCount) || 0 : 0,
       miningCount: account.miningDate === today ? Number(account.miningCount) || 0 : 0,
       casinoCount: account.casinoDate === today ? Number(account.casinoCount) || 0 : 0,
@@ -2495,6 +2433,7 @@ async function getLocalAccountData(central, platform, groupId) {
       vaultBalance: 0,
       dailyClaimed: false,
       workCount: 0,
+      lastJob: null,
       fishingCount: 0,
       miningCount: 0,
       casinoCount: 0,
@@ -2546,46 +2485,28 @@ async function getLocalAccountData(central, platform, groupId) {
   };
 }
 
+function vaultModeDescription(config) {
+  if (config.mode === "tax") {
+    const tax = config.taxType === "percent"
+      ? `${(config.taxRateBasisPoints / 100).toFixed(2).replace(/\.?0+$/, "").replace(".", ",")}% do saldo`
+      : `${economy.formatMoney(config.taxFixedAmount)} do saldo`;
+    return `Modo de imposto progressivo: cobrança de ${tax} por período completo de 24 horas desde a última movimentação; intervalo menor que 1 hora não cobra imposto.`;
+  }
+  if (config.mode === "robbery") {
+    return `Modo de roubo permitido: o cofre tem ${config.robberyVaultChance}% de chance de ser atingido em um roubo.`;
+  }
+  return "Modo impenetrável: o saldo guardado fica seguro contra roubos e não pode ser usado diretamente.";
+}
+
 function renderLocalAccount(data) {
   const safeBotName = escapeHtml(config.getBotName());
   const cosmeticThemeStyles = getCosmeticPanelStyles(data.profileBackground, "local", data.profileOutline);
   const groupType = data.platform === "discord" ? "Servidor" : "Grupo";
   const currency = amount => economy.formatMoney(Number(amount) || 0);
-  const dailyLabels = [
-    ["resgate", "Resgate diário"], ["trabalho", "Trabalho"], ["pesca", "Pesca"],
-    ["mineracao", "Mineração"], ["cassino", "Cassino"], ["roubo", "Roubos feitos"],
-    ["rouboSofrido", "Roubos sofridos"], ["transferenciaEnviada", "Transferido"],
-    ["transferenciaRecebida", "Recebido"], ["loja", "Loja"], ["busca", "Busca de sinais"]
-  ];
-  const dailyRows = data.dailyProfits
-    ? dailyLabels.map(([key, label]) => `<div class="daily-row"><span>${label}</span><strong${key === "busca" ? ' id="localSignalSearchProfit"' : ""}>${currency(data.dailyProfits[key])}</strong></div>`).join("")
-    : `<p class="muted">Ainda não há registros de economia neste grupo.</p>`;
-  const dailyClaimCommand = `${escapeHtml(config.getPrefix())}resgatar`;
-  const activityLimits = [
-    ["Trabalho", data.account.workCount, economy.MAX_WORKS_PER_DAY],
-    ["Pesca", data.account.fishingCount, economy.MAX_WORKS_PER_DAY],
-    ["Mineração", data.account.miningCount, economy.MAX_WORKS_PER_DAY],
-    ["Cassino", data.account.casinoCount, economy.MAX_CASINO_PER_DAY],
-    ["Roubo", data.account.robberyCount, economy.MAX_ROBBERIES_PER_DAY],
-    ["Transferências", data.account.transferCount, economy.MAX_TRANSFERS_PER_DAY]
-  ].map(([label, used, limit]) =>
-    `<article class="local-stat activity-limit"><small>${label} hoje</small><strong>${used}/${limit}</strong><span>${used >= limit ? "Limite diário atingido" : `Restam ${limit - used} tentativa(s)`}</span></article>`
-  ).join("");
-  const dailyClaimCard = data.account.dailyClaimed
-    ? `<article class="daily-claim claimed"><span class="daily-claim-icon" aria-hidden="true">✓</span><div><strong>Resgate diário já coletado</strong><small>Você já recebeu sua recompensa de hoje neste grupo.</small></div></article>`
-    : `<article class="daily-claim available"><span class="daily-claim-icon" aria-hidden="true">✦</span><div><strong>Seu resgate diário está disponível</strong><small>Para resgatar, envie <code>${dailyClaimCommand}</code> neste ${groupType.toLowerCase()}. O bônus pode ser coletado uma vez por dia.</small></div></article>`;
   const accountStats = `<div class="local-stats">
-        <article class="local-stat balance-stat"><small>Carteira disponível</small><strong id="localWalletBalance">${currency(data.account.balance)}</strong><span>Usada em compras, apostas e transferências · escudos: ${data.account.shieldCharges}</span></article>
-        <article class="local-stat balance-stat"><small>Cofre protegido</small><strong id="localVaultBalance">${currency(data.account.vaultBalance)}</strong><span>Inutilizável até ser sacado</span></article>
-        ${activityLimits}
-      </div>
-      ${dailyClaimCard}
-      <h2 class="subheading">Movimentações de hoje</h2><div class="daily-list">${dailyRows}</div>
-      <div class="daily-total"><span>Patrimônio total (carteira + cofre)</span><strong id="localTotalBalance">${currency(data.account.balance + data.account.vaultBalance)}</strong></div>
-      <div class="daily-total"><span>Lucro líquido total hoje</span><strong id="localDailyProfitTotal">${currency(data.dailyProfitTotal)}</strong></div>`;
-  const vaultPanel = data.economyEnabled
-    ? `<section class="local-panel"><h2>Movimentar cofre</h2><p class="muted">O saldo guardado fica protegido e não pode ser usado diretamente. Depósitos a partir de ${economy.formatMoney(economy.MIN_VAULT_DEPOSIT)}; saques sem valor mínimo.</p><div class="local-actions"><form id="vaultForm"><label for="vaultAction">Ação</label><select id="vaultAction" name="action"><option value="deposit">Depositar no cofre</option><option value="withdraw">Sacar para a carteira</option></select><label for="vaultAmount">Quantidade em SatCoins</label><input id="vaultAmount" name="amount" type="text" inputmode="decimal" placeholder="500.00" autocomplete="off" required><button type="submit">Confirmar movimentação</button></form><p class="local-feedback" id="vaultFeedback" role="status"></p></div></section>`
-    : `<section class="local-panel"><h2>Cofre protegido</h2><p class="muted">Depósitos e saques ficam indisponíveis enquanto a economia deste grupo ou servidor estiver desativada.</p></section>`;
+        <article class="local-stat balance-stat"><small>Carteira</small><strong>${currency(data.account.balance)}</strong></article>
+        <article class="local-stat balance-stat"><small>Saldo no cofre</small><strong id="localVaultBalance">${currency(data.account.vaultBalance)}</strong><span>As regras dependem do modo configurado neste grupo.</span></article>
+      </div>`;
   const rankLinks = [
     ["Riqueza", "/rankrico", data.ranks.balance],
     ["Experiência", "/rankxp", data.ranks.xp],
@@ -2707,7 +2628,7 @@ function renderLocalAccount(data) {
           ${localProfileSection}
         </div>
         <div class="local-column">
-          <section class="local-panel"><h2>Minha economia local</h2><p class="muted">Saldo, ações e movimentações vinculadas somente a este grupo ou servidor.</p>${accountStats}</section>
+          <section class="local-panel"><h2>Minha economia local</h2><p class="muted">Sua carteira e seu cofre neste grupo ou servidor.</p>${accountStats}<a class="admin-panel-button" href="/painel-banco?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">Abrir meu banco</a></section>
         </div>
       </div>
     </section>
@@ -2724,8 +2645,6 @@ function renderLocalAccount(data) {
       <header class="local-section-heading"><div><h2 id="functionsSectionTitle">Funções</h2><p>Ações disponíveis para sua conta neste grupo ou servidor.</p></div></header>
       <div class="local-functions">
         <section class="local-panel"><h2>Unir Conta Central</h2><p class="muted">Insira o código gerado pela outra conta. A Conta Central atual será mantida como principal.</p><div class="local-actions"><form id="joinCentralForm"><label for="mergeCode">Código de união</label><input id="mergeCode" name="code" maxlength="8" autocomplete="one-time-code" required><button type="submit">Unir contas</button></form><p class="local-feedback" id="joinFeedback" role="status"></p></div></section>
-        ${vaultPanel}
-        <section class="local-panel"><h2>Transferir SatCoins</h2><p class="muted">A transferência acontece nesta economia local. Informe o ID exato de alguém que já tenha uma conta de economia aqui. O bot mantém os limites e as regras de transferência.</p><div class="local-actions"><form id="transferForm"><label for="recipientId">ID do destinatário</label><input id="recipientId" name="recipientId" maxlength="100" autocomplete="off" required><label for="transferAmount">Quantidade (mínimo: 10.00)</label><input id="transferAmount" name="amount" type="text" inputmode="decimal" placeholder="10.00" autocomplete="off" required><button type="submit">Revisar transferência</button></form><p class="local-feedback" id="transferFeedback" role="status"></p></div></section>
       </div>
     </section>
     <p class="local-footer">Os dados e ações são locais a esta plataforma e a este ${groupType.toLowerCase()}.</p>
@@ -2745,29 +2664,163 @@ function renderLocalAccount(data) {
       try{const result=await submitLocalAction("/api/account/local/merge",{code:document.getElementById("mergeCode").value.trim().toUpperCase()});feedback("joinFeedback","Contas unidas. Conta Central: "+result.centralId,false);event.currentTarget.reset();}
       catch(error){feedback("joinFeedback",error.message,true)}finally{button.disabled=false}
     });
-    const vaultForm=document.getElementById("vaultForm");
-    vaultForm?.addEventListener("submit",async event=>{
-      event.preventDefault();const form=event.currentTarget,button=form.querySelector("button"),action=document.getElementById("vaultAction").value,amount=document.getElementById("vaultAmount").value.trim(),normalizedAmount=amount.replace(",",".");
-      if(!/^\\d+(?:\\.\\d{1,2})?$/.test(normalizedAmount)||Number(normalizedAmount)<=0){feedback("vaultFeedback","Informe uma quantia válida maior que zero.",true);return}
-      if(action==="deposit"&&Number(normalizedAmount)<500){feedback("vaultFeedback","O depósito mínimo é de 500.00 SatCoins.",true);return}
-      if(!window.confirm((action==="deposit"?"Depositar ":"Sacar ")+normalizedAmount+" SatCoins "+(action==="deposit"?"no cofre?":"do cofre para a carteira?")))return;
-      button.disabled=true;feedback("vaultFeedback","",false);
-      try{
-        const result=await submitLocalAction("/api/account/local/vault",{action,amount});
-        document.getElementById("localWalletBalance").textContent=result.balance;
-        document.getElementById("localVaultBalance").textContent=result.vaultBalance;
-        document.getElementById("localTotalBalance").textContent=result.totalBalance;
-        feedback("vaultFeedback",(action==="deposit"?"Depósito":"Saque")+" concluído. Carteira: "+result.balance+" · Cofre: "+result.vaultBalance,false);form.reset();
-      }catch(error){feedback("vaultFeedback",error.message,true)}finally{button.disabled=false}
-    });
-    document.getElementById("transferForm").addEventListener("submit",async event=>{
-      event.preventDefault();const form=event.currentTarget,button=form.querySelector("button"),recipientId=document.getElementById("recipientId").value.trim(),amount=document.getElementById("transferAmount").value.trim();
-      const normalizedAmount=amount.replace(",",".");
-      if(!/^\\d+(?:\\.\\d{1,2})?$/.test(normalizedAmount)||Number(normalizedAmount)<10){feedback("transferFeedback","Informe um valor válido de pelo menos 10.00 SatCoins.",true);return}
+  </script></body></html>`;
+}
+
+function renderLocalBank(data) {
+  const safeBotName = escapeHtml(config.getBotName());
+  const groupType = data.platform === "discord" ? "Servidor" : "Grupo";
+  const currency = amount => economy.formatMoney(Number(amount) || 0);
+  const profileLink = `/painel-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}`;
+  const cosmeticThemeStyles = getCosmeticPanelStyles(data.profileBackground, "local", data.profileOutline);
+  const activityItems = [
+    { label: "Resgate diário", value: data.account.dailyClaimed ? "Coletado" : "Pendente", subtitle: "Uma recompensa por dia" },
+    { label: "Trabalho", used: data.account.workCount, limit: economy.MAX_WORKS_PER_DAY, detail: data.account.lastJob ? `Último trabalho: ${data.account.lastJob}` : "Nenhum trabalho registrado hoje" },
+    { label: "Pesca", used: data.account.fishingCount, limit: economy.MAX_WORKS_PER_DAY },
+    { label: "Mineração", used: data.account.miningCount, limit: economy.MAX_WORKS_PER_DAY },
+    { label: "Cassino", used: data.account.casinoCount, limit: economy.MAX_CASINO_PER_DAY },
+    { label: "Tentativas de roubo", used: data.account.robberyCount, limit: economy.MAX_ROBBERIES_PER_DAY },
+    { label: "Transferências enviadas", used: data.account.transferCount, limit: economy.MAX_TRANSFERS_PER_DAY }
+  ].map(item => {
+    const value = item.limit === undefined ? item.value : `${item.used}/${item.limit}`;
+    const subtitle = item.detail || item.subtitle || (Number(item.used) >= Number(item.limit)
+      ? "Limite diário atingido"
+      : `Restam ${Number(item.limit) - Number(item.used)} tentativa(s)`);
+    return `<article class="local-stat bank-activity"><small>${escapeHtml(item.label)}</small><strong>${escapeHtml(String(value))}</strong><span>${escapeHtml(subtitle)}</span></article>`;
+  }).join("");
+  const profitLabels = [
+    ["resgate", "Resgate diário"], ["trabalho", "Trabalho"], ["pesca", "Pesca"],
+    ["mineracao", "Mineração"], ["cassino", "Cassino"],
+    ["transferenciaEnviada", "Transferências enviadas"],
+    ["transferenciaRecebida", "Transferências recebidas"],
+    ["roubo", "Roubos feitos"], ["rouboSofrido", "Roubos sofridos"],
+    ["loja", "Loja"], ["busca", "Busca de Sinais"]
+  ];
+  const profitRows = data.dailyProfits
+    ? profitLabels.map(([key, label]) => {
+      const amount = Number(data.dailyProfits[key]) || 0;
+      const tone = amount > 0 ? "positive" : amount < 0 ? "negative" : "";
+      return `<div class="bank-statement-row"><span>${label}</span><strong class="${tone}">${amount > 0 ? "+" : ""}${currency(amount)}</strong></div>`;
+    }).join("")
+    : `<p class="bank-muted">Ainda não há registros de economia neste grupo.</p>`;
+  const vaultControls = data.economyEnabled
+    ? `<form id="bankVaultForm" class="bank-form"><h3>Movimentar cofre</h3><label for="bankVaultAction">Operação</label><select id="bankVaultAction" name="action"><option value="deposit">Depositar no cofre</option><option value="withdraw">Sacar para a carteira</option></select><label for="bankVaultAmount">Valor em SatCoins</label><input id="bankVaultAmount" name="amount" type="text" inputmode="decimal" placeholder="${(data.vaultConfig.minimumMovement / 100).toFixed(2)}" autocomplete="off" required><small>${escapeHtml(vaultModeDescription(data.vaultConfig))} Mínimo: ${currency(data.vaultConfig.minimumMovement)}. Um depósito e um saque por dia local.</small><button type="submit">Confirmar operação</button><p class="local-feedback" id="bankVaultFeedback" role="status" aria-live="polite"></p></form>`
+    : `<p class="bank-muted">A movimentação do cofre está indisponível enquanto a economia deste grupo ou servidor estiver desativada.</p>`;
+
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Meu banco · ${escapeHtml(data.groupName)}</title><style>
+    ${homeStyles()}
+    .local-page{width:min(980px,100%);margin:0 auto;padding:30px 0 54px}
+    .local-topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding-bottom:20px;border-bottom:1px solid var(--line)}
+    .local-topbar a{color:#b9c6ff;text-decoration:none;font-weight:700}
+    .local-hero{display:flex;align-items:center;gap:18px;margin:26px 0;padding:24px;border:1px solid #6378c444;border-radius:22px;background:linear-gradient(115deg,#202a46,#302654)}
+    .local-avatar-frame{display:grid;width:72px;height:72px;flex:none;place-items:center;padding:3px;border:3px solid #a99dff66;border-radius:23px;background:#171d2b}
+    .local-avatar{width:62px;height:62px;border-radius:16px;object-fit:cover}
+    .local-hero h1{margin:0;font-size:clamp(23px,4vw,34px);overflow-wrap:anywhere}
+    .local-hero p{margin:6px 0 0;color:#c1c9df}
+    .bank-eyebrow{color:#a99dff;font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase}
+    .bank-balances{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}
+    .local-stat{display:flex;min-height:110px;flex-direction:column;justify-content:center;gap:7px;padding:17px;border:1px solid #ffffff0c;border-radius:15px;background:#ffffff05}
+    .local-stat small,.local-stat span{color:var(--muted);font-size:11px}
+    .local-stat strong{font-size:20px;overflow-wrap:anywhere}
+    .bank-balance-total{border-color:#8b7bff44;background:linear-gradient(125deg,#8877ff20,#577cff0c)}
+    .bank-balance-total strong{color:#d2cbff}
+    .bank-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:22px 0 14px;padding:6px;border:1px solid var(--line);border-radius:15px;background:#0d1220}
+    .bank-tabs button{min-height:46px;border:1px solid transparent;border-radius:11px;background:transparent;color:#aab5ca;font:inherit;font-weight:750;cursor:pointer}
+    .bank-tabs button[aria-selected="true"]{border-color:#a99dff66;background:#8877ff24;color:#fff;box-shadow:0 6px 18px #635bff20}
+    .local-panel{padding:22px;border:1px solid var(--line);border-radius:18px;background:linear-gradient(145deg,#171d2b,#131925)}
+    .local-panel h2{margin:0;font-size:19px}
+    .bank-muted{color:var(--muted);font-size:13px;line-height:1.6}
+    .bank-activity-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
+    .bank-activity{min-height:92px}
+    .bank-statement{margin-top:16px}
+    .bank-statement-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 2px;border-bottom:1px solid #ffffff12;color:#c4cce0;font-size:13px}
+    .bank-statement-row strong{color:#f1f3fa;text-align:right;font-variant-numeric:tabular-nums}
+    .bank-statement-row strong.positive{color:#75e0b0}
+    .bank-statement-row strong.negative{color:#ff9caa}
+    .bank-statement-total{display:flex;justify-content:space-between;gap:14px;margin-top:14px;padding:15px;border:1px solid #8b7bff44;border-radius:12px;background:#8877ff12;font-weight:800}
+    .bank-statement-total strong{color:#c6bdff}
+    .bank-transactions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .bank-form{display:grid;align-content:start;gap:10px;padding:17px;border:1px solid #ffffff12;border-radius:14px;background:#ffffff04}
+    .bank-form h3{margin:0 0 2px;font-size:16px}
+    .bank-form label{color:#cbd3e5;font-size:12px;font-weight:700}
+    .bank-form input,.bank-form select{width:100%;min-height:44px;border:1px solid #39445d;border-radius:11px;background:#0e1422;color:#fff;padding:10px 12px;font:inherit}
+    .bank-form small{color:var(--muted);font-size:11px;line-height:1.55}
+    .bank-form button{min-height:44px;border:0;border-radius:11px;background:linear-gradient(120deg,#8877ff,#577cff);color:#fff;font:inherit;font-weight:750;cursor:pointer}
+    .bank-form button:disabled{opacity:.6;cursor:wait}
+    .local-feedback{min-height:20px;margin:2px 0 0;color:#9cf0cf;font-size:12px;line-height:1.5}
+    .local-feedback.error{color:#ff9caa}
+    .bank-back{display:inline-flex;margin-top:18px;color:#b9c6ff;text-decoration:none;font-size:13px;font-weight:700}
+    ${cosmeticThemeStyles}
+    @media(max-width:640px){.local-page{padding:20px 0 38px}.bank-balances{grid-template-columns:1fr}.bank-transactions{grid-template-columns:1fr}.bank-activity-list{grid-template-columns:1fr}.local-hero{padding:18px}.local-panel{padding:17px}}
+  </style></head><body><main class="local-page">
+    <nav class="local-topbar"><a href="${profileLink}">← Voltar ao perfil</a><span>${safeBotName} · Banco local</span></nav>
+    <header class="local-hero"><span class="local-avatar-frame"><img class="local-avatar" src="${escapeHtml(data.avatarUrl || "/semfoto.jpg")}" alt="Foto de perfil de ${escapeHtml(data.userName)}" onerror="this.onerror=null;this.src='/semfoto.jpg'"></span><div><div class="bank-eyebrow">Banco SatCoins</div><h1>Olá, ${escapeHtml(data.userName)}</h1><p>${groupType}: ${escapeHtml(data.groupName)} · ${escapeHtml(data.platform)}</p></div></header>
+    <section class="bank-balances" aria-label="Saldos da conta">
+      <article class="local-stat"><small>Carteira</small><strong id="bankWalletBalance">${currency(data.account.balance)}</strong><span>Disponível para usar</span></article>
+      <article class="local-stat"><small>Cofre</small><strong id="bankVaultBalance">${currency(data.account.vaultBalance)}</strong><span>Saldo guardado</span></article>
+      <article class="local-stat bank-balance-total"><small>Patrimônio total</small><strong id="bankTotalBalance">${currency(data.account.balance + data.account.vaultBalance)}</strong><span>Carteira + cofre</span></article>
+    </section>
+    <div class="bank-tabs" role="tablist" aria-label="Seções do banco">
+      <button type="button" role="tab" id="bankTabWork" aria-controls="bankPanelWork" aria-selected="true" data-bank-tab="work">Trabalhos</button>
+      <button type="button" role="tab" id="bankTabStatement" aria-controls="bankPanelStatement" aria-selected="false" data-bank-tab="statement">Extrato</button>
+      <button type="button" role="tab" id="bankTabTransactions" aria-controls="bankPanelTransactions" aria-selected="false" data-bank-tab="transactions">Transações</button>
+    </div>
+    <section class="local-panel" role="tabpanel" id="bankPanelWork" aria-labelledby="bankTabWork" data-bank-panel="work">
+      <h2>Atividades de hoje</h2><p class="bank-muted">Acompanhe quantas atividades e trabalhos foram feitos hoje neste grupo ou servidor.</p>
+      <div class="bank-activity-list">${activityItems}</div>
+    </section>
+    <section class="local-panel" role="tabpanel" id="bankPanelStatement" aria-labelledby="bankTabStatement" data-bank-panel="statement" hidden>
+      <h2>Extrato de hoje</h2><p class="bank-muted">Resultado líquido por atividade. Valores negativos representam gastos ou perdas.</p>
+      <div class="bank-statement">${profitRows}</div>
+      <div class="bank-statement-total"><span>Resultado líquido do dia</span><strong>${currency(data.dailyProfitTotal)}</strong></div>
+    </section>
+    <section class="local-panel" role="tabpanel" id="bankPanelTransactions" aria-labelledby="bankTabTransactions" data-bank-panel="transactions" hidden>
+      <h2>Transações</h2><p class="bank-muted">Transfira SatCoins para outra conta deste grupo ou movimente seu saldo no cofre.</p>
+      <div class="bank-transactions" style="margin-top:16px">
+        <form id="bankTransferForm" class="bank-form"><h3>Transferir SatCoins</h3><label for="bankRecipientId">ID do destinatário</label><input id="bankRecipientId" name="recipientId" maxlength="100" autocomplete="off" required><label for="bankTransferAmount">Valor (mínimo: 10,00)</label><input id="bankTransferAmount" name="amount" type="text" inputmode="decimal" placeholder="10,00" autocomplete="off" required><small>Informe o ID exato de alguém que já tenha uma conta de economia neste grupo.</small><button type="submit">Revisar transferência</button><p class="local-feedback" id="bankTransferFeedback" role="status" aria-live="polite"></p></form>
+        ${vaultControls}
+      </div>
+    </section>
+    <a class="bank-back" href="${profileLink}">← Voltar ao painel de membros</a>
+  </main><script>
+    const bankContext=${JSON.stringify({ platform: data.platform, groupId: data.groupId })};
+    async function submitBankAction(endpoint,payload){
+      const response=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...bankContext,...payload})});
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.error||"Não foi possível concluir a operação.");
+      return result;
+    }
+    function bankFeedback(id,message,isError){
+      const element=document.getElementById(id);element.textContent=message;element.classList.toggle("error",Boolean(isError));
+    }
+    function updateBankBalances(balance,vaultBalance,totalBalance){
+      document.getElementById("bankWalletBalance").textContent=balance;
+      document.getElementById("bankVaultBalance").textContent=vaultBalance;
+      document.getElementById("bankTotalBalance").textContent=totalBalance;
+    }
+    document.querySelectorAll("[data-bank-tab]").forEach(tab=>tab.addEventListener("click",()=>{
+      document.querySelectorAll("[data-bank-tab]").forEach(item=>item.setAttribute("aria-selected",String(item===tab)));
+      document.querySelectorAll("[data-bank-panel]").forEach(panel=>{panel.hidden=panel.dataset.bankPanel!==tab.dataset.bankTab});
+    }));
+    document.getElementById("bankTransferForm").addEventListener("submit",async event=>{
+      event.preventDefault();const form=event.currentTarget,button=form.querySelector("button"),recipientId=document.getElementById("bankRecipientId").value.trim(),amount=document.getElementById("bankTransferAmount").value.trim(),normalizedAmount=amount.replace(",",".");
+      if(!/^\\d+(?:\\.\\d{1,2})?$/.test(normalizedAmount)||Number(normalizedAmount)<10){bankFeedback("bankTransferFeedback","Informe um valor válido de pelo menos 10,00 SatCoins.",true);return}
       if(!window.confirm("Confirmar transferência de "+normalizedAmount+" SatCoins para o ID "+recipientId+"?"))return;
-      button.disabled=true;feedback("transferFeedback","",false);
-      try{const result=await submitLocalAction("/api/account/local/transfer",{recipientId,amount});feedback("transferFeedback","Transferência concluída. Valor: "+result.amount+" · Saldo restante: "+result.balance,false);form.reset();}
-      catch(error){feedback("transferFeedback",error.message,true)}finally{button.disabled=false}
+      button.disabled=true;bankFeedback("bankTransferFeedback","",false);
+      try{const result=await submitBankAction("/api/account/local/transfer",{recipientId,amount});updateBankBalances(result.balance,result.vaultBalance,result.totalBalance);bankFeedback("bankTransferFeedback","Transferência concluída. Valor: "+result.amount+" · Saldo restante: "+result.balance,false);form.reset()}
+      catch(error){bankFeedback("bankTransferFeedback",error.message,true)}finally{button.disabled=false}
+    });
+    const bankVaultForm=document.getElementById("bankVaultForm");
+    bankVaultForm?.addEventListener("submit",async event=>{
+      event.preventDefault();const form=event.currentTarget,button=form.querySelector("button"),action=document.getElementById("bankVaultAction").value,amount=document.getElementById("bankVaultAmount").value.trim(),normalizedAmount=amount.replace(",",".");
+      if(!/^\\d+(?:\\.\\d{1,2})?$/.test(normalizedAmount)||Number(normalizedAmount)<=0){bankFeedback("bankVaultFeedback","Informe uma quantia válida maior que zero.",true);return}
+      if(!window.confirm((action==="deposit"?"Depositar ":"Sacar ")+normalizedAmount+" SatCoins "+(action==="deposit"?"no cofre?":"do cofre para a carteira?")))return;
+      button.disabled=true;bankFeedback("bankVaultFeedback","",false);
+      try{
+        const result=await submitBankAction("/api/account/local/vault",{action,amount});updateBankBalances(result.balance,result.vaultBalance,result.totalBalance);
+        const notices=[];if(result.taxPaid)notices.push("Imposto descontado: "+result.taxPaid);if(result.shortfall)notices.push("Após o imposto, foi possível sacar somente "+result.amount+".");
+        bankFeedback("bankVaultFeedback",(action==="deposit"?"Depósito":"Saque")+" concluído. "+notices.join(" ")+" Carteira: "+result.balance+" · Cofre: "+result.vaultBalance,false);form.reset();
+      }catch(error){bankFeedback("bankVaultFeedback",error.message,true)}finally{button.disabled=false}
     });
   </script></body></html>`;
 }
@@ -3544,6 +3597,10 @@ function renderShopCatalog(data, shopType) {
   const botShop = shopType === "bot";
   const title = botShop ? "Loja do Bot" : data.store.title || "Mercado Local";
   const items = botShop ? data.items : data.store.items;
+  const account = data.account || {};
+  const balance = Number(data.balance) || 0;
+  const resettableKeys = new Set(["work", "fishing", "mining", "robbery"]);
+  const isActivityAtLimit = item => Number(account[item.count]) >= Number(item.max);
   const groups = new Map();
   for (const item of items) {
     const category = botShop
@@ -3568,8 +3625,9 @@ function renderShopCatalog(data, shopType) {
     shop: botShop ? "bot" : "market",
     shieldCharges: Number(data.shieldCharges) || 0
   };
+  const cosmeticThemeStyles = getCosmeticPanelStyles(data.profileBackground, "local", data.profileOutline);
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${escapeHtml(title)} · ${escapeHtml(data.groupName)}</title><style>
-    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;background:radial-gradient(circle at 15% 0,#252b48 0,#10131c 48%,#090b10 100%)}button,a{font:inherit}.catalog-page{width:min(900px,100%);margin:0 auto}.catalog-topbar{padding:8px 0 20px;border-bottom:1px solid #ffffff16}.catalog-topbar a{color:#b9c6ff;text-decoration:none;font-weight:700}.catalog-hero{margin:24px 0;padding:25px;border:1px solid #8797ff33;border-radius:20px;background:linear-gradient(120deg,#293454,#22263d 70%,#1b2435)}.catalog-hero h1{margin:0 0 9px;font-size:clamp(26px,5vw,38px)}.catalog-hero p{margin:0;color:#c1c9df;line-height:1.6}.catalog-balance{display:flex;justify-content:space-between;gap:12px;margin:16px 0;padding:14px 17px;border:1px solid #ffffff18;border-radius:13px;background:#ffffff06;color:#aab3c8}.catalog-balance strong{color:#f5f7fb}.catalog-category{margin-top:16px;padding:21px;border:1px solid #ffffff14;border-radius:17px;background:linear-gradient(145deg,#191e2d,#131824)}.catalog-category h2{margin:0 0 13px;font-size:18px}.catalog-items{display:grid;gap:8px}.catalog-item{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px;border:1px solid #ffffff0f;border-radius:12px;background:#ffffff05}.catalog-item h3{margin:0;font-size:14px}.catalog-item p{margin:5px 0 0;color:#aab3c8;font-size:11px}.catalog-item-action{display:flex;align-items:center;gap:12px}.catalog-item-action strong{white-space:nowrap;color:#c6bdff;font-size:13px}.catalog-buy{min-height:36px;padding:7px 12px;border:1px solid #8797ff66;border-radius:9px;background:#8797ff1a;color:#e3e7ff;font-size:12px;font-weight:750;cursor:pointer}.catalog-buy:hover{background:#8797ff32}.catalog-buy:disabled{opacity:.55;cursor:not-allowed}.catalog-feedback{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.catalog-empty{padding:18px;border:1px dashed #ffffff25;border-radius:12px;color:#aab3c8}.catalog-footer{margin:18px 0;color:#8390a9;font-size:12px}.purchase-dialog{position:fixed;inset:50% auto auto 50%;transform:translate(-50%,-50%);margin:0;width:min(440px,calc(100% - 28px));max-height:calc(100vh - 32px);overflow:auto;padding:0;border:1px solid #8797ff55;border-radius:18px;background:#171c2a;color:#f5f7fb;box-shadow:0 24px 90px #000b}.purchase-dialog::backdrop{background:#05070bcc;backdrop-filter:blur(4px)}.purchase-dialog-content{padding:22px}.purchase-dialog h2{margin:0 0 10px}.purchase-dialog p{margin:0;color:#c1c9df;line-height:1.6;overflow-wrap:anywhere}.purchase-dialog.success h2{color:#9cf0cf}.purchase-dialog.error h2{color:#ff9caa}.purchase-dialog-actions{display:flex;justify-content:flex-end;margin-top:20px}.purchase-dialog-actions button{min-height:38px;padding:8px 14px;border:1px solid #ffffff30;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-weight:700;cursor:pointer}@media(max-width:540px){body{padding:16px}.catalog-hero,.catalog-category{padding:18px}.catalog-item{align-items:flex-start;flex-direction:column}.catalog-item-action{width:100%;justify-content:space-between}}
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;background:radial-gradient(circle at 15% 0,#252b48 0,#10131c 48%,#090b10 100%)}button,a{font:inherit}.catalog-page{width:min(900px,100%);margin:0 auto}.catalog-topbar{padding:8px 0 20px;border-bottom:1px solid #ffffff16}.catalog-topbar a{color:#b9c6ff;text-decoration:none;font-weight:700}.catalog-hero{margin:24px 0;padding:25px;border:1px solid #8797ff33;border-radius:20px;background:linear-gradient(120deg,#293454,#22263d 70%,#1b2435)}.catalog-hero h1{margin:0 0 9px;font-size:clamp(26px,5vw,38px)}.catalog-hero p{margin:0;color:#c1c9df;line-height:1.6}.catalog-balance{display:flex;justify-content:space-between;gap:12px;margin:16px 0;padding:14px 17px;border:1px solid #ffffff18;border-radius:13px;background:#ffffff06;color:#aab3c8}.catalog-balance strong{color:#f5f7fb}.catalog-category{margin-top:16px;padding:21px;border:1px solid #ffffff14;border-radius:17px;background:linear-gradient(145deg,#191e2d,#131824)}.catalog-category h2{margin:0 0 13px;font-size:18px}.catalog-items{display:grid;gap:8px}.catalog-item{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px;border:1px solid #ffffff0f;border-radius:12px;background:#ffffff05}.catalog-item h3{margin:0;font-size:14px}.catalog-item p{margin:5px 0 0;color:#aab3c8;font-size:11px}.catalog-item-action{display:flex;align-items:center;gap:12px}.catalog-item-action strong{white-space:nowrap;color:#c6bdff;font-size:13px}.catalog-buy{min-height:36px;padding:7px 12px;border:1px solid #8797ff66;border-radius:9px;background:#8797ff1a;color:#e3e7ff;font-size:12px;font-weight:750;cursor:pointer}.catalog-buy:hover{background:#8797ff32}.catalog-buy:disabled{opacity:.55;cursor:not-allowed}.catalog-unavailable{color:#aab3c8;font-size:11px;font-weight:700;text-align:right}.catalog-feedback{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.catalog-empty{padding:18px;border:1px dashed #ffffff25;border-radius:12px;color:#aab3c8}.catalog-footer{margin:18px 0;color:#8390a9;font-size:12px}.purchase-dialog{position:fixed;inset:50% auto auto 50%;transform:translate(-50%,-50%);margin:0;width:min(440px,calc(100% - 28px));max-height:calc(100vh - 32px);overflow:auto;padding:0;border:1px solid #8797ff55;border-radius:18px;background:#171c2a;color:#f5f7fb;box-shadow:0 24px 90px #000b}.purchase-dialog::backdrop{background:#05070bcc;backdrop-filter:blur(4px)}.purchase-dialog-content{padding:22px}.purchase-dialog h2{margin:0 0 10px}.purchase-dialog p{margin:0;color:#c1c9df;line-height:1.6;overflow-wrap:anywhere}.purchase-dialog.success h2{color:#9cf0cf}.purchase-dialog.error h2{color:#ff9caa}.purchase-dialog-actions{display:flex;justify-content:flex-end;margin-top:20px}.purchase-dialog-actions button{min-height:38px;padding:8px 14px;border:1px solid #ffffff30;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-weight:700;cursor:pointer}@media(max-width:540px){body{padding:16px}.catalog-hero,.catalog-category{padding:18px}.catalog-item{align-items:flex-start;flex-direction:column}.catalog-item-action{width:100%;justify-content:space-between}}
   </style></head><body><main class="catalog-page">
     <nav class="catalog-topbar"><a href="/painel-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">← Voltar ao perfil</a></nav>
     <header class="catalog-hero"><h1>${botShop ? "🛒 " : "🏪 "}${escapeHtml(title)}</h1><p>${escapeHtml(notice)}</p></header>
@@ -3583,15 +3641,45 @@ function renderShopCatalog(data, shopType) {
           const detail = botShop
             ? rarityLabels[item.rarity] || "Item da economia"
             : `ID ${item.id} · <span class="catalog-stock">${item.quantity === null ? "Estoque ilimitado" : `Estoque: ${item.quantity}`}</span>`;
-          return `<article class="catalog-item" data-shop-item="${escapeHtml(String(selection))}">
+          return `<article class="catalog-item" data-shop-item="${escapeHtml(String(selection))}" data-shop-price="${Number(item.price) || 0}">
             <div><h3>${escapeHtml(item.name)}</h3><p>${detail}</p></div>
-            <div class="catalog-item-action"><strong>${economy.formatMoney(item.price)}</strong><button class="catalog-buy" type="button" data-shop-purchase="${escapeHtml(String(selection))}"${outOfStock || shieldActive ? " disabled" : ""}>${outOfStock ? "Esgotado" : shieldActive ? `Escudo ativo (${shopContext.shieldCharges})` : "Comprar"}</button></div>
+            ${(() => {
+              const affordable = balance >= Number(item.price);
+              let ready = true;
+              let unavailableReason = "";
+              if (!affordable) unavailableReason = "Saldo insuficiente";
+              if (botShop && item.key === "shield") {
+                if (shopContext.shieldCharges > 0) {
+                  ready = false;
+                  unavailableReason = `Escudo ativo (${shopContext.shieldCharges})`;
+                } else if (balance < economy.MIN_SHIELD_BALANCE) {
+                  ready = false;
+                  unavailableReason = `Saldo mínimo: ${economy.formatMoney(economy.MIN_SHIELD_BALANCE)}`;
+                }
+              } else if (botShop && item.key === "all") {
+                ready = [...resettableKeys].every(key => {
+                  const resetItem = data.items.find(candidate => candidate.key === key);
+                  return resetItem && isActivityAtLimit(resetItem);
+                });
+                if (!ready) unavailableReason = "Aguarde os limites de trabalho, pesca, mineração e roubo";
+              } else if (botShop && !item.product) {
+                ready = isActivityAtLimit(item);
+                if (!ready) unavailableReason = "Disponível após esgotar o limite diário";
+              } else if (!botShop && item.quantity === 0) {
+                ready = false;
+                unavailableReason = "Esgotado";
+              }
+              const canPurchase = affordable && ready;
+              return `<div class="catalog-item-action"><strong>${economy.formatMoney(item.price)}</strong>${canPurchase
+                ? `<button class="catalog-buy" type="button" data-shop-purchase="${escapeHtml(String(selection))}">Comprar</button>`
+                : `<span class="catalog-unavailable">${escapeHtml(unavailableReason || "Indisponível")}</span>`}</div>`;
+            })()}
           </article>`;
         }).join("")}</div>
       </section>`).join("") : `<section class="catalog-category"><p class="catalog-empty">${botShop ? "Não há itens disponíveis." : "O Mercado Local ainda não tem itens cadastrados."}</p></section>`}
     <p id="shopFeedback" class="catalog-feedback" role="status" aria-live="polite"></p>
     <p class="catalog-footer">${botShop ? "A compra é aplicada imediatamente à sua economia local." : "Após a compra, seu pedido ficará pendente até a entrega manual pela equipe deste grupo/servidor."}</p>
-  </main><dialog id="purchaseDialog" class="purchase-dialog" aria-labelledby="purchaseDialogTitle" aria-describedby="purchaseDialogMessage"><div class="purchase-dialog-content"><h2 id="purchaseDialogTitle"></h2><p id="purchaseDialogMessage"></p><footer class="purchase-dialog-actions"><button type="button" id="closePurchaseDialog">Fechar</button></footer></div></dialog><script>
+  </main><dialog id="purchaseDialog" class="purchase-dialog" aria-labelledby="purchaseDialogTitle" aria-describedby="purchaseDialogMessage"><div class="purchase-dialog-content"><h2 id="purchaseDialogTitle"></h2><p id="purchaseDialogMessage"></p><footer class="purchase-dialog-actions"><button type="button" id="closePurchaseDialog">Fechar</button></footer></div></dialog><style>${cosmeticThemeStyles}</style><script>
     const shopContext=${JSON.stringify(shopContext)};
     const feedback=document.getElementById("shopFeedback");
     const purchaseDialog=document.getElementById("purchaseDialog");
@@ -3603,6 +3691,15 @@ function renderShopCatalog(data, shopType) {
       purchaseDialog.showModal();
     }
     function showShopFeedback(message,isError){feedback.textContent=message;feedback.classList.toggle("error",Boolean(isError))}
+    function replacePurchaseButton(button,message){
+      const status=document.createElement("span");status.className="catalog-unavailable";status.textContent=message;button.replaceWith(status);
+    }
+    function hideUnaffordableButtons(balance){
+      document.querySelectorAll("[data-shop-purchase]").forEach(button=>{
+        const card=button.closest("[data-shop-item]");
+        if(card&&balance<Number(card.dataset.shopPrice))replacePurchaseButton(button,"Saldo insuficiente");
+      });
+    }
     document.getElementById("closePurchaseDialog").addEventListener("click",()=>purchaseDialog.close());
     purchaseDialog.addEventListener("click",event=>{if(event.target===purchaseDialog)purchaseDialog.close()});
     document.querySelectorAll("[data-shop-purchase]").forEach(button=>button.addEventListener("click",async()=>{
@@ -3612,13 +3709,21 @@ function renderShopCatalog(data, shopType) {
         const response=await fetch("/api/account/local/shop-purchase",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...shopContext,selection})});
         const result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível concluir a compra.");
         document.getElementById("shopBalance").textContent=result.balance;
+        hideUnaffordableButtons(result.balanceValue);
         if(shopContext.shop==="market"){
           const card=Array.from(document.querySelectorAll("[data-shop-item]")).find(candidate=>candidate.dataset.shopItem===String(result.itemId));
-          if(card){const stock=card.querySelector(".catalog-stock");if(stock)stock.textContent=result.quantity===null?"Estoque ilimitado":"Estoque: "+result.quantity;if(result.quantity===0){button.textContent="Esgotado";keepDisabled=true}}
+          if(card){const stock=card.querySelector(".catalog-stock");if(stock)stock.textContent=result.quantity===null?"Estoque ilimitado":"Estoque: "+result.quantity;if(result.quantity===0)replacePurchaseButton(button,"Esgotado")}
           const message="Pedido #"+result.orderId+" criado para "+result.itemName+". A equipe fará a entrega manualmente. Saldo atual: "+result.balance;
           showShopFeedback(message,false);showPurchaseResult("Compra concluída",message,false);
         }else{
-          if(result.itemKey==="shield"){button.textContent="Escudo ativo ("+result.shieldCharges+")";keepDisabled=true}
+          if(result.itemKey==="shield")replacePurchaseButton(button,"Escudo ativo ("+result.shieldCharges+")");
+          else {
+            replacePurchaseButton(button,"Comprado hoje");
+            document.querySelectorAll("[data-shop-purchase]").forEach(availableButton=>{
+              const key=availableButton.dataset.shopPurchase;
+              if(key==="all"||result.itemKey==="all")replacePurchaseButton(availableButton,"Indisponível hoje");
+            });
+          }
           const message=result.itemName+" comprado por "+result.price+". Saldo atual: "+result.balance;
           showShopFeedback(message,false);showPurchaseResult("Compra concluída",message,false);
         }
@@ -3637,7 +3742,7 @@ function getCosmeticPanelStyles(backgroundKey, panelType, outlineKey) {
   const borderColor = outline?.color || accent;
   const rainbowGradient = "linear-gradient(110deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744)";
   const rainbowAnimation = background?.rainbow || outline?.rainbow
-    ? `@keyframes cosmetic-rainbow-cycle{to{background-position:100% 50%,100% 50%}}@media(prefers-reduced-motion:reduce){body,.local-hero,.local-panel,.local-stat,.rank-link,.local-avatar-frame,.admin-page .hero,.admin-page .hero .avatar,.admin-page .overview-card,.admin-page .setting-card,.admin-page .moderation-card{animation:none!important}}`
+    ? `@keyframes cosmetic-rainbow-cycle{to{background-position:100% 50%,100% 50%}}@media(prefers-reduced-motion:reduce){body,.local-hero,.local-panel,.local-stat,.rank-link,.local-avatar-frame,.catalog-hero,.catalog-category,.catalog-item,.admin-page .hero,.admin-page .hero .avatar,.admin-page .overview-card,.admin-page .setting-card,.admin-page .moderation-card{animation:none!important}}`
     : "";
   const pageBackground = background?.rainbow
     ? rainbowGradient
@@ -3646,11 +3751,11 @@ function getCosmeticPanelStyles(backgroundKey, panelType, outlineKey) {
   const panelBackground = `linear-gradient(145deg,${middle} 0%,${end} 100%)`;
   if (panelType === "local") {
     const outlineStyles = outline?.rainbow
-      ? `.local-hero,.local-panel{border:6px solid transparent;background:${heroBackground} padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 5s linear infinite}.local-panel{background:${panelBackground} padding-box,${rainbowGradient} border-box}.local-stat,.rank-link{border:6px solid transparent;background:linear-gradient(${middle},${middle}) padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 5s linear infinite}.local-avatar-frame{border:6px solid transparent;background:linear-gradient(#171d2b,#171d2b) padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 5s linear infinite}`
+      ? `.local-hero,.local-panel,.catalog-hero{border:6px solid transparent;background:${heroBackground} padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 5s linear infinite}.local-panel,.catalog-category{background:${panelBackground} padding-box,${rainbowGradient} border-box}.local-stat,.rank-link,.catalog-item{border:6px solid transparent;background:linear-gradient(${middle},${middle}) padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 5s linear infinite}.local-avatar-frame{border:6px solid transparent;background:linear-gradient(#171d2b,#171d2b) padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%}`
       : outline
-        ? `.local-hero,.local-panel,.local-stat,.rank-link,.local-avatar-frame{border:3px solid ${borderColor}}`
+        ? `.local-hero,.local-panel,.local-stat,.rank-link,.local-avatar-frame,.catalog-hero,.catalog-category,.catalog-item{border:3px solid ${borderColor}}`
         : "";
-    return `${rainbowAnimation}body{background:${pageBackground};${background?.rainbow ? "background-size:300% 300%;animation:cosmetic-rainbow-cycle 7s linear infinite" : ""}}.local-hero{border-color:${accent}88;background:${heroBackground}}.local-panel{border-color:${accent}66;background:${panelBackground}}.local-stat,.rank-link{border-color:${borderColor}88;background:${middle}88}.local-topbar a,.local-section-heading h2,.rank-link span{color:${accent}}.rank-link:hover{border-color:${borderColor};background:${start}88}${outlineStyles}`;
+    return `${rainbowAnimation}body{background:${pageBackground};${background?.rainbow ? "background-size:300% 300%;animation:cosmetic-rainbow-cycle 7s linear infinite" : ""}}.local-hero,.catalog-hero{border-color:${accent}88;background:${heroBackground}}.local-panel,.catalog-category{border-color:${accent}66;background:${panelBackground}}.local-stat,.rank-link,.catalog-item{border-color:${borderColor}88;background:${middle}88}.local-topbar a,.local-section-heading h2,.rank-link span,.catalog-category h2{color:${accent}}.rank-link:hover,.catalog-item:hover{border-color:${borderColor};background:${start}88}.catalog-buy{border-color:${accent}99;background:${accent}22;color:#f5f7fb}.catalog-buy:hover{border-color:${accent};background:${accent}44}${outlineStyles}`;
   }
   const outlineStyles = outline?.rainbow
     ? `.admin-page .hero,.admin-page .overview-card,.admin-page .setting-card,.admin-page .moderation-card{border:6px solid transparent;background:${heroBackground} padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 5s linear infinite}.admin-page .overview-card,.admin-page .setting-card,.admin-page .moderation-card{background:${panelBackground} padding-box,${rainbowGradient} border-box}.admin-page .hero .avatar{border:6px solid transparent;background:linear-gradient(#171d2b,#171d2b) padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 5s linear infinite}`
@@ -3692,29 +3797,75 @@ function renderEconomyAdmin(data) {
     <nav class="top"><a href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">← Painel de administração</a><span>${escapeHtml(groupType)} · ${escapeHtml(data.groupName)}</span></nav>
     <header class="hero"><small>CONFIGURAÇÕES LOCAIS</small><h1>Economia</h1><p class="muted">Escolha uma função para gerenciar. Cada seção é exibida separadamente para facilitar a configuração.</p></header>
     <nav class="tabs" role="tablist" aria-label="Funções da economia">
-      <button type="button" role="tab" aria-selected="true" aria-controls="rankingPanel" data-economy-tab="ranking">Ranking</button>
+      <button type="button" role="tab" aria-selected="true" aria-controls="vaultPanel" data-economy-tab="vault">Cofre</button>
       <button type="button" role="tab" aria-selected="false" aria-controls="storePanel" data-economy-tab="store">Loja Local</button>
       <button type="button" role="tab" aria-selected="false" aria-controls="signalPanel" data-economy-tab="signal">Busca de Sinais</button>
       <button type="button" role="tab" aria-selected="false" aria-controls="balancesPanel" data-economy-tab="balances">Editar saldo</button>
     </nav>
-    <section id="rankingPanel" class="panel" role="tabpanel"><h2>Ranking de riqueza</h2><p class="muted">Escolha se o saldo guardado no cofre entra no valor e na posição dos rankings web e em imagem.</p><div class="setting"><label><input id="includeVault" type="checkbox"> Considerar cofre no ranking</label><span id="rankStatus" class="muted">Carregando...</span></div><p id="rankFeedback" class="feedback" role="status"></p></section>
-    <section id="storePanel" class="panel" role="tabpanel" hidden><h2>Loja Local</h2><p class="muted">Gerencie o catálogo, os pedidos e os textos exibidos no mercado deste grupo.</p>
-      <form id="storeDetails" class="grid"><label>Título<input name="title" maxlength="120" required></label><label>Aviso<textarea name="notice" maxlength="1000" rows="2" required></textarea></label><div><button class="primary" type="submit">Salvar título e aviso</button></div></form>
-      <h3 style="margin-top:20px">Adicionar ou editar item</h3><form id="storeItem" class="grid">
-        <input type="hidden" name="id"><label>Nome<input name="name" maxlength="120" required></label><label>Categoria<input name="category" maxlength="80" required></label>
-        <label>Preço em SatCoins<input name="price" inputmode="decimal" placeholder="0,00" required></label><label>Quantidade<input name="quantity" placeholder="∞ para infinito" required></label>
-        <label>Raridade<select name="rarity"><option value="">Sem raridade</option><option value="comum">Comum</option><option value="incomum">Incomum</option><option value="raro">Raro</option><option value="epico">Épico</option><option value="lendario">Lendário</option></select></label>
-        <div class="actions"><button id="saveStoreItem" class="primary" type="submit">Adicionar item</button><button id="cancelStoreEdit" type="button" hidden>Cancelar edição</button></div>
-      </form><div id="storeItems" class="list"></div><p id="storeFeedback" class="feedback" role="status"></p>
-      <h3 style="margin-top:24px">Pedidos pendentes</h3><div id="storeOrders" class="list"></div>
+    <section id="vaultPanel" class="panel" role="tabpanel"><h2>Configurações do cofre</h2>
+      <p class="muted">Impenetrável protege o saldo; Imposto progressivo cobra por períodos completos de 24 horas desde a movimentação anterior (sem cobrança antes de 1 hora); Roubo permitido sorteia entre carteira e cofre conforme as chances configuradas.</p>
+      <div class="setting"><label><input id="includeVault" type="checkbox"> Considerar cofre no ranking de riqueza</label><span id="rankStatus" class="muted">Carregando...</span></div><p id="rankFeedback" class="feedback" role="status"></p>
+      <form id="vaultConfigForm" class="grid" style="margin-top:16px">
+        <label>Modo do cofre<select name="mode"><option value="secure">Impenetrável — saldo seguro</option><option value="tax">Imposto progressivo</option><option value="robbery">Roubo permitido</option></select></label>
+        <label>Movimentação mínima em SatCoins<input name="minimumMovement" inputmode="decimal" required></label>
+        <label>Tipo de imposto<select name="taxType"><option value="percent">Percentual por período</option><option value="fixed">Valor fixo por período</option></select></label>
+        <label id="vaultTaxValueLabel">Taxa do imposto<input name="taxValue" inputmode="decimal" required></label>
+        <label>Chance de o roubo atingir o cofre (%)<input name="robberyVaultChance" type="number" min="0" max="100" step="1" required><small class="muted">A chance restante será aplicada à carteira.</small></label>
+        <div><button class="primary" type="submit">Salvar configurações do cofre</button></div>
+      </form><p id="vaultConfigFeedback" class="feedback" role="status"></p>
+      <p class="muted">Cada pessoa pode fazer um depósito e um saque por dia local. O imposto considera períodos completos de 24 horas desde a movimentação anterior; movimentações com menos de 1 hora de intervalo não geram cobrança.</p>
+    </section>
+    <section id="storePanel" class="panel" role="tabpanel" hidden><h2>Loja Local</h2><p class="muted">Gerencie itens do catálogo e pedidos do Mercado Local.</p>
+      <nav class="tabs" role="tablist" aria-label="Gerenciamento da Loja Local">
+        <button type="button" role="tab" id="storeCreateTab" aria-selected="true" aria-controls="storeCreatePanel" data-store-tab="create">Criar novos itens</button>
+        <button type="button" role="tab" id="storeEditTab" aria-selected="false" aria-controls="storeEditPanel" data-store-tab="edit">Editar itens existentes</button>
+        <button type="button" role="tab" id="storeOrdersTab" aria-selected="false" aria-controls="storeOrdersPanel" data-store-tab="orders">Gerenciar pedidos</button>
+      </nav>
+      <section id="storeCreatePanel" class="panel" role="tabpanel" aria-labelledby="storeCreateTab">
+        <h3>Informações da loja local</h3><form id="storeDetails" class="grid"><label>Título<input name="title" maxlength="120" required></label><label>Aviso<textarea name="notice" maxlength="1000" rows="2" required></textarea></label><div><button class="primary" type="submit">Salvar título e aviso</button></div></form>
+        <h3 style="margin-top:20px">Novo item</h3><form id="storeItemCreate" class="grid">
+          <label>Nome<input name="name" maxlength="120" required></label><label>Categoria<input name="category" maxlength="80" required></label>
+          <label>Preço em SatCoins<input name="price" inputmode="decimal" placeholder="0,00" required></label><label>Quantidade<input name="quantity" placeholder="∞ para infinito" required></label>
+          <label>Raridade<select name="rarity"><option value="">Sem raridade</option><option value="comum">Comum</option><option value="incomum">Incomum</option><option value="raro">Raro</option><option value="epico">Épico</option><option value="lendario">Lendário</option></select></label>
+          <div class="actions"><button class="primary" type="submit">Criar item</button></div>
+        </form>
+      </section>
+      <section id="storeEditPanel" class="panel" role="tabpanel" aria-labelledby="storeEditTab" hidden>
+        <h3>Itens cadastrados</h3><div id="storeItems" class="list"></div>
+        <form id="storeItemEdit" class="grid" hidden>
+          <input type="hidden" name="id"><label>Nome<input name="name" maxlength="120" required></label><label>Categoria<input name="category" maxlength="80" required></label>
+          <label>Preço em SatCoins<input name="price" inputmode="decimal" placeholder="0,00" required></label><label>Quantidade<input name="quantity" placeholder="∞ para infinito" required></label>
+          <label>Raridade<select name="rarity"><option value="">Sem raridade</option><option value="comum">Comum</option><option value="incomum">Incomum</option><option value="raro">Raro</option><option value="epico">Épico</option><option value="lendario">Lendário</option></select></label>
+          <div class="actions"><button id="saveStoreItem" class="primary" type="submit">Salvar item</button><button id="cancelStoreEdit" type="button">Cancelar edição</button></div>
+        </form>
+      </section>
+      <section id="storeOrdersPanel" class="panel" role="tabpanel" aria-labelledby="storeOrdersTab" hidden>
+        <h3>Pedidos pendentes</h3><div id="storeOrders" class="list"></div>
+      </section>
+      <p id="storeFeedback" class="feedback" role="status"></p>
     </section>
     <section id="signalPanel" class="panel" role="tabpanel" hidden><h2>Busca de Sinais Local</h2><p class="muted">Configure preço, chances, garantias e os prêmios possíveis de cada raridade. As chances devem totalizar 100%.</p>
-      <form id="signalForm"><label class="setting"><span><strong>Ativar Busca Local</strong><small class="muted">Disponibiliza a busca local no painel de Busca de Sinais.</small></span><input name="enabled" type="checkbox"></label>
+      <form id="signalForm" novalidate><label class="setting"><span><strong>Ativar Busca Local</strong><small class="muted">Disponibiliza a busca local no painel de Busca de Sinais.</small></span><input name="enabled" type="checkbox"></label>
         <label style="margin-top:12px">Preço por busca em SatCoins<input name="price" inputmode="decimal" required></label>
         <nav id="signalRarityTabs" class="tabs" role="tablist" aria-label="Raridade da Busca Local"></nav><div id="signalTiers"></div>
         <label style="margin-top:14px">Destaques (até 2)<select id="signalFeatured" multiple size="6"></select><small class="muted">Use Ctrl ou Cmd para selecionar mais de um.</small></label>
         <div class="actions"><button class="primary" type="submit">Salvar Busca Local</button></div>
       </form><p id="signalFeedback" class="feedback" role="status"></p>
+      <style>
+        .signal-save-dialog{width:min(440px,calc(100% - 28px));padding:0;border:1px solid #7582a3;border-radius:16px;background:#171d2b;color:#f5f7fb;box-shadow:0 24px 80px #000b}
+        .signal-save-dialog::backdrop{background:#05070bcc;backdrop-filter:blur(4px)}
+        .signal-save-dialog-content{padding:22px}
+        .signal-save-dialog h3{margin:0 0 10px}
+        .signal-save-dialog p{margin:0 0 18px;color:#cbd2e2;line-height:1.55;overflow-wrap:anywhere}
+        .signal-save-dialog.error{border-color:#b65c69}
+        .signal-save-dialog.error h3{color:#ff9eaa}
+        .signal-save-dialog.success{border-color:#58bd91}
+        .signal-save-dialog.success h3{color:#9cf0cf}
+        .signal-save-dialog button{display:block;margin-left:auto}
+      </style>
+      <dialog id="signalSaveDialog" class="signal-save-dialog" aria-labelledby="signalSaveTitle" aria-describedby="signalSaveMessage">
+        <div class="signal-save-dialog-content"><h3 id="signalSaveTitle"></h3><p id="signalSaveMessage"></p><button type="button" id="closeSignalSaveDialog">Fechar</button></div>
+      </dialog>
     </section>
     <section id="balancesPanel" class="panel" role="tabpanel" hidden><h2>Editar saldo dos membros</h2><p class="muted">Pesquise por nome, usuário ou ID. As ações alteram somente o saldo da carteira; o cofre permanece separado. Para cada membro, informe um valor e escolha definir, adicionar ou retirar.</p>
       <form id="balanceSearchForm" class="balance-search"><input name="query" type="search" maxlength="100" autocomplete="off" placeholder="Nome, usuário ou ID do membro"><button class="primary" type="submit">Buscar</button></form>
@@ -3729,6 +3880,15 @@ function renderEconomyAdmin(data) {
       const result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível salvar as configurações.");return result;
     }
     function show(id,message,error=false){const node=document.getElementById(id);node.textContent=message;node.classList.toggle("error",error)}
+    function showSignalSaveResult(title,message,error=false){
+      const dialog=document.getElementById("signalSaveDialog");
+      dialog.classList.toggle("error",error);dialog.classList.toggle("success",!error);
+      document.getElementById("signalSaveTitle").textContent=title;
+      document.getElementById("signalSaveMessage").textContent=message;
+      if(!dialog.open)dialog.showModal();
+    }
+    document.getElementById("closeSignalSaveDialog").addEventListener("click",()=>document.getElementById("signalSaveDialog").close());
+    document.getElementById("signalSaveDialog").addEventListener("click",event=>{if(event.target===event.currentTarget)event.currentTarget.close()});
     let balancesLoaded=false,balanceQuery="";
     const balanceScope={level:context.platform==="whatsapp"?"chat":"server"};
     async function loadBalanceUsers(query=balanceQuery){
@@ -3770,8 +3930,12 @@ function renderEconomyAdmin(data) {
     document.getElementById("balanceSearchForm").addEventListener("submit",event=>{event.preventDefault();loadBalanceUsers(event.currentTarget.elements.query.value.trim())});
     document.querySelectorAll("[data-economy-tab]").forEach(tab=>tab.addEventListener("click",()=>{
       document.querySelectorAll("[data-economy-tab]").forEach(item=>item.setAttribute("aria-selected",String(item===tab)));
-      document.querySelectorAll('[role="tabpanel"]').forEach(panel=>{panel.hidden=panel.id!==tab.getAttribute("aria-controls")});
+      document.querySelectorAll("#vaultPanel,#storePanel,#signalPanel,#balancesPanel").forEach(panel=>{panel.hidden=panel.id!==tab.getAttribute("aria-controls")});
       if(tab.dataset.economyTab==="balances"&&!balancesLoaded)loadBalanceUsers("");
+    }));
+    document.querySelectorAll("[data-store-tab]").forEach(tab=>tab.addEventListener("click",()=>{
+      document.querySelectorAll("[data-store-tab]").forEach(item=>item.setAttribute("aria-selected",String(item===tab)));
+      document.querySelectorAll("#storeCreatePanel,#storeEditPanel,#storeOrdersPanel").forEach(panel=>{panel.hidden=panel.id!==tab.getAttribute("aria-controls")});
     }));
     async function loadRanking(){
       try{const state=await api("/api/account/local/admin-economy-ranking-state");const input=document.getElementById("includeVault");input.checked=state.includeVault;document.getElementById("rankStatus").textContent=state.includeVault?"Cofre incluído":"Somente carteira";
@@ -3782,15 +3946,73 @@ function renderEconomyAdmin(data) {
         });
       }catch(error){show("rankFeedback",error.message,true);document.getElementById("rankStatus").textContent="Indisponível"}
     }
-    const storeItems=document.getElementById("storeItems"),storeOrders=document.getElementById("storeOrders"),storeItemForm=document.getElementById("storeItem");
+    const vaultConfigForm=document.getElementById("vaultConfigForm");
+    const vaultTaxValueLabel=document.getElementById("vaultTaxValueLabel");
+    let vaultConfigState=null;
+    function updateVaultTaxLabel(){
+      const percent=vaultConfigForm.elements.taxType.value==="percent";
+      vaultTaxValueLabel.firstChild.textContent=percent?"Taxa do imposto (%)":"Imposto fixo por período (SatCoins)";
+      vaultConfigForm.elements.taxValue.placeholder=percent?"1,5":"25,00";
+    }
+    function parseDecimalHundredths(value){
+      const normalized=String(value||"").trim().replace(",",".");
+      if(!/^\\d+(?:\\.\\d{1,2})?$/.test(normalized))return null;
+      const [whole,decimals=""]=normalized.split(".");
+      const amount=Number(whole)*100+Number(decimals.padEnd(2,"0"));
+      return Number.isSafeInteger(amount)?amount:null;
+    }
+    async function loadVaultConfig(){
+      try{
+        const result=await api("/api/account/local/admin-vault-config-state");
+        const config=result.vaultConfig,form=vaultConfigForm;vaultConfigState=config;
+        form.elements.mode.value=config.mode;
+        form.elements.minimumMovement.value=(config.minimumMovement/100).toFixed(2);
+        form.elements.taxType.value=config.taxType;
+        form.elements.taxValue.value=config.taxType==="percent"
+          ?(config.taxRateBasisPoints/100).toFixed(2)
+          :(config.taxFixedAmount/100).toFixed(2);
+        form.elements.robberyVaultChance.value=config.robberyVaultChance;
+        updateVaultTaxLabel();
+      }catch(error){show("vaultConfigFeedback",error.message,true)}
+    }
+    vaultConfigForm.elements.taxType.addEventListener("change",updateVaultTaxLabel);
+    vaultConfigForm.addEventListener("submit",async event=>{
+      event.preventDefault();
+      const form=event.currentTarget,button=form.querySelector('[type="submit"]');
+      if(!vaultConfigState){show("vaultConfigFeedback","A configuração atual ainda está carregando. Tente novamente.",true);return}
+      const minimumMovement=parseDecimalHundredths(form.elements.minimumMovement.value);
+      const taxValue=parseDecimalHundredths(form.elements.taxValue.value);
+      const chance=Number(form.elements.robberyVaultChance.value);
+      const taxType=form.elements.taxType.value;
+      const taxRateBasisPoints=taxType==="percent"?taxValue:vaultConfigState?.taxRateBasisPoints;
+      const taxFixedAmount=taxType==="fixed"?taxValue:vaultConfigState?.taxFixedAmount;
+      if(!Number.isSafeInteger(minimumMovement)||!Number.isSafeInteger(taxValue)||
+          taxType==="percent"&&taxValue>10000||
+          !Number.isSafeInteger(chance)||chance<0||chance>100){
+        show("vaultConfigFeedback","Confira o mínimo, o imposto (0 a 100%) e a chance do cofre (0 a 100%).",true);return;
+      }
+      button.disabled=true;show("vaultConfigFeedback","Salvando...");
+      try{
+        const config={mode:form.elements.mode.value,minimumMovement,taxType,taxRateBasisPoints,taxFixedAmount,robberyVaultChance:chance};
+        const result=await api("/api/account/local/admin-vault-config",{config});
+        vaultConfigState=result.vaultConfig;
+        form.elements.minimumMovement.value=(result.vaultConfig.minimumMovement/100).toFixed(2);
+        form.elements.taxValue.value=result.vaultConfig.taxType==="percent"
+          ?(result.vaultConfig.taxRateBasisPoints/100).toFixed(2)
+          :(result.vaultConfig.taxFixedAmount/100).toFixed(2);
+        show("vaultConfigFeedback","Configurações do cofre salvas.");
+      }catch(error){show("vaultConfigFeedback",error.message,true)}
+      finally{button.disabled=false}
+    });
+    const storeItems=document.getElementById("storeItems"),storeOrders=document.getElementById("storeOrders"),storeItemCreateForm=document.getElementById("storeItemCreate"),storeItemEditForm=document.getElementById("storeItemEdit");
     let storeState=null;
-    function clearStoreForm(){storeItemForm.reset();storeItemForm.elements.id.value="";document.getElementById("saveStoreItem").textContent="Adicionar item";document.getElementById("cancelStoreEdit").hidden=true}
+    function clearStoreForm(){storeItemEditForm.reset();storeItemEditForm.elements.id.value="";storeItemEditForm.hidden=true}
     function renderStore(state){
       storeState=state;document.getElementById("storeDetails").elements.title.value=state.store.title;document.getElementById("storeDetails").elements.notice.value=state.store.notice;storeItems.replaceChildren();
       if(!state.store.items.length){const empty=document.createElement("p");empty.className="empty";empty.textContent="Nenhum item cadastrado.";storeItems.append(empty)}
       for(const item of state.store.items){const row=document.createElement("article"),name=document.createElement("strong"),detail=document.createElement("p"),actions=document.createElement("div"),edit=document.createElement("button"),remove=document.createElement("button");
         row.className="row";name.textContent=item.name;detail.textContent="#"+item.id+" · "+item.category+" · "+formatMoney(item.price)+" · Estoque: "+(item.quantity===null?"infinito":item.quantity)+(item.rarity?" · "+item.rarity:"");
-        actions.className="actions";edit.type="button";edit.textContent="Editar";edit.addEventListener("click",()=>{storeItemForm.elements.id.value=item.id;storeItemForm.elements.name.value=item.name;storeItemForm.elements.category.value=item.category;storeItemForm.elements.price.value=money(item.price);storeItemForm.elements.quantity.value=item.quantity===null?"infinito":String(item.quantity);storeItemForm.elements.rarity.value=item.rarity||"";document.getElementById("saveStoreItem").textContent="Salvar item";document.getElementById("cancelStoreEdit").hidden=false;storeItemForm.scrollIntoView({block:"center"})});
+        actions.className="actions";edit.type="button";edit.textContent="Editar";edit.addEventListener("click",()=>{storeItemEditForm.elements.id.value=item.id;storeItemEditForm.elements.name.value=item.name;storeItemEditForm.elements.category.value=item.category;storeItemEditForm.elements.price.value=money(item.price);storeItemEditForm.elements.quantity.value=item.quantity===null?"infinito":String(item.quantity);storeItemEditForm.elements.rarity.value=item.rarity||"";storeItemEditForm.hidden=false;document.getElementById("storeEditTab").click();storeItemEditForm.scrollIntoView({block:"center"})});
         remove.type="button";remove.className="danger";remove.textContent="Remover";remove.addEventListener("click",async()=>{if(!window.confirm("Remover "+item.name+" do catálogo?"))return;await saveStore({action:"remove",itemId:item.id},"Item removido.")});
         actions.append(edit,remove);row.append(name,detail,actions);storeItems.append(row);
       }
@@ -3809,7 +4031,8 @@ function renderEconomyAdmin(data) {
     }
     async function loadStore(){try{renderStore(await api("/api/account/local/admin-store2-state"))}catch(error){show("storeFeedback",error.message,true)}}
     document.getElementById("storeDetails").addEventListener("submit",event=>{event.preventDefault();const form=event.currentTarget;saveStore({action:"details",title:form.elements.title.value,notice:form.elements.notice.value},"Título e aviso salvos.")});
-    storeItemForm.addEventListener("submit",async event=>{event.preventDefault();const form=event.currentTarget,id=form.elements.id.value;const saved=await saveStore({action:id?"edit":"add",...(id?{itemId:Number(id)}:{}),item:{name:form.elements.name.value,category:form.elements.category.value,price:form.elements.price.value,quantity:form.elements.quantity.value,rarity:form.elements.rarity.value||null}},id?"Item atualizado.":"Item adicionado.");if(saved)clearStoreForm()});
+    storeItemCreateForm.addEventListener("submit",async event=>{event.preventDefault();const form=event.currentTarget;const saved=await saveStore({action:"add",item:{name:form.elements.name.value,category:form.elements.category.value,price:form.elements.price.value,quantity:form.elements.quantity.value,rarity:form.elements.rarity.value||null}},"Item adicionado.");if(saved)form.reset()});
+    storeItemEditForm.addEventListener("submit",async event=>{event.preventDefault();const form=event.currentTarget,id=form.elements.id.value;const saved=await saveStore({action:"edit",itemId:Number(id),item:{name:form.elements.name.value,category:form.elements.category.value,price:form.elements.price.value,quantity:form.elements.quantity.value,rarity:form.elements.rarity.value||null}},"Item atualizado.");if(saved)clearStoreForm()});
     document.getElementById("cancelStoreEdit").addEventListener("click",clearStoreForm);
     const tiersNode=document.getElementById("signalTiers"),featuredNode=document.getElementById("signalFeatured"),rarityTabs=document.getElementById("signalRarityTabs");let activeRarity=rarities[0].key;
     function checkboxGroup(parent,title,items,selected,type){
@@ -3823,9 +4046,9 @@ function renderEconomyAdmin(data) {
       rarityTabs.replaceChildren();
       for(const rarity of rarities){const tab=document.createElement("button");tab.type="button";tab.id="signalRarityTab-"+rarity.key;tab.setAttribute("role","tab");tab.setAttribute("aria-controls","signalRarityPanel-"+rarity.key);tab.setAttribute("aria-selected",String(rarity.key===activeRarity));tab.textContent=rarity.label;tab.addEventListener("click",()=>{activeRarity=rarity.key;renderSignalVisibility()});rarityTabs.append(tab)}
       for(const rarity of rarities){const tier=cfg.tiers[rarity.key],fieldset=document.createElement("fieldset"),legend=document.createElement("legend"),grid=document.createElement("div");fieldset.className="tier";fieldset.id="signalRarityPanel-"+rarity.key;fieldset.setAttribute("role","tabpanel");fieldset.setAttribute("aria-labelledby","signalRarityTab-"+rarity.key);fieldset.dataset.rarity=rarity.key;fieldset.hidden=rarity.key!==activeRarity;legend.textContent=rarity.label;grid.className="grid";
-        const field=(labelText,name,type,value,min,max)=>{const label=document.createElement("label"),input=document.createElement("input");label.textContent=labelText;input.name=name;input.type=type;input.value=value;if(min!==undefined)input.min=min;if(max!==undefined)input.max=max;input.required=true;label.append(input);grid.append(label)};
+        const field=(labelText,name,type,value,min,max,required=true)=>{const label=document.createElement("label"),input=document.createElement("input");label.textContent=labelText;input.name=name;input.type=type;input.value=value;if(min!==undefined)input.min=min;if(max!==undefined)input.max=max;input.required=required;label.append(input);grid.append(label)};
         field("Chance (%)","chance","number",tier.chance,0,100);field("Garantir após buscas (0 = sem garantia)","guaranteeAfter","number",tier.guaranteeAfter||0,0,10000);
-        field("SatCoins mínimo (opcional)","cashMin","text",tier.cashMin===null?"":money(tier.cashMin));field("SatCoins máximo (opcional)","cashMax","text",tier.cashMax===null?"":money(tier.cashMax));
+        field("SatCoins mínimo (opcional)","cashMin","text",tier.cashMin===null?"":money(tier.cashMin),undefined,undefined,false);field("SatCoins máximo (opcional)","cashMax","text",tier.cashMax===null?"":money(tier.cashMax),undefined,undefined,false);
         fieldset.append(legend,grid);
         checkboxGroup(fieldset,"Itens da Loja do Bot",cfg.botItems,tier.botItems,"bot");
         checkboxGroup(fieldset,"Itens do Mercado Local",cfg.marketItems,tier.marketItems.map(String),"market");
@@ -3846,18 +4069,26 @@ function renderEconomyAdmin(data) {
     }
     async function loadSignal(){try{renderSignal(await api("/api/account/local/admin-local-signal-search-state"))}catch(error){show("signalFeedback",error.message,true)}}
     document.getElementById("signalForm").addEventListener("submit",async event=>{event.preventDefault();const form=event.currentTarget,tiers={};
+      const priceInput=form.elements.price;
+      if(!priceInput.value.trim()||!priceInput.checkValidity()){
+        const message="Informe um preço válido para cada busca.";
+        show("signalFeedback",message,true);showSignalSaveResult("Não foi possível salvar",message,true);priceInput.focus();return
+      }
       for(const fieldset of tiersNode.querySelectorAll("[data-rarity]")){const rarity=fieldset.dataset.rarity,cashMin=fieldset.elements.cashMin.value.trim(),cashMax=fieldset.elements.cashMax.value.trim();
-        if(Boolean(cashMin)!==Boolean(cashMax)){show("signalFeedback","Informe mínimo e máximo de SatCoins ou deixe ambos vazios.",true);return}
+        if(Boolean(cashMin)!==Boolean(cashMax)){const message="Informe mínimo e máximo de SatCoins ou deixe ambos vazios.";show("signalFeedback",message,true);showSignalSaveResult("Não foi possível salvar",message,true);return}
         const selected=type=>[...fieldset.querySelectorAll('[data-prize-type="'+type+'"]:checked')].map(input=>input.value);
         tiers[rarity]={chance:Number(fieldset.elements.chance.value),guaranteeAfter:Number(fieldset.elements.guaranteeAfter.value)||null,cashMin:cashMin||null,cashMax:cashMax||null,botItems:selected("bot"),marketItems:selected("market").map(Number),backgrounds:selected("background"),outlines:selected("outline")};
       }
       const featured=[...featuredNode.selectedOptions].map(option=>{const [type,value]=option.value.split(":");return type==="market"?{type,id:Number(value)}:{type,key:value}});
-      if(featured.length>2){show("signalFeedback","Escolha no máximo dois destaques.",true);return}
+      if(featured.length>2){const message="Escolha no máximo dois destaques.";show("signalFeedback",message,true);showSignalSaveResult("Não foi possível salvar",message,true);return}
       const button=form.querySelector('[type="submit"]');button.disabled=true;show("signalFeedback","Salvando...");
-      try{renderSignal(await api("/api/account/local/admin-local-signal-search",{config:{enabled:form.elements.enabled.checked,price:form.elements.price.value,tiers,featured}}));show("signalFeedback","Busca Local salva.")}
-      catch(error){show("signalFeedback",error.message,true)}finally{button.disabled=false}
+      try{
+        const result=await api("/api/account/local/admin-local-signal-search",{config:{enabled:form.elements.enabled.checked,price:form.elements.price.value,tiers,featured}});
+        renderSignal(result);show("signalFeedback","Busca Local salva.");showSignalSaveResult("Busca Local salva","As configurações e os itens selecionados foram salvos com sucesso.");
+      }catch(error){show("signalFeedback",error.message,true);showSignalSaveResult("Falha ao salvar Busca Local",error.message,true)}
+      finally{button.disabled=false}
     });
-    Promise.all([loadRanking(),loadStore(),loadSignal()]);
+    Promise.all([loadRanking(),loadVaultConfig(),loadStore(),loadSignal()]);
   </script></body></html>`;
 }
 
@@ -3935,8 +4166,10 @@ function renderGroupAdmin(data) {
       const isMonitor = Object.prototype.hasOwnProperty.call(ADMIN_MONITOR_HELPERS, setting.key);
       const configButton = configurableSettings.includes(setting.key)
         ? `<button type="button" class="setting-icon-button" data-${setting.key.toLowerCase()}-config data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Configurar ${setting.key} neste escopo" title="Configurações do ${setting.key}">${ADMIN_SETTINGS_GEAR_ICON}</button>`
-        : ["economy", "xp", "activity"].includes(setting.key)
-          ? `<button type="button" class="setting-icon-button" data-rp-config="${setting.key}" data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Gerenciar ${setting.label}" title="Gerenciar ${setting.label}">${ADMIN_SETTINGS_GEAR_ICON}</button>${setting.key === "economy" ? `<a href="/painel-economia?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}" style="display:inline-flex;align-items:center;width:auto;height:auto;padding:8px 10px;text-decoration:none;border:1px solid #6f7fa5;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-size:11px;font-weight:700">Economia, loja e busca</a>` : ""}`
+        : ["xp", "activity"].includes(setting.key)
+          ? `<button type="button" class="setting-icon-button" data-rp-config="${setting.key}" data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Gerenciar ${setting.label}" title="Gerenciar ${setting.label}">${ADMIN_SETTINGS_GEAR_ICON}</button>`
+          : setting.key === "economy"
+            ? `<a href="/painel-economia?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}" style="display:inline-flex;align-items:center;width:auto;height:auto;padding:8px 10px;text-decoration:none;border:1px solid #6f7fa5;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-size:11px;font-weight:700">Economia, loja e busca</a>`
         : setting.key === "agendar"
           ? `<button type="button" class="setting-icon-button" data-schedule-config data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Gerenciar agendamentos neste escopo" title="Gerenciar agendamentos">${ADMIN_SETTINGS_GEAR_ICON}</button>`
         : isMonitor
@@ -4186,7 +4419,7 @@ function renderGroupAdmin(data) {
         const heading=item.category!==lastCategory?'<h3 class="setting-category" style="margin:12px 0 0;color:#b9c6ff;font-size:14px">'+item.category+'</h3>':"";
         lastCategory=item.category;
         const scopeAttr=JSON.stringify(scope).replace(/&/g,"&amp;").replace(/"/g,"&quot;");
-        const configButton=item.key==="agendar"?'<button type="button" class="setting-icon-button" data-schedule-config data-scope="'+scopeAttr+'" aria-label="Gerenciar agendamentos" title="Gerenciar agendamentos">'+gearIcon+'</button>':["antilink","antimedia","antipalavras","antiraid","blockcmd","welcome","goodbye","autorepo","autodownload","autoApprove"].includes(item.key)?'<button type="button" class="setting-icon-button" data-'+item.key.toLowerCase()+'-config data-scope="'+scopeAttr+'" aria-label="Configurar '+item.label+' neste escopo" title="Configurações do '+item.label+'">'+gearIcon+'</button>':["economy","xp","activity"].includes(item.key)?'<button type="button" class="setting-icon-button" data-rp-config="'+item.key+'" data-scope="'+scopeAttr+'" aria-label="Gerenciar '+item.label+'" title="Gerenciar '+item.label+'">'+gearIcon+'</button>'+(item.key==="economy"?'<button type="button" class="setting-icon-button setting-store2-button" data-store2-config><span aria-hidden="true">'+gearIcon+'</span><span>Configurar Loja 2</span></button>':""):["monitorStock","monitorCafe","monitorWeather","monitorRandomWeather","monitorElection"].includes(item.key)?'<button type="button" class="setting-icon-button" data-monitor-config data-monitor-setting="'+item.key+'" data-scope="'+scopeAttr+'" aria-label="Configurar '+item.label+' neste escopo" title="Configurações do '+item.label+'">'+gearIcon+'</button>':"";
+        const configButton=item.key==="agendar"?'<button type="button" class="setting-icon-button" data-schedule-config data-scope="'+scopeAttr+'" aria-label="Gerenciar agendamentos" title="Gerenciar agendamentos">'+gearIcon+'</button>':["antilink","antimedia","antipalavras","antiraid","blockcmd","welcome","goodbye","autorepo","autodownload","autoApprove"].includes(item.key)?'<button type="button" class="setting-icon-button" data-'+item.key.toLowerCase()+'-config data-scope="'+scopeAttr+'" aria-label="Configurar '+item.label+' neste escopo" title="Configurações do '+item.label+'">'+gearIcon+'</button>':["xp","activity"].includes(item.key)?'<button type="button" class="setting-icon-button" data-rp-config="'+item.key+'" data-scope="'+scopeAttr+'" aria-label="Gerenciar '+item.label+'" title="Gerenciar '+item.label+'">'+gearIcon+'</button>':item.key==="economy"?'<button type="button" class="setting-icon-button setting-store2-button" data-store2-config><span aria-hidden="true">'+gearIcon+'</span><span>Configurar Loja 2</span></button>':["monitorStock","monitorCafe","monitorWeather","monitorRandomWeather"].includes(item.key)?'<button type="button" class="setting-icon-button" data-monitor-config data-monitor-setting="'+item.key+'" data-scope="'+scopeAttr+'" aria-label="Configurar '+item.label+' neste escopo" title="Configurações do '+item.label+'">'+gearIcon+'</button>':"";
         const controls=item.key==="agendar"?'<span class="state '+(enabled?"on":"off")+'" data-state="'+item.key+'">'+(enabled?"Ativo":"Sem agendamentos ativos")+'</span>'+configButton:'<span class="state '+(enabled?"on":"off")+'" data-state="'+item.key+'">'+(enabled?"Ativado":"Desativado")+'</span><button type="button" data-setting="'+item.key+'" data-enabled="'+enabled+'" data-scope="'+scopeAttr+'">'+(enabled?"Desativar":"Ativar")+'</button>'+configButton;
         return heading+'<article class="setting-card"><div class="setting-info"><span class="setting-scope"></span><h2>'+item.label+'</h2><p>'+item.description+'</p></div><div class="setting-controls">'+controls+'</div></article>';
       }).join("");
@@ -4622,7 +4855,7 @@ function renderGroupAdmin(data) {
     const monitorFields=document.getElementById("monitorFormFields");
     const monitorFeedback=document.getElementById("monitorFormFeedback");
     let activeMonitorSetting=null,activeMonitorScope=null;
-    const monitorLabels={monitorStock:"Monitor da bolsa",monitorCafe:"Monitor do café",monitorWeather:"Monitor do clima",monitorRandomWeather:"Previsão aleatória",monitorElection:"Monitor eleitoral"};
+    const monitorLabels={monitorStock:"Monitor da bolsa",monitorCafe:"Monitor do café",monitorWeather:"Monitor do clima",monitorRandomWeather:"Previsão aleatória"};
     function addMonitorLabel(parent,text,input,help=""){
       const label=document.createElement("label");label.append(document.createTextNode(text),input);
       if(help){const small=document.createElement("small");small.textContent=help;label.append(small)}
@@ -4649,16 +4882,6 @@ function renderGroupAdmin(data) {
       }
       return result||"0s";
     }
-    function createElectionJobRow(job={}){
-      const row=document.createElement("div");row.className="monitor-job";row.dataset.jobId=job.id||"";
-      addMonitorLabel(row,"UF",createMonitorInput("text",job.state||""));row.lastChild.querySelector("input").maxLength=2;
-      addMonitorLabel(row,"Município",createMonitorInput("text",job.municipality||""));row.lastChild.querySelector("input").maxLength=100;
-      addMonitorLabel(row,"Termo de busca",createMonitorInput("text",job.query||""));row.lastChild.querySelector("input").maxLength=100;
-      addMonitorLabel(row,"Consultar a cada",createMonitorInput("text",durationLabel(job.intervalMs||300000)));row.lastChild.querySelector("input").required=true;
-      addMonitorLabel(row,"Atraso inicial",createMonitorInput("text",durationLabel(job.initialDelayMs??job.intervalMs??300000)));
-      const remove=document.createElement("button");remove.type="button";remove.textContent="Remover consulta";remove.addEventListener("click",()=>row.remove());row.append(remove);
-      return row;
-    }
     function renderMonitorFields(setting,config){
       monitorFields.replaceChildren();
       const timesText=fallback=>(Array.isArray(config.times)&&config.times.length?config.times:fallback).join(", ");
@@ -4684,12 +4907,6 @@ function renderGroupAdmin(data) {
       }else if(setting==="monitorRandomWeather"){
         addMonitorLabel(monitorFields,"Cidades (uma por linha)",createMonitorTextarea((Array.isArray(config.cities)?config.cities:[]).join("\\n"),6),"O monitor escolhe aleatoriamente entre as cidades cadastradas.");
         addMonitorLabel(monitorFields,"Horários diários (HH:MM, separados por vírgula)",createMonitorTextarea(timesText(["08:00"]),2),"O padrão é 08:00.");
-      }else if(setting==="monitorElection"){
-        const caption=document.createElement("p");caption.className="monitor-field-caption";caption.textContent="Consultas de apuração presidencial. Informe pelo menos uma UF, município ou termo de busca em cada consulta. Intervalo de 1 minuto a 30 dias; atraso inicial pode ser 0.";monitorFields.append(caption);
-        const list=document.createElement("div");list.className="monitor-form-fields";list.id="monitorElectionJobs";
-        (Array.isArray(config.jobs)?config.jobs:[]).forEach(job=>list.append(createElectionJobRow(job)));
-        const add=document.createElement("button");add.type="button";add.textContent="Adicionar consulta";add.addEventListener("click",()=>{if(list.children.length<20)list.append(createElectionJobRow())});
-        monitorFields.append(list,add);
       }
     }
     function splitMonitorList(value){return value.split(/[\\r\\n,]+/).map(item=>item.trim()).filter(Boolean)}
@@ -4709,13 +4926,6 @@ function renderGroupAdmin(data) {
       if(activeMonitorSetting==="monitorRandomWeather"){
         const fields=monitorFields.querySelectorAll("textarea");
         return{cities:splitMonitorList(fields[0].value),times:splitMonitorList(fields[1].value)};
-      }
-      if(activeMonitorSetting==="monitorElection"){
-        const jobs=[...monitorFields.querySelectorAll(".monitor-job")].map(row=>{
-          const inputs=row.querySelectorAll("input");
-          return{id:row.dataset.jobId,state:inputs[0].value.trim(),municipality:inputs[1].value.trim(),query:inputs[2].value.trim(),interval:inputs[3].value.trim(),delay:inputs[4].value.trim()};
-        });
-        return{jobs};
       }
       throw new Error("Monitor inválido.");
     }
@@ -7632,6 +7842,51 @@ function start() {
         return;
       }
 
+      if (requestUrl.pathname === "/api/account/local/admin-vault-config-state" ||
+          requestUrl.pathname === "/api/account/local/admin-vault-config") {
+        const platform = typeof payload?.platform === "string" ? payload.platform : "";
+        const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
+        const isStateRequest = requestUrl.pathname.endsWith("-state");
+        try {
+          await getGroupAdminData(central, platform, groupId);
+          const platformAccount = central.platformAccounts.find(account => account.platform === platform);
+          const message = getLocalGroupMessage(platform, groupId, String(platformAccount.platformId));
+          if (isStateRequest) {
+            sendJson(response, 200, { success: true, vaultConfig: economy.getVaultConfig(message) });
+            return;
+          }
+
+          const input = payload?.config;
+          if (!input || typeof input !== "object" || Array.isArray(input) ||
+              !Number.isSafeInteger(input.minimumMovement) || input.minimumMovement < 0 ||
+              !Number.isSafeInteger(input.taxRateBasisPoints) || input.taxRateBasisPoints < 0 || input.taxRateBasisPoints > 10000 ||
+              !Number.isSafeInteger(input.taxFixedAmount) || input.taxFixedAmount < 0 ||
+              !Number.isSafeInteger(input.robberyVaultChance) || input.robberyVaultChance < 0 || input.robberyVaultChance > 100) {
+            throw new Error("Informe valores válidos para o mínimo, imposto e chance de roubo.");
+          }
+          const vaultConfig = economy.updateVaultConfig(message, {
+            mode: input.mode,
+            minimumMovement: input.minimumMovement,
+            taxType: input.taxType,
+            taxRateBasisPoints: input.taxRateBasisPoints,
+            taxFixedAmount: input.taxFixedAmount,
+            robberyVaultChance: input.robberyVaultChance
+          });
+          if (!vaultConfig) throw new Error("Configuração do cofre inválida.");
+          sendJson(response, 200, { success: true, vaultConfig });
+        } catch (error) {
+          const reason = String(error?.message || "");
+          const statusCode = /não participa|não está vinculada|permissão administrativa/i.test(reason) ? 403
+            : /offline/i.test(reason) ? 503
+              : /informe valores|configuração do cofre inválida/i.test(reason) ? 400 : 500;
+          if (statusCode === 500 || statusCode === 503) console.error("[WEB] Falha ao configurar o cofre:", error.message || error);
+          sendJson(response, statusCode, {
+            error: statusCode === 500 ? "Não foi possível carregar ou salvar a configuração do cofre." : reason
+          });
+        }
+        return;
+      }
+
       if (requestUrl.pathname === "/api/account/local/admin-local-signal-search-state" ||
           requestUrl.pathname === "/api/account/local/admin-local-signal-search") {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
@@ -8082,6 +8337,7 @@ function start() {
             sendJson(response, 200, {
               success: true,
               balance: economy.formatMoney(result.balance),
+              balanceValue: result.balance,
               itemName: result.item.name,
               itemKey: result.item.key,
               price: economy.formatMoney(result.item.price),
@@ -8103,6 +8359,7 @@ function start() {
           sendJson(response, 200, {
             success: true,
             balance: economy.formatMoney(result.balance),
+            balanceValue: result.balance,
             itemId: result.item.id,
             itemName: result.item.name,
             orderId: result.order.id,
@@ -8265,7 +8522,7 @@ function start() {
 
           if (requestUrl.pathname === "/api/account/local/vault") {
             const action = payload?.action === "deposit" ? "deposit" : payload?.action === "withdraw" ? "withdraw" : null;
-            const amount = parseSatcoinAmount(payload?.amount);
+            const amount = parseSatcoinAmount(payload?.amount, 1);
             if (!action || amount === null || amount <= 0) {
               sendJson(response, 400, { error: "Informe se deseja depositar ou sacar e uma quantia válida maior que zero." });
               return;
@@ -8281,10 +8538,11 @@ function start() {
             if (!result.moved) {
               const errors = {
                 invalid_amount: action === "deposit"
-                  ? `O depósito mínimo é de ${economy.formatMoney(economy.MIN_VAULT_DEPOSIT)}.`
-                  : "Informe uma quantia válida maior que zero.",
+                  ? `O valor mínimo por movimentação é de ${economy.formatMoney(result.minimumMovement)}.`
+                  : `O valor mínimo por movimentação é de ${economy.formatMoney(result.minimumMovement)}.`,
                 insufficient_balance: "Sua carteira não tem saldo suficiente para esse depósito.",
-                insufficient_vault: "O cofre não tem saldo suficiente para esse saque."
+                insufficient_vault: "O cofre não tem saldo suficiente para esse saque.",
+                daily_limit: `Você já fez ${action === "deposit" ? "um depósito" : "um saque"} hoje. Tente novamente amanhã.`
               };
               sendJson(response, 400, { error: errors[result.reason] || "Não foi possível movimentar o saldo do cofre." });
               return;
@@ -8293,7 +8551,12 @@ function start() {
               success: true,
               balance: economy.formatMoney(result.balance),
               vaultBalance: economy.formatMoney(result.vaultBalance),
-              totalBalance: economy.formatMoney(result.totalBalance)
+              totalBalance: economy.formatMoney(result.totalBalance),
+              amount: economy.formatMoney(result.amount),
+              requestedAmount: economy.formatMoney(result.requestedAmount),
+              taxPaid: result.taxPaid ? economy.formatMoney(result.taxPaid) : null,
+              taxPeriods: result.taxPeriods,
+              shortfall: result.shortfall ? economy.formatMoney(result.shortfall) : null
             });
             return;
           }
@@ -8325,9 +8588,12 @@ function start() {
             sendJson(response, 400, { error: errors[result.reason] || "Não foi possível realizar a transferência." });
             return;
           }
+          const updatedAccount = economy.getAccount(message).account;
           sendJson(response, 200, {
             success: true,
             balance: economy.formatMoney(result.balance),
+            vaultBalance: economy.formatMoney(updatedAccount.vaultBalance),
+            totalBalance: economy.formatMoney(economy.getTotalBalance(updatedAccount)),
             amount: economy.formatMoney(result.amount)
           });
         } catch (error) {
@@ -8655,7 +8921,7 @@ function start() {
       return;
     }
 
-    if (request.method === "GET" && ["/painel-local", "/busca-sinais"].includes(requestUrl.pathname)) {
+    if (request.method === "GET" && ["/painel-local", "/painel-banco", "/busca-sinais"].includes(requestUrl.pathname)) {
       const central = await getSessionCentral(request);
       if (!central) {
         response.writeHead(302, { Location: "/dashboard", "Cache-Control": "no-store" });
@@ -8674,7 +8940,9 @@ function start() {
         });
         response.end(requestUrl.pathname === "/busca-sinais"
           ? renderSignalSearch(data)
-          : renderLocalAccount(data));
+          : requestUrl.pathname === "/painel-banco"
+            ? renderLocalBank(data)
+            : renderLocalAccount(data));
       } catch (error) {
         const reason = String(error?.message || "");
         const statusCode = /não participa|não está vinculada/i.test(reason) ? 403
@@ -8716,7 +8984,10 @@ function start() {
           groupName: accountData.groupName,
           userName: accountData.userName,
           balance: accountData.account.balance,
-          shieldCharges: accountData.account.shieldCharges
+          shieldCharges: accountData.account.shieldCharges,
+          account: accountData.account,
+          profileBackground: accountData.profileBackground,
+          profileOutline: accountData.profileOutline
         };
         let html;
         if (shopType === "cosmetics") {
@@ -8834,4 +9105,4 @@ function start() {
   return server;
 }
 
-module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking, renderLocalAccount, renderSignalSearch, renderCosmeticsStore, renderShopCatalog, renderGroupAdmin, renderEconomyAdmin, canManagePlatformGroup };
+module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking, renderLocalAccount, renderLocalBank, renderSignalSearch, renderCosmeticsStore, renderShopCatalog, renderGroupAdmin, renderEconomyAdmin, canManagePlatformGroup };

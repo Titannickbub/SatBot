@@ -9,9 +9,9 @@ const STATUS_MESSAGES = {
         "💸 Você foi rápido e conseguiu pegar parte do dinheiro."
     ],
     total: [
-        "💎 Golpe perfeito! Você levou todo o saldo da vítima.",
-        "🏦 A carteira foi completamente esvaziada.",
-        "🤑 Sucesso absoluto: não sobrou satcoin para a vítima.",
+        "💎 Golpe perfeito! Você levou todo o saldo disponível para o roubo.",
+        "🏦 O saldo escolhido foi completamente esvaziado.",
+        "🤑 Sucesso absoluto: não sobrou satcoin nesse saldo.",
         "🎯 Você acertou o golpe do século e levou tudo."
     ],
     failed: [
@@ -82,13 +82,14 @@ module.exports = {
     name: "roubar",
     aliases: ["roubo", "assaltar"],
     category: "economia/trabalhos",
-    description: `🥷 Tenta assaltar a carteira de outro membro para roubar satcoins na economia local.
+    description: `🥷 Tenta assaltar outro membro para roubar satcoins na economia local.
 
 📝 1. Escolha a vítima mencionando, informando o ID ou respondendo à mensagem:
 {prefix}roubar @usuário
 {prefix}roubar 5511999990000
 
 O golpe pode ter sucesso parcial, total (levar tudo), falhar, ser bloqueado por um escudo de proteção ou resultar em multas e indenizações policiais.
+No modo de cofre "Roubo permitido", a tentativa pode atingir a carteira ou o cofre conforme as chances configuradas pelos administradores.
 
 ⏳ Limite de 3 tentativas diárias por usuário. Não é possível assaltar a mesma vítima duas vezes no mesmo dia.`,
     usage: "{prefix}roubar @marcar",
@@ -149,6 +150,7 @@ async function replyResult(message, result, target) {
     const amount = economy.formatMoney(Math.abs(result.amount));
     const details = [
         `**Vítima:** ${formatMention(message, target)}`,
+        result.source ? `**Saldo visado:** ${result.source === "vault" ? "Cofre" : "Carteira"}` : null,
         result.amount ? `**Valor:** ${amount}` : null,
         result.outcome === "shield" ? `**Cargas restantes do escudo:** ${result.shieldCharges}/5` : null,
         `**Tentativas restantes:** ${result.remaining}`,

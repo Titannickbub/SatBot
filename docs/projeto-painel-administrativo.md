@@ -368,7 +368,7 @@ de implementação de todos os subcomandos na interface.
 - **Configurações do grupo:** `agendar`, `atividade`, `autoabrir`,
   `autoaceitar`, `autofigu`, `autoia`, `autorepo`, `autotranscrever`,
   `crossplay`, `economia`, `goodbye`, `monitorbolsa`, `monitorcafe`,
-  `monitorclima`, `monitoreleicao`, `rclima`, `setgroup_c`, `setimg_chat`,
+  `monitorclima`, `rclima`, `setgroup_c`, `setimg_chat`,
   `setname`, `status`, `warnconfig`, `welcome`, `xpconfig`.
 - **Membros e cargos:** `atualizar_membros`, `darcargo`, `removecargo`,
   `promover`, `rebaixar`, `tpromote`, `trebaixar`.

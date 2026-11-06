@@ -55,13 +55,20 @@ O catálogo lista as chaves dos itens da Loja do Bot, os IDs do Mercado Local e
 as chaves de fundos e outlines. Use esses identificadores nos comandos; para os
 itens do Mercado Local também é possível usar o nome sem espaços.
 
+Depois de cada alteração salva, o comando informa a próxima configuração
+recomendada. Quando uma alteração não pode ser salva, a resposta explica a
+regra que falhou e mostra como corrigi-la. Use o comando indicado na resposta;
+consulte `status` e `itens` para conferir os valores e identificadores atuais.
+
 ---
 
 ## 2. Configure com a busca desativada
 
 Uma busca nova começa desativada. Mantenha-a desativada enquanto configura as
-raridades e recompensas; a ativação só será aceita quando as chances e os
-prêmios estiverem válidos.
+raridades e recompensas. Isso permite salvar etapas incompletas como rascunho;
+a ativação só será aceita quando as chances e os prêmios estiverem válidos.
+Se editar uma busca ativa e uma mudança deixar a configuração inválida, ela não
+será salva: desative a busca, faça os ajustes e ative-a novamente.
 
 Para pausar uma busca já ativa antes de editar:
 
@@ -242,6 +249,25 @@ Ative quando estiver tudo pronto:
 
 Para pausar novamente, use `!configbuscasinais desativar`. A configuração e os
 contadores dos membros são preservados.
+
+---
+
+## Se uma alteração for recusada
+
+Leia a mensagem de erro: ela identifica a raridade ou prêmio problemático e
+indica o comando para corrigir. Os casos mais comuns são:
+
+| Mensagem/causa | Como corrigir |
+| --- | --- |
+| As chances não somam 100% | Defina os cinco valores com `chances <comum> <incomum> <raro> <epico> <lendario>`. |
+| Uma raridade com chance não tem prêmio | Adicione SatCoins ou um item àquela raridade; consulte `itens` para escolher o identificador correto. |
+| Chance zero com garantia configurada | Remova a garantia com `garantia <raridade> off` ou aumente a chance da raridade. |
+| Prêmio ou destaque não existe mais | Consulte `itens`, remova o identificador antigo e adicione um item disponível. |
+| Destaque não está em nenhuma raridade | Adicione-o primeiro como prêmio com `premio add <raridade> <tipo> <item>`. |
+| Alteração recusada enquanto a busca está ativa | Use `desativar`, faça as alterações e, quando a configuração estiver completa, use `ativar`. |
+
+O comando `status` mostra a configuração salva, não alterações recusadas.
+Depois de corrigir o problema, consulte `status` novamente antes de ativar.
 
 ---
 

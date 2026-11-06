@@ -44,7 +44,6 @@ categoria e abra o guia desejado:
   <a href="./monitorbolsa.md"><img src="https://img.shields.io/badge/Monitor%20da%20bolsa-guia-673AB7?style=for-the-badge" alt="Monitor da bolsa"></a><br>
   <a href="./monitorcafe.md"><img src="https://img.shields.io/badge/Monitor%20do%20caf%C3%A9-guia-673AB7?style=for-the-badge" alt="Monitor do café"></a><br>
   <a href="./monitorclima.md"><img src="https://img.shields.io/badge/Monitor%20do%20clima-guia-673AB7?style=for-the-badge" alt="Monitor do clima"></a><br>
-  <a href="./monitoreleicao.md"><img src="https://img.shields.io/badge/Monitor%20eleitoral-guia-673AB7?style=for-the-badge" alt="Monitor eleitoral com !monitoreleicao"></a><br>
   <a href="./rclima.md"><img src="https://img.shields.io/badge/Previs%C3%A3o%20aleat%C3%B3ria%20do%20tempo-guia-673AB7?style=for-the-badge" alt="Previsão aleatória do tempo"></a><br>
   <a href="./setgroup_c.md"><img src="https://img.shields.io/badge/Canal%20de%20avisos%20no%20WhatsApp-guia-673AB7?style=for-the-badge" alt="Canal de avisos da comunidade WhatsApp com !setgroup_c"></a><br>
   <a href="./setimg_chat.md"><img src="https://img.shields.io/badge/Alterar%20foto%20do%20chat%20ou%20servidor-guia-673AB7?style=for-the-badge" alt="Alterar foto do chat ou servidor"></a><br>

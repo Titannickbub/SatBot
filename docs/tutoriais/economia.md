@@ -18,19 +18,25 @@ O prefixo nos exemplos é `!`. Se o prefixo do bot foi alterado, substitua-o pel
 
 ---
 
-## Cofre protegido
+## Cofre
 
-O cofre guarda satcoins separadamente da carteira. O saldo guardado não pode ser usado em compras, apostas, transferências ou roubos; para voltar a usá-lo, é necessário sacar para a carteira.
+O cofre guarda satcoins separadamente da carteira. O saldo guardado não pode ser usado em compras, apostas ou transferências; para voltar a usá-lo, é necessário sacar para a carteira. Administradores podem escolher entre três modos:
+
+- **Impenetrável:** saldo protegido contra roubos, sem cobrança de imposto.
+- **Imposto progressivo:** cobra percentual ou valor fixo por período completo de 24 horas desde a última movimentação. O percentual se aplica ao saldo restante a cada período; o valor fixo é descontado por período. Movimentações com menos de 1 hora de intervalo não geram imposto. O imposto é calculado sobre o saldo anterior do cofre, antes de um depósito.
+- **Roubo permitido:** além da carteira, o cofre pode ser alvo de roubos. A chance de cada saldo é configurável; o padrão é 40% para o cofre e 60% para a carteira.
 
 ```text
 !cofre
 !cofre depositar 500
-!cofre sacar 200
+!cofre sacar 500
 ```
 
-Cada depósito deve ser de pelo menos **500,00 satcoins**. Saques não têm valor mínimo e podem retirar qualquer quantia disponível. A carteira, o cofre e o patrimônio total aparecem no comando `!carteira`, no perfil web e no painel local. Os rankings `!rank rico` e `!rank pobre` consideram somente o saldo disponível na carteira; o saldo do cofre é exibido separadamente, mas não influencia a posição. Para subir no ranking, é necessário manter satcoins disponíveis e sujeitos aos riscos da economia.
+Cada membro pode fazer **um depósito e um saque por dia local**. O valor mínimo por movimentação é configurável pelos administradores; se o imposto reduzir o saldo antes de um saque, o cofre informa o valor descontado e transfere o que restar. A carteira, o cofre e o patrimônio total aparecem no comando `!carteira` e no banco web local.
 
-Os comandos do cofre também estão disponíveis pelo perfil web local. O saldo fica salvo junto à conta da economia do respectivo grupo ou servidor.
+Administradores configuram o cofre pelos comandos `!configcofre status`, `!configcofre modo impenetravel|imposto|roubo`, `!configcofre minimo <valor>`, `!configcofre imposto percentual <0-100>` ou `!configcofre imposto fixo <valor>`, e `!configcofre chancecofre <0-100>`. A chance restante é automaticamente atribuída à carteira. `!rankcofre on|off` controla se o saldo do cofre entra nos rankings de riqueza; os mesmos ajustes estão na aba **Cofre** do painel de economia.
+
+No perfil web local, a página inicial mostra a carteira e o cofre. Abra **Meu banco** para consultar as atividades do dia, o extrato de lucros por atividade e realizar transferências ou movimentações do cofre. A página do banco acompanha os cosméticos equipados no perfil. O saldo fica salvo junto à conta da economia do respectivo grupo ou servidor.
 
 ---
 
@@ -97,7 +103,7 @@ Exibe as instruções de uso e opções disponíveis diretamente no chat:
 
 ## Busca de Sinais
 
-Faça buscas com `!buscasinais recruta` ou `!buscasinais especializada`. Os atalhos `!buscarsinais`, `!buscarsinal` e `!buscasinal` também são aceitos; as formas `!busca_sinais`, `!buscar_sinais`, `!buscar_sinal` e `!busca_sinal` funcionam da mesma maneira. Use o sufixo `x10` para fazer dez tentativas seguidas; por exemplo, `!buscasinais recruta x10`. O comando sem argumentos mostra um banner com os destaques atuais (Fundo RGB e Outline RGB); cada busca envia um banner com o resultado e o saldo atualizado. O fundo, os detalhes e a borda do banner acompanham os cosméticos de perfil equipados por quem executou o comando, sem alterar a aparência dos cartões de prêmio. O cartão do Fundo RGB exibe seu próprio gradiente arco-íris. A apresentação do texto acompanha a formatação nativa do Discord, Telegram ou WhatsApp. No painel local, abra **Busca de Sinais** para escolher o nível, fazer x1/x10 e consultar os prêmios disponíveis. O Fundo RGB e a Outline RGB aparecem em destaque; clicar em um prêmio abre a prévia animada. O custo da busca x10 é dez vezes o valor unitário, sem desconto.
+Faça buscas com `!buscasinais recruta` ou `!buscasinais especializada`. **Recruta** sorteia SatCoins ou resets da Loja do Bot; **Especializada** também pode dar cosméticos; **Local** usa os prêmios, chances e garantias definidos pelos administradores do grupo/servidor. Os atalhos `!buscarsinais`, `!buscarsinal` e `!buscasinal` também são aceitos; as formas `!busca_sinais`, `!buscar_sinais`, `!buscar_sinal` e `!busca_sinal` funcionam da mesma maneira. Use o sufixo `x10` para fazer dez tentativas seguidas; por exemplo, `!buscasinais recruta x10`. Consulte os prêmios possíveis com `!buscasinais itens`; acrescente `recruta`, `especializada` ou `local` para ver somente uma modalidade, como `!buscasinais itens local`. Para explicações das modalidades e regras, use `!buscasinais ajuda`. O comando sem argumentos mostra um banner com os destaques atuais (Fundo RGB e Outline RGB) e informa como consultar os itens e as regras; cada busca envia um banner com o resultado e o saldo atualizado. O fundo, os detalhes e a borda do banner acompanham os cosméticos de perfil equipados por quem executou o comando, sem alterar a aparência dos cartões de prêmio. O cartão do Fundo RGB exibe seu próprio gradiente arco-íris. A apresentação do texto acompanha a formatação nativa do Discord, Telegram ou WhatsApp. No painel local, abra **Busca de Sinais** para escolher o nível, fazer x1/x10 e consultar os prêmios disponíveis. O Fundo RGB e a Outline RGB aparecem em destaque; clicar em um prêmio abre a prévia animada. O custo da busca x10 é dez vezes o valor unitário, sem desconto.
 
 - **Recruta:** custa **100,00 satcoins** por tentativa; cada busca tem **70%** de chance de prêmio em dinheiro (5,00–30,00) e **30%** de reset da Loja do Bot. Garante um reset de trabalho em até **5** buscas e um Épico em até **10**.
 - **Especializada:** custa **500,00 satcoins** por tentativa; cada busca tem **55%** de chance de prêmio em dinheiro (20,00–100,00), **20%** de reset e **25%** de cosmético. Garante um Épico em até **10** buscas.
@@ -108,13 +114,13 @@ Os contadores são independentes por categoria e ficam salvos na economia local.
 
 Administradores podem configurar a **Busca Local** na página separada **Economia, loja e busca**, acessada pelo painel administrativo do grupo ou servidor. Ela é uma terceira opção na página **Busca de Sinais** e só aparece quando estiver ativada. A configuração — incluindo preço, probabilidades, garantias e prêmios — fica salva junto à economia daquele grupo ou servidor.
 
-Essa página organiza as funções em abas superiores — **Ranking**, **Loja Local**, **Busca de Sinais** e **Editar saldo** — e exibe uma seção por vez. Em **Editar saldo**, pesquise por nome, usuário ou ID e escolha definir, adicionar ou retirar valor da carteira do membro; o saldo do cofre não é alterado por essas ações.
+Essa página organiza as funções em abas superiores — **Cofre**, **Loja Local**, **Busca de Sinais** e **Editar saldo** — e exibe uma seção por vez. Em **Cofre**, escolha o modo, configure os limites e as taxas e ajuste se o saldo guardado entra no ranking. Em **Editar saldo**, pesquise por nome, usuário ou ID e escolha definir, adicionar ou retirar valor da carteira do membro; o saldo do cofre não é alterado por essas ações.
 
 Defina o preço de uma tentativa (o x10 custa automaticamente dez vezes esse valor) e as chances de cada raridade — **Comum, Incomum, Raro, Épico e Lendário** — que devem somar 100%. Use as abas de raridade para editar uma categoria por vez; as outras categorias permanecem salvas enquanto você alterna entre elas. Para cada raridade com chance maior que zero, escolha ao menos um prêmio: dinheiro (valor mínimo e máximo), itens da Loja do Bot, itens cadastrados no Mercado Local, fundos ou outlines de perfil. Os itens do Mercado Local sorteados geram pedidos pendentes gratuitos para a equipe entregar; o estoque é reservado no sorteio. Itens da Loja do Bot são aplicados quando possíveis, e cosméticos já possuídos são convertidos em 50% do preço da loja. Também é possível configurar garantias por raridade e selecionar até dois destaques entre os prêmios configurados. Os destaques substituem os prêmios em destaque na apresentação da busca.
 
 ### Cofre nos rankings
 
-Na mesma página **Economia, loja e busca**, administradores podem ativar **Considerar cofre no ranking**. Quando ativa, o ranking de riqueza usa o patrimônio total (carteira + cofre), tanto nas páginas web quanto nas imagens. Quando desativada, usa somente o saldo da carteira. A opção é independente para cada grupo ou servidor.
+Na aba **Cofre** da página **Economia, loja e busca**, administradores podem ativar **Considerar cofre no ranking**. Quando ativa, o ranking de riqueza usa o patrimônio total (carteira + cofre), tanto nas páginas web quanto nas imagens. Quando desativada, usa somente o saldo da carteira. A opção também pode ser controlada com `!rankcofre on|off` e é independente para cada grupo ou servidor.
 
 ---
 

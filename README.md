@@ -107,8 +107,7 @@ Consulte [VIP e `set_vip`](./docs/setvip.md) para detalhes sobre as opções VIP
 
 - Recursos de IA e ferramentas para mídia e downloads.
 - Comandos utilitários e informativos.
-- Consulta da apuração oficial das eleições pelo comando `!eleicao`.
-- Envio periódico de resultados eleitorais com `!monitoreleicao`.
+- Consulta dos resultados oficiais das eleições: `!eleicao1` para o 1º turno e `!eleicao` para o 2º turno.
 
 ---
 

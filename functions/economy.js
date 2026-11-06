@@ -14,6 +14,9 @@ const MAX_TRANSFERS_PER_DAY = 3;
 const MAX_ROBBERIES_PER_DAY = 3;
 const MIN_TRANSFER_AMOUNT = 1000;
 const MIN_VAULT_DEPOSIT = 50000;
+const VAULT_DAY_MS = 24 * 60 * 60 * 1000;
+const VAULT_MIN_TAX_INTERVAL_MS = 60 * 60 * 1000;
+const VAULT_MODES = Object.freeze(["secure", "tax", "robbery"]);
 const MIN_ROBBABLE_BALANCE = 2000;
 const STORE_ROBBERY_PRICE = 20000;
 const MIN_SHIELD_BALANCE = 50000;
@@ -90,6 +93,36 @@ function createCommunityStore() {
         items: [],
         orders: [],
         localSignalSearch: createLocalSignalSearch()
+    };
+}
+
+function createVaultConfig() {
+    return {
+        mode: "secure",
+        minimumMovement: MIN_VAULT_DEPOSIT,
+        taxType: "percent",
+        taxRateBasisPoints: 100,
+        taxFixedAmount: 100,
+        robberyVaultChance: 40
+    };
+}
+
+function normalizeVaultConfig(value) {
+    const defaults = createVaultConfig();
+    if (!value || typeof value !== "object" || Array.isArray(value)) return defaults;
+    return {
+        mode: VAULT_MODES.includes(value.mode) ? value.mode : defaults.mode,
+        minimumMovement: Number.isSafeInteger(value.minimumMovement) && value.minimumMovement >= 0
+            ? value.minimumMovement : defaults.minimumMovement,
+        taxType: ["percent", "fixed"].includes(value.taxType) ? value.taxType : defaults.taxType,
+        taxRateBasisPoints: Number.isSafeInteger(value.taxRateBasisPoints) &&
+            value.taxRateBasisPoints >= 0 && value.taxRateBasisPoints <= 10000
+            ? value.taxRateBasisPoints : defaults.taxRateBasisPoints,
+        taxFixedAmount: Number.isSafeInteger(value.taxFixedAmount) && value.taxFixedAmount >= 0
+            ? value.taxFixedAmount : defaults.taxFixedAmount,
+        robberyVaultChance: Number.isSafeInteger(value.robberyVaultChance) &&
+            value.robberyVaultChance >= 0 && value.robberyVaultChance <= 100
+            ? value.robberyVaultChance : defaults.robberyVaultChance
     };
 }
 
@@ -232,6 +265,7 @@ function loadScope(scope) {
         scopeName: scope.name,
         enabled: false,
         includeVaultInRanking: false,
+        vaultConfig: createVaultConfig(),
         accounts: {},
         communityStore: createCommunityStore()
     };
@@ -246,6 +280,7 @@ function loadScope(scope) {
                     scopeName: parsed.scopeName || scope.name,
                     enabled: parsed.enabled === true,
                     includeVaultInRanking: parsed.includeVaultInRanking === true,
+                    vaultConfig: normalizeVaultConfig(parsed.vaultConfig),
                     accounts: parsed.accounts && typeof parsed.accounts === "object" && !Array.isArray(parsed.accounts)
                         ? parsed.accounts
                         : {},
@@ -346,6 +381,46 @@ function setIncludeVaultInRanking(message, enabled) {
     return data.includeVaultInRanking;
 }
 
+function getVaultConfig(message) {
+    const scope = getScope(message);
+    return scope ? normalizeVaultConfig(loadScope(scope).vaultConfig) : null;
+}
+
+function updateVaultConfig(message, updates) {
+    const scope = getScope(message);
+    if (!scope || !updates || typeof updates !== "object" || Array.isArray(updates)) return null;
+    const store = loadScope(scope);
+    const config = normalizeVaultConfig({ ...store.vaultConfig, ...updates });
+    const valid =
+        (!Object.prototype.hasOwnProperty.call(updates, "mode") || VAULT_MODES.includes(updates.mode)) &&
+        (!Object.prototype.hasOwnProperty.call(updates, "minimumMovement") ||
+            Number.isSafeInteger(updates.minimumMovement) && updates.minimumMovement >= 0) &&
+        (!Object.prototype.hasOwnProperty.call(updates, "taxType") || ["percent", "fixed"].includes(updates.taxType)) &&
+        (!Object.prototype.hasOwnProperty.call(updates, "taxRateBasisPoints") ||
+            Number.isSafeInteger(updates.taxRateBasisPoints) &&
+            updates.taxRateBasisPoints >= 0 && updates.taxRateBasisPoints <= 10000) &&
+        (!Object.prototype.hasOwnProperty.call(updates, "taxFixedAmount") ||
+            Number.isSafeInteger(updates.taxFixedAmount) && updates.taxFixedAmount >= 0) &&
+        (!Object.prototype.hasOwnProperty.call(updates, "robberyVaultChance") ||
+            Number.isSafeInteger(updates.robberyVaultChance) &&
+            updates.robberyVaultChance >= 0 && updates.robberyVaultChance <= 100);
+    if (!valid) return null;
+    const previousConfig = normalizeVaultConfig(store.vaultConfig);
+    const taxRulesChanged = config.mode === "tax" &&
+        (config.taxType !== previousConfig.taxType ||
+            config.taxRateBasisPoints !== previousConfig.taxRateBasisPoints ||
+            config.taxFixedAmount !== previousConfig.taxFixedAmount);
+    if (config.mode !== previousConfig.mode || taxRulesChanged) {
+        const now = Date.now();
+        for (const account of Object.values(store.accounts)) {
+            if (account && typeof account === "object") account.vaultLastOperationAt = now;
+        }
+    }
+    store.vaultConfig = config;
+    saveScope(scope, store);
+    return { ...config };
+}
+
 function rewardLevelUp(message, level) {
     if (!isEnabled(message)) return null;
     const normalizedLevel = Number(level);
@@ -394,6 +469,9 @@ function getAccount(message) {
             robberyDate: null,
             robberyCount: 0,
             robbedUserIds: [],
+            vaultDepositDate: null,
+            vaultWithdrawDate: null,
+            vaultLastOperationAt: null,
             shieldCharges: 0,
             dailyProfitDate: null,
             dailyProfits: createDailyProfits()
@@ -478,6 +556,13 @@ function getAccount(message) {
         store.accounts[accountKey].vaultBalance = vaultBalance;
     }
 
+    for (const field of ["vaultDepositDate", "vaultWithdrawDate", "vaultLastOperationAt"]) {
+        if (!Object.prototype.hasOwnProperty.call(store.accounts[accountKey], field)) {
+            store.accounts[accountKey][field] = null;
+            saveScope(scope, store);
+        }
+    }
+
     ensureDailyProfitData(store.accounts[accountKey]);
 
     return {
@@ -496,56 +581,107 @@ function getTotalBalance(account) {
 
 function moveToVault(message, amount, operation) {
     const { account, scope } = getAccount(message);
+    const store = loadScope(scope);
+    const config = normalizeVaultConfig(store.vaultConfig);
+    const today = getLocalDate();
+    const dateField = operation === "deposit" ? "vaultDepositDate" : "vaultWithdrawDate";
     const result = {
         moved: false,
         reason: null,
-        amount,
+        amount: 0,
+        requestedAmount: amount,
+        taxPaid: 0,
+        taxPeriods: 0,
+        mode: config.mode,
+        minimumMovement: config.minimumMovement,
         balance: account.balance,
         vaultBalance: account.vaultBalance,
         totalBalance: getTotalBalance(account),
         scope
     };
 
-    if (!Number.isSafeInteger(amount) || amount <= 0 ||
-        (operation === "deposit" && amount < MIN_VAULT_DEPOSIT)) {
+    if (!Number.isSafeInteger(amount) || amount <= 0 || amount < config.minimumMovement) {
         result.reason = "invalid_amount";
+        return result;
+    }
+    if (account[dateField] === today) {
+        result.reason = "daily_limit";
         return result;
     }
 
     const balance = Number(account.balance) || 0;
     const vaultBalance = Number(account.vaultBalance) || 0;
+    if (operation === "deposit" && balance < amount) {
+        result.reason = "insufficient_balance";
+        return result;
+    }
+    if (operation === "withdraw" && vaultBalance <= 0) {
+        result.reason = "insufficient_vault";
+        return result;
+    }
+
+    const now = Date.now();
+    const tax = config.mode === "tax"
+        ? calculateVaultTax(vaultBalance, account.vaultLastOperationAt, config, now)
+        : { amount: 0, periods: 0 };
+    const availableVault = vaultBalance - tax.amount;
+
     if (operation === "deposit") {
-        if (balance < amount) {
-            result.reason = "insufficient_balance";
-            return result;
-        }
-        if (!Number.isSafeInteger(vaultBalance + amount)) {
+        if (!Number.isSafeInteger(availableVault + amount)) {
             result.reason = "invalid_amount";
             return result;
         }
         account.balance = balance - amount;
-        account.vaultBalance = vaultBalance + amount;
+        account.vaultBalance = availableVault + amount;
+        result.amount = amount;
     } else {
-        if (vaultBalance < amount) {
-            result.reason = "insufficient_vault";
-            return result;
-        }
-        if (!Number.isSafeInteger(balance + amount)) {
+        const withdrawn = Math.min(amount, availableVault);
+        if (!Number.isSafeInteger(balance + withdrawn)) {
             result.reason = "invalid_amount";
             return result;
         }
-        account.vaultBalance = vaultBalance - amount;
-        account.balance = balance + amount;
+        account.vaultBalance = availableVault - withdrawn;
+        account.balance = balance + withdrawn;
+        result.amount = withdrawn;
+        result.shortfall = amount - withdrawn;
     }
 
+    account[dateField] = today;
+    account.vaultLastOperationAt = now;
     saveScope(scope, loadScope(scope));
     return {
         ...result,
         moved: true,
+        taxPaid: tax.amount,
+        taxPeriods: tax.periods,
         balance: account.balance,
         vaultBalance: account.vaultBalance,
         totalBalance: getTotalBalance(account)
     };
+}
+
+function calculateVaultTax(balance, lastOperationAt, config, now) {
+    const lastOperation = Number(lastOperationAt);
+    if (!Number.isFinite(lastOperation) || lastOperation <= 0 || now - lastOperation < VAULT_MIN_TAX_INTERVAL_MS) {
+        return { amount: 0, periods: 0 };
+    }
+    const periods = Math.floor((now - lastOperation) / VAULT_DAY_MS);
+    if (periods <= 0 || balance <= 0) return { amount: 0, periods: 0 };
+
+    let remaining = balance;
+    if (config.taxType === "fixed") {
+        const total = BigInt(config.taxFixedAmount) * BigInt(periods);
+        remaining = Math.max(0, balance - Number(total > BigInt(balance) ? BigInt(balance) : total));
+    } else {
+        const denominator = 10000n;
+        const retainedRate = BigInt(10000 - config.taxRateBasisPoints);
+        for (let period = 0; period < periods && remaining > 0; period++) {
+            const next = Number((BigInt(remaining) * retainedRate) / denominator);
+            if (next === remaining) break;
+            remaining = next;
+        }
+    }
+    return { amount: balance - remaining, periods };
 }
 
 function depositToVault(message, amount) {
@@ -1305,13 +1441,19 @@ function rob(message, victimId) {
         return result;
     }
 
-    if (Number(victim.balance) < MIN_ROBBABLE_BALANCE) {
+    const vaultConfig = normalizeVaultConfig(store.vaultConfig);
+    const targetsVault = vaultConfig.mode === "robbery" &&
+        Math.random() * 100 < vaultConfig.robberyVaultChance;
+    const targetBalanceField = targetsVault ? "vaultBalance" : "balance";
+    victim[targetBalanceField] = Math.max(0, Number(victim[targetBalanceField]) || 0);
+    result.source = targetsVault ? "vault" : "wallet";
+    if (Number(victim[targetBalanceField]) < MIN_ROBBABLE_BALANCE) {
         result.outcome = "nothing";
         saveScope(scope, store);
         return result;
     }
 
-    const wealthyVictim = Number(victim.balance) > 200000;
+    const wealthyVictim = Number(victim[targetBalanceField]) > 200000;
     const roll = Math.random() * 100;
     const partialChance = wealthyVictim ? 35 : 23.333333;
     const neutralChance = wealthyVictim ? 25 : 46.666667;
@@ -1320,9 +1462,9 @@ function rob(message, victimId) {
     let threshold = partialChance;
 
     if (roll < threshold) {
-        const amount = randomInteger(MIN_ROBBABLE_BALANCE, Math.max(MIN_ROBBABLE_BALANCE, Math.floor(victim.balance)));
+        const amount = randomInteger(MIN_ROBBABLE_BALANCE, Math.max(MIN_ROBBABLE_BALANCE, Math.floor(victim[targetBalanceField])));
         thief.balance += amount;
-        victim.balance -= amount;
+        victim[targetBalanceField] -= amount;
         recordDailyProfit(thief, "roubo", amount);
         recordDailyProfit(victim, "rouboSofrido", -amount);
         result.robbed = true;
@@ -1333,15 +1475,15 @@ function rob(message, victimId) {
     } else if (roll < (threshold += thiefLossChance)) {
         const amount = randomInteger(500, 1000);
         thief.balance -= amount;
-        victim.balance += amount;
+        victim[targetBalanceField] += amount;
         recordDailyProfit(thief, "roubo", -amount);
         recordDailyProfit(victim, "rouboSofrido", amount);
         result.outcome = "caught";
         result.amount = amount;
     } else if (roll < (threshold += totalChance)) {
-        const amount = Number(victim.balance);
+        const amount = Number(victim[targetBalanceField]);
         thief.balance += amount;
-        victim.balance = 0;
+        victim[targetBalanceField] = 0;
         recordDailyProfit(thief, "roubo", amount);
         recordDailyProfit(victim, "rouboSofrido", -amount);
         result.robbed = true;
@@ -1350,7 +1492,7 @@ function rob(message, victimId) {
     } else {
         const amount = randomInteger(5000, 15000);
         thief.balance -= amount;
-        victim.balance += amount;
+        victim[targetBalanceField] += amount;
         recordDailyProfit(thief, "roubo", -amount);
         recordDailyProfit(victim, "rouboSofrido", amount);
         result.outcome = "lawsuit";
@@ -2433,6 +2575,7 @@ module.exports = {
     MAX_TRANSFERS_PER_DAY,
     MIN_TRANSFER_AMOUNT,
     MIN_VAULT_DEPOSIT,
+    VAULT_MODES,
     SATCOIN_SYMBOL,
     canWork,
     claimDaily,
@@ -2464,6 +2607,8 @@ module.exports = {
     getBalancePosition,
     getIncludeVaultInRanking,
     setIncludeVaultInRanking,
+    getVaultConfig,
+    updateVaultConfig,
     adjustBalance,
     getDailyProfits,
     findAccount,
