@@ -4,21 +4,34 @@ const axios = require("axios");
 const api = require("./api");
 
 const CONFIG_FILE = path.join(__dirname, "..", "settings", "bronxys.json");
+const HOST_API_KEY = "Bronxys30092025";
 
 function loadConfig() {
     fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true });
     if (!fs.existsSync(CONFIG_FILE)) {
-        const defaultConfig = { apiKey: "" };
+        const defaultConfig = { apiKey: HOST_API_KEY };
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(defaultConfig, null, 4));
         return defaultConfig;
     }
 
+    let config;
     try {
-        return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
+        config = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
     } catch {
         console.error("[BRONXYS] Erro ao ler configuração, usando padrão");
-        return { apiKey: "" };
+        return { apiKey: HOST_API_KEY };
     }
+
+    if (!config || typeof config !== "object" || Array.isArray(config)) {
+        console.error("[BRONXYS] Configuração inválida, usando padrão");
+        return { apiKey: HOST_API_KEY };
+    }
+
+    if (!config.apiKey) {
+        config.apiKey = HOST_API_KEY;
+        saveConfig(config);
+    }
+    return config;
 }
 
 function saveConfig(config) {
@@ -618,6 +631,7 @@ async function autodownloadSupportedLink(url, targetPlatform = null, { onPreview
 }
 
 module.exports = {
+    HOST_API_KEY,
     loadConfig,
     saveConfig,
     getApiKey,

@@ -35,8 +35,10 @@ Isso ajuda a manter o servidor do SatBot e o projeto. Obrigado pelo apoio!
 3. Depois que o servidor for criado, abra **Gerir servidor** e entre no
    **Gerenciador de arquivos**.
 
-Ao usar a Bronxys, você recebe uma API key para downloads, então não precisa
-comprar uma separadamente.
+Na Bronxys, o SatBot já inicia com a API key gratuita para downloads. Em outras
+hospedagens, compre uma API key em https://api.bronxyshost.com.br/ e configure-a
+com `!setkey SUA_APIKEY`. Consulte o [guia da Bronxys](./instalacao-bronxys.md)
+para mais informações.
 
 Em outro provedor, crie um servidor Linux com Node.js e abra o gerenciador de
 arquivos e o console/terminal correspondentes.

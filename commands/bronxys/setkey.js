@@ -1,6 +1,5 @@
 const bronxys = require("../../functions/bronxys");
 const { isOwner } = require("../../functions/owners");
-const HOST_API_KEY = "Bronxys30092025";
 
 module.exports = {
     name: "setkey",
@@ -13,16 +12,17 @@ module.exports = {
 {prefix}setkey <nova_chave>
 {prefix}setkey SUA_NOVA_CHAVE_BRONXYS
 
-🎁 Quem hospeda o bot na Bronxys tem direito a uma API key de downloads gratuita e exclusiva para usar na hospedagem deles.
+🎁 O SatBot já vem com a API key gratuita da Bronxys ativada por padrão. Ela só funciona quando o bot está hospedado na Bronxys.
 
-🔹 Para ativar a chave Host da Bronxys:
-{prefix}apikey bronxys
+🔹 Se a chave gratuita não estiver funcionando na Bronxys, reative-a com:
+{prefix}setkey bronxys
 
-A chave Host gratuita só funciona em bots hospedados na Bronxys. O comando valida e salva a chave sem exibi-la no chat.
+⚠️ Se você hospeda o bot fora da Bronxys, compre uma API key em https://api.bronxyshost.com.br/ e ative-a com:
+{prefix}setkey SUA_APIKEY
 
-O bot consulta o servidor da Bronxys para verificar se a chave é válida. Se funcionar, a chave é salva automaticamente e passa a ser usada em todos os comandos que dependem desse serviço.
+O comando valida e salva a chave sem exibi-la no chat. Depois de cadastrada, ela passa a ser usada nos comandos que dependem da API.
 
-🌐 Para comprar ou recarregar sua chave de API, acesse o site oficial:
+🌐 Compre ou recarregue sua chave de API no site oficial:
 https://api.bronxyshost.com.br/
 
 🧪 Para verificar se a chave atual está funcionando sem alterá-la, use:
@@ -46,7 +46,7 @@ https://api.bronxyshost.com.br/
         let newKey = message.args[0]?.trim();
         const isHostKey = newKey?.toLowerCase() === "bronxys";
         if (isHostKey) {
-            newKey = HOST_API_KEY;
+            newKey = bronxys.HOST_API_KEY;
         }
         if (!newKey) {
             return await message.reply({

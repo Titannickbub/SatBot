@@ -645,6 +645,9 @@ async function start() {
     loadMiddlewares();
     loadFunctions();
     migrateLegacyDataFiles();
+    if (functions.bronxys && typeof functions.bronxys.loadConfig === "function") {
+        functions.bronxys.loadConfig();
+    }
 
     // Inicializa o módulo de contas centralizadas definido em `functions/centralAccounts.js` (se presente)
     if (functions.centralAccounts && typeof functions.centralAccounts.init === 'function') {
