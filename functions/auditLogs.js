@@ -7,7 +7,8 @@ const CATEGORIES = Object.freeze({
     balance: "saldo",
     store: "loja local",
     signals: "loja de sinais local",
-    warnings: "advertências"
+    warnings: "advertências",
+    vault: "cofre"
 });
 
 function getTarget(message) {
@@ -105,6 +106,7 @@ function formatMember(message, userId, displayName, fallback = "Membro") {
 
 async function log(message, category, detail) {
     if (!Object.hasOwn(CATEGORIES, category)) throw new Error(`Categoria de log inválida: ${category}`);
+    if (message?.auditSource !== "web-panel") return false;
     const config = getConfig(message);
     if (!config || !config.enabled || !config.categories[category]) return false;
 

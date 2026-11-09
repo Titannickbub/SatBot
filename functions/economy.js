@@ -439,17 +439,6 @@ function updateVaultConfig(message, updates) {
             Number.isSafeInteger(updates.robberyVaultChance) &&
             updates.robberyVaultChance >= 0 && updates.robberyVaultChance <= 100);
     if (!valid) return null;
-    const previousConfig = normalizeVaultConfig(store.vaultConfig);
-    const taxRulesChanged = config.mode === "tax" &&
-        (config.taxType !== previousConfig.taxType ||
-            config.taxRateBasisPoints !== previousConfig.taxRateBasisPoints ||
-            config.taxFixedAmount !== previousConfig.taxFixedAmount);
-    if (config.mode !== previousConfig.mode || taxRulesChanged) {
-        const now = Date.now();
-        for (const account of Object.values(store.accounts)) {
-            if (account && typeof account === "object") account.vaultLastOperationAt = now;
-        }
-    }
     store.vaultConfig = config;
     saveScope(scope, store);
     return { ...config };
@@ -684,6 +673,14 @@ function moveToVault(message, amount, operation) {
     account.vaultLastOperationAt = now;
     if (tax.amount > 0) recordDailyProfit(account, "impostoCofre", -tax.amount);
     saveScope(scope, loadScope(scope));
+    recordAuditLog(
+        message,
+        "vault",
+        `${auditLogs.formatMember(message, message.userId, message.displayName || message.username)} ` +
+            `${operation === "deposit" ? "depositou" : "sacou"} ${formatMoney(result.amount)}. ` +
+            `Carteira: ${formatMoney(account.balance)} · Cofre: ${formatMoney(account.vaultBalance)}` +
+            (tax.amount > 0 ? ` · Imposto: ${formatMoney(tax.amount)}` : "")
+    );
     return {
         ...result,
         moved: true,

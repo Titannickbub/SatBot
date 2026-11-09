@@ -95,6 +95,8 @@ function formatStatus(config, prefix) {
         : `${economy.formatMoney(config.taxFixedAmount)} por 24h`;
     return [
         "🏦 CONFIGURAÇÃO DO COFRE",
+        "As regras são compartilhadas por todos os membros deste grupo/servidor.",
+        "Cada membro tem saldo e cálculo de imposto individuais.",
         `Modo: ${modeLabel(config.mode)}`,
         `Mínimo por movimentação: ${economy.formatMoney(config.minimumMovement)}`,
         `Imposto: ${tax}`,
@@ -112,6 +114,7 @@ function formatHelp(prefix) {
     return [
         "⚙️ CONFIGURAÇÃO DO COFRE",
         "Disponível para administradores do grupo ou servidor.",
+        "As configurações valem para todos os membros; os saldos e impostos são individuais.",
         "",
         "Consulte o estado:",
         `${prefix}configcofre status`,

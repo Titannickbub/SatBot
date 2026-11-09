@@ -12,8 +12,9 @@ const HELP_TEXT = `📋 Configure os registros de auditoria deste grupo ou servi
   {prefix}logs loja on|off
   {prefix}logs sinais on|off
   {prefix}logs advertencias on|off
+  {prefix}logs cofre on|off
 
-Destinos: Discord usa o canal selecionado no painel; WhatsApp usa este chat; Telegram usa o chat principal por padrão.
+Os registros são gerados apenas por alterações feitas no painel web. Destinos: Discord usa o canal selecionado no painel; WhatsApp usa este chat; Telegram usa o chat principal por padrão.
 No Telegram, execute {prefix}logs topico dentro do tópico desejado para direcionar os registros para ele. Use {prefix}logs topico off para voltar ao chat principal.`;
 
 module.exports = {
@@ -69,7 +70,7 @@ module.exports = {
                 ? false
                 : null;
         if (!category || enabled === null) {
-            return message.reply({ text: `${formatStatus(message, current)}\n\nUso: ${message.prefix || "!"}logs <saldo|loja|sinais|advertencias> <on|off>` });
+            return message.reply({ text: `${formatStatus(message, current)}\n\nUso: ${message.prefix || "!"}logs <saldo|loja|sinais|advertencias|cofre> <on|off>` });
         }
         auditLogs.updateConfig(message, { category, categoryEnabled: enabled });
         return message.reply({ text: `✅ Logs de ${auditLogs.CATEGORIES[category]} ${enabled ? "ativados" : "desativados"}.` });
@@ -90,6 +91,7 @@ function formatStatus(message, config) {
             : "Destino: este chat.";
     return [
         `📋 Logs de auditoria: ${config.enabled ? "ativados" : "desativados"}.`,
+        "Somente alterações feitas no painel web são registradas.",
         destination,
         ...categories,
         `Use ${message.prefix || "!"}logs <categoria> on|off para configurar cada tipo.`

@@ -10,6 +10,7 @@ const nofapHelper = require("./nofapHelper");
 const marriage = require("./marriageService");
 const groupSettings = require("./groupSettings");
 const auditLogs = require("./auditLogs");
+const { getCurrentChangelog } = require("./changelog");
 const config = require("./config");
 const activity = require("./activity");
 const antilinkHelper = require("./antilinkHelper");
@@ -95,6 +96,7 @@ function profileMessage(platform, groupId, userId) {
     chatId: groupId,
     chatType: "group",
     userId,
+    auditSource: "web-panel",
     raw
   };
 }
@@ -2490,13 +2492,31 @@ function vaultModeDescription(config) {
   if (config.mode === "tax") {
     const tax = config.taxType === "percent"
       ? `${(config.taxRateBasisPoints / 100).toFixed(2).replace(/\.?0+$/, "").replace(".", ",")}% do saldo`
-      : `${economy.formatMoney(config.taxFixedAmount)} do saldo`;
-    return `Modo de imposto progressivo: cobrança de ${tax} por período completo de 24 horas desde a última movimentação; intervalo menor que 1 hora não cobra imposto.`;
+      : `${economy.formatMoney(config.taxFixedAmount)} por 24 horas`;
+    return `Modo de imposto: ${tax} por 24 horas, acumulado por hora completa após a primeira hora desde sua última movimentação.`;
   }
   if (config.mode === "robbery") {
     return `Modo de roubo permitido: o cofre tem ${config.robberyVaultChance}% de chance de ser atingido em um roubo.`;
   }
   return "Modo impenetrável: o saldo guardado fica seguro contra roubos e não pode ser usado diretamente.";
+}
+
+function describeVaultConfigChanges(previous, next) {
+  const labels = {
+    mode: ["Modo", value => ({
+      secure: "Impenetrável",
+      tax: "Imposto",
+      robbery: "Roubo permitido"
+    })[value] || value],
+    minimumMovement: ["Mínimo por movimentação", value => economy.formatMoney(value)],
+    taxType: ["Tipo de imposto", value => value === "percent" ? "percentual" : "fixo"],
+    taxRateBasisPoints: ["Taxa percentual", value => `${(value / 100).toFixed(2).replace(/\.?0+$/, "").replace(".", ",")}%`],
+    taxFixedAmount: ["Imposto fixo por 24h", value => economy.formatMoney(value)],
+    robberyVaultChance: ["Chance de roubo do cofre", value => `${value}%`]
+  };
+  return Object.entries(labels)
+    .filter(([key]) => previous[key] !== next[key])
+    .map(([key, [label, format]]) => `${label}: ${format(previous[key])} → ${format(next[key])}`);
 }
 
 function renderLocalAccount(data) {
@@ -2506,7 +2526,7 @@ function renderLocalAccount(data) {
   const currency = amount => economy.formatMoney(Number(amount) || 0);
   const accountStats = `<div class="local-stats">
         <article class="local-stat balance-stat"><small>Carteira</small><strong>${currency(data.account.balance)}</strong></article>
-        <article class="local-stat balance-stat"><small>Saldo no cofre</small><strong id="localVaultBalance">${currency(data.account.vaultBalance)}</strong><span>As regras dependem do modo configurado neste grupo.</span></article>
+        <article class="local-stat balance-stat"><small>Saldo no cofre</small><strong id="localVaultBalance">${currency(data.account.vaultBalance)}</strong><span>Regras compartilhadas; saldo e imposto individuais.</span></article>
       </div>`;
   const rankLinks = [
     ["Riqueza", "/rankrico", data.ranks.balance],
@@ -2706,7 +2726,18 @@ function renderLocalBank(data) {
     }).join("")
     : `<p class="bank-muted">Ainda não há registros de economia neste grupo.</p>`;
   const vaultControls = data.economyEnabled
-    ? `<form id="bankVaultForm" class="bank-form"><h3>Movimentar cofre</h3><label for="bankVaultAction">Operação</label><select id="bankVaultAction" name="action"><option value="deposit">Depositar no cofre</option><option value="withdraw">Sacar para a carteira</option></select><label for="bankVaultAmount">Valor em SatCoins</label><input id="bankVaultAmount" name="amount" type="text" inputmode="decimal" placeholder="${(data.vaultConfig.minimumMovement / 100).toFixed(2)}" autocomplete="off" required><small>${escapeHtml(vaultModeDescription(data.vaultConfig))} Mínimo: ${currency(data.vaultConfig.minimumMovement)}. Um depósito e um saque por dia local.</small><button type="submit">Confirmar operação</button><p class="local-feedback" id="bankVaultFeedback" role="status" aria-live="polite"></p></form>`
+    ? `<form id="bankVaultForm" class="bank-form bank-vault-form">
+        <h3>Movimentar cofre</h3>
+        <p class="bank-vault-policy">As regras do cofre são compartilhadas por todos neste grupo/servidor. Seu saldo e eventual imposto são individuais.</p>
+        <small>${escapeHtml(vaultModeDescription(data.vaultConfig))}</small>
+        <label for="bankVaultAction">Operação</label>
+        <select id="bankVaultAction" name="action"><option value="deposit">Depositar no cofre</option><option value="withdraw">Sacar para a carteira</option></select>
+        <label for="bankVaultAmount">Valor em SatCoins</label>
+        <input id="bankVaultAmount" name="amount" type="text" inputmode="decimal" placeholder="${(data.vaultConfig.minimumMovement / 100).toFixed(2)}" autocomplete="off" required>
+        <small>Mínimo: ${currency(data.vaultConfig.minimumMovement)}. Um depósito e um saque por dia local.</small>
+        <button type="submit">Confirmar operação</button>
+        <p class="local-feedback" id="bankVaultFeedback" role="status" aria-live="polite"></p>
+      </form>`
     : `<p class="bank-muted">A movimentação do cofre está indisponível enquanto a economia deste grupo ou servidor estiver desativada.</p>`;
 
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Meu banco · ${escapeHtml(data.groupName)}</title><style>
@@ -2743,10 +2774,12 @@ function renderLocalBank(data) {
     .bank-statement-total strong{color:#c6bdff}
     .bank-transactions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
     .bank-form{display:grid;align-content:start;gap:10px;padding:17px;border:1px solid #ffffff12;border-radius:14px;background:#ffffff04}
+    .bank-vault-form{border-color:#8b7bff44;background:linear-gradient(145deg,#8877ff12,#ffffff04)}
     .bank-form h3{margin:0 0 2px;font-size:16px}
     .bank-form label{color:#cbd3e5;font-size:12px;font-weight:700}
     .bank-form input,.bank-form select{width:100%;min-height:44px;border:1px solid #39445d;border-radius:11px;background:#0e1422;color:#fff;padding:10px 12px;font:inherit}
     .bank-form small{color:var(--muted);font-size:11px;line-height:1.55}
+    .bank-vault-policy{margin:0;padding:10px 12px;border-left:3px solid #a99dff;border-radius:4px 10px 10px 4px;background:#8877ff12;color:#cbd3e5;font-size:12px;line-height:1.55}
     .bank-form button{min-height:44px;border:0;border-radius:11px;background:linear-gradient(120deg,#8877ff,#577cff);color:#fff;font:inherit;font-weight:750;cursor:pointer}
     .bank-form button:disabled{opacity:.6;cursor:wait}
     .local-feedback{min-height:20px;margin:2px 0 0;color:#9cf0cf;font-size:12px;line-height:1.5}
@@ -3860,7 +3893,7 @@ function renderEconomyAdmin(data) {
       <button type="button" role="tab" aria-selected="false" aria-controls="balancesPanel" data-economy-tab="balances">Editar saldo</button>
     </nav>
     <section id="vaultPanel" class="panel" role="tabpanel"><h2>Configurações do cofre</h2>
-      <p class="muted">Impenetrável protege o saldo; Imposto progressivo é calculado por hora completa após a primeira hora, proporcional à taxa configurada para 24 horas; Roubo permitido sorteia entre carteira e cofre conforme as chances configuradas.</p>
+      <p class="muted">As regras abaixo são compartilhadas por todos os membros deste grupo/servidor; os saldos e impostos são individuais. Imposto progressivo é acumulado por hora completa após a primeira hora, proporcional à taxa configurada para 24 horas.</p>
       <div class="setting"><label><input id="includeVault" type="checkbox"> Considerar cofre no ranking de riqueza</label><span id="rankStatus" class="muted">Carregando...</span></div><p id="rankFeedback" class="feedback" role="status"></p>
       <form id="vaultConfigForm" class="grid" style="margin-top:16px">
         <label>Modo do cofre<select name="mode"><option value="secure">Impenetrável — saldo seguro</option><option value="tax">Imposto progressivo</option><option value="robbery">Roubo permitido</option></select></label>
@@ -3870,7 +3903,7 @@ function renderEconomyAdmin(data) {
         <label>Chance de o roubo atingir o cofre (%)<input name="robberyVaultChance" type="number" min="0" max="100" step="1" required><small class="muted">A chance restante será aplicada à carteira.</small></label>
         <div><button class="primary" type="submit">Salvar configurações do cofre</button></div>
       </form><p id="vaultConfigFeedback" class="feedback" role="status"></p>
-      <p class="muted">Cada pessoa pode fazer um depósito e um saque por dia local. O imposto configurado por 24 horas é acumulado proporcionalmente por hora completa desde a movimentação anterior; a primeira hora não gera cobrança.</p>
+      <p class="muted">Cada pessoa pode fazer um depósito e um saque por dia local. Alterar as regras não altera a data da última movimentação de nenhum membro.</p>
     </section>
     <section id="storePanel" class="panel" role="tabpanel" hidden><h2>Loja Local</h2><p class="muted">Gerencie itens do catálogo e pedidos do Mercado Local.</p>
       <nav class="tabs" role="tablist" aria-label="Gerenciamento da Loja Local">
@@ -4382,6 +4415,14 @@ function renderGroupAdmin(data) {
       return result;
     }
     const auditLogsToggle=document.getElementById("auditLogsEnabled");
+    const vaultAuditCategoryLabel=document.createElement("label");
+    const vaultAuditCategoryInput=document.createElement("input");
+    vaultAuditCategoryInput.type="checkbox";
+    vaultAuditCategoryInput.dataset.auditCategory="vault";
+    vaultAuditCategoryLabel.append(vaultAuditCategoryInput,document.createTextNode(" Movimentações e configurações do cofre"));
+    document.querySelector('[data-audit-category="warnings"]').parentElement.append(vaultAuditCategoryLabel);
+    document.getElementById("auditLogsEnabled").closest(".moderation-card").querySelector(".moderation-help").textContent=
+      "Registra somente alterações feitas no painel web: saldo, loja local, loja de sinais, advertências e movimentações/configurações do cofre.";
     const auditLogCategories=[...document.querySelectorAll("[data-audit-category]")];
     const auditLogsFeedback=document.getElementById("auditLogsFeedback");
     let auditLogsConfig=null;
@@ -6468,7 +6509,47 @@ function homeStyles() {
   return `:root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb;--text:#f5f7fb;--muted:#9da8bd;--line:#334366}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:0 28px;background:radial-gradient(ellipse at 50% -18%,#344779 0,transparent 48%),radial-gradient(circle at 95% 82%,#432d67 0,transparent 30%),linear-gradient(155deg,#111522 0%,#0c1019 65%,#10121d 100%)}button,input{font-family:inherit}a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid #a99dff;outline-offset:3px}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}`;
 }
 
-function renderHome(botName, central = null, loginError = "") {
+function renderChangelog(botName) {
+  const changelog = getCurrentChangelog();
+  const renderList = items => items.map(item => `<li>${escapeHtml(item)}</li>`).join("");
+  const platformLabels = { whatsapp: "WhatsApp", discord: "Discord", telegram: "Telegram" };
+  const summaries = Object.entries(changelog.platformSummaries)
+    .map(([platform, summary]) => `<article class="summary-card"><h3>${platformLabels[platform]}</h3><p>${escapeHtml(summary)}</p></article>`)
+    .join("");
+
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Novidades · ${escapeHtml(botName)}</title><style>
+    ${homeStyles()}
+    .release-page{width:min(900px,100%);margin:0 auto;padding:28px 0 52px}
+    .button{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:9px 13px;border:1px solid var(--line);border-radius:11px;background:#ffffff08;color:var(--text);font-size:13px;font-weight:700;text-decoration:none}
+    .button:hover{border-color:#8599ff88;background:#8599ff12}
+    .release-nav{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:20px;border-bottom:1px solid var(--line)}
+    .release-links{display:flex;flex-wrap:wrap;gap:10px}
+    .release-hero{margin:28px 0 18px;padding:27px;border:1px solid #8b7bff44;border-radius:20px;background:linear-gradient(125deg,#8877ff20,#577cff0c)}
+    .release-eyebrow{color:#b9c6ff;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+    .release-hero h1{margin:8px 0;font-size:clamp(28px,5vw,40px)}
+    .release-hero p{margin:0;color:#c1c9df;line-height:1.6}
+    .release-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .release-card{padding:21px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#171d2b,#131925)}
+    .release-card h2{margin:0 0 12px;font-size:18px}
+    .release-card ul{display:grid;gap:11px;margin:0;padding-left:20px;color:#c4cce0;line-height:1.6}
+    .release-card li::marker{color:#a99dff}
+    .platform-summaries{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}
+    .summary-card{padding:17px;border:1px solid #ffffff12;border-radius:14px;background:#ffffff05}
+    .summary-card h3{margin:0 0 7px;font-size:14px}
+    .summary-card p{margin:0;color:#b9c4d9;font-size:12px;line-height:1.6}
+    @media(max-width:680px){body{padding:0 18px}.release-page{padding-top:20px}.release-grid,.platform-summaries{grid-template-columns:1fr}.release-nav{align-items:flex-start}}
+  </style></head><body><main class="release-page">
+    <nav class="release-nav" aria-label="Navegação principal"><a class="button" href="/">← Home</a><div class="release-links"><a class="button" href="/dashboard">Dashboard</a><a class="button" href="/novidades">Novidades</a></div></nav>
+    <header class="release-hero"><span class="release-eyebrow">Versão atual</span><h1>Novidades · v${escapeHtml(changelog.version)}</h1><p>Resumo desta versão. As notas são atualizadas junto com o conteúdo centralizado do changelog.</p></header>
+    <div class="release-grid">
+      <section class="release-card"><h2>✨ Novas funções</h2><ul>${renderList(changelog.features)}</ul></section>
+      <section class="release-card"><h2>🛠️ Correções</h2><ul>${renderList(changelog.fixes)}</ul></section>
+    </div>
+    <section class="release-card" style="margin-top:14px"><h2>🌐 Resumo por plataforma</h2><div class="platform-summaries">${summaries}</div></section>
+  </main></body></html>`;
+}
+
+function renderHome(botName, central = null, loginError = "", hasSession = Boolean(central)) {
   const safeBotName = escapeHtml(botName);
   if (central) {
     const vipHelper = require("./vipHelper");
@@ -6508,7 +6589,7 @@ function renderHome(botName, central = null, loginError = "") {
     .brand{display:flex;align-items:center;gap:12px;font-weight:800;letter-spacing:.02em}
     .brand-mark{width:42px;height:42px;display:grid;place-items:center;border-radius:14px;background:linear-gradient(145deg,#8f79ff,#536eff);box-shadow:0 8px 24px #645fff55;font-size:21px}
     .brand small{display:block;margin-top:2px;color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
-    .top-actions{display:flex;align-items:center;gap:12px}
+    .top-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap}
     .secure-badge,.connected{display:inline-flex;align-items:center;gap:7px;color:#9cf0cf;font-size:12px;font-weight:700}
     .secure-badge:before,.connected:before{content:"";width:7px;height:7px;border-radius:50%;background:#58d6a3;box-shadow:0 0 12px #58d6a377}
     .button{display:inline-flex;align-items:center;justify-content:center;gap:9px;border:1px solid var(--line);border-radius:12px;background:#ffffff08;color:var(--text);padding:11px 16px;font:inherit;font-size:14px;font-weight:700;text-decoration:none;cursor:pointer;transition:transform .18s ease,border-color .18s ease,background .18s ease}
@@ -6591,16 +6672,16 @@ function renderHome(botName, central = null, loginError = "") {
     .password-recovery summary{color:#b9c6ff;font-size:13px;font-weight:700;cursor:pointer}
     .password-recovery p{color:var(--muted);font-size:12px;line-height:1.7}
     footer{display:flex;justify-content:space-between;gap:12px;margin-top:28px;color:#71809d;font-size:12px}
-    @media(max-width:720px){.dashboard{padding:22px 0 38px}.welcome{padding:26px}.stats{grid-template-columns:1fr}.account-layout{grid-template-columns:1fr}.account-menu{grid-template-columns:1fr}.account-action{min-height:0}.topbar{align-items:flex-start}.secure-badge{display:none}}
+    @media(max-width:720px){.dashboard{padding:22px 0 38px}.welcome{padding:26px}.stats{grid-template-columns:1fr}.account-layout{grid-template-columns:1fr}.account-menu{grid-template-columns:1fr}.account-action{min-height:0}.topbar{align-items:flex-start}.top-actions{gap:7px}.secure-badge{display:none}}
     @media(max-width:480px){.nofap-overview{grid-template-columns:auto 1fr}.nofap-overview strong{grid-column:2;text-align:left}}
-    @media(max-width:420px){body{padding:0 18px}.topbar{padding-bottom:18px}.brand-mark{width:38px;height:38px}.button{padding:9px 11px;font-size:12px}.welcome{padding:23px 20px}.platform-card .connected{font-size:0}.platform-card .connected:before{width:8px;height:8px}}
+    @media(max-width:420px){body{padding:0 18px}.topbar{padding-bottom:18px}.brand-mark{width:38px;height:38px}.top-actions{gap:6px}.button{padding:9px 11px;font-size:12px}.welcome{padding:23px 20px}.platform-card .connected{font-size:0}.platform-card .connected:before{width:8px;height:8px}}
   </style>
 </head>
 <body>
   <main class="dashboard">
     <nav class="topbar" aria-label="Navegação principal">
         <div class="brand"><span class="brand-mark">✦</span><span>${safeBotName}<small>PAINEL DA CONTA</small></span></div>
-        <div class="top-actions"><span class="secure-badge">Sessão protegida</span><button class="button" id="logout" type="button">Sair <span aria-hidden="true">↗</span></button></div>
+        <div class="top-actions"><a class="button" href="/">Home</a><a class="button" href="/novidades">Novidades</a><span class="secure-badge">Sessão protegida</span><button class="button" id="logout" type="button">Sair <span aria-hidden="true">↗</span></button></div>
     </nav>
     <section class="welcome">
         <div class="eyebrow">Sua central de controle</div>
@@ -6799,6 +6880,7 @@ function renderHome(botName, central = null, loginError = "") {
     ${homeStyles()}
     .landing{width:min(1080px,100%);min-height:100vh;margin:auto;display:flex;flex-direction:column}
     .topbar{display:flex;align-items:center;justify-content:space-between;padding:27px 0}
+    .top-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap}
     .brand{display:flex;align-items:center;gap:12px;font-weight:800;letter-spacing:.02em}
     .brand-mark{width:42px;height:42px;display:grid;place-items:center;border-radius:14px;background:linear-gradient(145deg,#8f79ff,#536eff);box-shadow:0 8px 24px #645fff55;font-size:21px}
     .brand small{display:block;margin-top:2px;color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
@@ -6850,7 +6932,7 @@ function renderHome(botName, central = null, loginError = "") {
     @keyframes spin{to{transform:rotate(360deg)}}
     @keyframes modal-in{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
     @media(max-width:760px){.hero{grid-template-columns:1fr;gap:8px}.hero-art{min-height:190px}.orbit{width:170px;height:170px}.orbit-core{width:82px;height:82px;border-radius:25px;font-size:40px}.features{grid-template-columns:1fr}.feature{display:flex;gap:13px;align-items:flex-start}.feature-icon{flex:none;margin:0}.hero{margin-bottom:24px}}
-    @media(max-width:480px){body{padding:0 18px}.topbar{padding:19px 0}.brand-mark{width:38px;height:38px}.top-link{font-size:11px}.hero{padding:26px 21px;border-radius:21px}.hero h1{font-size:43px}.hero-copy{font-size:14px}.hero-art{min-height:160px}.orbit{width:145px;height:145px}.orbit-chip{width:40px;height:40px}.features{margin-bottom:30px}.page-footer{font-size:10px}}
+    @media(max-width:480px){body{padding:0 18px}.topbar{padding:19px 0;gap:10px}.top-actions{gap:7px}.brand-mark{width:38px;height:38px}.top-link{font-size:11px}.top-actions .button{padding:9px 10px;font-size:11px}.hero{padding:26px 21px;border-radius:21px}.hero h1{font-size:43px}.hero-copy{font-size:14px}.hero-art{min-height:160px}.orbit{width:145px;height:145px}.orbit-chip{width:40px;height:40px}.features{margin-bottom:30px}.page-footer{font-size:10px}}
     #help[hidden],#loginForm[hidden]{display:none}
   </style>
 </head>
@@ -6858,7 +6940,7 @@ function renderHome(botName, central = null, loginError = "") {
   <div class="landing">
     <nav class="topbar" aria-label="Navegação principal">
       <div class="brand"><span class="brand-mark">✦</span><span>${safeBotName}<small>PAINEL DO BOT</small></span></div>
-      <a class="top-link" href="/perfil?grupo=ID&amp;usuario=ID&amp;plataforma=discord">Ver exemplo de perfil <span aria-hidden="true">↗</span></a>
+      <div class="top-actions">${hasSession ? '<a class="button" href="/dashboard">Abrir dashboard</a>' : ""}<a class="button" href="/novidades">Novidades</a><a class="top-link" href="/perfil?grupo=ID&amp;usuario=ID&amp;plataforma=discord">Ver exemplo de perfil <span aria-hidden="true">↗</span></a></div>
     </nav>
     <main>
       <section class="hero">
@@ -6866,7 +6948,9 @@ function renderHome(botName, central = null, loginError = "") {
           <span class="eyebrow">Seu espaço, suas comunidades</span>
           <h1>Seu bot.<br><span>Tudo conectado.</span></h1>
           <p class="hero-copy">Acesse sua Conta Central e acompanhe em um só lugar as conexões e recursos do ${safeBotName}.</p>
-          <div class="hero-actions"><button class="button primary" id="openLogin" type="button">Entrar no painel <span aria-hidden="true">→</span></button><button class="button" id="openHelp" type="button">Não sei meu login ou senha</button></div>
+          <div class="hero-actions">${hasSession
+            ? '<a class="button primary" href="/dashboard">Abrir meu dashboard <span aria-hidden="true">→</span></a>'
+            : '<button class="button primary" id="openLogin" type="button">Entrar no painel <span aria-hidden="true">→</span></button><button class="button" id="openHelp" type="button">Não sei meu login ou senha</button>'}</div>
           ${securityNotice}
         </div>
         <div class="hero-art" aria-hidden="true"><div class="orbit"><span class="orbit-core">✦</span><span class="orbit-chip chip-one">◈</span><span class="orbit-chip chip-two">⌁</span><span class="orbit-chip chip-three">✧</span></div></div>
@@ -6899,8 +6983,10 @@ function renderHome(botName, central = null, loginError = "") {
     const form=document.getElementById("loginForm");
     const helpSection=document.getElementById("help");
     const dialogTitle=document.getElementById("dialogTitle");
-    document.getElementById("openLogin").onclick=()=>{form.hidden=false;helpSection.hidden=true;dialogTitle.textContent="Entrar no painel";dialog.showModal()};
-    document.getElementById("openHelp").onclick=()=>{form.hidden=true;helpSection.hidden=false;dialogTitle.textContent="Recuperar acesso";dialog.showModal()};
+    const openLogin=document.getElementById("openLogin");
+    const openHelp=document.getElementById("openHelp");
+    if(openLogin)openLogin.onclick=()=>{form.hidden=false;helpSection.hidden=true;dialogTitle.textContent="Entrar no painel";dialog.showModal()};
+    if(openHelp)openHelp.onclick=()=>{form.hidden=true;helpSection.hidden=false;dialogTitle.textContent="Recuperar acesso";dialog.showModal()};
     document.getElementById("closeDialog").onclick=()=>dialog.close();
     form.onsubmit=async event=>{
       event.preventDefault();
@@ -6910,7 +6996,7 @@ function renderHome(botName, central = null, loginError = "") {
         const response=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({login:document.getElementById("loginIdentifier").value,password:document.getElementById("password").value,rememberMe:document.getElementById("rememberMe").checked})});
         const result=await response.json();
         if(!response.ok)throw new Error(result.error||"Falha no login.");
-        location.href="/";
+        location.href="/dashboard";
       }catch(err){error.textContent=err.message}
     };
   </script>
@@ -7995,6 +8081,7 @@ function start() {
               !Number.isSafeInteger(input.robberyVaultChance) || input.robberyVaultChance < 0 || input.robberyVaultChance > 100) {
             throw new Error("Informe valores válidos para o mínimo, imposto e chance de roubo.");
           }
+          const previousVaultConfig = economy.getVaultConfig(message);
           const vaultConfig = economy.updateVaultConfig(message, {
             mode: input.mode,
             minimumMovement: input.minimumMovement,
@@ -8004,6 +8091,14 @@ function start() {
             robberyVaultChance: input.robberyVaultChance
           });
           if (!vaultConfig) throw new Error("Configuração do cofre inválida.");
+          const changes = describeVaultConfigChanges(previousVaultConfig, vaultConfig);
+          if (changes.length) {
+            await auditLogs.log(
+              message,
+              "vault",
+              `👤 Responsável: ${auditLogs.describeActor(message)}\nAlterações: ${changes.join("; ")}`
+            );
+          }
           sendJson(response, 200, { success: true, vaultConfig });
         } catch (error) {
           const reason = String(error?.message || "");
@@ -9040,7 +9135,19 @@ function start() {
       return;
     }
 
-    if (requestUrl.pathname === "/" || requestUrl.pathname === "/index.html" || requestUrl.pathname === "/dashboard") {
+    if (request.method === "GET" && (requestUrl.pathname === "/" || requestUrl.pathname === "/index.html")) {
+      const central = await getSessionCentral(request);
+      response.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff"
+      });
+      response.end(renderHome(config.getBotName(), null, "", Boolean(central)));
+      return;
+    }
+
+    if (request.method === "GET" && requestUrl.pathname === "/dashboard") {
       const central = await getSessionCentral(request);
       response.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
@@ -9049,6 +9156,17 @@ function start() {
         "X-Content-Type-Options": "nosniff"
       });
       response.end(renderHome(config.getBotName(), central));
+      return;
+    }
+
+    if (request.method === "GET" && requestUrl.pathname === "/novidades") {
+      response.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff"
+      });
+      response.end(renderChangelog(config.getBotName()));
       return;
     }
 
@@ -9236,4 +9354,4 @@ function start() {
   return server;
 }
 
-module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking, renderLocalAccount, renderLocalBank, renderSignalSearch, renderCosmeticsStore, renderShopCatalog, renderGroupAdmin, renderEconomyAdmin, canManagePlatformGroup };
+module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking, renderChangelog, renderLocalAccount, renderLocalBank, renderSignalSearch, renderCosmeticsStore, renderShopCatalog, renderGroupAdmin, renderEconomyAdmin, canManagePlatformGroup };

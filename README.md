@@ -97,6 +97,13 @@ Os recursos e a forma de uso podem variar entre as plataformas.
 
 Consulte [VIP e `set_vip`](./docs/setvip.md) para detalhes sobre as opções VIP.
 
+### 📰 Novidades
+
+Consulte as alterações da versão atual em `/novidades` no painel web ou use
+`!novidades` (alias: `!changelog`) no bot. A página e o comando leem a versão de
+`package.json`; o conteúdo centralizado, separado entre novas funções e
+correções, fica em [`functions/changelog.js`](./functions/changelog.js).
+
 ### 🎮 Entretenimento e RPG
 
 - Comandos de interação e brincadeiras entre membros.
