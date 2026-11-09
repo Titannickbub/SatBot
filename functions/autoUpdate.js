@@ -1,12 +1,12 @@
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
-const { spawnSync } = require("child_process");
 const config = require("./config");
 
 const rootDir = path.join(__dirname, "..");
 const packagePath = path.join(rootDir, "package.json");
-const remotePackageUrl = "https://raw.githubusercontent.com/Titannickbub/SatBot/main/package.json";
+const updateBranch = "beta";
+const remotePackageUrl = `https://raw.githubusercontent.com/Titannickbub/SatBot/${updateBranch}/package.json`;
 
 function readLocalPackage() {
     return JSON.parse(fs.readFileSync(packagePath, "utf8"));
@@ -56,20 +56,9 @@ function isEnabled() {
     return config.getAutoUpdateEnabled();
 }
 
-function runUpdater() {
-    const script = process.platform === "win32" ? "update.bat" : "update.sh";
-    const scriptPath = path.join(rootDir, script);
-    if (!fs.existsSync(scriptPath)) throw new Error(`${script} não encontrado`);
-    const command = process.platform === "win32" ? scriptPath : "bash";
-    const args = process.platform === "win32" ? [] : [scriptPath];
-    const result = spawnSync(command, args, { cwd: rootDir, stdio: "inherit" });
-    if (result.error) throw result.error;
-    if (result.status !== 0) throw new Error(`atualizador terminou com código ${result.status}`);
-}
-
 async function checkAndUpdate() {
     const local = readLocalPackage();
-    console.log(`[AUTO-UPDATE] Status na inicialização: ${isEnabled() ? "ATIVADO" : "DESATIVADO"}.`);
+    console.log(`[AUTO-UPDATE] Canal ${updateBranch}: atualização automática desativada; use update_beta.bat/update_beta.sh manualmente.`);
     const status = await getVersionStatus(local);
     if (status.error) {
         console.warn(`[AUTO-UPDATE] ${status.error}`);
@@ -83,15 +72,8 @@ async function checkAndUpdate() {
     }
 
     console.warn(`[AUTO-UPDATE] Nova versão disponível: ${status.remoteVersion} (local: ${local.version}).`);
-    if (!isEnabled()) {
-        console.warn("[AUTO-UPDATE] Auto Update desativado. Atualize manualmente com update.bat/update.sh ou ignore este aviso para permanecer na versão atual.");
-        console.warn("[AUTO-UPDATE] Para ativar a atualização automática permanente, use !autoupdate on. Ela ocorrerá na próxima reinicialização.");
-        return false;
-    }
-
-    console.log("[AUTO-UPDATE] Atualização ativada; executando o atualizador antes da inicialização.");
-    runUpdater();
-    return true;
+    console.warn(`[AUTO-UPDATE] Há uma versão beta disponível. Para atualizar, execute update_beta.bat/update_beta.sh manualmente.`);
+    return false;
 }
 
 async function getVersionStatus(local = readLocalPackage()) {

@@ -1,7 +1,7 @@
 {
   "name": "SatBot",
   "version": "1.2.74",
-  "description": "descriçao, animation, outline fix, act fix",
+  "description": "beta version of SatBot",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
