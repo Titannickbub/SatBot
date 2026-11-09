@@ -17,9 +17,15 @@ pelo prefixo configurado.
   - **WhatsApp:** grupos de conversa. **Não** funciona em comunidades nem em
     conversas privadas.
   - **Telegram:** chat principal ou tópico específico.
-  - **Discord:** canal de texto ou thread. **Apenas um canal** pode estar
-    ativo por servidor — ativar em outro canal desativa o anterior
-    automaticamente.
+  - **Discord:** a configuração pelo painel web vale para o servidor inteiro
+    e permite escolher um canal de texto de destino. A configuração por
+    comando continua sendo feita no canal em que o comando é usado; se a
+    configuração do servidor pelo painel estiver ativa, ela tem prioridade.
+
+No painel administrativo, use **Ir para o painel** no cartão de Boas-vindas
+para abrir a página compartilhada com as despedidas. No Discord, escolha o
+canal de destino nessa página; a ativação e desativação permanecem no cartão
+principal. No Telegram, a página permite configurar o grupo todo ou um tópico.
 
 ---
 

@@ -16,9 +16,18 @@ O prefixo nos exemplos é `!`. Se o prefixo do bot foi alterado, substitua-o pel
 - **Quem pode configurar:** apenas **administradores** do chat e superusuários do bot.
 - **Níveis hierárquicos:**
   - **Discord:** `server`, `categoria` e `chat`.
-  - **WhatsApp:** `chat` (grupo) ou `server` (comunidade).
-  - **Telegram:** `server` (grupo) ou `chat` (tópico em fóruns).
-  - *(Se o nível for omitido, a configuração será aplicada ao canal/chat atual).*
+  - **WhatsApp:** somente o grupo aberto no painel.
+  - **Telegram:** grupo todo + chat principal ou um tópico específico, quando o grupo usa tópicos.
+
+## Painel administrativo do antimídia
+
+As configurações ficam na página **Antimídia**, acessada pelo cartão na categoria **Proteção** do painel administrativo. O painel central mantém o status e o acesso à página; as opções de mídia, ação, mensagem e exceções são configuradas na página dedicada.
+
+- **WhatsApp:** configure somente o grupo aberto no painel.
+- **Telegram:** grupos sem tópicos usam o escopo geral; grupos com tópicos permitem escolher entre **Grupo todo + chat principal** e um tópico.
+- **Discord:** escolha o servidor, uma categoria ou um chat dentro da categoria.
+
+A opção **Ignorar as regras dos escopos superiores** aparece somente em escopos que herdam regras — nunca no grupo geral ou no servidor.
 
 ---
 

@@ -112,8 +112,10 @@ Agrupar eventos de entrada/saída e automações operacionais:
 - Agendamentos de mensagens por horário ou intervalo, com repetição única,
   diária, semanal ou mensal, texto e mídia; bolsa, café, clima, previsão
   aleatória e apuração eleitoral. Cada monitor tem configurações detalhadas
-  para ativos, fontes/modo, cidades, horários ou consultas eleitorais. Os
-  agendamentos ficam vinculados ao chat ou tópico selecionado.
+  para ativos, fontes/modo, cidades, horários ou consultas eleitorais.
+  Agendamentos e monitores têm páginas dedicadas. A página de agendamentos
+  separa criação e edição e lista todos os envios do grupo/servidor, indicando
+  o canal no Discord e o tópico no Telegram.
 - Crossplay, com estado da ponte, chats vinculados e preferências de mídia.
 - Canal de avisos de comunidade, quando aplicável.
 
@@ -139,35 +141,36 @@ Separar em três cartões/telas próprias:
 Não misturar configurações dos sistemas com ações de edição de dados dos
 membros.
 
-Na seção de sistemas, o WhatsApp reúne controles de ativação/desativação por
-grupo e anuncia cada mudança no próprio grupo, mencionando o administrador que
-a fez. Discord e Telegram mostram primeiro as opções gerais do servidor/grupo.
-Os controles de escopo e o filtro que limita a lista ao escopo escolhido ficam
-no topo da seção. No Discord, escolher uma categoria ou chat também atualiza o
-filtro automaticamente; no Telegram, isso ocorre ao escolher um tópico. O
-filtro pode ser alterado livremente sem bloquear a navegação entre escopos.
-No WhatsApp, o antilink, antimídia e antipalavras podem ser configurados no
-grupo e, quando ele pertence a uma comunidade registrada e o recurso suporta
-esse escopo, também na comunidade. O menu do antimídia permite escolher os
+Na seção de sistemas, o painel principal reúne os cartões aplicáveis à
+plataforma e mantém os controles rápidos de ativação/desativação no escopo
+geral: grupo no WhatsApp e Telegram, servidor no Discord. Não há seletor de
+categoria, chat ou tópico nessa página. Quando uma função exige um escopo mais
+específico, o cartão informa isso e oferece acesso à página dedicada, quando
+existente; não exibe um estado global nem permite ativá-la no escopo errado.
+Os seletores operacionais independentes, como o canal de logs do Discord e o
+canal usado para abrir/fechar um chat, continuam disponíveis.
+
+Antilink, antimídia, antipalavras, antiraid e bloqueio de comandos têm páginas
+dedicadas para escolher o escopo e editar regras. No Discord, é possível
+selecionar servidor, categoria ou chat; no Telegram, grupo/chat principal ou
+tópico; no WhatsApp, somente o grupo. O menu do antimídia permite escolher os
 tipos de mídia bloqueados, ação, mensagem, herança e listas de usuários (e de
 cargos no Discord). Se nenhum tipo for marcado, todos os tipos de mídia são
 bloqueados. Antipalavras permite editar a lista de palavras/frases, ação,
 mensagem, herança e exceções. Antiraid permite ajustar limites de mensagens,
 repetições, links, convites, menções e, no Discord, webhooks, além da ação e
-listas de exceção, respeitando as opções suportadas em cada plataforma. No Telegram, o
-seletor de tópico só é exibido em grupos configurados como fórum. O controle do
-antilink inclui um menu próprio para ação, mensagem, herança, exceções e listas
-permitidas/bloqueadas, respeitando os campos suportados em cada plataforma;
-ações de expulsão/banimento exigem a permissão correspondente do bot.
-O bloqueio de comandos permite editar a lista de comandos/categorias, a ação
-(avisar, ignorar ou apagar), a mensagem personalizada e a herança por escopo;
-apagar mensagens exige a permissão correspondente do bot.
-Respostas automáticas têm um menu para manter os gatilhos locais (mensagem
+listas de exceção. O antilink permite configurar ação, mensagem, herança,
+exceções e listas permitidas/bloqueadas. O bloqueio de comandos permite editar
+a lista de comandos/categorias, a ação (avisar, ignorar ou apagar), a mensagem
+personalizada e a herança por escopo. Ações de expulsão/banimento e apagar
+mensagens exigem a permissão correspondente do bot. No Telegram, o seletor de
+tópicos só é exibido em grupos configurados como fórum.
+Respostas automáticas têm um diálogo no cartão para manter os gatilhos locais (mensagem
 exata, contém ou começa com; resposta de texto ou reação; conteúdo e intervalo
 entre respostas) e ativar/desativar o catálogo global oficial. O catálogo
 global é somente leitura no painel; o estado geral da automação continua no
 controle de ativação/desativação do cartão.
-O Auto-download possui uma configuração para excluir, depois do envio da mídia,
+O Auto-download possui um diálogo no cartão para excluir, depois do envio da mídia,
 a mensagem que continha o link original. O estado de ativação continua no
 controle do cartão e as opções aparecem apenas nos escopos suportados pela
 plataforma.
@@ -176,20 +179,22 @@ principal, mesmo quando a alteração foi feita em um tópico. No Discord, os
 avisos do dashboard são enviados ao canal de logs escolhido no painel ou pelo
 comando `logs_chanel`; o ID fica salvo em `settings.logsChannelId` no arquivo
 do servidor.
-Boas-vindas e despedidas podem ser configuradas no próprio painel: texto,
+Boas-vindas e despedidas são configuradas em uma página dedicada compartilhada: texto,
 formato texto/mídia e arquivo de imagem ou vídeo (JPEG, PNG, WebP, GIF ou MP4,
 até 8 MB). As variáveis disponíveis no texto são `{user}`, `{mention}`,
-`{group}`, `{server}`, `{count}` e `{members}`. No Discord, a ativação continua
-respeitando a regra do helper de manter apenas um canal ativo por servidor.
-No Discord, proteções compatíveis e transcrição automática também podem ser
-configuradas por categoria e canal; boas-vindas, despedidas, Auto-IA e download
-automático aparecem no escopo de canal quando suportados. No Telegram, grupos
-com tópicos permitem configurações independentes por tópico somente para
-recursos cujos helpers suportam esse nível. A seleção de tópicos inclui os que
-o bot já observou e registrou, pois a Bot API não permite listar tópicos
-desconhecidos. Recursos globais, como atividade, XP e economia, permanecem no
-escopo de servidor/grupo. Alterações de texto e mídia preservam o estado de
-ativação e os outros campos já armazenados.
+`{group}`, `{server}`, `{count}` e `{members}`. No Discord, ambas as funções
+valem para o servidor e permitem escolher o canal de destino; a ativação
+continua no cartão do painel principal. No Telegram, grupos com tópicos
+permitem configurações independentes por tópico. No WhatsApp, as configurações
+se aplicam somente ao grupo.
+No Discord, transcrição automática também pode ser configurada no escopo geral;
+recursos limitados a categoria/chat são acessados pelas páginas que oferecem
+essa seleção. No Telegram, grupos com tópicos permitem configurações
+independentes por tópico somente para recursos cujos helpers suportam esse
+nível. A seleção de tópicos inclui os que o bot já observou e registrou, pois
+a Bot API não permite listar tópicos desconhecidos. Recursos globais, como
+atividade, XP e economia, permanecem no escopo de servidor/grupo. Alterações de
+texto e mídia preservam o estado de ativação e os outros campos já armazenados.
 
 ### 6. Membros e cargos
 
@@ -243,7 +248,7 @@ Legenda:
 | Criar link de convite | Condicional | Condicional | Condicional | O comando verifica permissões de convite do usuário e do bot antes de continuar. |
 | Marcar membros | Disponível | Não disponível | Disponível | `marcar` declara suporte a WhatsApp e Discord. |
 | Proteções antilink/antimídia/antipalavras/anti-raid/bloqueio de comandos | Comum | Comum | Comum | A hierarquia varia: comunidade/grupo no WhatsApp; grupo/tópico no Telegram; servidor/categoria/canal no Discord. |
-| Boas-vindas/despedidas | Condicional | Condicional | Condicional | WhatsApp somente em grupos de conversa. Telegram permite chat/tópico. Discord mantém um único canal ativo por servidor. |
+| Boas-vindas/despedidas | Condicional | Condicional | Condicional | WhatsApp somente em grupos de conversa. Telegram permite grupo/tópico. No painel web, Discord aplica ao servidor e permite escolher o canal de destino. |
 | Autoaceitar pedidos de entrada | Disponível | Disponível | Não disponível | Exclusivo de grupos WhatsApp e Telegram. |
 | Autofigu | Disponível | Disponível | Não disponível | Exclusivo de grupos WhatsApp e Telegram. |
 | Atividade, XP e economia local | Comum | Comum | Comum | Configurações do grupo; XP pode direcionar avisos a canal (Discord) ou tópico (Telegram). |

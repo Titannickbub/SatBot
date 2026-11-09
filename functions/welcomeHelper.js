@@ -153,6 +153,21 @@ function getDefaultGoodbyeConfig() {
 
 function _findDiscordNode(serverId, chatId, threadId, key) {
     const data = loadSettings("discord", serverId, "server");
+    if (!chatId) {
+        const defaults = key === "goodbye" ? getDefaultGoodbyeConfig() : getDefaultWelcomeConfig();
+        if (data.settings?.[key]?.enabled) {
+            return { config: { ...defaults, ...data.settings[key] }, foundNode: null, data };
+        }
+        const chats = [
+            ...(Array.isArray(data.categoria) ? data.categoria.flatMap(category => category.chat || []) : []),
+            ...(Array.isArray(data.chat) ? data.chat : [])
+        ];
+        const legacyNode = chats.find(chat => chat.settings?.[key]?.enabled);
+        const config = legacyNode
+            ? { ...defaults, ...legacyNode.settings[key], channelId: String(legacyNode.id) }
+            : data.settings?.[key] ? { ...defaults, ...data.settings[key] } : defaults;
+        return { config, foundNode: legacyNode || null, data };
+    }
     let foundNode = null;
 
     const findInChats = (chats) => {
@@ -252,8 +267,14 @@ function _saveConfig(platform, serverId, chatId, threadId, newConfig, key) {
         if (!serverId) throw new Error("ID do servidor não especificado.");
         const data = loadSettings("discord", serverId, "server");
 
-        // Regra de canal único: ao ativar, desativa nos outros canais do servidor
-        if (newConfig.enabled) {
+        if (!chatId) {
+            const existingChats = [
+                ...(Array.isArray(data.categoria) ? data.categoria.flatMap(category => category.chat || []) : []),
+                ...(Array.isArray(data.chat) ? data.chat : [])
+            ];
+            const legacyNode = existingChats.find(chat => chat.settings?.[key]?.enabled);
+            const previousConfig = data.settings?.[key] ||
+                (legacyNode ? { ...legacyNode.settings[key], channelId: String(legacyNode.id) } : {});
             const disableAll = (chats) => {
                 if (!Array.isArray(chats)) return;
                 for (const ch of chats) {
@@ -269,6 +290,10 @@ function _saveConfig(platform, serverId, chatId, threadId, newConfig, key) {
                 for (const cat of data.categoria) disableAll(cat.chat);
             }
             disableAll(data.chat);
+            data.settings = data.settings || {};
+            data.settings[key] = { ...defaults, ...previousConfig, ...newConfig };
+            saveSettings("discord", serverId, "server", data, { raw: { guild: { id: serverId, name: serverId } } });
+            return true;
         }
 
         let targetNode = null;
@@ -510,6 +535,12 @@ async function handleDiscordMemberJoin(member) {
         let activeChannelId = null;
         let activeConfig = null;
 
+        if (data.settings?.welcome?.enabled) {
+            activeConfig = data.settings.welcome;
+            activeChannelId = activeConfig.channelId ? String(activeConfig.channelId) : null;
+            if (!activeChannelId) return;
+        }
+
         const checkChats = (chats) => {
             if (!Array.isArray(chats)) return;
             for (const ch of chats) {
@@ -522,10 +553,10 @@ async function handleDiscordMemberJoin(member) {
             }
         };
 
-        if (Array.isArray(data.categoria)) {
+        if (!activeConfig && Array.isArray(data.categoria)) {
             for (const cat of data.categoria) { checkChats(cat.chat); if (activeChannelId) break; }
         }
-        if (!activeChannelId) checkChats(data.chat);
+        if (!activeConfig && !activeChannelId) checkChats(data.chat);
         if (!activeChannelId || !activeConfig) return;
 
         const channel = member.guild.channels.cache.get(activeChannelId) ||
@@ -555,6 +586,11 @@ async function handleDiscordMemberLeave(member) {
         let activeChannelId = null;
         let activeConfig = null;
 
+        if (data.settings?.goodbye?.enabled) {
+            activeConfig = data.settings.goodbye;
+            activeChannelId = activeConfig.channelId ? String(activeConfig.channelId) : null;
+        }
+
         const checkChats = (chats) => {
             if (!Array.isArray(chats)) return;
             for (const ch of chats) {
@@ -576,17 +612,12 @@ async function handleDiscordMemberLeave(member) {
             return false;
         };
 
-        if (Array.isArray(data.categoria)) {
+        if (!activeConfig && Array.isArray(data.categoria)) {
             for (const cat of data.categoria) {
                 if (checkChats(cat.chat)) break;
             }
         }
-        if (!activeChannelId) checkChats(data.chat);
-
-        if (!activeConfig && data.settings?.goodbye?.enabled) {
-            activeConfig = data.settings.goodbye;
-            activeChannelId = null;
-        }
+        if (!activeConfig && !activeChannelId) checkChats(data.chat);
 
         if (!activeConfig) {
             console.log(`[welcomeHelper] Goodbye do Discord não encontrado para ${guildId}.`);
@@ -597,6 +628,10 @@ async function handleDiscordMemberLeave(member) {
         if (activeChannelId) {
             channel = member.guild.channels.cache.get(activeChannelId) ||
                 await member.guild.channels.fetch(activeChannelId).catch(() => null);
+            if (!channel) {
+                console.log(`[welcomeHelper] O canal de despedidas ${activeChannelId} não está disponível em ${guildId}.`);
+                return;
+            }
         }
 
         if (!channel) {

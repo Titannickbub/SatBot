@@ -91,16 +91,18 @@ module.exports = {
 
 function formatStatus(config, prefix) {
     const tax = config.taxType === "percent"
-        ? `${formatPercent(config.taxRateBasisPoints)} do saldo por período`
-        : `${economy.formatMoney(config.taxFixedAmount)} por período`;
+        ? `${formatPercent(config.taxRateBasisPoints)} do saldo por 24h`
+        : `${economy.formatMoney(config.taxFixedAmount)} por 24h`;
     return [
         "🏦 CONFIGURAÇÃO DO COFRE",
+        "As regras são compartilhadas por todos os membros deste grupo/servidor.",
+        "Cada membro tem saldo e cálculo de imposto individuais.",
         `Modo: ${modeLabel(config.mode)}`,
         `Mínimo por movimentação: ${economy.formatMoney(config.minimumMovement)}`,
         `Imposto: ${tax}`,
         `Roubo: cofre ${config.robberyVaultChance}% · carteira ${100 - config.robberyVaultChance}%`,
         "",
-        "Modos: impenetravel protege o cofre; imposto cobra por períodos completos de 24h (sem cobrança antes de 1h); roubo permite atingir cofre ou carteira.",
+        "Modos: impenetravel protege o cofre; imposto é calculado por hora completa após a primeira hora, proporcional à taxa configurada para 24h; roubo permite atingir cofre ou carteira.",
         `Configure: ${prefix}configcofre modo <impenetravel|imposto|roubo>`,
         `${prefix}configcofre minimo <valor>`,
         `${prefix}configcofre imposto <percentual <0-100>|fixo <valor>>`,
@@ -112,6 +114,7 @@ function formatHelp(prefix) {
     return [
         "⚙️ CONFIGURAÇÃO DO COFRE",
         "Disponível para administradores do grupo ou servidor.",
+        "As configurações valem para todos os membros; os saldos e impostos são individuais.",
         "",
         "Consulte o estado:",
         `${prefix}configcofre status`,
@@ -131,7 +134,7 @@ function formatHelp(prefix) {
         "Defina a chance de o roubo atingir o cofre (a carteira recebe o restante até 100%):",
         `${prefix}configcofre chancecofre 40`,
         "",
-        "O imposto é aplicado após períodos completos de 24 horas desde a última movimentação. Movimentações com menos de 1 hora de intervalo não geram imposto."
+        "O imposto configurado por 24 horas é acumulado proporcionalmente por hora completa desde a última movimentação. A primeira hora não gera cobrança."
     ].join("\n");
 }
 

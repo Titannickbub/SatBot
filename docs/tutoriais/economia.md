@@ -23,7 +23,7 @@ O prefixo nos exemplos é `!`. Se o prefixo do bot foi alterado, substitua-o pel
 O cofre guarda satcoins separadamente da carteira. O saldo guardado não pode ser usado em compras, apostas ou transferências; para voltar a usá-lo, é necessário sacar para a carteira. Administradores podem escolher entre três modos:
 
 - **Impenetrável:** saldo protegido contra roubos, sem cobrança de imposto.
-- **Imposto progressivo:** cobra percentual ou valor fixo por período completo de 24 horas desde a última movimentação. O percentual se aplica ao saldo restante a cada período; o valor fixo é descontado por período. Movimentações com menos de 1 hora de intervalo não geram imposto. O imposto é calculado sobre o saldo anterior do cofre, antes de um depósito.
+- **Imposto progressivo:** as regras são compartilhadas por todos os membros do grupo/servidor, mas cada imposto é calculado sobre o saldo individual do cofre. A taxa configurada para 24 horas é acumulada proporcionalmente por hora completa, sem cobrança na primeira hora. O imposto é calculado sobre o saldo anterior do cofre, antes de um depósito.
 - **Roubo permitido:** além da carteira, o cofre pode ser alvo de roubos. A chance de cada saldo é configurável; o padrão é 40% para o cofre e 60% para a carteira.
 
 ```text
@@ -32,7 +32,7 @@ O cofre guarda satcoins separadamente da carteira. O saldo guardado não pode se
 !cofre sacar 500
 ```
 
-Ao consultar `!cofre`, o bot também mostra o imposto acumulado desde a última movimentação e os comandos de depósito e saque. No modo de imposto, a cobrança é calculada em períodos completos de 24 horas; consultar o cofre não desconta o imposto. A cobrança é aplicada quando uma movimentação é realizada e aparece como despesa no comando `!lucro` e no extrato do banco web, na data em que foi paga.
+Ao consultar `!cofre`, o bot mostra somente o saldo do cofre, as horas acumuladas, o imposto calculado, o modo e a regra de imposto configurada. O tutorial de depósito e saque aparece no final da mensagem. Consultar não desconta imposto. Alterar as configurações não reinicia o relógio de movimentação dos membros; uma mudança de taxa pode afetar o cálculo de todos os cofres individuais do grupo/servidor. A cobrança é aplicada quando uma movimentação é realizada e aparece como despesa no comando `!lucro` e no extrato do banco web, na data em que foi paga.
 
 Cada membro pode fazer **um depósito e um saque por dia local**. O valor mínimo por movimentação é configurável pelos administradores; se o imposto reduzir o saldo antes de um saque, o cofre informa o valor descontado e transfere o que restar. A carteira, o cofre e o patrimônio total aparecem no comando `!carteira` e no banco web local.
 

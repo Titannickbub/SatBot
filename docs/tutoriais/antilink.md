@@ -22,11 +22,21 @@ O prefixo nos exemplos é `!`. Se o prefixo do bot foi alterado, substitua-o pel
 
 Você pode aplicar regras de antilink em diferentes níveis:
 - **Discord:** `server` (todo o servidor), `categoria` (canais sob a mesma categoria) ou `chat` (canal ou thread atual).
-- **WhatsApp:** `chat` (grupo atual) ou `server` (comunidade inteira, quando aplicável).
+- **WhatsApp:** somente o grupo aberto no painel.
 - **Telegram:** `server` (grupo/canal) ou `chat` (tópico de fórum).
 
 > [!NOTE]
 > Se você omitir o nível ao digitar o comando (ex.: `!antilink on`), a alteração será aplicada automaticamente ao nível **`chat`** (o canal ou grupo atual).
+
+## Painel administrativo do antilink
+
+As configurações de antilink ficam na página **Antilink** do painel de administração:
+
+- **WhatsApp:** a configuração é feita somente para o grupo aberto no painel.
+- **Telegram:** grupos sem tópicos usam a configuração geral; grupos com tópicos permitem escolher entre **Grupo todo + chat principal** e um tópico específico.
+- **Discord:** escolha o servidor, uma categoria ou um chat dentro da categoria.
+
+A opção **Ignorar as regras dos escopos superiores** aparece somente em níveis que podem herdar regras. Ela não é exibida no grupo principal do WhatsApp ou Telegram nem no servidor do Discord.
 
 ---
 

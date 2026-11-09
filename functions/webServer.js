@@ -10,6 +10,7 @@ const nofapHelper = require("./nofapHelper");
 const marriage = require("./marriageService");
 const groupSettings = require("./groupSettings");
 const auditLogs = require("./auditLogs");
+const { getCurrentChangelog } = require("./changelog");
 const config = require("./config");
 const activity = require("./activity");
 const antilinkHelper = require("./antilinkHelper");
@@ -51,13 +52,13 @@ const IMMEDIATE_MODERATION_ACTIONS = {
   whatsapp: new Set(["kick"])
 };
 const ADMIN_SYSTEM_SETTINGS = [
-  { key: "antilink", label: "Antilink", description: "Bloqueia links enviados no grupo.", category: "Proteção", scopes: { whatsapp: ["server", "chat"], discord: ["server", "categoria", "chat"], telegram: ["server", "topic"] } },
-  { key: "antimedia", label: "Antimídia", description: "Configura os tipos de mídia bloqueados e a ação aplicada no grupo.", category: "Proteção", scopes: { whatsapp: ["server", "chat"], discord: ["server", "categoria", "chat"], telegram: ["server", "topic"] } },
-  { key: "antipalavras", label: "Antipalavras", description: "Configura palavras e frases bloqueadas e a ação aplicada.", category: "Proteção", scopes: { whatsapp: ["server", "chat"], discord: ["server", "categoria", "chat"], telegram: ["server", "topic"] } },
+  { key: "antilink", label: "Antilink", description: "Bloqueia links enviados no grupo.", category: "Proteção", scopes: { whatsapp: ["chat"], discord: ["server", "categoria", "chat"], telegram: ["server", "topic"] } },
+  { key: "antimedia", label: "Antimídia", description: "Configura os tipos de mídia bloqueados e a ação aplicada no grupo.", category: "Proteção", scopes: { whatsapp: ["chat"], discord: ["server", "categoria", "chat"], telegram: ["server", "topic"] } },
+  { key: "antipalavras", label: "Antipalavras", description: "Configura palavras e frases bloqueadas e a ação aplicada.", category: "Proteção", scopes: { whatsapp: ["chat"], discord: ["server", "categoria", "chat"], telegram: ["server", "topic"] } },
   { key: "antiraid", label: "Antiraid", description: "Ajusta limites de flood, links, menções e a ação de moderação.", category: "Proteção", scopes: { whatsapp: ["chat"], discord: ["server", "categoria", "chat"], telegram: ["server", "topic"] } },
   { key: "blockcmd", label: "Bloqueio de comandos", description: "Configura comandos e categorias bloqueados neste escopo.", category: "Proteção", scopes: { whatsapp: ["chat"], discord: ["server", "categoria", "chat"], telegram: ["server", "topic"] } },
-  { key: "welcome", label: "Boas-vindas", description: "Envia a mensagem de boas-vindas configurada.", category: "Mensagens", scopes: { whatsapp: ["chat"], discord: ["chat"], telegram: ["server", "topic"] } },
-  { key: "goodbye", label: "Despedidas", description: "Envia a mensagem de despedida configurada.", category: "Mensagens", scopes: { whatsapp: ["chat"], discord: ["chat"], telegram: ["server", "topic"] } },
+  { key: "welcome", label: "Boas-vindas", description: "Envia a mensagem de boas-vindas configurada.", category: "Mensagens", scopes: { whatsapp: ["chat"], discord: ["server"], telegram: ["server", "topic"] } },
+  { key: "goodbye", label: "Despedidas", description: "Envia a mensagem de despedida configurada.", category: "Mensagens", scopes: { whatsapp: ["chat"], discord: ["server"], telegram: ["server", "topic"] } },
   { key: "autoApprove", label: "Aprovar entradas automaticamente", description: "Aprova solicitações de entrada conforme as regras configuradas.", category: "Automação", scopes: { whatsapp: ["chat"], telegram: ["server"] } },
   { key: "autofigu", label: "Autofigu", description: "Converte imagens e vídeos em figurinhas.", category: "Automação", scopes: { whatsapp: ["chat"], telegram: ["server"] } },
   { key: "autodownload", label: "Download automático", description: "Baixa automaticamente mídias compatíveis do grupo.", category: "Automação", scopes: { whatsapp: ["chat"], discord: ["chat"], telegram: ["server"] } },
@@ -95,6 +96,7 @@ function profileMessage(platform, groupId, userId) {
     chatId: groupId,
     chatType: "group",
     userId,
+    auditSource: "web-panel",
     raw
   };
 }
@@ -979,6 +981,49 @@ function getAdminSchedules(message) {
       !schedule.meta?.kind);
 }
 
+async function getAdminSchedulesOverview(platform, groupId, groupName) {
+  const options = await getAdminSystemsOptions(platform, groupId);
+  const targets = [];
+  if (platform === "whatsapp") {
+    targets.push({ chatId: String(groupId), threadId: null, targetName: groupName, scope: { level: "chat" } });
+  } else if (platform === "telegram") {
+    const topics = new Map((options.topics || []).map(topic => [String(topic.id), topic.name]));
+    targets.push({ chatId: String(groupId), threadId: null, targetName: `${groupName} · chat principal`, scope: { level: "server" } });
+    for (const [threadId, name] of topics) {
+      targets.push({ chatId: String(groupId), threadId, targetName: `${groupName} · ${name}`, scope: { level: "topic", topicId: threadId } });
+    }
+  } else if (platform === "discord") {
+    for (const channel of options.chatChannels || []) {
+      targets.push({
+        chatId: String(channel.id),
+        threadId: null,
+        targetName: channel.name,
+        scope: { level: "chat", categoryId: String(channel.categoryId || ""), channelId: String(channel.id) }
+      });
+    }
+  }
+
+  const schedules = new Map();
+  for (const target of targets) {
+    const matches = schedulerHelper.listSchedules(target.chatId, platform).filter(schedule =>
+      String(schedule.chatId) === target.chatId &&
+      schedule.platform === platform &&
+      String(schedule.threadId || "") === String(target.threadId || "") &&
+      !schedule.meta?.kind
+    );
+    for (const schedule of matches) {
+      schedules.set(String(schedule.id), {
+        ...serializeAdminSchedule(schedule),
+        scope: target.scope,
+        targetName: target.targetName
+      });
+    }
+  }
+  return [...schedules.values()].sort((a, b) =>
+    a.targetName.localeCompare(b.targetName, "pt-BR") || a.name.localeCompare(b.name, "pt-BR")
+  );
+}
+
 function serializeAdminSchedule(schedule) {
   return {
     id: String(schedule.id),
@@ -1265,15 +1310,25 @@ function getAdminSettingValue(message, setting, level) {
   if (setting === "antipalavras") return antipalavrasHelper.getSetAntipalavras(message, helperLevel)?.enabled === true;
   if (setting === "antiraid") return antiraidHelper.getSetAntiRaid(message, helperLevel)?.enabled === true;
   if (setting === "blockcmd") return blockcmdHelper.getSetBlockcmd(message, helperLevel)?.enabled === true;
-  if (setting === "welcome") return welcomeHelper.getWelcomeConfig(message.platform, message.platform === "discord" ? message.raw.guild.id : null, message.platform === "discord" ? message.channelId : String(message.chatId), message.threadId).config.enabled === true;
-  if (setting === "goodbye") return welcomeHelper.getGoodbyeConfig(message.platform, message.platform === "discord" ? message.raw.guild.id : null, message.platform === "discord" ? message.channelId : String(message.chatId), message.threadId).config.enabled === true;
+  if (setting === "welcome" || setting === "goodbye") {
+    const chatId = message.platform === "discord" && level === "server"
+      ? ""
+      : message.platform === "discord" ? message.channelId : String(message.chatId);
+    const getConfig = setting === "welcome" ? welcomeHelper.getWelcomeConfig : welcomeHelper.getGoodbyeConfig;
+    return getConfig(message.platform, message.platform === "discord" ? message.raw.guild.id : null, chatId, message.threadId).config.enabled === true;
+  }
   if (setting === "autoApprove") return autoAcceptHelper.getConfig({ platform: message.platform, chatId: String(message.chatId) }).enabled === true;
   if (setting === "autofigu") return autofiguHelper.getAutofiguEnabled(message);
   if (setting === "autodownload") return autodownloadHelper.getAutoDownloadSettings(message).enabled === true;
   if (setting === "autoTranscribe") return autoTranscribeHelper.getAutoTranscribeSetting(message, helperLevel) === true;
   if (setting === "autoia") return autoiaHelper.getAutoIAMode(message) !== "off";
   if (setting === "autorepo") return autorepoHelper.loadGroup(message)?.enabled === true;
-  if (setting === "agendar") return getAdminSchedules(message).some(schedule => schedule.enabled && !schedule.state?.done);
+  if (setting === "agendar") {
+    const schedules = message.platform === "telegram" && level === "server"
+      ? schedulerHelper.listSchedules(String(message.chatId), message.platform)
+      : getAdminSchedules(message);
+    return schedules.some(schedule => schedule.enabled && !schedule.state?.done && !schedule.meta?.kind);
+  }
   if (ADMIN_MONITOR_HELPERS[setting]) return getAdminMonitorConfig(message, setting).enabled === true;
   return false;
 }
@@ -1321,7 +1376,11 @@ async function getAdminSystemsOptions(platform, groupId) {
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
     const chatChannels = [...channels.values()]
       .filter(channel => [ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type))
-      .map(channel => ({ id: String(channel.id), name: `#${channel.name || channel.id}` }))
+      .map(channel => ({
+        id: String(channel.id),
+        name: `#${channel.name || channel.id}`,
+        categoryId: String(channel.parentId || "")
+      }))
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
     const logChannels = [...channels.values()]
       .filter(channel => [ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type))
@@ -1387,8 +1446,15 @@ async function validateAdminSettingsScope(platform, groupId, requestedScope) {
     if (level === "chat") {
       const channelId = String(requestedScope?.channelId || "");
       const channel = channels.get(channelId);
-      if (!categoryId || !category || category.type !== 4 || !channel || String(channel.parentId || "") !== categoryId || !channel.isTextBased?.() || channel.isThread?.()) {
-        throw new Error("Canal inválido para a categoria selecionada.");
+      if (!channel || !channel.isTextBased?.() || channel.isThread?.()) {
+        throw new Error("Canal inválido para este servidor.");
+      }
+      if (categoryId) {
+        if (!category || category.type !== 4 || String(channel.parentId || "") !== categoryId) {
+          throw new Error("Canal inválido para a categoria selecionada.");
+        }
+      } else if (channel.parentId) {
+        throw new Error("Selecione a categoria do canal.");
       }
       ensureDiscordAdminScopeSettings(groupId, category, channel);
       return { level, categoryId, channelId };
@@ -1418,18 +1484,26 @@ async function validateAdminSettingsScope(platform, groupId, requestedScope) {
 
 function ensureDiscordAdminScopeSettings(guildId, category, channel) {
   const data = groupSettings.loadSettings("discord", String(guildId), "server");
-  data.categoria = Array.isArray(data.categoria) ? data.categoria : [];
-  let categoryData = data.categoria.find(item => String(item.id) === String(category.id));
   let changed = false;
-  if (!categoryData) {
-    categoryData = { id: String(category.id), name: category.name || `Categoria ${category.id}`, chat: [], settings: {} };
-    data.categoria.push(categoryData);
-    changed = true;
-  }
-  if (channel) {
-    categoryData.chat = Array.isArray(categoryData.chat) ? categoryData.chat : [];
-    if (!categoryData.chat.some(item => String(item.id) === String(channel.id))) {
-      categoryData.chat.push({ id: String(channel.id), name: channel.name || `Canal ${channel.id}`, topico: [], settings: {} });
+  if (category) {
+    data.categoria = Array.isArray(data.categoria) ? data.categoria : [];
+    let categoryData = data.categoria.find(item => String(item.id) === String(category.id));
+    if (!categoryData) {
+      categoryData = { id: String(category.id), name: category.name || `Categoria ${category.id}`, chat: [], settings: {} };
+      data.categoria.push(categoryData);
+      changed = true;
+    }
+    if (channel) {
+      categoryData.chat = Array.isArray(categoryData.chat) ? categoryData.chat : [];
+      if (!categoryData.chat.some(item => String(item.id) === String(channel.id))) {
+        categoryData.chat.push({ id: String(channel.id), name: channel.name || `Canal ${channel.id}`, topico: [], settings: {} });
+        changed = true;
+      }
+    }
+  } else if (channel) {
+    data.chat = Array.isArray(data.chat) ? data.chat : [];
+    if (!data.chat.some(item => String(item.id) === String(channel.id))) {
+      data.chat.push({ id: String(channel.id), name: channel.name || `Canal ${channel.id}`, topico: [], settings: {} });
       changed = true;
     }
   }
@@ -1528,10 +1602,11 @@ function saveAdminAntilinkConfig(message, scope, input) {
     }
     normalizedLists[key] = [...new Set(values.map(value => value.trim()).filter(Boolean))];
   }
+  const isRootScope = scope.level === "server" || (message.platform === "whatsapp" && scope.level === "chat");
   const config = {
     action: input.action,
     message: input.message?.trim() || null,
-    ignoreParent: input.ignoreParent,
+    ignoreParent: isRootScope ? false : input.ignoreParent,
     ignoreSameGroup: input.ignoreSameGroup,
     ignoreMedia: input.ignoreMedia,
     ...normalizedLists
@@ -1952,10 +2027,13 @@ function executeAdminRpAction(message, setting, input) {
 function getAdminWelcomeConfig(message, scope, setting) {
   const scopedMessage = getScopedAdminMessage(message, scope);
   const helper = setting === "welcome" ? welcomeHelper.getWelcomeConfig : welcomeHelper.getGoodbyeConfig;
+  const chatId = message.platform === "discord" && scope.level === "server"
+    ? ""
+    : String(scopedMessage.chatId);
   const result = helper(
     message.platform,
     message.platform === "discord" ? String(scopedMessage.raw.guild.id) : null,
-    String(scopedMessage.chatId),
+    chatId,
     scopedMessage.threadId || null
   );
   const config = result.config;
@@ -1975,7 +2053,7 @@ function getAdminWelcomeConfig(message, scope, setting) {
   };
 }
 
-function saveAdminWelcomeConfig(message, scope, setting, input) {
+async function saveAdminWelcomeConfig(message, scope, setting, input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new Error("Configuração de boas-vindas/despedida inválida.");
   }
@@ -1986,13 +2064,25 @@ function saveAdminWelcomeConfig(message, scope, setting, input) {
     throw new Error("A mensagem deve conter de 1 a 2.000 caracteres.");
   }
   const scopedMessage = getScopedAdminMessage(message, scope);
+  let destinationChannelId;
+  if (message.platform === "discord" && scope.level === "server") {
+    destinationChannelId = typeof input.channelId === "string" ? input.channelId.trim() : "";
+    const { chatChannels } = await getAdminSystemsOptions(message.platform, String(scopedMessage.raw.guild.id));
+    if (!destinationChannelId || !chatChannels.some(channel => channel.id === destinationChannelId)) {
+      throw new Error("Selecione um canal de texto válido do servidor para enviar as mensagens.");
+    }
+  }
   const save = setting === "welcome" ? welcomeHelper.saveWelcomeConfig : welcomeHelper.saveGoodbyeConfig;
   if (!save(
     message.platform,
     message.platform === "discord" ? String(scopedMessage.raw.guild.id) : null,
-    String(scopedMessage.chatId),
+    message.platform === "discord" && scope.level === "server" ? "" : String(scopedMessage.chatId),
     scopedMessage.threadId || null,
-    { mode: input.mode, text: input.text.trim() }
+    {
+      mode: input.mode,
+      text: input.text.trim(),
+      ...(destinationChannelId ? { channelId: destinationChannelId } : {})
+    }
   )) {
     throw new Error("Não foi possível salvar as configurações de boas-vindas/despedida.");
   }
@@ -2023,12 +2113,15 @@ async function updateAdminWelcomeMedia(message, scope, setting, input) {
     throw new Error("Arquivo de mídia inválido.");
   }
   const scopedMessage = getScopedAdminMessage(message, scope);
+  const chatId = message.platform === "discord" && scope.level === "server"
+    ? ""
+    : String(scopedMessage.chatId);
   const save = setting === "welcome" ? welcomeHelper.saveWelcomeConfig : welcomeHelper.saveGoodbyeConfig;
   if (input.remove === true) {
     if (!save(
       message.platform,
       message.platform === "discord" ? String(scopedMessage.raw.guild.id) : null,
-      String(scopedMessage.chatId),
+      chatId,
       scopedMessage.threadId || null,
       { media: null }
     )) {
@@ -2061,7 +2154,7 @@ async function updateAdminWelcomeMedia(message, scope, setting, input) {
   if (!save(
     message.platform,
     message.platform === "discord" ? String(scopedMessage.raw.guild.id) : null,
-    String(scopedMessage.chatId),
+    chatId,
     scopedMessage.threadId || null,
     { media: { url: uploaded.url, type: mediaDefinition.type, fileName: `${setting}${mediaDefinition.extension}` } }
   )) {
@@ -2254,7 +2347,22 @@ async function setAdminSystemSetting(message, setting, enabled, level) {
     blockcmdHelper.getSetBlockcmd(message, level === "topic" ? "chat" : level, config);
   } else if (setting === "welcome" || setting === "goodbye") {
     const save = setting === "welcome" ? welcomeHelper.saveWelcomeConfig : welcomeHelper.saveGoodbyeConfig;
-    save(message.platform, message.platform === "discord" ? message.raw.guild.id : null, message.platform === "discord" ? message.channelId : String(message.chatId), message.threadId, config);
+    const serverScope = message.platform === "discord" && level === "server";
+    if (enabled && serverScope) {
+      const currentConfig = (setting === "welcome" ? welcomeHelper.getWelcomeConfig : welcomeHelper.getGoodbyeConfig)(
+        "discord", message.raw.guild.id, "", null
+      ).config;
+      if (!currentConfig.channelId) {
+        throw new Error("Escolha o canal de destino na página de boas-vindas e despedidas antes de ativar.");
+      }
+    }
+    save(
+      message.platform,
+      message.platform === "discord" ? message.raw.guild.id : null,
+      serverScope ? "" : message.platform === "discord" ? message.channelId : String(message.chatId),
+      message.threadId,
+      config
+    );
   } else if (setting === "autoApprove") {
     const target = { platform: message.platform, chatId: String(message.chatId) };
     const current = autoAcceptHelper.getConfig(target);
@@ -2490,13 +2598,31 @@ function vaultModeDescription(config) {
   if (config.mode === "tax") {
     const tax = config.taxType === "percent"
       ? `${(config.taxRateBasisPoints / 100).toFixed(2).replace(/\.?0+$/, "").replace(".", ",")}% do saldo`
-      : `${economy.formatMoney(config.taxFixedAmount)} do saldo`;
-    return `Modo de imposto progressivo: cobrança de ${tax} por período completo de 24 horas desde a última movimentação; intervalo menor que 1 hora não cobra imposto.`;
+      : `${economy.formatMoney(config.taxFixedAmount)} por 24 horas`;
+    return `Modo de imposto: ${tax} por 24 horas, acumulado por hora completa após a primeira hora desde sua última movimentação.`;
   }
   if (config.mode === "robbery") {
     return `Modo de roubo permitido: o cofre tem ${config.robberyVaultChance}% de chance de ser atingido em um roubo.`;
   }
   return "Modo impenetrável: o saldo guardado fica seguro contra roubos e não pode ser usado diretamente.";
+}
+
+function describeVaultConfigChanges(previous, next) {
+  const labels = {
+    mode: ["Modo", value => ({
+      secure: "Impenetrável",
+      tax: "Imposto",
+      robbery: "Roubo permitido"
+    })[value] || value],
+    minimumMovement: ["Mínimo por movimentação", value => economy.formatMoney(value)],
+    taxType: ["Tipo de imposto", value => value === "percent" ? "percentual" : "fixo"],
+    taxRateBasisPoints: ["Taxa percentual", value => `${(value / 100).toFixed(2).replace(/\.?0+$/, "").replace(".", ",")}%`],
+    taxFixedAmount: ["Imposto fixo por 24h", value => economy.formatMoney(value)],
+    robberyVaultChance: ["Chance de roubo do cofre", value => `${value}%`]
+  };
+  return Object.entries(labels)
+    .filter(([key]) => previous[key] !== next[key])
+    .map(([key, [label, format]]) => `${label}: ${format(previous[key])} → ${format(next[key])}`);
 }
 
 function renderLocalAccount(data) {
@@ -2506,7 +2632,7 @@ function renderLocalAccount(data) {
   const currency = amount => economy.formatMoney(Number(amount) || 0);
   const accountStats = `<div class="local-stats">
         <article class="local-stat balance-stat"><small>Carteira</small><strong>${currency(data.account.balance)}</strong></article>
-        <article class="local-stat balance-stat"><small>Saldo no cofre</small><strong id="localVaultBalance">${currency(data.account.vaultBalance)}</strong><span>As regras dependem do modo configurado neste grupo.</span></article>
+        <article class="local-stat balance-stat"><small>Saldo no cofre</small><strong id="localVaultBalance">${currency(data.account.vaultBalance)}</strong><span>Regras compartilhadas; saldo e imposto individuais.</span></article>
       </div>`;
   const rankLinks = [
     ["Riqueza", "/rankrico", data.ranks.balance],
@@ -2706,7 +2832,18 @@ function renderLocalBank(data) {
     }).join("")
     : `<p class="bank-muted">Ainda não há registros de economia neste grupo.</p>`;
   const vaultControls = data.economyEnabled
-    ? `<form id="bankVaultForm" class="bank-form"><h3>Movimentar cofre</h3><label for="bankVaultAction">Operação</label><select id="bankVaultAction" name="action"><option value="deposit">Depositar no cofre</option><option value="withdraw">Sacar para a carteira</option></select><label for="bankVaultAmount">Valor em SatCoins</label><input id="bankVaultAmount" name="amount" type="text" inputmode="decimal" placeholder="${(data.vaultConfig.minimumMovement / 100).toFixed(2)}" autocomplete="off" required><small>${escapeHtml(vaultModeDescription(data.vaultConfig))} Mínimo: ${currency(data.vaultConfig.minimumMovement)}. Um depósito e um saque por dia local.</small><button type="submit">Confirmar operação</button><p class="local-feedback" id="bankVaultFeedback" role="status" aria-live="polite"></p></form>`
+    ? `<form id="bankVaultForm" class="bank-form bank-vault-form">
+        <h3>Movimentar cofre</h3>
+        <p class="bank-vault-policy">As regras do cofre são compartilhadas por todos neste grupo/servidor. Seu saldo e eventual imposto são individuais.</p>
+        <small>${escapeHtml(vaultModeDescription(data.vaultConfig))}</small>
+        <label for="bankVaultAction">Operação</label>
+        <select id="bankVaultAction" name="action"><option value="deposit">Depositar no cofre</option><option value="withdraw">Sacar para a carteira</option></select>
+        <label for="bankVaultAmount">Valor em SatCoins</label>
+        <input id="bankVaultAmount" name="amount" type="text" inputmode="decimal" placeholder="${(data.vaultConfig.minimumMovement / 100).toFixed(2)}" autocomplete="off" required>
+        <small>Mínimo: ${currency(data.vaultConfig.minimumMovement)}. Um depósito e um saque por dia local.</small>
+        <button type="submit">Confirmar operação</button>
+        <p class="local-feedback" id="bankVaultFeedback" role="status" aria-live="polite"></p>
+      </form>`
     : `<p class="bank-muted">A movimentação do cofre está indisponível enquanto a economia deste grupo ou servidor estiver desativada.</p>`;
 
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Meu banco · ${escapeHtml(data.groupName)}</title><style>
@@ -2743,10 +2880,12 @@ function renderLocalBank(data) {
     .bank-statement-total strong{color:#c6bdff}
     .bank-transactions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
     .bank-form{display:grid;align-content:start;gap:10px;padding:17px;border:1px solid #ffffff12;border-radius:14px;background:#ffffff04}
+    .bank-vault-form{border-color:#8b7bff44;background:linear-gradient(145deg,#8877ff12,#ffffff04)}
     .bank-form h3{margin:0 0 2px;font-size:16px}
     .bank-form label{color:#cbd3e5;font-size:12px;font-weight:700}
     .bank-form input,.bank-form select{width:100%;min-height:44px;border:1px solid #39445d;border-radius:11px;background:#0e1422;color:#fff;padding:10px 12px;font:inherit}
     .bank-form small{color:var(--muted);font-size:11px;line-height:1.55}
+    .bank-vault-policy{margin:0;padding:10px 12px;border-left:3px solid #a99dff;border-radius:4px 10px 10px 4px;background:#8877ff12;color:#cbd3e5;font-size:12px;line-height:1.55}
     .bank-form button{min-height:44px;border:0;border-radius:11px;background:linear-gradient(120deg,#8877ff,#577cff);color:#fff;font:inherit;font-weight:750;cursor:pointer}
     .bank-form button:disabled{opacity:.6;cursor:wait}
     .local-feedback{min-height:20px;margin:2px 0 0;color:#9cf0cf;font-size:12px;line-height:1.5}
@@ -3841,6 +3980,411 @@ function getCosmeticPanelStyles(backgroundKey, panelType, outlineKey) {
     ${outlineStyles}`;
 }
 
+function renderProtectionAdmin(data, setting) {
+  const isAntipalavras = setting === "antipalavras";
+  const isAntimedia = setting === "antimedia";
+  const isAntiraid = setting === "antiraid";
+  const isBlockcmd = setting === "blockcmd";
+  const title = isAntipalavras ? "Antipalavras" : isAntimedia ? "Antimídia"
+    : isAntiraid ? "Antiraid" : isBlockcmd ? "Bloqueio de comandos" : "Antilink";
+  const context = JSON.stringify({ platform: data.platform, groupId: data.groupId });
+  const groupType = data.platform === "discord" ? "Servidor" : "Grupo";
+  const scopeNavigation = data.platform === "discord"
+    ? `<div class="scope-row scope-levels"><button type="button" data-level="server" aria-pressed="true">Servidor</button><button type="button" data-level="categoria" aria-pressed="false">Categoria</button><button type="button" data-level="chat" aria-pressed="false">Chats</button></div><div class="scope-row"><select id="categorySelect" aria-label="Selecionar categoria"><option value="">Selecione uma categoria</option></select><select id="channelSelect" aria-label="Selecionar chat" disabled><option value="">Selecione primeiro uma categoria</option></select></div>`
+    : data.platform === "telegram"
+      ? `<div class="scope-row scope-levels"><button type="button" id="groupScope" aria-pressed="true">Grupo todo + chat principal</button><button type="button" id="topicsScope" aria-pressed="false">Tópicos</button></div><div class="scope-row"><select id="topicSelect" aria-label="Selecionar tópico" hidden><option value="">Selecione um tópico</option></select></div>`
+      : `<div class="scope-row"><button type="button" aria-pressed="true" disabled>Grupo</button></div>`;
+  const roleFields = data.platform === "discord"
+    ? `<label>Cargos isentos<textarea name="roleWhitelist" rows="3" placeholder="um ID de cargo por linha"></textarea></label><label>${isAntipalavras ? "Cargos sempre monitorados" : isAntimedia ? "Cargos na lista negra" : "Cargos sem exceção de links de mídia"}<textarea name="roleBlacklist" rows="3" placeholder="um ID de cargo por linha"></textarea></label>`
+    : "";
+  const roleListFields = roleFields;
+  const mediaTypeOptions = [["image","Imagem / foto"],["video","Vídeo"],["audio","Áudio / música"],["document","Documento / arquivo"],["sticker","Figurinha"],["location","Localização"],["contact","Contato"],["voice","Mensagem de voz"],["gif","GIF"]];
+  const antiraidActions = data.platform === "whatsapp"
+    ? '<option value="remove">Remover membro</option>'
+    : data.platform === "discord"
+      ? '<option value="timeout">Silenciar temporariamente</option><option value="kick">Expulsar</option><option value="ban">Banir</option>'
+      : '<option value="mute">Silenciar</option><option value="kick">Expulsar</option><option value="ban">Banir</option>';
+  const antiraidNumericFields = [
+    ["maxMessagesPerWindow", "Mensagens no limite", 1, 100, "Máximo de mensagens na janela."],
+    ["windowSeconds", "Janela (segundos)", 1, 300, ""],
+    ["repeatedMessageLimit", "Mensagens repetidas", 1, 100, ""],
+    ["linkLimit", "Links", 1, 100, ""],
+    ["inviteLimit", "Convites", 1, 100, ""],
+    ["mentionLimit", "Menções", 0, 100, "0 desativa o limite de menções."],
+    ...(data.platform === "discord" ? [["webhookLimit", "Webhooks", 0, 100, "0 desativa este limite."]] : [])
+  ];
+  const ruleFields = isAntipalavras
+    ? `<label class="words-field">Palavras e frases bloqueadas<textarea name="words" rows="7" maxlength="100500" placeholder="Uma palavra ou frase por linha"></textarea><small class="muted">Cada entrada é verificada individualmente nas mensagens.</small></label>`
+    : isAntimedia
+      ? `<fieldset class="media-types-field"><legend>Tipos de mídia bloqueados</legend><div class="media-type-grid">${mediaTypeOptions.map(([value,label]) => `<label><input type="checkbox" name="mediaTypes" value="${value}"> ${label}</label>`).join("")}</div><small class="muted">Se nenhum tipo for marcado, todos os tipos de mídia serão bloqueados.</small></fieldset>`
+      : isBlockcmd
+        ? `<label class="words-field">Comandos e categorias bloqueados<textarea name="blockedCommands" rows="8" maxlength="100500" placeholder="Um comando ou categoria por linha (sem prefixo)"></textarea><small class="muted">Informe o nome do comando ou categoria, por exemplo: cotacao ou adm/segurança.</small></label>`
+        : isAntiraid
+          ? `<fieldset class="antiraid-fields"><legend>Limites de proteção</legend><div class="antiraid-grid">${antiraidNumericFields.map(([name,label,min,max,hint]) => `<label>${label}<input type="number" name="${name}" min="${min}" max="${max}" required>${hint ? `<small class="muted">${hint}</small>` : ""}</label>`).join("")}</div></fieldset>`
+      : `<label>Domínios permitidos<textarea name="whitelist" rows="3" placeholder="um domínio por linha"></textarea><small class="muted">Links desses domínios não são tratados como infração.</small></label><label><span><input type="checkbox" name="ignoreSameGroup"> Permitir links do próprio grupo/servidor</span></label><label><span><input type="checkbox" name="ignoreMedia"> Ignorar links identificados como mídia (YouTube, TikTok, Instagram)</span></label>`;
+  const inheritOption = isAntiraid ? "" : `<label class="inheritance-option"><span><input type="checkbox" name="ignoreParent"> Ignorar as regras dos escopos superiores</span></label>`;
+  const exceptionFields = isBlockcmd ? "" : `<label>Usuários isentos<textarea name="userWhitelist" rows="3" placeholder="um ID por linha"></textarea></label>
+        <label>${isAntipalavras ? "Usuários sempre monitorados" : isAntimedia || isAntiraid ? "Usuários na lista negra" : "Usuários sem exceção de links de mídia"}<textarea name="userBlacklist" rows="3" placeholder="um ID por linha"></textarea></label>
+        ${roleListFields}`;
+  const settingsForm = `<form id="protectionForm" class="grid" style="margin-top:16px">
+        <label>Ação ao detectar ${isAntipalavras ? "palavra/frase" : isAntimedia ? "mídia" : isAntiraid ? "raid" : isBlockcmd ? "comando bloqueado" : "link"}<select name="action">${isBlockcmd ? '<option value="reply">Avisar no chat</option><option value="ignore">Ignorar silenciosamente</option><option value="delete">Apagar a mensagem</option>' : isAntiraid ? antiraidActions : '<option value="delete">Deletar mensagem</option><option value="warn">Deletar e avisar</option><option value="kick">Deletar e expulsar</option><option value="ban">Deletar e banir</option>'}</select></label>
+        ${isAntiraid ? "" : '<label>Mensagem de aviso<textarea name="message" maxlength="2000" rows="3" placeholder="Mensagem enviada quando a ação avisa o usuário"></textarea></label>'}
+        ${inheritOption}${ruleFields}${exceptionFields}
+        <div><button type="submit" class="primary">Salvar configurações</button></div>
+      </form>`;
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Configurações do ${title.toLowerCase()}</title><style>
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb;--line:#334366;--muted:#9da8bd}*{box-sizing:border-box}body{margin:0;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}button,input,textarea,select{font:inherit}.page{width:min(900px,100%);margin:0 auto}.top{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:8px 0 20px;border-bottom:1px solid var(--line)}a{color:#b9c6ff;text-decoration:none;font-weight:700}.hero,.panel{margin-top:20px;padding:22px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#1c2438,#131925)}h1{margin:7px 0;font-size:clamp(23px,4vw,34px)}h2{margin:0 0 8px;font-size:18px}.muted{color:var(--muted);line-height:1.55}.scope-navigation{display:grid;gap:8px;margin-top:16px}.scope-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:9px;border:1px solid var(--line);border-radius:10px;background:#ffffff05}.scope-row button,.scope-row select,button{min-height:38px;padding:8px 11px;border:1px solid #6f7fa5;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font:inherit;font-size:12px;font-weight:700;cursor:pointer}.scope-row select{flex:1 1 220px;min-width:min(220px,100%)}.scope-row.scope-levels button{flex:1 1 130px}.scope-row button[aria-pressed=true]{border-color:#9b8cff;background:#8b7bff30;color:#e3ddff}.scope-row button:disabled,button:disabled{opacity:.55;cursor:wait}label{display:grid;gap:6px;color:#dce2f3;font-size:12px;font-weight:700}input:not([type=checkbox]),textarea,select{width:100%;padding:10px 11px;border:1px solid #485776;border-radius:9px;background:#0e1422;color:#f5f7fb}textarea{resize:vertical}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.setting{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px;border:1px solid var(--line);border-radius:11px;background:#ffffff05}.setting label{display:flex;align-items:center;gap:9px;font-size:14px}.setting input{width:19px;height:19px;accent-color:#9b8cff}.words-field,.media-types-field{grid-column:1/-1}.media-types-field{margin:0;padding:12px;border:1px solid var(--line);border-radius:10px}.media-type-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 14px}.media-type-grid label{display:flex;align-items:center;gap:7px}.media-types-field small{display:block;margin-top:8px;color:var(--muted)}.inheritance-option[hidden]{display:none}.feedback{min-height:20px;margin:12px 0 0;color:#9cf0cf;font-size:12px}.feedback.error{color:#ff9eaa}.primary{border-color:#9b8cff;background:#8b7bff30}button:hover{border-color:#9b8cff;background:#8b7bff20}.hint{margin:8px 0 0;color:var(--muted);font-size:12px;line-height:1.5}@media(max-width:620px){body{padding:14px}.grid{grid-template-columns:1fr}.words-field,.media-types-field{grid-column:auto}.top{align-items:flex-start;flex-direction:column}.hero,.panel{padding:16px}}
+  </style></head><body><main class="page">
+    <nav class="top"><a href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">← Painel de administração</a><span>${escapeHtml(groupType)} · ${escapeHtml(data.groupName)}</span></nav>
+    <header class="hero"><small>CONFIGURAÇÕES LOCAIS</small><h1>${title}</h1><p class="muted">${data.platform === "whatsapp" ? `Configure ${title.toLowerCase()} somente para este grupo.` : data.platform === "telegram" ? "Escolha entre o grupo e chat principal ou um tópico específico." : "Configure no servidor, em uma categoria ou em um chat específico."}</p></header>
+    <section class="scope-navigation" aria-label="Escopo do ${title.toLowerCase()}">${scopeNavigation}<p id="scopeNote" class="muted">${data.platform === "telegram" ? "A regra geral vale para o grupo e para o chat principal." : "Selecione o escopo para editar as regras."}</p></section>
+    <section class="panel"><div class="setting"><label><input id="enabled" type="checkbox" disabled> Ativar ${title.toLowerCase()}</label><span id="enabledStatus" class="muted">Carregando...</span></div>
+      ${settingsForm}<p id="feedback" class="feedback" role="status" aria-live="polite"></p>
+    </section>
+  </main><script>
+    const context=${context};
+    const setting=${JSON.stringify(setting)};
+    const title=${JSON.stringify(title)};
+    const form=document.getElementById("protectionForm");
+    const enabled=document.getElementById("enabled");
+    const feedback=document.getElementById("feedback");
+    let activeScope={level:context.platform==="whatsapp"?"chat":"server"};
+    let currentConfig=null;
+    let requestId=0;
+    async function request(path,payload={}){
+      const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...context,...payload})});
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.error||"Não foi possível carregar as configurações.");
+      return result;
+    }
+    function setInheritanceVisibility(){
+      if(!form.elements.ignoreParent)return;
+      const option=form.elements.ignoreParent.closest("label");
+      const isRoot=activeScope.level==="server"||(context.platform==="whatsapp"&&activeScope.level==="chat");
+      option.hidden=isRoot;
+      if(isRoot)form.elements.ignoreParent.checked=false;
+    }
+    function fill(config){
+      currentConfig=config;
+      enabled.checked=config.enabled===true;
+      enabled.disabled=false;
+      document.getElementById("enabledStatus").textContent=enabled.checked?"Ativado":"Desativado";
+      let action=config.action||"delete";
+      if(setting==="antiraid"){
+        if(context.platform==="whatsapp"&&["mute","remove"].includes(action))action="remove";
+        else if(context.platform==="discord"&&action==="mute")action="timeout";
+        if(![...form.elements.action.options].some(option=>option.value===action)){
+          action=context.platform==="whatsapp"?"remove":context.platform==="discord"?"timeout":"mute";
+        }
+      }
+      form.elements.action.value=action;
+      if(form.elements.message)form.elements.message.value=config.message||"";
+      for(const key of ["ignoreParent","ignoreSameGroup","ignoreMedia"]){
+        if(form.elements[key])form.elements[key].checked=config[key]===true;
+      }
+      const mediaTypes=new Set(Array.isArray(config.mediaTypes)?config.mediaTypes:[]);
+      form.querySelectorAll('input[name="mediaTypes"]').forEach(input=>{input.checked=mediaTypes.has(input.value)});
+      for(const key of ["whitelist","userWhitelist","userBlacklist","roleWhitelist","roleBlacklist"]){
+        if(form.elements[key])form.elements[key].value=Array.isArray(config[key])?config[key].join("\\n"):"";
+      }
+      if(form.elements.words)form.elements.words.value=Array.isArray(config.words)?config.words.join("\\n"):"";
+      if(form.elements.blockedCommands)form.elements.blockedCommands.value=Array.isArray(config.blockedCommands)?config.blockedCommands.join("\\n"):"";
+      for(const key of ["maxMessagesPerWindow","windowSeconds","repeatedMessageLimit","linkLimit","inviteLimit","mentionLimit","webhookLimit"]){
+        if(form.elements[key])form.elements[key].value=Number.isFinite(config[key])?config[key]:"";
+      }
+      setInheritanceVisibility();
+      form.querySelectorAll("input,textarea,select,button").forEach(control=>control.disabled=false);
+    }
+    async function load(scope){
+      activeScope=scope;
+      const id=++requestId;
+      feedback.classList.remove("error");feedback.textContent="Carregando configurações...";
+      enabled.disabled=true;
+      form.querySelectorAll("input,textarea,select,button").forEach(control=>control.disabled=true);
+      setInheritanceVisibility();
+      try{
+        const {config}=await request("/api/account/local/admin-"+setting+"-state",{scope});
+        if(id===requestId){
+          fill(config);
+          feedback.classList.remove("error");
+          feedback.textContent="";
+        }
+      }catch(error){
+        if(id===requestId){feedback.classList.add("error");feedback.textContent=error.message}
+      }
+    }
+    async function setEnabled(value){
+      enabled.disabled=true;feedback.classList.remove("error");feedback.textContent="Atualizando proteção...";
+      try{
+        const result=await request("/api/account/local/admin-settings",{setting,enabled:value,scope:activeScope});
+        enabled.checked=result.settings[setting]===true;
+        if(currentConfig)currentConfig.enabled=enabled.checked;
+        document.getElementById("enabledStatus").textContent=enabled.checked?"Ativado":"Desativado";
+        feedback.textContent=result.announcementWarning||result.message||"Configuração atualizada.";
+        feedback.classList.toggle("error",Boolean(result.announcementWarning));
+      }catch(error){
+        enabled.checked=currentConfig?.enabled===true;
+        feedback.classList.add("error");feedback.textContent=error.message;
+      }finally{enabled.disabled=false}
+    }
+    enabled.addEventListener("change",()=>setEnabled(enabled.checked));
+    form.addEventListener("submit",async event=>{
+      event.preventDefault();
+      const button=form.querySelector('[type="submit"]');button.disabled=true;
+      feedback.classList.remove("error");feedback.textContent="Salvando...";
+      const config={action:form.elements.action.value};
+      if(form.elements.message)config.message=form.elements.message.value.trim()||null;
+      if(form.elements.ignoreParent)config.ignoreParent=!form.elements.ignoreParent.closest("label").hidden&&form.elements.ignoreParent.checked;
+      for(const key of ["ignoreSameGroup","ignoreMedia"]){
+        if(form.elements[key])config[key]=form.elements[key].checked;
+      }
+      if(setting==="antimedia"){
+        config.mediaTypes=[...form.querySelectorAll('input[name="mediaTypes"]:checked')].map(input=>input.value);
+      }
+      if(setting==="antiraid"){
+        for(const key of ["maxMessagesPerWindow","windowSeconds","repeatedMessageLimit","linkLimit","inviteLimit","mentionLimit","webhookLimit"]){
+          if(form.elements[key])config[key]=Number(form.elements[key].value);
+        }
+      }
+      if(form.elements.blockedCommands){
+        config.blockedCommands=form.elements.blockedCommands.value.split(/\\r?\\n/).map(value=>value.trim()).filter(Boolean);
+      }
+      for(const key of ["whitelist","userWhitelist","userBlacklist","roleWhitelist","roleBlacklist"]){
+        if(form.elements[key])config[key]=form.elements[key].value.split(/\\r?\\n/).map(value=>value.trim()).filter(Boolean);
+      }
+      if(form.elements.words)config.words=form.elements.words.value.split(/[\\r\\n,]+/).map(value=>value.trim()).filter(Boolean);
+      try{
+        const result=await request("/api/account/local/admin-"+setting,{scope:activeScope,config});
+        fill(result.config);feedback.textContent=result.announcementWarning||"Configurações de "+title.toLowerCase()+" salvas.";
+        feedback.classList.toggle("error",Boolean(result.announcementWarning));
+      }catch(error){feedback.classList.add("error");feedback.textContent=error.message}
+      finally{button.disabled=false}
+    });
+    function scopeName(scope){
+      const text=id=>document.getElementById(id)?.selectedOptions[0]?.textContent||"selecionado";
+      if(scope.level==="server")return context.platform==="discord"?"Servidor":"Grupo todo + chat principal";
+      if(scope.level==="categoria")return "Categoria · "+text("categorySelect");
+      if(scope.level==="chat")return "Chat · "+text("channelSelect");
+      return "Tópico · "+text("topicSelect");
+    }
+    function updateScopeNote(scope){
+      document.getElementById("scopeNote").textContent="Editando: "+scopeName(scope);
+    }
+    if(context.platform==="telegram"){
+      const groupButton=document.getElementById("groupScope");
+      const topicsButton=document.getElementById("topicsScope");
+      const topicSelect=document.getElementById("topicSelect");
+      request("/api/account/local/admin-systems-options").then(({topics,isForum})=>{
+        for(const topic of topics||[]){const option=document.createElement("option");option.value=topic.id;option.textContent=topic.name;topicSelect.append(option)}
+        if(!isForum){topicsButton.hidden=true;topicSelect.hidden=true;document.getElementById("scopeNote").textContent="Este grupo não usa tópicos. A configuração vale somente para o grupo e o chat principal."}
+        else if(!topics?.length){topicsButton.disabled=true;document.getElementById("scopeNote").textContent="Nenhum tópico conhecido pelo bot. Os tópicos aparecerão após o bot observar mensagens neles."}
+      }).catch(error=>{feedback.classList.add("error");feedback.textContent=error.message});
+      groupButton.addEventListener("click",()=>{groupButton.setAttribute("aria-pressed","true");topicsButton.setAttribute("aria-pressed","false");topicSelect.hidden=true;const scope={level:"server"};updateScopeNote(scope);load(scope)});
+      topicsButton.addEventListener("click",()=>{groupButton.setAttribute("aria-pressed","false");topicsButton.setAttribute("aria-pressed","true");topicSelect.hidden=false;if(topicSelect.value){const scope={level:"topic",topicId:topicSelect.value};updateScopeNote(scope);load(scope)}else feedback.textContent="Selecione um tópico para carregar as configurações."});
+      topicSelect.addEventListener("change",()=>{if(topicSelect.value){const scope={level:"topic",topicId:topicSelect.value};updateScopeNote(scope);load(scope)}});
+    }else if(context.platform==="discord"){
+      const categorySelect=document.getElementById("categorySelect");
+      const channelSelect=document.getElementById("channelSelect");
+      const levelButtons=[...document.querySelectorAll("[data-level]")];
+      let categories=[];
+      const activate=level=>levelButtons.forEach(button=>button.setAttribute("aria-pressed",String(button.dataset.level===level)));
+      const loadCategory=()=>{
+        const categoryId=categorySelect.value;channelSelect.replaceChildren();
+        const placeholder=document.createElement("option");placeholder.value="";placeholder.textContent=categoryId?"Selecione um chat":"Selecione primeiro uma categoria";channelSelect.append(placeholder);
+        const category=categories.find(item=>item.id===categoryId);
+        for(const channel of category?.channels||[]){const option=document.createElement("option");option.value=channel.id;option.textContent=channel.name;channelSelect.append(option)}
+        channelSelect.disabled=!categoryId;
+        if(categoryId){activate("categoria");const scope={level:"categoria",categoryId};updateScopeNote(scope);load(scope)}
+      };
+      request("/api/account/local/admin-systems-options").then(({categories:items})=>{
+        categories=items||[];
+        for(const category of categories){const option=document.createElement("option");option.value=category.id;option.textContent=category.name;categorySelect.append(option)}
+      }).catch(error=>{feedback.classList.add("error");feedback.textContent=error.message});
+      categorySelect.addEventListener("change",loadCategory);
+      channelSelect.addEventListener("change",()=>{if(categorySelect.value&&channelSelect.value){activate("chat");const scope={level:"chat",categoryId:categorySelect.value,channelId:channelSelect.value};updateScopeNote(scope);load(scope)}});
+      for(const button of levelButtons)button.addEventListener("click",()=>{
+        const level=button.dataset.level;activate(level);
+        if(level==="server"){const scope={level};updateScopeNote(scope);load(scope)}
+        else if(level==="categoria"&&categorySelect.value){const scope={level,categoryId:categorySelect.value};updateScopeNote(scope);load(scope)}
+        else if(level==="chat"&&categorySelect.value&&channelSelect.value){const scope={level,categoryId:categorySelect.value,channelId:channelSelect.value};updateScopeNote(scope);load(scope)}
+        else feedback.textContent=level==="categoria"?"Selecione uma categoria.":"Selecione uma categoria e um chat.";
+      });
+    }else{
+      updateScopeNote(activeScope);
+    }
+    load(activeScope);
+  </script></body></html>`;
+}
+
+function renderAntilinkAdmin(data) {
+  return renderProtectionAdmin(data, "antilink");
+}
+
+function renderAntipalavrasAdmin(data) {
+  return renderProtectionAdmin(data, "antipalavras");
+}
+
+function renderAntimediaAdmin(data) {
+  return renderProtectionAdmin(data, "antimedia");
+}
+
+function renderAntiraidAdmin(data) {
+  return renderProtectionAdmin(data, "antiraid");
+}
+
+function renderBlockcmdAdmin(data) {
+  return renderProtectionAdmin(data, "blockcmd");
+}
+
+function renderWelcomeAdmin(data) {
+  const context = JSON.stringify({ platform: data.platform, groupId: data.groupId });
+  const groupType = data.platform === "discord" ? "Servidor" : "Grupo";
+  const scopeNavigation = data.platform === "telegram"
+    ? `<div class="scope-tabs"><button type="button" id="groupScope" aria-pressed="true">Grupo todo + chat principal</button><button type="button" id="topicsScope" aria-pressed="false">Tópicos</button></div><label id="topicField" hidden>Tópico<select id="topicSelect"><option value="">Selecione um tópico</option></select></label>`
+    : `<p class="muted">${data.platform === "discord" ? "As duas configurações valem para o servidor; escolha abaixo o canal de destino." : "As configurações valem somente para este grupo."}</p>`;
+  const destinationField = data.platform === "discord"
+    ? `<label>Canal de destino<select id="destinationChannel" name="channelId" required><option value="">Carregando canais...</option></select><small class="muted">O bot enviará as mensagens de entrada ou saída neste canal.</small></label>`
+    : "";
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Boas-vindas e despedidas</title><style>
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb;--line:#334366;--muted:#9da8bd}*{box-sizing:border-box}body{margin:0;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}button,input,textarea,select{font:inherit}.page{width:min(900px,100%);margin:0 auto}.top{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:8px 0 20px;border-bottom:1px solid var(--line)}a{color:#b9c6ff;text-decoration:none;font-weight:700}.hero,.panel{margin-top:20px;padding:22px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#1c2438,#131925)}h1{margin:7px 0;font-size:clamp(23px,4vw,34px)}h2{margin:0 0 8px;font-size:18px}.muted{color:var(--muted);line-height:1.55}.tabs,.scope-tabs{display:flex;gap:8px;overflow-x:auto;margin-top:18px;padding-bottom:3px}.tabs button,.scope-tabs button{flex:none;padding:10px 15px;border-color:var(--line);border-radius:11px;color:#cbd2e2;white-space:nowrap}.tabs button[aria-selected="true"],.scope-tabs button[aria-pressed="true"]{border-color:#9b8cff;background:#8b7bff30;color:#fff}.panel{display:grid;gap:16px}.panel[hidden]{display:none}label{display:grid;gap:7px;color:#dce2f3;font-size:12px;font-weight:700}input:not([type=checkbox]),textarea,select{width:100%;padding:10px 11px;border:1px solid #485776;border-radius:9px;background:#0e1422;color:#f5f7fb}textarea{resize:vertical}button{padding:9px 12px;border:1px solid #7582a3;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-weight:700;cursor:pointer}button:hover{border-color:#9b8cff;background:#8b7bff20}button:disabled{opacity:.55;cursor:wait}.primary{border-color:#9b8cff;background:#8b7bff30}.feedback{min-height:20px;margin:0;color:#9cf0cf;font-size:12px}.feedback.error{color:#ff9eaa}.actions{display:flex;gap:8px;flex-wrap:wrap}.media{display:grid;gap:10px;padding:14px;border:1px solid var(--line);border-radius:12px;background:#ffffff05}.media p{margin:0;color:var(--muted);overflow-wrap:anywhere}.back{font-size:12px}@media(max-width:620px){body{padding:14px}.top{align-items:flex-start;flex-direction:column}.hero,.panel{padding:17px}}
+  </style></head><body><main class="page">
+    <nav class="top"><a class="back" href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">← Painel de administração</a><span>${escapeHtml(groupType)} · ${escapeHtml(data.groupName)}</span></nav>
+    <header class="hero"><small>CONFIGURAÇÕES LOCAIS</small><h1>Boas-vindas e despedidas</h1><p class="muted">Configure as mensagens enviadas quando alguém entra ou sai. A ativação e desativação continuam disponíveis no painel principal.</p>${scopeNavigation}</header>
+    <nav class="tabs" role="tablist" aria-label="Tipo de mensagem"><button type="button" role="tab" aria-selected="true" data-setting="welcome">Boas-vindas</button><button type="button" role="tab" aria-selected="false" data-setting="goodbye">Despedidas</button></nav>
+    <form id="welcomeForm" class="panel">
+      <div><h2 id="formTitle">Mensagem de boas-vindas</h2><p id="scopeLabel" class="muted"></p></div>
+      ${destinationField}
+      <label>Formato da mensagem<select name="mode"><option value="texto">Somente texto</option><option value="media">Mídia com legenda</option></select></label>
+      <label>Mensagem<textarea name="text" maxlength="2000" rows="5" required></textarea><small class="muted">Variáveis disponíveis: {user}, {mention}, {group}, {server}, {count} e {members}.</small></label>
+      <section class="media"><strong>Mídia</strong><p id="mediaStatus">Nenhuma mídia configurada.</p><label>Enviar imagem ou vídeo (JPEG, PNG, WebP, GIF ou MP4; até 8 MB)<input type="file" name="mediaFile" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4"></label><div class="actions"><button type="button" id="uploadMedia">Enviar mídia</button><button type="button" id="removeMedia" hidden>Remover mídia</button></div></section>
+      <p class="feedback" id="feedback" role="status" aria-live="polite"></p>
+      <div class="actions"><button type="submit" class="primary">Salvar configurações</button></div>
+    </form>
+  </main><script>
+    const context=${context};
+    let requestedScope=null;try{requestedScope=JSON.parse(new URLSearchParams(location.search).get("scope")||"null")}catch{}
+    let activeSetting="welcome",activeScope=requestedScope||{level:context.platform==="whatsapp"?"chat":"server"},isTopicScope=context.platform==="telegram"&&activeScope.level==="topic";
+    const form=document.getElementById("welcomeForm"),feedback=document.getElementById("feedback"),mediaStatus=document.getElementById("mediaStatus");
+    const destination=document.getElementById("destinationChannel"),topicSelect=document.getElementById("topicSelect");
+    function showError(message){feedback.classList.add("error");feedback.textContent=message}
+    async function api(path,body={}){const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({platform:context.platform,groupId:context.groupId,...body})});const result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível atualizar a configuração.");return result}
+    function setMedia(media){mediaStatus.textContent=media?(media.fileName||"Mídia configurada")+" · "+(media.type||"arquivo"):"Nenhuma mídia configurada.";document.getElementById("removeMedia").hidden=!media}
+    function scopeName(){if(context.platform==="telegram"&&isTopicScope)return "Tópico · "+(topicSelect.selectedOptions[0]?.textContent||"selecionado");return context.platform==="discord"?"Servidor inteiro":context.platform==="telegram"?"Grupo todo + chat principal":"Grupo"}
+    async function loadConfig(){feedback.classList.remove("error");feedback.textContent="Carregando configurações...";form.querySelectorAll("input,textarea,select,button").forEach(control=>control.disabled=true);try{const {config}=await api("/api/account/local/admin-"+activeSetting+"-state",{scope:activeScope});form.elements.mode.value=config.mode||"texto";form.elements.text.value=config.text||"";if(destination)destination.value=config.channelId||"";setMedia(config.media);document.getElementById("scopeLabel").textContent=scopeName();feedback.textContent=""}catch(error){showError(error.message)}finally{form.querySelectorAll("input,textarea,select,button").forEach(control=>control.disabled=false)}}
+    document.querySelectorAll("[data-setting]").forEach(button=>button.addEventListener("click",()=>{activeSetting=button.dataset.setting;document.querySelectorAll("[data-setting]").forEach(tab=>tab.setAttribute("aria-selected",String(tab===button)));document.getElementById("formTitle").textContent=activeSetting==="welcome"?"Mensagem de boas-vindas":"Mensagem de despedida";loadConfig()}));
+    if(context.platform==="telegram"){const groupButton=document.getElementById("groupScope"),topicsButton=document.getElementById("topicsScope"),topicField=document.getElementById("topicField");topicsButton.addEventListener("click",()=>{isTopicScope=true;topicsButton.setAttribute("aria-pressed","true");groupButton.setAttribute("aria-pressed","false");topicField.hidden=false;if(topicSelect.value){activeScope={level:"topic",topicId:topicSelect.value};loadConfig()}else{feedback.textContent="Selecione um tópico para carregar as configurações."}});groupButton.addEventListener("click",()=>{isTopicScope=false;topicsButton.setAttribute("aria-pressed","false");groupButton.setAttribute("aria-pressed","true");topicField.hidden=true;activeScope={level:"server"};loadConfig()});topicSelect.addEventListener("change",()=>{if(topicSelect.value){activeScope={level:"topic",topicId:topicSelect.value};loadConfig()}})}
+    document.getElementById("uploadMedia").addEventListener("click",async()=>{const file=form.elements.mediaFile.files?.[0];if(!file){showError("Selecione uma imagem ou vídeo antes de enviar.");return}if(file.size>8*1024*1024){showError("A mídia deve ter até 8 MB.");return}const button=document.getElementById("uploadMedia");button.disabled=true;feedback.classList.remove("error");feedback.textContent="Enviando mídia...";try{const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error("Não foi possível ler o arquivo selecionado."));reader.readAsDataURL(file)});const result=await api("/api/account/local/admin-"+activeSetting+"-media",{scope:activeScope,mimeType:file.type,data});setMedia(result.config.media);form.elements.mediaFile.value="";feedback.textContent="Mídia atualizada."}catch(error){showError(error.message)}finally{button.disabled=false}});
+    document.getElementById("removeMedia").addEventListener("click",async()=>{if(!window.confirm("Remover a mídia configurada?"))return;const button=document.getElementById("removeMedia");button.disabled=true;feedback.classList.remove("error");feedback.textContent="Removendo mídia...";try{const result=await api("/api/account/local/admin-"+activeSetting+"-media",{scope:activeScope,remove:true});setMedia(result.config.media);feedback.textContent="Mídia removida."}catch(error){showError(error.message)}finally{button.disabled=false}});
+    form.addEventListener("submit",async event=>{event.preventDefault();const button=form.querySelector('[type="submit"]');button.disabled=true;feedback.classList.remove("error");feedback.textContent="Salvando...";try{const config={mode:form.elements.mode.value,text:form.elements.text.value};if(destination)config.channelId=destination.value;const result=await api("/api/account/local/admin-"+activeSetting,{scope:activeScope,config});setMedia(result.config.media);feedback.textContent="Configurações salvas."}catch(error){showError(error.message)}finally{button.disabled=false}});
+    async function initialize(){try{const options=await api("/api/account/local/admin-systems-options");if(destination){destination.innerHTML='<option value="">Selecione um canal</option>';for(const channel of options.chatChannels||[]){const option=document.createElement("option");option.value=channel.id;option.textContent=channel.name;destination.append(option)}}if(context.platform==="telegram"){topicSelect.innerHTML='<option value="">Selecione um tópico</option>';for(const topic of options.topics||[]){const option=document.createElement("option");option.value=topic.id;option.textContent=topic.name;topicSelect.append(option)}if(!options.isForum){document.getElementById("topicsScope").hidden=true;document.getElementById("topicField").hidden=true;isTopicScope=false;activeScope={level:"server"}}else if(isTopicScope){document.getElementById("topicsScope").setAttribute("aria-pressed","true");document.getElementById("groupScope").setAttribute("aria-pressed","false");document.getElementById("topicField").hidden=false;topicSelect.value=activeScope.topicId||""}}await loadConfig()}catch(error){showError(error.message)}}
+    initialize();
+  </script></body></html>`;
+}
+
+function renderSchedulesAdmin(data) {
+  const context = JSON.stringify({ platform: data.platform, groupId: data.groupId });
+  const scopeQuery = JSON.stringify(data.requestedScope || null);
+  const groupType = data.platform === "discord" ? "Servidor" : "Grupo";
+  const targetPicker = data.platform === "discord"
+    ? `<div class="grid"><label>Categoria<select id="scheduleCategory"><option value="">Selecione uma categoria</option></select></label><label>Chat<select id="scheduleChannel" disabled><option value="">Selecione uma categoria primeiro</option></select></label></div>`
+    : data.platform === "telegram"
+      ? `<div class="scope-tabs"><button type="button" id="scheduleGroupScope" aria-pressed="true">Grupo todo + chat principal</button><button type="button" id="scheduleTopicScope" aria-pressed="false">Tópico</button></div><label id="scheduleTopicField" hidden>Tópico<select id="scheduleTopic"><option value="">Selecione um tópico</option></select></label>`
+      : `<p class="muted">Os agendamentos serão enviados neste grupo.</p>`;
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agendamentos</title><style>
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb;--line:#334366;--muted:#9da8bd}*{box-sizing:border-box}body{margin:0;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}button,input,textarea,select{font:inherit}.page{width:min(1000px,100%);margin:0 auto}.top{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:8px 0 20px;border-bottom:1px solid var(--line)}a{color:#b9c6ff;text-decoration:none;font-weight:700}.hero,.panel{margin-top:20px;padding:22px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#1c2438,#131925)}h1{margin:7px 0;font-size:clamp(23px,4vw,34px)}h2{margin:0 0 8px;font-size:18px}.muted{color:var(--muted);line-height:1.55}.tabs,.scope-tabs{display:flex;gap:8px;overflow-x:auto;margin-top:18px;padding-bottom:3px}.tabs button,.scope-tabs button{flex:none;padding:10px 15px;border-color:var(--line);border-radius:11px;color:#cbd2e2;white-space:nowrap}.tabs button[aria-selected="true"],.scope-tabs button[aria-pressed="true"]{border-color:#9b8cff;background:#8b7bff30;color:#fff}.panel{display:grid;gap:14px}.panel[hidden]{display:none}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}label{display:grid;gap:7px;color:#dce2f3;font-size:12px;font-weight:700}input:not([type=checkbox]),textarea,select{width:100%;padding:10px 11px;border:1px solid #485776;border-radius:9px;background:#0e1422;color:#f5f7fb}textarea{resize:vertical}button{padding:9px 12px;border:1px solid #7582a3;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-weight:700;cursor:pointer}button:hover{border-color:#9b8cff;background:#8b7bff20}button:disabled{opacity:.55;cursor:wait}.primary{border-color:#9b8cff;background:#8b7bff30}.feedback{min-height:20px;margin:0;color:#9cf0cf;font-size:12px}.feedback.error{color:#ff9eaa}.actions{display:flex;gap:8px;flex-wrap:wrap}.list{display:grid;gap:10px}.schedule-card,.media{display:grid;gap:8px;padding:14px;border:1px solid var(--line);border-radius:12px;background:#ffffff05}.schedule-card p,.media p{margin:0;color:var(--muted);font-size:12px;line-height:1.5;overflow-wrap:anywhere}.schedule-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.status{padding:4px 8px;border-radius:999px;font-size:10px;font-weight:800}.status.on{background:#58d6a320;color:#9cf0cf}.status.off{background:#f6c46a18;color:#ffd37f}.target{color:#b9c6ff!important;font-weight:700}.media{gap:10px}.form-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}@media(max-width:620px){body{padding:14px}.top{align-items:flex-start;flex-direction:column}.hero,.panel{padding:17px}.grid{grid-template-columns:1fr}}
+  </style></head><body><main class="page">
+    <nav class="top"><a href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">← Painel de administração</a><span>${escapeHtml(groupType)} · ${escapeHtml(data.groupName)}</span></nav>
+    <header class="hero"><small>CONFIGURAÇÕES LOCAIS</small><h1>Agendamentos</h1><p class="muted">Crie mensagens programadas e edite todos os agendamentos deste grupo ou servidor. Horários seguem o fuso local do computador que executa o bot.</p></header>
+    <nav class="tabs" role="tablist" aria-label="Gerenciar agendamentos"><button type="button" role="tab" aria-selected="true" data-tab="edit">Editar agendamentos</button><button type="button" role="tab" aria-selected="false" data-tab="create">Criar agendamento</button></nav>
+    <section class="panel" id="editPanel"><h2>Agendamentos existentes</h2><p class="muted">No Discord, cada item mostra o canal de destino; no Telegram, mostra o grupo ou tópico.</p><div id="scheduleList" class="list" aria-live="polite"></div></section>
+    <form class="panel" id="scheduleForm" hidden>
+      <div><h2 id="formTitle">Novo agendamento</h2><p class="muted" id="formTarget"></p></div>
+      <div id="targetPicker">${targetPicker}</div>
+      <input type="hidden" name="id">
+      <div class="grid"><label>Nome<input name="name" type="text" maxlength="100" required></label><label>Gatilho<select name="triggerType"><option value="fixed">Horários fixos</option><option value="interval">Intervalo</option></select></label></div>
+      <label id="fixedFields">Horários (HH:MM, separados por vírgula)<input name="times" type="text" placeholder="07:00, 12:00, 20:00"></label>
+      <label id="intervalFields" hidden>Intervalo (por exemplo, 30m, 2h ou 1d2h)<input name="interval" type="text" placeholder="1h"></label>
+      <div class="grid"><label>Repetição<select name="repeatMode"><option value="once">Uma vez</option><option value="daily">Diariamente</option><option value="weekly">Semanalmente</option><option value="monthly">Mensalmente</option></select></label><label id="monthDayField" hidden>Dia do mês<input name="monthDay" type="number" min="1" max="31"></label></div>
+      <fieldset id="weekdaysField" hidden><legend>Dias da semana</legend><div class="grid">${[["0","Domingo"],["1","Segunda"],["2","Terça"],["3","Quarta"],["4","Quinta"],["5","Sexta"],["6","Sábado"]].map(([value,label])=>`<label><span><input type="checkbox" name="days" value="${value}"> ${label}</span></label>`).join("")}</div></fieldset>
+      <label>Tipo de mensagem<select name="messageMode"><option value="text">Texto</option><option value="media">Mídia com legenda</option></select></label>
+      <label>Texto / legenda<textarea name="text" maxlength="${data.platform === "discord" ? 2000 : 4000}" rows="4"></textarea></label>
+      <section class="media"><strong>Mídia</strong><p id="mediaStatus">Nenhuma mídia configurada.</p><p>O upload é salvo imediatamente; os demais campos são salvos pelo botão abaixo.</p><label>Enviar imagem ou vídeo (JPEG, PNG, WebP, GIF ou MP4; até 8 MB)<input type="file" name="mediaFile" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4"></label><div class="actions"><button type="button" id="uploadMedia">Enviar mídia</button><button type="button" id="removeMedia" hidden>Remover mídia</button></div></section>
+      <p class="feedback" id="formFeedback" role="status" aria-live="polite"></p><div class="form-actions"><button type="button" id="cancelForm">Voltar</button><button type="submit" class="primary">Salvar agendamento</button></div>
+    </form>
+  </main><script>
+    const context=${context},requestedScope=${scopeQuery};
+    const form=document.getElementById("scheduleForm"),list=document.getElementById("scheduleList"),feedback=document.getElementById("formFeedback");
+    let activeItems=[],activeScope=null,activeMedia=null,isEditing=false,options={};
+    async function api(path,body={}){const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({platform:context.platform,groupId:context.groupId,...body})});const result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível atualizar o agendamento.");return result}
+    function showFeedback(message,error=false){feedback.textContent=message;feedback.classList.toggle("error",error)}
+    function duration(ms){let n=Math.max(0,Number(ms)||0),out="";for(const [unit,size] of [["d",86400000],["h",3600000],["m",60000],["s",1000]]){const value=Math.floor(n/size);if(value){out+=value+unit;n-=value*size}}return out||"0s"}
+    function scheduleTarget(scope){if(context.platform==="discord"){const channel=(options.chatChannels||[]).find(item=>item.id===scope.channelId);return channel?.name||"Canal desconhecido"}if(context.platform==="telegram"&&scope.level==="topic"){const topic=(options.topics||[]).find(item=>item.id===scope.topicId);return topic?.name||"Tópico "+scope.topicId}return context.platform==="telegram"?"Grupo todo + chat principal":"Grupo"}
+    function buildScope(){if(context.platform==="whatsapp")return{level:"chat"};if(context.platform==="telegram"){if(document.getElementById("scheduleTopicScope").getAttribute("aria-pressed")==="true"){const topicId=document.getElementById("scheduleTopic").value;if(!topicId)throw new Error("Selecione um tópico.");return{level:"topic",topicId}}return{level:"server"}}const channelId=document.getElementById("scheduleChannel").value;if(!channelId)throw new Error("Selecione o chat de destino.");const channel=(options.chatChannels||[]).find(item=>item.id===channelId);return{level:"chat",categoryId:channel?.categoryId||"",channelId}}
+    function switchTab(tab){document.querySelectorAll("[data-tab]").forEach(button=>button.setAttribute("aria-selected",String(button.dataset.tab===tab)));document.getElementById("editPanel").hidden=tab!=="edit";if(tab==="create"){isEditing=false;activeScope=null;setForm(null);document.getElementById("targetPicker").hidden=false}else{form.hidden=true;isEditing=false;activeScope=null}}
+    function formatTrigger(item){return item.trigger.type==="fixed"?"Horários: "+item.trigger.times.join(", "):"Intervalo: "+duration(item.trigger.intervalMs)}
+    function formatRepeat(item){if(item.repeat.mode==="once")return"Uma vez";if(item.repeat.mode==="daily")return"Diariamente";if(item.repeat.mode==="monthly")return"Mensal · dia "+item.repeat.monthDay;const days=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];return"Semanal · "+item.repeat.days.map(day=>days[day]).join(", ")}
+    function renderList(){list.replaceChildren();if(!activeItems.length){const empty=document.createElement("p");empty.className="muted";empty.textContent="Nenhum agendamento encontrado.";list.append(empty);return}for(const item of activeItems){const card=document.createElement("article");card.className="schedule-card";const head=document.createElement("div");head.className="schedule-head";const name=document.createElement("strong");name.textContent=item.name||"Sem nome";const status=document.createElement("span");status.className="status "+(item.enabled?"on":"off");status.textContent=item.enabled?(item.state.done?"Concluído":"Ativo"):"Inativo";head.append(name,status);const target=document.createElement("p");target.className="target";target.textContent="Destino: "+item.targetName;const details=document.createElement("p");details.textContent=formatTrigger(item)+" · "+formatRepeat(item);const next=document.createElement("p");next.textContent=item.state.done?"Agendamento concluído.":"Próximo disparo: "+(item.state.nextFireAt?new Date(item.state.nextFireAt).toLocaleString("pt-BR"):"Não calculado")+" · Disparos: "+item.state.firedCount;const message=document.createElement("p");message.textContent=item.message.mode==="media"?"Mídia"+(item.message.media?" · "+(item.message.media.fileName||item.message.media.type):" pendente")+(item.message.text?" · "+item.message.text:""):(item.message.text||"Texto não configurado");const actions=document.createElement("div");actions.className="actions";for(const [label,action] of [["Editar","edit"],[item.enabled?"Desativar":"Ativar",item.enabled?"off":"on"],["Testar agora","test"],["Remover","delete"]]){const button=document.createElement("button");button.type="button";button.textContent=label;button.dataset.action=action;button.dataset.id=item.id;actions.append(button)}card.append(head,target,details,next,message,actions);list.append(card)}}
+    async function loadList(){list.innerHTML='<p class="muted">Carregando agendamentos...</p>';try{const result=await api("/api/account/local/admin-schedules-overview");activeItems=result.schedules||[];renderList()}catch(error){list.replaceChildren();const message=document.createElement("p");message.className="feedback error";message.textContent=error.message;list.append(message)}}
+    function setMedia(media){activeMedia=media||null;document.getElementById("mediaStatus").textContent=activeMedia?(activeMedia.fileName||"Mídia configurada")+" · "+(activeMedia.type||"arquivo"):"Nenhuma mídia configurada.";document.getElementById("removeMedia").hidden=!activeMedia}
+    function updateVisibility(){const fixed=form.elements.triggerType.value==="fixed";document.getElementById("fixedFields").hidden=!fixed;document.getElementById("intervalFields").hidden=fixed;const repeat=form.elements.repeatMode.value;document.getElementById("weekdaysField").hidden=repeat!=="weekly";document.getElementById("monthDayField").hidden=repeat!=="monthly"}
+    function setForm(item){form.reset();form.hidden=false;form.elements.id.value=item?.id||"";form.elements.name.value=item?.name||"";form.elements.triggerType.value=item?.trigger?.type||"fixed";form.elements.times.value=(item?.trigger?.times||["09:00"]).join(", ");form.elements.interval.value=duration(item?.trigger?.intervalMs||3600000);form.elements.repeatMode.value=item?.repeat?.mode||"daily";form.elements.monthDay.value=item?.repeat?.monthDay||"";form.elements.messageMode.value=item?.message?.mode||"text";form.elements.text.value=item?.message?.text||"";form.querySelectorAll('input[name="days"]').forEach(input=>input.checked=(item?.repeat?.days||[]).includes(Number(input.value)));if(!item&&requestedScope?.channelId){document.getElementById("scheduleCategory").value=requestedScope.categoryId||"__none__";document.getElementById("scheduleCategory").dispatchEvent(new Event("change"));document.getElementById("scheduleChannel").value=requestedScope.channelId}else if(!item&&context.platform==="telegram"&&requestedScope?.level==="topic"){document.getElementById("scheduleTopicScope").click();document.getElementById("scheduleTopic").value=requestedScope.topicId||""}setMedia(item?.message?.media||null);updateVisibility();document.getElementById("formTitle").textContent=item?"Editar agendamento":"Criar agendamento";document.getElementById("formTarget").textContent=item?"Destino: "+item.targetName:"Selecione o destino da mensagem.";document.getElementById("targetPicker").hidden=Boolean(item);showFeedback("");form.scrollIntoView({block:"start"})}
+    function collectConfig(){const trigger=form.elements.triggerType.value==="fixed"?{type:"fixed",times:form.elements.times.value.split(/[\\s,;]+/).map(value=>value.trim()).filter(Boolean)}:{type:"interval",interval:form.elements.interval.value.trim()};const mode=form.elements.repeatMode.value,repeat={mode};if(mode==="weekly")repeat.days=[...form.querySelectorAll('input[name="days"]:checked')].map(input=>Number(input.value));if(mode==="monthly")repeat.monthDay=Number(form.elements.monthDay.value);return{name:form.elements.name.value,trigger,repeat,message:{mode:form.elements.messageMode.value,text:form.elements.text.value}}}
+    async function uploadMedia(){const file=form.elements.mediaFile.files?.[0];if(!file){showFeedback("Selecione uma imagem ou vídeo.",true);return}if(file.size>8*1024*1024){showFeedback("A mídia deve ter até 8 MB.",true);return}const button=document.getElementById("uploadMedia");button.disabled=true;showFeedback("Enviando mídia...");try{let id=form.elements.id.value;if(!id){activeScope=buildScope();const result=await api("/api/account/local/admin-schedules",{scope:activeScope,action:"create",config:collectConfig()});id=result.schedule.id;form.elements.id.value=id;isEditing=true;document.getElementById("targetPicker").hidden=true}const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error("Não foi possível ler o arquivo."));reader.readAsDataURL(file)});const result=await api("/api/account/local/admin-schedules-media",{scope:activeScope,id,fileName:file.name,mimeType:file.type,data});setMedia(result.schedule.message.media);form.elements.mediaFile.value="";showFeedback("Mídia salva.");await loadList()}catch(error){showFeedback(error.message,true)}finally{button.disabled=false}}
+    document.querySelectorAll("[data-tab]").forEach(button=>button.addEventListener("click",()=>switchTab(button.dataset.tab)));
+    form.elements.triggerType.addEventListener("change",updateVisibility);form.elements.repeatMode.addEventListener("change",updateVisibility);
+    document.getElementById("cancelForm").addEventListener("click",()=>{form.hidden=true;isEditing=false;switchTab("edit")});
+    document.getElementById("uploadMedia").addEventListener("click",uploadMedia);
+    document.getElementById("removeMedia").addEventListener("click",async()=>{if(!activeMedia||!form.elements.id.value)return;try{const result=await api("/api/account/local/admin-schedules",{scope:activeScope,action:"removeMedia",id:form.elements.id.value});setMedia(result.schedule.message.media);await loadList();showFeedback("Mídia removida.")}catch(error){showFeedback(error.message,true)}});
+    form.addEventListener("submit",async event=>{event.preventDefault();const button=form.querySelector('[type="submit"]');button.disabled=true;showFeedback("Salvando agendamento...");try{if(!isEditing)activeScope=buildScope();const id=form.elements.id.value;const result=await api("/api/account/local/admin-schedules",{scope:activeScope,action:id?"update":"create",id,config:collectConfig()});form.elements.id.value=result.schedule.id;isEditing=true;document.getElementById("targetPicker").hidden=true;document.getElementById("formTarget").textContent="Destino: "+scheduleTarget(activeScope);setMedia(result.schedule.message.media);await loadList();showFeedback("Agendamento salvo.")}catch(error){showFeedback(error.message,true)}finally{button.disabled=false}});
+    list.addEventListener("click",async event=>{const button=event.target.closest("[data-action]");if(!button)return;const item=activeItems.find(schedule=>schedule.id===button.dataset.id);if(!item)return;if(button.dataset.action==="edit"){activeScope=item.scope;switchTab("create");isEditing=true;setForm(item);return}const action=button.dataset.action;if(action==="delete"&&!confirm('Remover o agendamento "'+item.name+'"?'))return;if(action==="test"&&!confirm("Enviar agora uma mensagem de teste para "+item.targetName+"?"))return;button.disabled=true;try{await api("/api/account/local/admin-schedules",{scope:item.scope,action:action==="on"||action==="off"?"toggle":action,id:item.id,enabled:action==="on"});await loadList()}catch(error){window.alert(error.message)}finally{button.disabled=false}});
+    async function initialize(){try{options=await api("/api/account/local/admin-systems-options");if(context.platform==="discord"){const category=document.getElementById("scheduleCategory"),channel=document.getElementById("scheduleChannel");const map=new Map();for(const item of options.chatChannels||[]){const key=item.categoryId||"__none__";if(!map.has(key))map.set(key,key==="__none__"?"Sem categoria":options.categories.find(cat=>cat.id===key)?.name||"Categoria")}for(const [id,name]of map)category.add(new Option(name,id));function fillChannels(categoryId){channel.innerHTML='<option value="">Selecione um chat</option>';const actualCategoryId=categoryId==="__none__"?"":categoryId;for(const item of options.chatChannels||[]){if(item.categoryId!==actualCategoryId)continue;channel.add(new Option(item.name,item.id))}channel.disabled=!(options.chatChannels||[]).some(item=>item.categoryId===actualCategoryId)}category.addEventListener("change",()=>fillChannels(category.value));if(requestedScope?.channelId){category.value=requestedScope.categoryId||"__none__";fillChannels(category.value);channel.value=requestedScope.channelId}}else if(context.platform==="telegram"){for(const topic of options.topics||[])document.getElementById("scheduleTopic").add(new Option(topic.name,topic.id));const topicsButton=document.getElementById("scheduleTopicScope"),groupButton=document.getElementById("scheduleGroupScope");topicsButton.addEventListener("click",()=>{topicsButton.setAttribute("aria-pressed","true");groupButton.setAttribute("aria-pressed","false");document.getElementById("scheduleTopicField").hidden=false});groupButton.addEventListener("click",()=>{topicsButton.setAttribute("aria-pressed","false");groupButton.setAttribute("aria-pressed","true");document.getElementById("scheduleTopicField").hidden=true});if(requestedScope?.level==="topic"){topicsButton.click();document.getElementById("scheduleTopic").value=requestedScope.topicId||""}if(!options.isForum)topicsButton.hidden=true}await loadList()}catch(error){list.innerHTML="";const message=document.createElement("p");message.className="feedback error";message.textContent=error.message;list.append(message)}}
+    initialize();
+  </script></body></html>`;
+}
+
+function renderMonitorsAdmin(data) {
+  const context = JSON.stringify({ platform: data.platform, groupId: data.groupId });
+  const scopeQuery = JSON.stringify(data.requestedScope || null);
+  const groupType = data.platform === "discord" ? "Servidor" : "Grupo";
+  const monitorDefinitions = [
+    ["monitorStock","Monitor da bolsa"],
+    ["monitorCafe","Monitor do café"],
+    ["monitorWeather","Monitor do clima"],
+    ["monitorRandomWeather","Previsão aleatória"]
+  ];
+  const scopePicker = data.platform === "discord"
+    ? `<div class="grid"><label>Categoria<select id="categorySelect"><option value="">Selecione uma categoria</option></select></label><label>Chat<select id="channelSelect" disabled><option value="">Selecione uma categoria primeiro</option></select></label></div>`
+    : data.platform === "telegram"
+      ? `<div class="scope-tabs"><button type="button" id="groupScope" aria-pressed="true">Grupo todo + chat principal</button><button type="button" id="topicsScope" aria-pressed="false">Tópicos</button></div><label id="topicField" hidden>Tópico<select id="topicSelect"><option value="">Selecione um tópico</option></select></label>`
+      : `<p class="muted">Os monitores serão configurados para este grupo.</p>`;
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Monitores</title><style>
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb;--line:#334366;--muted:#9da8bd}*{box-sizing:border-box}body{margin:0;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}button,input,textarea,select{font:inherit}.page{width:min(900px,100%);margin:0 auto}.top{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:8px 0 20px;border-bottom:1px solid var(--line)}a{color:#b9c6ff;text-decoration:none;font-weight:700}.hero,.panel{margin-top:20px;padding:22px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#1c2438,#131925)}h1{margin:7px 0;font-size:clamp(23px,4vw,34px)}h2{margin:0 0 8px;font-size:18px}.muted{color:var(--muted);line-height:1.55}.grid,.tabs,.scope-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.tabs,.scope-tabs{display:flex;overflow-x:auto;margin-top:18px;padding-bottom:3px}.tabs button,.scope-tabs button{flex:none;padding:10px 15px;border-color:var(--line);border-radius:11px;color:#cbd2e2;white-space:nowrap}.tabs button[aria-selected="true"],.scope-tabs button[aria-pressed="true"]{border-color:#9b8cff;background:#8b7bff30;color:#fff}.panel{display:grid;gap:14px}.panel[hidden]{display:none}label{display:grid;gap:7px;color:#dce2f3;font-size:12px;font-weight:700}input:not([type=checkbox]),textarea,select{width:100%;padding:10px 11px;border:1px solid #485776;border-radius:9px;background:#0e1422;color:#f5f7fb}textarea{resize:vertical}button{padding:9px 12px;border:1px solid #7582a3;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-weight:700;cursor:pointer}button:hover{border-color:#9b8cff;background:#8b7bff20}button:disabled{opacity:.55;cursor:wait}.primary{border-color:#9b8cff;background:#8b7bff30}.feedback{min-height:20px;margin:0;color:#9cf0cf;font-size:12px}.feedback.error{color:#ff9eaa}.form-fields{display:grid;gap:12px}.form-fields>label>input,.form-fields textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#0e121b;color:#f5f7fb;font:inherit;font-size:12px}.check-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}.check-list label{display:flex;align-items:center;gap:8px;padding:9px;border:1px solid var(--line);border-radius:9px;background:#ffffff05;font-size:11px}.check-list input{accent-color:#9b8cff}.toggle{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#ffffff05}.toggle input{width:18px;height:18px;accent-color:#9b8cff}.actions{display:flex;gap:8px;flex-wrap:wrap}@media(max-width:620px){body{padding:14px}.top{align-items:flex-start;flex-direction:column}.hero,.panel{padding:17px}.grid{grid-template-columns:1fr}}
+  </style></head><body><main class="page">
+    <nav class="top"><a href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">← Painel de administração</a><span>${escapeHtml(groupType)} · ${escapeHtml(data.groupName)}</span></nav>
+    <header class="hero"><small>CONFIGURAÇÕES LOCAIS</small><h1>Monitores</h1><p class="muted">Escolha o grupo, tópico ou chat de destino e configure os monitores de bolsa, café e clima.</p>${scopePicker}</header>
+    <nav class="tabs" role="tablist" aria-label="Monitor">${monitorDefinitions.map(([key,label],index)=>`<button type="button" role="tab" aria-selected="${index===0}" data-monitor="${key}">${label}</button>`).join("")}</nav>
+    <form class="panel" id="monitorForm"><h2 id="monitorTitle">${monitorDefinitions[0][1]}</h2><p class="muted" id="scopeLabel"></p><label class="toggle"><input id="enabled" type="checkbox"><span><strong>Ativar monitor</strong><small>O monitor só será ativado se tiver uma configuração válida para o escopo.</small></span></label><div id="fields" class="form-fields"></div><p class="feedback" id="feedback" role="status" aria-live="polite"></p><div class="actions"><button type="submit" class="primary">Salvar configurações</button></div></form>
+  </main><script>
+    const context=${context},requestedScope=${scopeQuery},labels=${JSON.stringify(Object.fromEntries(monitorDefinitions))},assets=${JSON.stringify(MARKET_ASSETS.map(({symbol,label})=>({symbol,label})))};
+    let activeSetting="monitorStock",activeScope=requestedScope||{level:context.platform==="whatsapp"?"chat":"server"},options={};
+    const form=document.getElementById("monitorForm"),fields=document.getElementById("fields"),feedback=document.getElementById("feedback"),enabled=document.getElementById("enabled");
+    async function api(path,body={}){const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({platform:context.platform,groupId:context.groupId,...body})});const result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível atualizar o monitor.");return result}
+    function showError(message){feedback.classList.add("error");feedback.textContent=message}
+    function addLabel(text,control,hint=""){const label=document.createElement("label");label.append(document.createTextNode(text),control);if(hint){const small=document.createElement("small");small.className="muted";small.textContent=hint;label.append(small)}fields.append(label)}
+    function textarea(value,rows=4){const control=document.createElement("textarea");control.rows=rows;control.value=value;return control}
+    function select(optionsList,value){const control=document.createElement("select");for(const [id,label]of optionsList)control.add(new Option(label,id));control.value=value;return control}
+    function split(value){return value.split(/[\\r\\n,]+/).map(part=>part.trim()).filter(Boolean)}
+    function scopeName(){if(activeScope.level==="topic")return"Tópico · "+(document.getElementById("topicSelect").selectedOptions[0]?.textContent||"selecionado");if(activeScope.level==="chat")return"Chat · "+(document.getElementById("channelSelect").selectedOptions[0]?.textContent||"selecionado");return context.platform==="discord"?"Servidor":"Grupo todo + chat principal"}
+    function render(config){fields.replaceChildren();const times=Array.isArray(config.times)&&config.times.length?config.times:["09:00"];if(activeSetting==="monitorStock"){const symbols=Array.isArray(config.symbols)?config.symbols:[],all=symbols.length===0;const allLabel=document.createElement("label"),allInput=document.createElement("input");allInput.type="checkbox";allInput.checked=all;allLabel.append(allInput,document.createTextNode(" Acompanhar todos os ativos"));fields.append(allLabel);const list=document.createElement("div");list.className="check-list";for(const asset of assets){const label=document.createElement("label"),input=document.createElement("input");input.type="checkbox";input.name="symbols";input.value=asset.symbol;input.checked=all||symbols.includes(asset.symbol);input.disabled=all;label.append(input,document.createTextNode(asset.label));list.append(label)}allInput.addEventListener("change",()=>list.querySelectorAll("input").forEach(input=>{input.disabled=allInput.checked;input.checked=allInput.checked}));fields.append(list);addLabel("Horários diários (HH:MM, separados por vírgula)",textarea(times.join(", "),2),"O padrão é 09:00.")}else if(activeSetting==="monitorCafe"){addLabel("Modo",select([["loop","Envio nos horários"],["monitor","Alertar quando o preço mudar"],["both","Horários e alertas de mudança"]],config.mode||"both"));const list=document.createElement("div");list.className="check-list";const sources=new Set(Array.isArray(config.sources)?config.sources:[]);for(const source of ["Minasul","Coocafe","CCCMG"]){const label=document.createElement("label"),input=document.createElement("input");input.type="checkbox";input.name="source";input.value=source;input.checked=sources.has(source);label.append(input,document.createTextNode(source));list.append(label)}fields.append(list);addLabel("Horários diários (HH:MM, separados por vírgula)",textarea(times.join(", "),2),"Usados nos modos de envio por horário.")}else if(activeSetting==="monitorWeather"){const city=document.createElement("input");city.type="text";city.value=config.city||"";addLabel("Cidade",city,"Exemplo: São Paulo, SP. Máximo de 120 caracteres.");addLabel("Horários diários (HH:MM, separados por vírgula)",textarea(times.join(", "),2))}else{addLabel("Cidades (uma por linha)",textarea((Array.isArray(config.cities)?config.cities:[]).join("\\n"),6),"O monitor escolhe aleatoriamente entre as cidades cadastradas.");addLabel("Horários diários (HH:MM, separados por vírgula)",textarea(times.join(", "),2))}enabled.checked=config.enabled===true;document.getElementById("scopeLabel").textContent=scopeName()}
+    function collect(){const textareas=fields.querySelectorAll("textarea");if(activeSetting==="monitorStock"){const all=fields.querySelector('label input[type=checkbox]')?.checked;const symbols=all?[]:[...fields.querySelectorAll('input[name="symbols"]:checked')].map(input=>input.value);if(!all&&!symbols.length)throw new Error("Selecione pelo menos um ativo ou marque todos.");return{symbols,times:split(textareas[0].value)}}if(activeSetting==="monitorCafe")return{mode:fields.querySelector("select").value,sources:[...fields.querySelectorAll('input[name="source"]:checked')].map(input=>input.value),times:split(textareas[0].value)};if(activeSetting==="monitorWeather")return{city:fields.querySelector("input").value.trim(),times:split(textareas[0].value)};return{cities:split(textareas[0].value),times:split(textareas[1].value)}}
+    async function load(){if(!activeScope){feedback.textContent="Selecione um chat para carregar os monitores.";return}feedback.classList.remove("error");feedback.textContent="Carregando configurações...";form.querySelectorAll("input,textarea,select,button").forEach(control=>control.disabled=true);try{const {config}=await api("/api/account/local/admin-monitor-state",{setting:activeSetting,scope:activeScope});render(config);feedback.textContent=""}catch(error){showError(error.message)}finally{form.querySelectorAll("input,textarea,select,button").forEach(control=>control.disabled=false)}}
+    document.querySelectorAll("[data-monitor]").forEach(button=>button.addEventListener("click",()=>{activeSetting=button.dataset.monitor;document.querySelectorAll("[data-monitor]").forEach(tab=>tab.setAttribute("aria-selected",String(tab===button)));document.getElementById("monitorTitle").textContent=labels[activeSetting];load()}));
+    form.addEventListener("submit",async event=>{event.preventDefault();const button=form.querySelector('[type="submit"]'),desiredEnabled=enabled.checked;button.disabled=true;feedback.classList.remove("error");feedback.textContent="Salvando configurações...";try{const result=await api("/api/account/local/admin-monitor",{setting:activeSetting,scope:activeScope,config:collect()});await api("/api/account/local/admin-settings",{setting:activeSetting,scope:activeScope,enabled:desiredEnabled});render(result.config);enabled.checked=desiredEnabled;feedback.textContent=result.announcementWarning||"Configurações do monitor salvas."}catch(error){showError(error.message)}finally{button.disabled=false}});
+    async function initialize(){try{options=await api("/api/account/local/admin-systems-options");let canLoad=true;if(context.platform==="discord"){const categories=document.getElementById("categorySelect"),channels=document.getElementById("channelSelect"),hasUncategorized=(options.chatChannels||[]).some(item=>!item.categoryId);for(const category of options.categories||[])categories.add(new Option(category.name,category.id));if(hasUncategorized)categories.add(new Option("Sem categoria","__none__"));function fillChannels(categoryId){channels.innerHTML='<option value="">Selecione um chat</option>';const actualId=categoryId==="__none__"?"":categoryId;const items=(options.chatChannels||[]).filter(item=>item.categoryId===actualId);for(const item of items)channels.add(new Option(item.name,item.id));channels.disabled=!items.length}categories.addEventListener("change",()=>fillChannels(categories.value));if(requestedScope?.channelId){categories.value=requestedScope.categoryId||"__none__";fillChannels(categories.value);channels.value=requestedScope.channelId;activeScope=requestedScope}else{activeScope=null;canLoad=false;form.querySelectorAll("input,textarea,select,button").forEach(control=>control.disabled=true);feedback.textContent="Selecione uma categoria e um chat para carregar os monitores."}channels.addEventListener("change",()=>{if(channels.value){activeScope={level:"chat",categoryId:categories.value==="__none__"?"":categories.value,channelId:channels.value};load()}})}else if(context.platform==="telegram"){const topics=document.getElementById("topicSelect"),group=document.getElementById("groupScope"),topicButton=document.getElementById("topicsScope");for(const topic of options.topics||[])topics.add(new Option(topic.name,topic.id));group.addEventListener("click",()=>{activeScope={level:"server"};group.setAttribute("aria-pressed","true");topicButton.setAttribute("aria-pressed","false");document.getElementById("topicField").hidden=true;load()});topicButton.addEventListener("click",()=>{topicButton.setAttribute("aria-pressed","true");group.setAttribute("aria-pressed","false");document.getElementById("topicField").hidden=false;if(topics.value){activeScope={level:"topic",topicId:topics.value};load()}});topics.addEventListener("change",()=>{if(topics.value){activeScope={level:"topic",topicId:topics.value};load()}});if(requestedScope?.level==="topic"){activeScope=requestedScope;topicButton.click();topics.value=requestedScope.topicId||""}if(!options.isForum)topicButton.hidden=true}else activeScope={level:"chat"};if(canLoad)await load()}catch(error){showError(error.message)}}
+    initialize();
+  </script></body></html>`;
+}
+
 function renderEconomyAdmin(data) {
   const context = JSON.stringify({ platform: data.platform, groupId: data.groupId });
   const rarityData = JSON.stringify(economy.LOCAL_SIGNAL_RARITIES.map(value => ({
@@ -3860,7 +4404,7 @@ function renderEconomyAdmin(data) {
       <button type="button" role="tab" aria-selected="false" aria-controls="balancesPanel" data-economy-tab="balances">Editar saldo</button>
     </nav>
     <section id="vaultPanel" class="panel" role="tabpanel"><h2>Configurações do cofre</h2>
-      <p class="muted">Impenetrável protege o saldo; Imposto progressivo cobra por períodos completos de 24 horas desde a movimentação anterior (sem cobrança antes de 1 hora); Roubo permitido sorteia entre carteira e cofre conforme as chances configuradas.</p>
+      <p class="muted">As regras abaixo são compartilhadas por todos os membros deste grupo/servidor; os saldos e impostos são individuais. Imposto progressivo é acumulado por hora completa após a primeira hora, proporcional à taxa configurada para 24 horas.</p>
       <div class="setting"><label><input id="includeVault" type="checkbox"> Considerar cofre no ranking de riqueza</label><span id="rankStatus" class="muted">Carregando...</span></div><p id="rankFeedback" class="feedback" role="status"></p>
       <form id="vaultConfigForm" class="grid" style="margin-top:16px">
         <label>Modo do cofre<select name="mode"><option value="secure">Impenetrável — saldo seguro</option><option value="tax">Imposto progressivo</option><option value="robbery">Roubo permitido</option></select></label>
@@ -3870,7 +4414,7 @@ function renderEconomyAdmin(data) {
         <label>Chance de o roubo atingir o cofre (%)<input name="robberyVaultChance" type="number" min="0" max="100" step="1" required><small class="muted">A chance restante será aplicada à carteira.</small></label>
         <div><button class="primary" type="submit">Salvar configurações do cofre</button></div>
       </form><p id="vaultConfigFeedback" class="feedback" role="status"></p>
-      <p class="muted">Cada pessoa pode fazer um depósito e um saque por dia local. O imposto considera períodos completos de 24 horas desde a movimentação anterior; movimentações com menos de 1 hora de intervalo não geram cobrança.</p>
+      <p class="muted">Cada pessoa pode fazer um depósito e um saque por dia local. Alterar as regras não altera a data da última movimentação de nenhum membro.</p>
     </section>
     <section id="storePanel" class="panel" role="tabpanel" hidden><h2>Loja Local</h2><p class="muted">Gerencie itens do catálogo e pedidos do Mercado Local.</p>
       <nav class="tabs" role="tablist" aria-label="Gerenciamento da Loja Local">
@@ -4156,7 +4700,7 @@ function renderGroupAdmin(data) {
     `<li><div class="warning-identity"><strong>${escapeHtml(item.name || item.userId)}</strong><small>ID: ${escapeHtml(item.userId)}</small></div><strong class="warning-count">${item.count}/${data.moderation.max}</strong><details class="warning-history"><summary>Motivos das advertências (${item.count})</summary><ul>${item.legacyCount ? `<li>${item.legacyCount} advertência(s) antiga(s) sem motivo registrado</li>` : ""}${(item.records || []).map(record => `<li>${escapeHtml(record.reason || "Motivo não informado")}<small>${escapeHtml(formatWarningDate(record.createdAt))}</small></li>`).join("")}</ul></details><button type="button" class="moderation-action danger" data-warning-user="${escapeHtml(item.userId)}">Remover advertências</button></li>`
   ).join("");
   const rootLevel = data.platform === "whatsapp" ? "chat" : "server";
-  const settingDefinitions = getAdminSystemDefinitions(data.platform, rootLevel);
+  const settingDefinitions = ADMIN_SYSTEM_SETTINGS.filter(setting => setting.scopes[data.platform]);
   const localSignalRarityLabels = {
     comum: "Comum",
     incomum: "Incomum",
@@ -4214,36 +4758,46 @@ function renderGroupAdmin(data) {
   const renderSettingCards = (definitions, settings, scope, scopeLabel) => {
     let previousSettingCategory = "";
     return definitions.map(setting => {
-      const enabled = settings[setting.key] === true;
+      const supportedInScope = setting.scopes[data.platform]?.includes(scope.level) === true;
+      const enabled = supportedInScope && settings[setting.key] === true;
+      const hasChatScopeOnly = !supportedInScope && setting.scopes[data.platform].some(level => level === "chat" || level === "topic" || level === "categoria");
       const categoryHeading = setting.category && setting.category !== previousSettingCategory
         ? `<h3 class="setting-category" style="margin:12px 0 0;color:#b9c6ff;font-size:14px">${escapeHtml(setting.category)}</h3>`
         : "";
       previousSettingCategory = setting.category || previousSettingCategory;
-      const configurableSettings = ["antilink", "antimedia", "antipalavras", "antiraid", "blockcmd", "welcome", "goodbye", "autorepo", "autodownload", "autoApprove"];
+      const configurableSettings = ["welcome", "goodbye", "autorepo", "autodownload", "autoApprove"];
       const isMonitor = Object.prototype.hasOwnProperty.call(ADMIN_MONITOR_HELPERS, setting.key);
-      const configButton = configurableSettings.includes(setting.key)
+      const dedicatedProtection = ["antilink", "antipalavras", "antimedia", "antiraid", "blockcmd"].includes(setting.key);
+      const dedicatedWelcome = ["welcome", "goodbye"].includes(setting.key);
+      const welcomePageHref = `/painel-boas-vindas?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}&scope=${encodeURIComponent(JSON.stringify(scope))}`;
+      const dedicatedHref = `/painel-${setting.key === "agendar" ? "agendamentos" : "monitores"}?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}&scope=${encodeURIComponent(JSON.stringify(scope))}`;
+      const configButton = dedicatedProtection
+        ? `<a href="/painel-${setting.key}?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}" style="display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:8px 10px;text-decoration:none;border:1px solid #6f7fa5;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-size:11px;font-weight:700">Ir para o painel</a>`
+        : dedicatedWelcome
+        ? `<a href="${welcomePageHref}" style="display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:8px 10px;text-decoration:none;border:1px solid #6f7fa5;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-size:11px;font-weight:700">Ir para o painel</a>`
+        : setting.key === "agendar" || isMonitor
+        ? `<a href="${dedicatedHref}" style="display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:8px 10px;text-decoration:none;border:1px solid #6f7fa5;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-size:11px;font-weight:700">Ir para o painel</a>`
+        : supportedInScope && configurableSettings.includes(setting.key)
         ? `<button type="button" class="setting-icon-button" data-${setting.key.toLowerCase()}-config data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Configurar ${setting.key} neste escopo" title="Configurações do ${setting.key}">${ADMIN_SETTINGS_GEAR_ICON}</button>`
         : ["xp", "activity"].includes(setting.key)
           ? `<button type="button" class="setting-icon-button" data-rp-config="${setting.key}" data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Gerenciar ${setting.label}" title="Gerenciar ${setting.label}">${ADMIN_SETTINGS_GEAR_ICON}</button>`
           : setting.key === "economy"
             ? `<a href="/painel-economia?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}" style="display:inline-flex;align-items:center;width:auto;height:auto;padding:8px 10px;text-decoration:none;border:1px solid #6f7fa5;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-size:11px;font-weight:700">Economia, loja e busca</a>`
+        : "";
+      const unavailableState = hasChatScopeOnly
+        ? `<span class="state off" data-state="${setting.key}">Configurar por chat/tópico</span>`
+        : `<span class="state off" data-state="${setting.key}">Indisponível nesta plataforma</span>`;
+      const controls = !supportedInScope
+        ? `${unavailableState}${configButton}`
         : setting.key === "agendar"
-          ? `<button type="button" class="setting-icon-button" data-schedule-config data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Gerenciar agendamentos neste escopo" title="Gerenciar agendamentos">${ADMIN_SETTINGS_GEAR_ICON}</button>`
-        : isMonitor
-          ? `<button type="button" class="setting-icon-button" data-monitor-config data-monitor-setting="${setting.key}" data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Configurar ${setting.label} neste escopo" title="Configurações do ${setting.label}">${ADMIN_SETTINGS_GEAR_ICON}</button>`
-          : "";
-      const controls = setting.key === "agendar"
         ? `<span class="state ${enabled ? "on" : "off"}" data-state="${setting.key}">${enabled ? "Ativo" : "Sem agendamentos ativos"}</span>${configButton}`
         : `<span class="state ${enabled ? "on" : "off"}" data-state="${setting.key}">${enabled ? "Ativado" : "Desativado"}</span><button type="button" data-setting="${setting.key}" data-enabled="${enabled ? "true" : "false"}" data-scope="${escapeHtml(JSON.stringify(scope))}">${enabled ? "Desativar" : "Ativar"}</button>${configButton}`;
-      return `${categoryHeading}<article class="setting-card"><div class="setting-info"><span class="setting-scope">${escapeHtml(scopeLabel)}</span><h2>${escapeHtml(setting.label)}</h2><p>${escapeHtml(setting.description)}</p></div><div class="setting-controls">${controls}</div></article>`;
+      const cardScopeLabel = supportedInScope ? scopeLabel : hasChatScopeOnly ? "Escopo específico" : "Não disponível";
+      return `${categoryHeading}<article class="setting-card"><div class="setting-info"><span class="setting-scope">${escapeHtml(cardScopeLabel)}</span><h2>${escapeHtml(setting.label)}</h2><p>${escapeHtml(setting.description)}</p></div><div class="setting-controls">${controls}</div></article>`;
     }).join("");
   };
   const rootScope = { level: rootLevel };
   const settingCards = renderSettingCards(settingDefinitions, data.settings, rootScope, getScopeLabel(rootScope));
-  const welcomeGoodbyeDialogs = ["welcome", "goodbye"].map(setting => {
-    const label = setting === "welcome" ? "boas-vindas" : "despedida";
-    return `<dialog class="antilink-dialog welcome-dialog" id="${setting}Dialog" aria-labelledby="${setting}DialogTitle"><form id="${setting}Form"><header class="antilink-dialog-heading"><div><h2 id="${setting}DialogTitle">Configurações de ${label}</h2><p id="${setting}ScopeLabel"></p></div><button type="button" class="dialog-close" data-close-${setting} aria-label="Fechar">×</button></header><div class="antilink-form-grid"><label>Formato da mensagem<select name="mode"><option value="texto">Somente texto</option><option value="media">Mídia com legenda</option></select></label><label>Mensagem<textarea name="text" maxlength="2000" rows="5" required></textarea><small>Variáveis disponíveis: {user}, {mention}, {group}, {server}, {count} e {members}.</small></label></div><section class="welcome-media-section"><strong>Mídia</strong><p id="${setting}MediaStatus">Nenhuma mídia configurada.</p><label>Enviar imagem ou vídeo (JPEG, PNG, WebP, GIF ou MP4; até 8 MB)<input type="file" name="mediaFile" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4"></label><div class="antilink-dialog-actions"><button type="button" data-upload-${setting}>Enviar mídia</button><button type="button" data-remove-${setting} hidden>Remover mídia</button></div></section><p class="antilink-form-feedback" id="${setting}FormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-${setting}>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>`;
-  }).join("");
   const autorespostaDialog = `<dialog class="antilink-dialog autoresposta-dialog" id="autorepoDialog" aria-labelledby="autorepoDialogTitle"><form id="autorepoForm"><header class="antilink-dialog-heading"><div><h2 id="autorepoDialogTitle">Respostas automáticas</h2><p id="autorepoScopeLabel"></p></div><button type="button" class="dialog-close" data-close-autorepo aria-label="Fechar">×</button></header><label class="autorepo-global-toggle"><input type="checkbox" name="useGlobal"><span><strong>Usar respostas oficiais globais</strong><small><span id="autorepoGlobalCount">0</span> resposta(s) disponível(is), mantidas pelos administradores do bot.</small></span></label><section class="autorepo-responses"><div class="autorepo-section-heading"><div><h3>Respostas deste grupo</h3><p>Gatilhos locais são usados antes das respostas globais.</p></div><button type="button" id="addAutoresposta">Adicionar resposta</button></div><div id="autorepoResponseList" class="autorepo-response-list"></div></section><p class="antilink-form-feedback" id="autorepoFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-autorepo>Cancelar</button><button type="submit" class="primary">Salvar respostas</button></footer></form></dialog>`;
   const autodownloadDialog = `<dialog class="antilink-dialog welcome-dialog" id="autodownloadDialog" aria-labelledby="autodownloadDialogTitle"><form id="autodownloadForm"><header class="antilink-dialog-heading"><div><h2 id="autodownloadDialogTitle">Configurações do download automático</h2><p id="autodownloadScopeLabel"></p></div><button type="button" class="dialog-close" data-close-autodownload aria-label="Fechar">×</button></header><label class="autorepo-global-toggle"><input type="checkbox" name="deletelink"><span><strong>Excluir a mensagem com o link original</strong><small>Depois que o bot enviar a mídia baixada, remove do chat a mensagem que contém o link.</small></span></label><p class="antilink-form-feedback" id="autodownloadFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-autodownload>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>`;
   const autoApproveDialog = `<dialog class="antilink-dialog welcome-dialog" id="autoApproveDialog" aria-labelledby="autoApproveDialogTitle"><form id="autoApproveForm"><header class="antilink-dialog-heading"><div><h2 id="autoApproveDialogTitle">Configurações da autoaprovação</h2><p id="autoApproveScopeLabel"></p></div><button type="button" class="dialog-close" data-close-autoApprove aria-label="Fechar">×</button></header><label>Intervalo entre aprovações (segundos)<input name="intervalSeconds" type="number" min="0" max="86400" step="1" required></label><label>Nomes bloqueados<textarea name="blockedNames" rows="3" placeholder="um texto por linha"></textarea></label><label>Símbolos bloqueados<textarea name="blockedSymbols" rows="3" placeholder="um símbolo por linha"></textarea></label><label>Horários permitidos (HH:MM-HH:MM, uma faixa por linha)<textarea name="schedules" rows="3" placeholder="08:00-18:00"></textarea><small>Sem faixas, a autoaprovação pode ocorrer a qualquer horário local.</small></label><p class="antilink-form-feedback" id="autoApproveFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-autoApprove>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>`;
@@ -4252,7 +4806,7 @@ function renderGroupAdmin(data) {
   const monitorDialog = `<dialog class="antilink-dialog monitor-dialog" id="monitorDialog" aria-labelledby="monitorDialogTitle"><form id="monitorForm"><header class="antilink-dialog-heading"><div><h2 id="monitorDialogTitle">Configurações do monitor</h2><p id="monitorScopeLabel"></p></div><button type="button" class="dialog-close" data-close-monitor aria-label="Fechar">×</button></header><div id="monitorFormFields" class="monitor-form-fields"></div><p class="antilink-form-feedback" id="monitorFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-monitor>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>`;
   const schedulesDialog = `<dialog class="antilink-dialog schedules-dialog" id="schedulesDialog" aria-labelledby="schedulesDialogTitle"><header class="antilink-dialog-heading"><div><h2 id="schedulesDialogTitle">Agendamentos</h2><p id="schedulesScopeLabel"></p></div><button type="button" class="dialog-close" data-close-schedules aria-label="Fechar">×</button></header><p class="monitor-field-caption">Gerencie mensagens automáticas para este chat ou tópico. Os horários seguem o fuso horário local do computador que executa o bot.</p><div id="scheduleList" class="schedule-list"></div><button type="button" id="addSchedule" class="schedule-add">Criar agendamento</button><form id="scheduleForm" hidden style="display:none"><input type="hidden" name="id"><div class="antilink-form-grid"><label>Nome<input name="name" type="text" maxlength="100" required></label><label>Gatilho<select name="triggerType"><option value="fixed">Horários fixos</option><option value="interval">Intervalo</option></select></label></div><div id="scheduleFixedFields"><label>Horários (HH:MM, separados por vírgula)<input name="times" type="text" placeholder="07:00, 12:00, 20:00"></label></div><div id="scheduleIntervalFields" hidden><label>Intervalo (por exemplo, 30m, 2h ou 1d2h)<input name="interval" type="text" placeholder="1h"></label></div><div class="antilink-form-grid"><label>Repetição<select name="repeatMode"><option value="once">Uma vez</option><option value="daily">Diariamente</option><option value="weekly">Semanalmente</option><option value="monthly">Mensalmente</option></select></label><label id="scheduleMonthDayField" hidden>Dia do mês<input name="monthDay" type="number" min="1" max="31"></label></div><fieldset class="antilink-options" id="scheduleWeekdayFields" hidden style="display:none"><legend>Dias da semana</legend><div class="monitor-check-list">${[["0","Domingo"],["1","Segunda"],["2","Terça"],["3","Quarta"],["4","Quinta"],["5","Sexta"],["6","Sábado"]].map(([day,label])=>`<label><input type="checkbox" name="days" value="${day}">${label}</label>`).join("")}</div></fieldset><label>Tipo de mensagem<select name="messageMode"><option value="text">Texto</option><option value="media">Mídia com legenda</option></select></label><label>Texto / legenda<textarea name="text" maxlength="4000" rows="4"></textarea></label><section class="schedule-media"><strong>Mídia: </strong><span id="scheduleMediaStatus">Nenhuma mídia configurada.</span><p class="monitor-field-caption">O upload é salvo imediatamente; os demais campos só são salvos pelo botão abaixo.</p><label>Enviar imagem ou vídeo (JPEG, PNG, WebP, GIF ou MP4; até 8 MB)<input type="file" name="mediaFile" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4"></label><div class="antilink-dialog-actions"><button type="button" id="uploadScheduleMedia">Enviar mídia</button><button type="button" id="removeScheduleMedia" hidden>Remover mídia</button></div></section><p class="antilink-form-feedback" id="scheduleFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" id="cancelScheduleEdit">Cancelar</button><button type="submit" class="primary">Salvar agendamento</button></footer></form></dialog>`;
 
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Painel de administração · ${escapeHtml(data.groupName)}</title><style>
+  const adminHtml = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Painel de administração · ${escapeHtml(data.groupName)}</title><style>
     :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb;--line:#334366;--muted:#9da8bd}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}button,a{font:inherit}.admin-page{width:min(1000px,100%);margin:0 auto}.topbar{display:flex;justify-content:space-between;gap:12px;padding:8px 0 20px;border-bottom:1px solid var(--line)}.topbar a{color:#b9c6ff;text-decoration:none;font-weight:700}.hero{display:flex;align-items:center;gap:18px;margin:28px 0 20px;padding:24px;border:1px solid var(--line);border-radius:18px;background:linear-gradient(145deg,#1c2438,#131925)}.avatar{width:68px;height:68px;flex:none;border-radius:18px;object-fit:cover}.eyebrow{color:#b9c6ff;font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}h1{margin:6px 0;font-size:clamp(24px,4vw,34px)}.hero p,.intro,.setting-card p{color:var(--muted);line-height:1.55}.hero p{margin:0}.intro{margin:0 0 16px}.overview-nav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 24px}.overview-nav a{padding:9px 13px;border:1px solid var(--line);border-radius:10px;background:#ffffff08;color:#dce2f3;text-decoration:none;font-size:12px;font-weight:700}.overview-nav a:hover{border-color:#9b8cff;background:#8b7bff20}.overview-section{scroll-margin-top:18px;margin:24px 0}.section-title{margin:0 0 5px;font-size:20px}.section-intro{margin:0 0 14px;color:var(--muted);font-size:13px;line-height:1.5}.overview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.overview-card{min-width:0;padding:18px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#171d2b,#131925)}.overview-card h2{margin:0;font-size:15px}.card-heading{display:flex;justify-content:space-between;align-items:center;gap:10px}.permission-count{color:#b9c6ff;font-size:11px;font-weight:800}.permission-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 14px;margin:14px 0 0;padding:0;list-style:none}.permission-list li{display:flex;align-items:center;gap:7px;color:#aab5cb;font-size:11px}.permission-list li span{display:grid;width:17px;height:17px;flex:none;place-items:center;border-radius:6px;font-size:11px;font-weight:800}.permission-list .allowed span{background:#58d6a320;color:#9cf0cf}.permission-list .restricted span{background:#f6c46a18;color:#ffd37f}.card-note{margin:12px 0 0;color:#8e9bb4;font-size:11px;line-height:1.5}.connection-card{display:flex;align-items:center;gap:12px;margin-bottom:12px;padding:14px 16px;border:1px solid #58d6a344;border-radius:14px;background:#58d6a30b}.connection-dot{width:9px;height:9px;flex:none;border-radius:50%;background:#58d6a3;box-shadow:0 0 12px #58d6a377}.connection-card strong,.connection-card small{display:block}.connection-card strong{font-size:13px}.connection-card small{margin-top:3px;color:var(--muted);font-size:11px}.resource-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.resource-card{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:6px 9px;padding:13px;border:1px solid var(--line);border-radius:13px;background:#ffffff05}.resource-card strong{grid-column:2;color:#ffd37f;font-size:11px}.resource-card:has(.resource-indicator.active) strong{color:#9cf0cf}.resource-indicator{width:8px;height:8px;border-radius:50%;background:#7c879d}.resource-indicator.active{background:#58d6a3;box-shadow:0 0 10px #58d6a377}.alert-list{display:grid;gap:9px}.alert-card,.info-card,.success-card{display:flex;align-items:flex-start;gap:11px;padding:13px 15px;border:1px solid;border-radius:13px}.alert-card{border-color:#f6c46a44;background:#f6c46a0b}.info-card{border-color:#6f9dff3d;background:#6f9dff0b}.success-card{border-color:#58d6a344;background:#58d6a30b}.alert-icon{display:grid;width:23px;height:23px;flex:none;place-items:center;border-radius:8px;background:#ffffff0a;font-weight:800}.alert-card .alert-icon{color:#ffd37f}.info-card .alert-icon{color:#9bbaff}.success-card .alert-icon{color:#9cf0cf}.alert-card strong,.info-card strong,.success-card strong{font-size:12px}.alert-card p,.info-card p,.success-card p{margin:4px 0 0;color:var(--muted);font-size:11px;line-height:1.5}.shortcut-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.shortcut-card{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#ffffff05}.shortcut-card strong,.shortcut-card code{display:block}.shortcut-card strong{font-size:12px}.shortcut-card code{margin-top:5px;color:#b9c6ff;font-size:10px;overflow-wrap:anywhere}.copy-command{flex:none;padding:8px 10px;border:1px solid #7582a344;border-radius:9px;background:#ffffff08;color:#dce2f3;font-size:10px;font-weight:700;cursor:pointer}.copy-command:hover{border-color:#9b8cff;background:#8b7bff20}.overview-feedback{min-height:18px;margin:8px 0 0;color:#9cf0cf;font-size:11px}.settings{display:grid;gap:12px}.setting-card{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:20px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#171d2b,#131925)}.setting-card h2{margin:0;font-size:16px}.setting-card p{margin:6px 0 0;font-size:13px}.setting-controls{display:flex;align-items:center;gap:12px;flex:none}.state{min-width:92px;padding:7px 10px;border-radius:999px;text-align:center;font-size:11px;font-weight:800}.state.on{background:#58d6a320;color:#9cf0cf}.state.off{background:#f6c46a18;color:#ffd37f}.setting-controls button{min-width:102px;padding:10px 13px;border:1px solid #6f7fa5;border-radius:10px;background:#ffffff0b;color:#f5f7fb;font-weight:700;cursor:pointer}.setting-controls button:hover{border-color:#9b8cff;background:#8b7bff20}.setting-controls button:disabled{opacity:.55;cursor:wait}.feedback{min-height:22px;margin:12px 0;color:#9cf0cf;font-size:13px}.feedback.error{color:#ff9eaa}.notice{margin-top:20px;padding:14px 16px;border:1px solid #f6c46a33;border-radius:12px;background:#f6c46a0b;color:#d6c8a6;font-size:12px;line-height:1.55}@media(max-width:680px){body{padding:16px}.overview-grid,.shortcut-list{grid-template-columns:1fr}.resource-grid{grid-template-columns:1fr}.permission-list{grid-template-columns:1fr 1fr}.setting-card{align-items:flex-start;flex-direction:column}.setting-controls{width:100%;justify-content:space-between}}@media(max-width:440px){.hero{align-items:flex-start;padding:18px}.permission-list{grid-template-columns:1fr}.shortcut-card{align-items:flex-start;flex-direction:column}.copy-command{width:100%}}
   </style><style>
     .setting-category{margin:12px 0 0;color:#b9c6ff;font-size:14px}
@@ -4288,7 +4842,7 @@ function renderGroupAdmin(data) {
     .autorepo-empty{margin:0;padding:14px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:12px;text-align:center}
     @media(max-width:520px){.autorepo-response-fields{grid-template-columns:1fr}.autorepo-response-fields label.autorepo-content-field{grid-column:auto}.autorepo-section-heading{align-items:flex-start;flex-direction:column}}
     .moderation-layout{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(320px,.8fr);gap:14px}.moderation-card{min-width:0;padding:18px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#171d2b,#131925)}.moderation-card h3{margin:0 0 7px;font-size:15px}.moderation-search{display:flex;gap:8px}.moderation-search input,.moderation-fields input,.moderation-fields textarea,.moderation-fields select{width:100%;min-width:0;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#0e121b;color:#f5f7fb;font:inherit}.moderation-fields textarea{min-height:74px;resize:vertical}.moderation-search button,.moderation-card button,.moderation-action{padding:9px 12px;border:1px solid #6f7fa5;border-radius:10px;background:#ffffff0b;color:#f5f7fb;font-weight:700;cursor:pointer}.moderation-card button:hover,.moderation-action:hover{border-color:#9b8cff;background:#8b7bff20}.moderation-card button:disabled,.moderation-action:disabled{opacity:.5;cursor:not-allowed}.moderation-help,.moderation-feedback{margin:9px 0 0;color:var(--muted);font-size:12px;line-height:1.5}.moderation-feedback.error{color:#ff9eaa}.moderation-results,.warning-list{display:grid;gap:8px;margin:14px 0 0;padding:0;list-style:none}.moderation-result,.warning-list li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:#ffffff05}.moderation-result span{min-width:0;overflow-wrap:anywhere;font-size:12px}.moderation-result small,.warning-identity small{display:block;margin-top:3px;color:var(--muted);font-size:11px;overflow-wrap:anywhere}.warning-list li{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 10px}.warning-identity{grid-column:1;min-width:0}.warning-identity strong{display:block;overflow-wrap:anywhere;font-size:12px}.warning-list li .warning-count{grid-column:2;white-space:nowrap}.warning-history{grid-column:1/-1;width:100%;color:var(--muted);font-size:11px}.warning-history summary{cursor:pointer}.warning-history ul{display:grid;gap:6px;margin:8px 0 0;padding-left:18px}.warning-history li{display:list-item;grid-column:auto;grid-template-columns:none;align-items:initial;justify-content:initial;gap:0;padding:0;border:0;border-radius:0;background:none;overflow-wrap:anywhere}.warning-history li small{display:block;color:var(--muted);font-size:10px}.warning-list li button{grid-column:1/-1;width:100%;min-width:0;white-space:normal}.moderation-fields{display:grid;gap:9px;margin-top:14px}.moderation-fields[hidden]{display:none}.moderation-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.moderation-actions[hidden],.moderation-role-select[hidden]{display:none}.moderation-actions button[aria-pressed=true]{border-color:#9b8cff;background:#8b7bff20}.moderation-action.danger{border-color:#b65b6a66;color:#ffb3bd}.member-admin{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.member-admin h4{margin:0;font-size:13px}.moderation-role-select{width:100%;margin-top:12px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#0e121b;color:#f5f7fb;font:inherit}.warning-list button{flex:none;font-size:11px}.warning-empty{margin:10px 0 0;color:var(--muted);font-size:12px}.permission-help{margin:12px 0 0;color:var(--muted);font-size:11px;line-height:1.5}@media(max-width:700px){.moderation-layout{grid-template-columns:1fr}.moderation-search{align-items:stretch;flex-direction:column}.moderation-result{align-items:flex-start;flex-direction:column}.moderation-result button,.warning-list button{width:100%}}
-  .settings{gap:8px}.setting-card{gap:12px;padding:13px 15px}.setting-card h2{font-size:14px}.setting-card p{margin-top:4px;font-size:11px}.setting-controls{gap:8px}.state{min-width:82px;padding:6px 8px}.setting-controls button{min-width:88px;padding:8px 10px;font-size:12px}.setting-category{grid-column:1/-1;margin:10px 0 0}.setting-scope{display:inline-block;margin-bottom:5px;padding:3px 7px;border:1px solid #8195d344;border-radius:999px;background:#8297d014;color:#b9c6ff;font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}.setting-icon-button{display:grid;min-width:34px!important;width:34px;height:34px;padding:7px!important;place-items:center}.setting-icon-button svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.scope-list-label{grid-column:1/-1;margin:4px 0 -2px;color:#dce2f3;font-size:12px;font-weight:800}.scope-picker{display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin:10px 0}.scope-picker label{display:grid;gap:5px;color:#b9c6ff;font-size:11px;font-weight:700}.scope-picker select{min-width:min(260px,80vw);padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#171d2b;color:#f5f7fb}.scope-panel{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#ffffff04}.scope-panel[hidden]{display:none}.scope-panel-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px}.scope-panel h3{margin:0;font-size:14px}.scope-current{color:#b9c6ff;font-size:11px;font-weight:700}.scope-note{margin:5px 0 0;color:var(--muted);font-size:11px;line-height:1.45}.antilink-dialog{width:min(720px,calc(100vw - 24px));max-height:90vh;overflow:auto;padding:20px;border:1px solid #53668f;border-radius:16px;background:#151c2b;color:#f5f7fb;box-shadow:0 24px 90px #000a}.antilink-dialog::backdrop{background:#080b12bb;backdrop-filter:blur(3px)}.antilink-dialog form{display:grid;gap:14px}.antilink-dialog-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.antilink-dialog-heading h2{margin:0;font-size:18px}.antilink-dialog-heading p{margin:5px 0 0;color:#b9c6ff;font-size:12px}.dialog-close{width:32px;height:32px;border:1px solid var(--line);border-radius:9px;background:#ffffff08;color:#fff;font-size:21px;cursor:pointer}.antilink-form-grid,.antilink-list-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.antilink-dialog label{display:grid;gap:6px;color:#dce2f3;font-size:12px;font-weight:700}.antilink-dialog textarea,.antilink-dialog select{width:100%;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#0e121b;color:#f5f7fb;font:inherit;font-size:12px}.antilink-dialog textarea{resize:vertical}.antilink-dialog small{color:var(--muted);font-size:10px;font-weight:400;line-height:1.4}.antilink-options{display:grid;gap:8px;margin:0;padding:12px;border:1px solid var(--line);border-radius:10px}.antilink-options legend{padding:0 6px;color:#b9c6ff;font-size:12px;font-weight:700}.antilink-options label{display:flex;align-items:flex-start;gap:8px;font-weight:400}.antilink-options input{margin:2px 0 0;accent-color:#9b8cff}.antilink-form-feedback{min-height:16px;margin:0;color:#9cf0cf;font-size:12px}.antilink-form-feedback.error{color:#ff9eaa}.antilink-dialog-actions{display:flex;justify-content:flex-end;gap:8px}.antilink-dialog-actions button{padding:9px 12px;border:1px solid #6f7fa5;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font:inherit;font-size:12px;font-weight:700;cursor:pointer}.antilink-dialog-actions .primary{border-color:#9b8cff;background:#8b7bff20}.antilink-dialog-actions button:disabled{opacity:.55;cursor:wait}.monitor-form-fields{display:grid;gap:12px}.monitor-form-fields input[type="text"],.monitor-form-fields input[type="number"]{width:100%;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#0e121b;color:#f5f7fb;font:inherit;font-size:12px}.monitor-check-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}.monitor-check-list label{display:flex;align-items:center;gap:8px;padding:9px;border:1px solid var(--line);border-radius:9px;background:#ffffff05}.monitor-check-list input{accent-color:#9b8cff}.monitor-job{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#ffffff05}.monitor-job button{grid-column:1/-1;justify-self:end;padding:6px 9px;border:1px solid #b65b6a66;border-radius:8px;background:#ffffff08;color:#ffb3bd;cursor:pointer}.monitor-field-caption{margin:0;color:var(--muted);font-size:11px;line-height:1.45}@media(min-width:640px){#rootSettings{grid-template-columns:repeat(2,minmax(0,1fr))}.setting-card{align-items:flex-start;flex-direction:column;justify-content:flex-start}.setting-controls{width:100%;justify-content:space-between}}@media(max-width:520px){.antilink-form-grid,.antilink-list-grid{grid-template-columns:1fr}.antilink-dialog{padding:15px}.monitor-job{grid-template-columns:1fr}}
+  .settings{gap:8px}.setting-card{gap:12px;padding:13px 15px}.setting-card h2{font-size:14px}.setting-card p{margin-top:4px;font-size:11px}.setting-controls{gap:8px}.state{min-width:82px;padding:6px 8px}.setting-controls button{min-width:88px;padding:8px 10px;font-size:12px}.setting-category{grid-column:1/-1;margin:10px 0 0}.setting-scope{display:inline-block;margin-bottom:5px;padding:3px 7px;border:1px solid #8195d344;border-radius:999px;background:#8297d014;color:#b9c6ff;font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}.setting-icon-button{display:grid;min-width:34px!important;width:34px;height:34px;padding:7px!important;place-items:center}.setting-controls a.setting-icon-button{display:inline-flex;width:auto!important;min-width:0!important;height:auto;padding:8px 10px!important;place-items:center;text-decoration:none;color:#f5f7fb}.setting-icon-button svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.scope-list-label{grid-column:1/-1;margin:4px 0 -2px;color:#dce2f3;font-size:12px;font-weight:800}.scope-picker{display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin:10px 0}.scope-picker label{display:grid;gap:5px;color:#b9c6ff;font-size:11px;font-weight:700}.scope-picker select{min-width:min(260px,80vw);padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#171d2b;color:#f5f7fb}.scope-panel{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#ffffff04}.scope-panel[hidden]{display:none}.scope-panel-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px}.scope-panel h3{margin:0;font-size:14px}.scope-current{color:#b9c6ff;font-size:11px;font-weight:700}.scope-note{margin:5px 0 0;color:var(--muted);font-size:11px;line-height:1.45}.antilink-dialog{width:min(720px,calc(100vw - 24px));max-height:90vh;overflow:auto;padding:20px;border:1px solid #53668f;border-radius:16px;background:#151c2b;color:#f5f7fb;box-shadow:0 24px 90px #000a}.antilink-dialog::backdrop{background:#080b12bb;backdrop-filter:blur(3px)}.antilink-dialog form{display:grid;gap:14px}.antilink-dialog-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.antilink-dialog-heading h2{margin:0;font-size:18px}.antilink-dialog-heading p{margin:5px 0 0;color:#b9c6ff;font-size:12px}.dialog-close{width:32px;height:32px;border:1px solid var(--line);border-radius:9px;background:#ffffff08;color:#fff;font-size:21px;cursor:pointer}.antilink-form-grid,.antilink-list-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.antilink-dialog label{display:grid;gap:6px;color:#dce2f3;font-size:12px;font-weight:700}.antilink-dialog textarea,.antilink-dialog select{width:100%;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#0e121b;color:#f5f7fb;font:inherit;font-size:12px}.antilink-dialog textarea{resize:vertical}.antilink-dialog small{color:var(--muted);font-size:10px;font-weight:400;line-height:1.4}.antilink-options{display:grid;gap:8px;margin:0;padding:12px;border:1px solid var(--line);border-radius:10px}.antilink-options legend{padding:0 6px;color:#b9c6ff;font-size:12px;font-weight:700}.antilink-options label{display:flex;align-items:flex-start;gap:8px;font-weight:400}.antilink-options input{margin:2px 0 0;accent-color:#9b8cff}.antilink-form-feedback{min-height:16px;margin:0;color:#9cf0cf;font-size:12px}.antilink-form-feedback.error{color:#ff9eaa}.antilink-dialog-actions{display:flex;justify-content:flex-end;gap:8px}.antilink-dialog-actions button{padding:9px 12px;border:1px solid #6f7fa5;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font:inherit;font-size:12px;font-weight:700;cursor:pointer}.antilink-dialog-actions .primary{border-color:#9b8cff;background:#8b7bff20}.antilink-dialog-actions button:disabled{opacity:.55;cursor:wait}.monitor-form-fields{display:grid;gap:12px}.monitor-form-fields input[type="text"],.monitor-form-fields input[type="number"]{width:100%;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#0e121b;color:#f5f7fb;font:inherit;font-size:12px}.monitor-check-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}.monitor-check-list label{display:flex;align-items:center;gap:8px;padding:9px;border:1px solid  var(--line);border-radius:9px;background:#ffffff05}.monitor-check-list input{accent-color:#9b8cff}.monitor-job{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#ffffff05}.monitor-job button{grid-column:1/-1;justify-self:end;padding:6px 9px;border:1px solid #b65b6a66;border-radius:8px;background:#ffffff08;color:#ffb3bd;cursor:pointer}.monitor-field-caption{margin:0;color:var(--muted);font-size:11px;line-height:1.45}@media(min-width:640px){#rootSettings{grid-template-columns:repeat(2,minmax(0,1fr))}.setting-card{align-items:flex-start;flex-direction:column;justify-content:flex-start}.setting-controls{width:100%;justify-content:space-between}}@media(max-width:520px){.antilink-form-grid,.antilink-list-grid{grid-template-columns:1fr}.antilink-dialog{padding:15px}.monitor-job{grid-template-columns:1fr}}
   </style><style>
     .setting-controls .setting-store2-button{display:flex;width:auto;min-width:max-content!important;height:34px;padding:7px 10px!important;align-items:center;gap:6px;border-color:#9b8cff77;background:#8b7bff14;color:#d5ceff;font-size:11px;font-weight:700;white-space:nowrap}
     .setting-controls .setting-store2-button:hover{border-color:#b3a8ff;background:#8b7bff30}
@@ -4337,7 +4891,7 @@ function renderGroupAdmin(data) {
   </style></head><body><main class="admin-page">
     <nav class="topbar"><a href="/painel-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">← Painel do membro</a><span>${escapeHtml(config.getBotName())} · Administração</span></nav>
     <header class="hero"><img class="avatar" src="${escapeHtml(data.avatarUrl || "/semfoto.jpg")}" alt="Foto de ${escapeHtml(data.userName)}" onerror="this.onerror=null;this.src='/semfoto.jpg'"><div><div class="eyebrow">Painel de administração</div><h1>${escapeHtml(data.groupName)}</h1><p>${groupType} · ${escapeHtml(data.platform)} · Acesso verificado para ${escapeHtml(data.userName)}</p></div></header>
-    <nav class="overview-nav" aria-label="Navegação do painel"><a href="#moderation">Moderação</a><a href="#systemSettings">${data.platform === "whatsapp" ? "Sistemas do grupo" : "Sistemas do SatBot"}</a></nav>
+    <nav class="overview-nav" aria-label="Navegação do painel"><a href="#moderation">Moderação</a><a href="#systemSettings">${data.platform === "whatsapp" ? "Sistemas do grupo" : "Sistemas do SatBot"}</a><a href="/painel-agendamentos?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">Agendamentos</a><a href="/painel-monitores?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">Monitores</a></nav>
     <section class="overview-section" id="moderation" aria-labelledby="moderationTitle">
       <h2 class="section-title" id="moderationTitle">Moderação</h2>
       <p class="section-intro">Gerencie advertências e aplique ações compatíveis com esta plataforma. Sua permissão e a do bot são verificadas ao executar cada ação.</p>
@@ -4347,13 +4901,24 @@ function renderGroupAdmin(data) {
         <article class="moderation-card"><h3>Usuários com advertências</h3><p class="moderation-help">Abra “Ver motivos” para consultar o histórico. Advertências anteriores à atualização aparecem sem motivo registrado. Remover pela lista apaga todas as advertências da pessoa.</p><ul class="warning-list" id="warningList">${warningRows || ""}</ul><p class="warning-empty" id="warningEmpty" ${warningRows ? "hidden" : ""}>Nenhum usuário com advertências registradas.</p><p class="warning-empty" id="warningMore" ${data.moderation.total > data.moderation.entries.length ? "" : "hidden"}>Mostrando ${data.moderation.entries.length} de ${data.moderation.total}. Pesquise pelo ID para localizar outros registros.</p></article>
       </div>
     </section>
-    <section class="overview-section" id="systemSettings" aria-labelledby="systemSettingsTitle"><h2 class="section-title" id="systemSettingsTitle">Sistemas do grupo</h2><p class="section-intro">${data.platform === "whatsapp" ? "Ative ou desative os recursos disponíveis neste grupo. Cada alteração será anunciada no próprio grupo." : "Escolha o escopo e filtre a lista para ver somente as funções configuráveis nele."}</p><div class="scope-panel scope-toolbar"><div class="scope-picker"><label>Mostrar configurações de<select id="scopeFilter">${data.platform === "discord" ? '<option value="server">Servidor</option><option value="categoria">Categoria</option><option value="chat">Chat</option>' : data.platform === "telegram" ? '<option value="server">Grupo</option><option value="topic" hidden>Tópico</option>' : '<option value="chat">Grupo</option><option value="server" hidden>Comunidade</option>'}</select></label>${data.platform === "discord" ? `<label>Categoria<select id="categorySelect"><option value="">Selecione uma categoria</option></select></label><label id="channelPicker">Chat<select id="channelSelect"><option value="">Selecione um chat</option></select></label><label>Canal de logs<select id="logsChannelSelect"><option value="">Desativado — não registrar avisos</option></select></label>` : data.platform === "telegram" ? `<label id="topicPicker" hidden>Tópico<select id="topicSelect"><option value="">Selecione um tópico</option></select></label>` : ""}</div><p class="scope-note" id="scopeNote">${data.platform === "discord" ? "A escolha de uma categoria ou chat ajusta o filtro automaticamente. Os avisos do dashboard serão enviados ao canal de logs selecionado." : data.platform === "telegram" ? "A escolha de um tópico ajusta o filtro automaticamente. Avisos de alteração são enviados no chat principal, sem tópico." : "Escopo: grupo."}</p></div><article class="moderation-card" style="margin:12px 0"><h3>Logs de auditoria</h3><p class="moderation-help">Registra alterações de saldo, loja local, loja de sinais e advertências. ${data.platform === "discord" ? "Os registros são enviados ao canal de logs escolhido acima." : data.platform === "telegram" ? "Os registros vão para o chat principal ou para o tópico selecionado no comando de logs." : "Os registros são enviados neste grupo."}</p><label><input id="auditLogsEnabled" type="checkbox"> Ativar todos os logs</label><div class="moderation-fields" style="margin-top:10px"><label><input data-audit-category="balance" type="checkbox"> Alterações de saldo</label><label><input data-audit-category="store" type="checkbox"> Loja local</label><label><input data-audit-category="signals" type="checkbox"> Loja de sinais local</label><label><input data-audit-category="warnings" type="checkbox"> Advertências</label></div><p class="moderation-feedback" id="auditLogsFeedback" role="status" aria-live="polite"></p></article><section class="settings" id="rootSettings" aria-label="Configurações do escopo selecionado">${settingCards}</section></section>
-    <dialog class="antilink-dialog" id="antilinkDialog" aria-labelledby="antilinkDialogTitle"><form id="antilinkForm"><header class="antilink-dialog-heading"><div><h2 id="antilinkDialogTitle">Configurações do antilink</h2><p id="antilinkScopeLabel"></p></div><button type="button" class="dialog-close" data-close-antilink aria-label="Fechar">×</button></header><div class="antilink-form-grid"><label>Ação ao detectar link<select name="action"><option value="delete">Deletar mensagem</option><option value="warn">Deletar e avisar</option><option value="kick">Deletar e expulsar</option><option value="ban">Deletar e banir</option></select></label><label class="antilink-message-field">Mensagem de aviso<textarea name="message" maxlength="2000" rows="3" placeholder="Mensagem enviada quando a ação avisa o usuário"></textarea></label></div><fieldset class="antilink-options"><legend>Exceções e herança</legend><label><input type="checkbox" name="ignoreParent"> Ignorar as regras dos escopos superiores</label><label><input type="checkbox" name="ignoreSameGroup"> Permitir links do próprio grupo/servidor</label><label><input type="checkbox" name="ignoreMedia"> Ignorar links identificados como mídia (YouTube, TikTok, Instagram)</label></fieldset><div class="antilink-list-grid"><label>Domínios permitidos<textarea name="whitelist" rows="4" placeholder="um domínio por linha"></textarea><small>Links desses domínios não são tratados como infração.</small></label><label>Usuários isentos<textarea name="userWhitelist" rows="4" placeholder="um ID por linha"></textarea><small>Esses usuários podem enviar links sem punição.</small></label><label>Usuários sem exceção de links de mídia<textarea name="userBlacklist" rows="4" placeholder="um ID por linha"></textarea><small>Aplicável quando a regra ignora links de mídia.</small></label>${data.platform === "discord" ? `<label>Cargos isentos<textarea name="roleWhitelist" rows="4" placeholder="um ID de cargo por linha"></textarea></label><label>Cargos sem exceção de links de mídia<textarea name="roleBlacklist" rows="4" placeholder="um ID de cargo por linha"></textarea></label>` : ""}</div><p class="antilink-form-feedback" id="antilinkFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-antilink>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>
+    <section class="overview-section" id="systemSettings" aria-labelledby="systemSettingsTitle">
+      <h2 class="section-title" id="systemSettingsTitle">Sistemas do grupo</h2>
+      <p class="section-intro">${data.platform === "whatsapp" ? "Ative ou desative os recursos disponíveis neste grupo." : "Atalhos rápidos para ativar, desativar e abrir as páginas de configuração. Os recursos por chat ou tópico são configurados nas páginas próprias."}</p>
+      ${data.platform === "discord" ? `<article class="moderation-card" style="margin:12px 0"><h3>Canal de logs do painel</h3><p class="moderation-help">Selecione onde serão enviados os avisos de alterações administrativas.</p><label>Canal de logs<select id="logsChannelSelect"><option value="">Desativado — não registrar avisos</option></select></label></article>` : ""}
+      <article class="moderation-card" style="margin:12px 0">
+        <h3>Logs de auditoria</h3>
+        <p class="moderation-help">Registra alterações de saldo, loja local, loja de sinais e advertências. ${data.platform === "discord" ? "Os registros são enviados ao canal de logs escolhido acima." : data.platform === "telegram" ? "Os registros são enviados ao chat principal." : "Os registros são enviados neste grupo."}</p>
+        <label><input id="auditLogsEnabled" type="checkbox"> Ativar todos os logs</label>
+        <div class="moderation-fields" style="margin-top:10px"><label><input data-audit-category="balance" type="checkbox"> Alterações de saldo</label><label><input data-audit-category="store" type="checkbox"> Loja local</label><label><input data-audit-category="signals" type="checkbox"> Loja de sinais local</label><label><input data-audit-category="warnings" type="checkbox"> Advertências</label></div>
+        <p class="moderation-feedback" id="auditLogsFeedback" role="status" aria-live="polite"></p>
+      </article>
+      <section class="settings" id="rootSettings" aria-label="Configurações do grupo ou servidor">${settingCards}</section>
+    </section>
+    </dialog>
     <dialog class="antilink-dialog" id="antimediaDialog" aria-labelledby="antimediaDialogTitle"><form id="antimediaForm"><header class="antilink-dialog-heading"><div><h2 id="antimediaDialogTitle">Configurações do antimídia</h2><p id="antimediaScopeLabel"></p></div><button type="button" class="dialog-close" data-close-antimedia aria-label="Fechar">×</button></header><div class="antilink-form-grid"><label>Ação ao detectar mídia<select name="action"><option value="delete">Deletar mensagem</option><option value="warn">Deletar e avisar</option><option value="kick">Deletar e expulsar</option><option value="ban">Deletar e banir</option></select></label><label>Mensagem de aviso<textarea name="message" maxlength="2000" rows="3" placeholder="Opcional; usada quando a ação avisa o usuário"></textarea></label></div><fieldset class="antilink-options"><legend>Tipos de mídia bloqueados</legend><div class="antimedia-media-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 14px">${[["image","Imagem / foto"],["video","Vídeo"],["audio","Áudio / música"],["document","Documento / arquivo"],["sticker","Figurinha"],["location","Localização"],["contact","Contato"],["voice","Mensagem de voz"],["gif","GIF"]].map(([value,label]) => `<label><input type="checkbox" name="mediaTypes" value="${value}"> ${label}</label>`).join("")}</div><small>Se nenhum tipo for marcado, todos os tipos de mídia serão bloqueados.</small></fieldset><fieldset class="antilink-options"><legend>Herança</legend><label><input type="checkbox" name="ignoreParent"> Ignorar as regras dos escopos superiores</label></fieldset><div class="antilink-list-grid"><label>Usuários isentos<textarea name="userWhitelist" rows="4" placeholder="um ID por linha"></textarea><small>Esses usuários não serão punidos.</small></label><label>Usuários na lista negra<textarea name="userBlacklist" rows="4" placeholder="um ID por linha"></textarea><small>Esses usuários serão punidos ao enviar qualquer mídia.</small></label>${data.platform === "discord" ? `<label>Cargos isentos<textarea name="roleWhitelist" rows="4" placeholder="um ID de cargo por linha"></textarea></label><label>Cargos na lista negra<textarea name="roleBlacklist" rows="4" placeholder="um ID de cargo por linha"></textarea></label>` : ""}</div><p class="antilink-form-feedback" id="antimediaFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-antimedia>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>
     <dialog class="antilink-dialog" id="antipalavrasDialog" aria-labelledby="antipalavrasDialogTitle"><form id="antipalavrasForm"><header class="antilink-dialog-heading"><div><h2 id="antipalavrasDialogTitle">Configurações do antipalavras</h2><p id="antipalavrasScopeLabel"></p></div><button type="button" class="dialog-close" data-close-antipalavras aria-label="Fechar">×</button></header><div class="antilink-form-grid"><label>Ação ao detectar palavra/frase<select name="action"><option value="delete">Deletar mensagem</option><option value="warn">Deletar e avisar</option><option value="kick">Deletar e expulsar</option><option value="ban">Deletar e banir</option></select></label><label>Mensagem de aviso<textarea name="message" maxlength="2000" rows="3" placeholder="Opcional; usada quando a ação avisa o usuário"></textarea></label></div><label class="antipalavras-words-field">Palavras e frases bloqueadas<textarea name="words" rows="8" maxlength="100500" placeholder="Uma palavra/frase por linha (ou separadas por vírgula)"></textarea><small>Cada entrada é verificada individualmente nas mensagens.</small></label><fieldset class="antilink-options"><legend>Herança</legend><label><input type="checkbox" name="ignoreParent"> Ignorar as regras dos escopos superiores</label></fieldset><div class="antilink-list-grid"><label>Usuários isentos<textarea name="userWhitelist" rows="4" placeholder="um ID por linha"></textarea></label><label>Usuários sempre monitorados<textarea name="userBlacklist" rows="4" placeholder="um ID por linha"></textarea></label>${roleListFields}</div><p class="antilink-form-feedback" id="antipalavrasFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-antipalavras>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>
     <dialog class="antilink-dialog" id="antiraidDialog" aria-labelledby="antiraidDialogTitle"><form id="antiraidForm"><header class="antilink-dialog-heading"><div><h2 id="antiraidDialogTitle">Configurações do antiraid</h2><p id="antiraidScopeLabel"></p></div><button type="button" class="dialog-close" data-close-antiraid aria-label="Fechar">×</button></header><div class="antilink-form-grid"><label>Ação ao detectar raid<select name="action">${antiraidActionOptions}</select></label></div><div class="antiraid-limits-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px"><label>Mensagens no limite<input name="maxMessagesPerWindow" type="number" min="1" max="100" required><small>Máximo de mensagens na janela.</small></label><label>Janela (segundos)<input name="windowSeconds" type="number" min="1" max="300" required></label><label>Mensagens repetidas<input name="repeatedMessageLimit" type="number" min="1" max="100" required></label><label>Links<input name="linkLimit" type="number" min="1" max="100" required></label><label>Convites<input name="inviteLimit" type="number" min="1" max="100" required></label><label>Menções<input name="mentionLimit" type="number" min="0" max="100" required><small>0 desativa o limite de menções.</small></label>${data.platform === "discord" ? '<label>Webhooks<input name="webhookLimit" type="number" min="0" max="100" required><small>0 desativa este limite.</small></label>' : ""}</div><div class="antilink-list-grid"><label>Usuários isentos<textarea name="userWhitelist" rows="4" placeholder="um ID por linha"></textarea></label><label>Usuários sempre monitorados<textarea name="userBlacklist" rows="4" placeholder="um ID por linha"></textarea></label>${roleListFields}</div><p class="antilink-form-feedback" id="antiraidFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-antiraid>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>
     <dialog class="antilink-dialog" id="blockcmdDialog" aria-labelledby="blockcmdDialogTitle"><form id="blockcmdForm"><header class="antilink-dialog-heading"><div><h2 id="blockcmdDialogTitle">Configurações do bloqueio de comandos</h2><p id="blockcmdScopeLabel"></p></div><button type="button" class="dialog-close" data-close-blockcmd aria-label="Fechar">×</button></header><div class="antilink-form-grid"><label>Ação ao usar comando bloqueado<select name="action"><option value="reply">Avisar no chat</option><option value="ignore">Ignorar silenciosamente</option><option value="delete">Apagar a mensagem</option></select></label><label>Mensagem de aviso<textarea name="message" maxlength="2000" rows="3" placeholder="Opcional. Variáveis: {cmd}, {user} e {prefix}"></textarea><small>Usada quando a ação envia um aviso.</small></label></div><label>Comandos e categorias bloqueados<textarea name="blockedCommands" rows="8" maxlength="100500" placeholder="Um comando ou categoria por linha (sem prefixo)"></textarea><small>Use o nome do comando ou de uma categoria. Exemplo: cotacao ou adm/segurança.</small></label><fieldset class="antilink-options"><legend>Herança</legend><label><input type="checkbox" name="ignoreParent"> Ignorar as regras dos escopos superiores</label></fieldset><p class="antilink-form-feedback" id="blockcmdFormFeedback" role="status" aria-live="polite"></p><footer class="antilink-dialog-actions"><button type="button" data-close-blockcmd>Cancelar</button><button type="submit" class="primary">Salvar configurações</button></footer></form></dialog>
-    ${welcomeGoodbyeDialogs}
     ${autorespostaDialog}
     ${autodownloadDialog}
     ${autoApproveDialog}
@@ -4374,7 +4939,6 @@ function renderGroupAdmin(data) {
     })};
     const feedback=document.getElementById("adminFeedback");
     const formatStoreMoney=amount=>((Number(amount||0)/100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g," "))+"💷";
-    const scopeFilter=document.getElementById("scopeFilter");
     async function requestAdminApi(path,payload={}){
       const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...context,...payload})});
       const result=await response.json();
@@ -4382,6 +4946,14 @@ function renderGroupAdmin(data) {
       return result;
     }
     const auditLogsToggle=document.getElementById("auditLogsEnabled");
+    const vaultAuditCategoryLabel=document.createElement("label");
+    const vaultAuditCategoryInput=document.createElement("input");
+    vaultAuditCategoryInput.type="checkbox";
+    vaultAuditCategoryInput.dataset.auditCategory="vault";
+    vaultAuditCategoryLabel.append(vaultAuditCategoryInput,document.createTextNode(" Movimentações e configurações do cofre"));
+    document.querySelector('[data-audit-category="warnings"]').parentElement.append(vaultAuditCategoryLabel);
+    document.getElementById("auditLogsEnabled").closest(".moderation-card").querySelector(".moderation-help").textContent=
+      "Registra somente alterações feitas no painel web: saldo, loja local, loja de sinais, advertências e movimentações/configurações do cofre.";
     const auditLogCategories=[...document.querySelectorAll("[data-audit-category]")];
     const auditLogsFeedback=document.getElementById("auditLogsFeedback");
     let auditLogsConfig=null;
@@ -4486,50 +5058,8 @@ function renderGroupAdmin(data) {
       openChatButton.addEventListener("click",()=>changeChatState(true));
       closeChatButton.addEventListener("click",()=>changeChatState(false));
       chatControlActions.append(openChatButton,closeChatButton);chatControlPanel.append(chatControlActions);
-      document.querySelector(".scope-panel.scope-toolbar")?.before(chatControlPanel);
+      document.getElementById("rootSettings")?.before(chatControlPanel);
       if(!chatControlChannel)loadChatState();
-    }
-    function renderScopedSettings(target,scope,settings){
-      const definitions=${JSON.stringify(ADMIN_SYSTEM_SETTINGS.map(({key,label,description,category,scopes})=>({key,label,description,category,scopes})))};
-      const items=definitions.filter(item=>item.scopes[context.platform]?.includes(scope.level));
-      const categorySelect=document.getElementById("categorySelect");
-      const channelSelect=document.getElementById("channelSelect");
-      const topicSelect=document.getElementById("topicSelect");
-      const scopeName=scope.level==="categoria"
-        ? "Categoria · "+(categorySelect?.selectedOptions[0]?.textContent||"")
-        : scope.level==="chat"
-          ? "Chat · "+(channelSelect?.selectedOptions[0]?.textContent||"")
-          : scope.level==="topic"
-            ? "Tópico · "+(topicSelect?.selectedOptions[0]?.textContent||"")
-            : scope.level==="server" ? (context.platform==="discord"?"Servidor":context.platform==="whatsapp"?"Comunidade":"Grupo") : "Grupo";
-      const heading=document.createElement("h4");heading.className="scope-list-label";heading.textContent="Editando: "+scopeName;
-      let lastCategory="";
-      target.innerHTML=items.map(item=>{
-        const enabled=settings[item.key]===true;
-        const heading=item.category!==lastCategory?'<h3 class="setting-category" style="margin:12px 0 0;color:#b9c6ff;font-size:14px">'+item.category+'</h3>':"";
-        lastCategory=item.category;
-        const scopeAttr=JSON.stringify(scope).replace(/&/g,"&amp;").replace(/"/g,"&quot;");
-        const configButton=item.key==="agendar"?'<button type="button" class="setting-icon-button" data-schedule-config data-scope="'+scopeAttr+'" aria-label="Gerenciar agendamentos" title="Gerenciar agendamentos">'+gearIcon+'</button>':["antilink","antimedia","antipalavras","antiraid","blockcmd","welcome","goodbye","autorepo","autodownload","autoApprove"].includes(item.key)?'<button type="button" class="setting-icon-button" data-'+item.key.toLowerCase()+'-config data-scope="'+scopeAttr+'" aria-label="Configurar '+item.label+' neste escopo" title="Configurações do '+item.label+'">'+gearIcon+'</button>':["xp","activity"].includes(item.key)?'<button type="button" class="setting-icon-button" data-rp-config="'+item.key+'" data-scope="'+scopeAttr+'" aria-label="Gerenciar '+item.label+'" title="Gerenciar '+item.label+'">'+gearIcon+'</button>':item.key==="economy"?'<button type="button" class="setting-icon-button setting-store2-button" data-store2-config><span aria-hidden="true">'+gearIcon+'</span><span>Configurar Loja 2</span></button>':["monitorStock","monitorCafe","monitorWeather","monitorRandomWeather"].includes(item.key)?'<button type="button" class="setting-icon-button" data-monitor-config data-monitor-setting="'+item.key+'" data-scope="'+scopeAttr+'" aria-label="Configurar '+item.label+' neste escopo" title="Configurações do '+item.label+'">'+gearIcon+'</button>':"";
-        const controls=item.key==="agendar"?'<span class="state '+(enabled?"on":"off")+'" data-state="'+item.key+'">'+(enabled?"Ativo":"Sem agendamentos ativos")+'</span>'+configButton:'<span class="state '+(enabled?"on":"off")+'" data-state="'+item.key+'">'+(enabled?"Ativado":"Desativado")+'</span><button type="button" data-setting="'+item.key+'" data-enabled="'+enabled+'" data-scope="'+scopeAttr+'">'+(enabled?"Desativar":"Ativar")+'</button>'+configButton;
-        return heading+'<article class="setting-card"><div class="setting-info"><span class="setting-scope"></span><h2>'+item.label+'</h2><p>'+item.description+'</p></div><div class="setting-controls">'+controls+'</div></article>';
-      }).join("");
-      target.prepend(heading);
-      target.querySelectorAll(".setting-scope").forEach(badge=>{badge.textContent=scopeName});
-      target.hidden=items.length===0;
-      if(!items.length)target.innerHTML='<p class="scope-note">Não há funções disponíveis para configuração neste nível.</p>';
-    }
-    function showScopeMessage(target,message){
-      target.replaceChildren();
-      const note=document.createElement("p");note.className="scope-note";note.textContent=message;target.append(note);
-    }
-    async function loadScope(scope,target=document.getElementById("rootSettings")){
-      if(!target||!scope)return;
-      target.hidden=false;
-      showScopeMessage(target,"Carregando configurações...");
-      try{
-        const result=await requestAdminApi("/api/account/local/admin-settings-state",{scope});
-        renderScopedSettings(target,scope,result.settings);
-      }catch(error){target.hidden=false;showScopeMessage(target,error.message);feedback.classList.add("error");feedback.textContent=error.message}
     }
     async function saveSetting(button){
       const setting=button.dataset.setting,enabled=button.dataset.enabled!=="true",scope=JSON.parse(button.dataset.scope||'{"level":"server"}');
@@ -4546,210 +5076,6 @@ function renderGroupAdmin(data) {
       }catch(error){feedback.classList.add("error");feedback.textContent=error.message}
       finally{button.disabled=false}
     }
-    const antilinkDialog=document.getElementById("antilinkDialog");
-    const antilinkForm=document.getElementById("antilinkForm");
-    const antilinkFormFeedback=document.getElementById("antilinkFormFeedback");
-    let activeAntilinkScope=null;
-    function fillAntilinkForm(config){
-      antilinkForm.elements.action.value=config.action||"delete";
-      antilinkForm.elements.message.value=config.message||"";
-      for(const key of ["ignoreParent","ignoreSameGroup","ignoreMedia"])antilinkForm.elements[key].checked=config[key]===true;
-      for(const key of ["whitelist","userWhitelist","userBlacklist","roleWhitelist","roleBlacklist"]){
-        if(antilinkForm.elements[key])antilinkForm.elements[key].value=Array.isArray(config[key])?config[key].join("\\n"):"";
-      }
-    }
-    function readAntilinkForm(){
-      const config={
-        action:antilinkForm.elements.action.value,
-        message:antilinkForm.elements.message.value.trim()||null,
-        ignoreParent:antilinkForm.elements.ignoreParent.checked,
-        ignoreSameGroup:antilinkForm.elements.ignoreSameGroup.checked,
-        ignoreMedia:antilinkForm.elements.ignoreMedia.checked
-      };
-      for(const key of ["whitelist","userWhitelist","userBlacklist","roleWhitelist","roleBlacklist"]){
-        if(antilinkForm.elements[key])config[key]=antilinkForm.elements[key].value.split(/\\r?\\n/).map(value=>value.trim()).filter(Boolean);
-      }
-      return config;
-    }
-    const antimediaDialog=document.getElementById("antimediaDialog");
-    const antimediaForm=document.getElementById("antimediaForm");
-    const antimediaFormFeedback=document.getElementById("antimediaFormFeedback");
-    let activeAntimediaScope=null;
-    function fillAntimediaForm(config){
-      antimediaForm.elements.action.value=config.action||"delete";
-      antimediaForm.elements.message.value=config.message||"";
-      antimediaForm.elements.ignoreParent.checked=config.ignoreParent===true;
-      const mediaTypes=new Set(Array.isArray(config.mediaTypes)?config.mediaTypes:[]);
-      antimediaForm.querySelectorAll('input[name="mediaTypes"]').forEach(input=>{input.checked=mediaTypes.has(input.value)});
-      for(const key of ["userWhitelist","userBlacklist","roleWhitelist","roleBlacklist"]){
-        if(antimediaForm.elements[key])antimediaForm.elements[key].value=Array.isArray(config[key])?config[key].join("\\n"):"";
-      }
-    }
-    function readAntimediaForm(){
-      const config={
-        action:antimediaForm.elements.action.value,
-        message:antimediaForm.elements.message.value.trim()||null,
-        ignoreParent:antimediaForm.elements.ignoreParent.checked,
-        mediaTypes:[...antimediaForm.querySelectorAll('input[name="mediaTypes"]:checked')].map(input=>input.value)
-      };
-      for(const key of ["userWhitelist","userBlacklist","roleWhitelist","roleBlacklist"]){
-        if(antimediaForm.elements[key])config[key]=antimediaForm.elements[key].value.split(/\\r?\\n/).map(value=>value.trim()).filter(Boolean);
-      }
-      return config;
-    }
-    const antipalavrasDialog=document.getElementById("antipalavrasDialog");
-    const antipalavrasForm=document.getElementById("antipalavrasForm");
-    const antipalavrasFormFeedback=document.getElementById("antipalavrasFormFeedback");
-    let activeAntipalavrasScope=null;
-    function fillAntipalavrasForm(config){
-      antipalavrasForm.elements.action.value=config.action||"delete";
-      antipalavrasForm.elements.message.value=config.message||"";
-      antipalavrasForm.elements.ignoreParent.checked=config.ignoreParent===true;
-      antipalavrasForm.elements.words.value=Array.isArray(config.words)?config.words.join("\\n"):"";
-      for(const key of ["userWhitelist","userBlacklist","roleWhitelist","roleBlacklist"]){
-        if(antipalavrasForm.elements[key])antipalavrasForm.elements[key].value=Array.isArray(config[key])?config[key].join("\\n"):"";
-      }
-    }
-    function readAntipalavrasForm(){
-      const config={
-        action:antipalavrasForm.elements.action.value,
-        message:antipalavrasForm.elements.message.value.trim()||null,
-        ignoreParent:antipalavrasForm.elements.ignoreParent.checked,
-        words:antipalavrasForm.elements.words.value.split(/[\\r\\n,]+/).map(value=>value.trim()).filter(Boolean)
-      };
-      for(const key of ["userWhitelist","userBlacklist","roleWhitelist","roleBlacklist"]){
-        if(antipalavrasForm.elements[key])config[key]=antipalavrasForm.elements[key].value.split(/\\r?\\n/).map(value=>value.trim()).filter(Boolean);
-      }
-      return config;
-    }
-    const antiraidDialog=document.getElementById("antiraidDialog");
-    const antiraidForm=document.getElementById("antiraidForm");
-    const antiraidFormFeedback=document.getElementById("antiraidFormFeedback");
-    antiraidForm.querySelectorAll('input[type="number"]').forEach(input=>Object.assign(input.style,{width:"100%",minWidth:"0",padding:"9px 10px",border:"1px solid #334366",borderRadius:"9px",background:"#0e121b",color:"#f5f7fb",font:"inherit",fontSize:"12px"}));
-    let activeAntiraidScope=null;
-    const antiraidNumericFields=["maxMessagesPerWindow","windowSeconds","repeatedMessageLimit","linkLimit","inviteLimit","mentionLimit","webhookLimit"];
-    function fillAntiraidForm(config){
-        let action=context.platform==="whatsapp"&&["mute","remove"].includes(config.action)
-          ? "remove"
-          : context.platform==="discord"&&config.action==="mute"?"timeout":config.action||"mute";
-        if(![...antiraidForm.elements.action.options].some(option=>option.value===action)){
-          action=context.platform==="whatsapp"?"remove":context.platform==="discord"?"timeout":"mute";
-        }
-      antiraidForm.elements.action.value=action;
-      for(const key of antiraidNumericFields){
-        if(antiraidForm.elements[key])antiraidForm.elements[key].value=Number.isFinite(config[key])?config[key]:"";
-      }
-      for(const key of ["userWhitelist","userBlacklist","roleWhitelist","roleBlacklist"]){
-        if(antiraidForm.elements[key])antiraidForm.elements[key].value=Array.isArray(config[key])?config[key].join("\\n"):"";
-      }
-    }
-    function readAntiraidForm(){
-      const config={action:antiraidForm.elements.action.value};
-      for(const key of antiraidNumericFields){
-        if(antiraidForm.elements[key])config[key]=Number(antiraidForm.elements[key].value);
-      }
-      for(const key of ["userWhitelist","userBlacklist","roleWhitelist","roleBlacklist"]){
-        if(antiraidForm.elements[key])config[key]=antiraidForm.elements[key].value.split(/\\r?\\n/).map(value=>value.trim()).filter(Boolean);
-      }
-      return config;
-    }
-    const blockcmdDialog=document.getElementById("blockcmdDialog");
-    const blockcmdForm=document.getElementById("blockcmdForm");
-    const blockcmdFormFeedback=document.getElementById("blockcmdFormFeedback");
-    let activeBlockcmdScope=null;
-    function fillBlockcmdForm(config){
-      blockcmdForm.elements.action.value=config.action||"reply";
-      blockcmdForm.elements.message.value=config.message||"";
-      blockcmdForm.elements.ignoreParent.checked=config.ignoreParent===true;
-      blockcmdForm.elements.blockedCommands.value=Array.isArray(config.blockedCommands)?config.blockedCommands.join("\\n"):"";
-    }
-    function readBlockcmdForm(){
-      return {
-        action:blockcmdForm.elements.action.value,
-        message:blockcmdForm.elements.message.value.trim()||null,
-        ignoreParent:blockcmdForm.elements.ignoreParent.checked,
-        blockedCommands:blockcmdForm.elements.blockedCommands.value.split(/[\\r\\n,]+/).map(value=>value.trim()).filter(Boolean)
-      };
-    }
-    function setupWelcomeDialog(setting){
-      const dialog=document.getElementById(setting+"Dialog");
-      const form=document.getElementById(setting+"Form");
-      const formFeedback=document.getElementById(setting+"FormFeedback");
-      const mediaStatus=document.getElementById(setting+"MediaStatus");
-      const mediaInput=form.elements.mediaFile;
-      const uploadButton=dialog.querySelector("[data-upload-"+setting+"]");
-      const removeButton=dialog.querySelector("[data-remove-"+setting+"]");
-      const label=setting==="welcome"?"boas-vindas":"despedida";
-      let activeScope=null;
-      function setMedia(media){
-        mediaStatus.textContent=media?(media.fileName||"Mídia configurada")+" · "+(media.type||"arquivo"):"Nenhuma mídia configurada.";
-        removeButton.hidden=!media;
-      }
-      function showResult(result){
-        feedback.classList.toggle("error",Boolean(result.announcementWarning));
-        feedback.textContent=result.announcementWarning||result.message||"Configurações atualizadas.";
-      }
-      async function changeMedia(payload){
-        const result=await requestAdminApi("/api/account/local/admin-"+setting+"-media",{scope:activeScope,...payload});
-        setMedia(result.config.media);
-        showResult(result);
-      }
-      async function open(button){
-        activeScope=JSON.parse(button.dataset.scope||'{"level":"server"}');
-        formFeedback.classList.remove("error");formFeedback.textContent="Carregando configurações...";
-        document.getElementById(setting+"ScopeLabel").textContent=button.closest(".setting-card").querySelector(".setting-scope").textContent;
-        dialog.showModal();
-        try{
-          const {config}=await requestAdminApi("/api/account/local/admin-"+setting+"-state",{scope:activeScope});
-          form.elements.mode.value=config.mode||"texto";
-          form.elements.text.value=config.text||"";
-          setMedia(config.media);
-          formFeedback.textContent="";
-        }catch(error){formFeedback.classList.add("error");formFeedback.textContent=error.message}
-      }
-      dialog.querySelectorAll("[data-close-"+setting+"]").forEach(button=>button.addEventListener("click",()=>dialog.close()));
-      dialog.addEventListener("click",event=>{if(event.target===dialog)dialog.close()});
-      uploadButton.addEventListener("click",async()=>{
-        const file=mediaInput.files?.[0];
-        if(!file){formFeedback.classList.add("error");formFeedback.textContent="Selecione uma imagem ou vídeo antes de enviar.";return}
-        if(file.size>8*1024*1024){formFeedback.classList.add("error");formFeedback.textContent="A mídia deve ter até 8 MB.";return}
-        uploadButton.disabled=true;formFeedback.classList.remove("error");formFeedback.textContent="Enviando mídia...";
-        try{
-          const data=await new Promise((resolve,reject)=>{
-            const reader=new FileReader();
-            reader.onload=()=>resolve(reader.result);
-            reader.onerror=()=>reject(new Error("Não foi possível ler o arquivo selecionado."));
-            reader.readAsDataURL(file);
-          });
-          await changeMedia({mimeType:file.type,data});
-          mediaInput.value="";
-          formFeedback.textContent="Mídia de "+label+" atualizada.";
-        }catch(error){formFeedback.classList.add("error");formFeedback.textContent=error.message}
-        finally{uploadButton.disabled=false}
-      });
-      removeButton.addEventListener("click",async()=>{
-        if(!window.confirm("Remover a mídia configurada para "+label+" neste escopo?"))return;
-        removeButton.disabled=true;formFeedback.classList.remove("error");formFeedback.textContent="Removendo mídia...";
-        try{await changeMedia({remove:true});formFeedback.textContent="Mídia de "+label+" removida."}
-        catch(error){formFeedback.classList.add("error");formFeedback.textContent=error.message}
-        finally{removeButton.disabled=false}
-      });
-      form.addEventListener("submit",async event=>{
-        event.preventDefault();
-        const submitButton=form.querySelector('[type="submit"]');
-        submitButton.disabled=true;formFeedback.classList.remove("error");formFeedback.textContent="Salvando...";
-        try{
-          const result=await requestAdminApi("/api/account/local/admin-"+setting,{scope:activeScope,config:{mode:form.elements.mode.value,text:form.elements.text.value}});
-          setMedia(result.config.media);
-          formFeedback.textContent="Configurações de "+label+" salvas.";
-          showResult(result);
-        }catch(error){formFeedback.classList.add("error");formFeedback.textContent=error.message}
-        finally{submitButton.disabled=false}
-      });
-      return open;
-    }
-    const openWelcomeDialog=setupWelcomeDialog("welcome");
-    const openGoodbyeDialog=setupWelcomeDialog("goodbye");
     const autodownloadDialog=document.getElementById("autodownloadDialog");
     const autodownloadForm=document.getElementById("autodownloadForm");
     const autodownloadFeedback=document.getElementById("autodownloadFormFeedback");
@@ -5525,7 +5851,7 @@ function renderGroupAdmin(data) {
       await saveStore2Action({action:button.dataset.store2Order,orderId:button.dataset.orderId},successMessage);
       button.disabled=false;
     });
-    document.getElementById("rootSettings").addEventListener("click",event=>{
+    document.addEventListener("click",event=>{
       const store2Gear=event.target.closest("[data-store2-config]");
       if(store2Gear){openStore2Dialog(store2Gear);return}
       const schedulesGear=event.target.closest("[data-schedule-config]");
@@ -5540,157 +5866,12 @@ function renderGroupAdmin(data) {
       if(rpGear){openRpManager(rpGear);return}
       const autorepoGear=event.target.closest("[data-autorepo-config]");
       if(autorepoGear){openAutorespostaDialog(autorepoGear);return}
-      const welcomeGear=event.target.closest("[data-welcome-config]");
-      if(welcomeGear){openWelcomeDialog(welcomeGear);return}
-      const goodbyeGear=event.target.closest("[data-goodbye-config]");
-      if(goodbyeGear){openGoodbyeDialog(goodbyeGear);return}
-      const blockcmdGear=event.target.closest("[data-blockcmd-config]");
-      if(blockcmdGear){
-        activeBlockcmdScope=JSON.parse(blockcmdGear.dataset.scope);
-        blockcmdFormFeedback.classList.remove("error");blockcmdFormFeedback.textContent="Carregando configurações...";
-        blockcmdDialog.showModal();
-        requestAdminApi("/api/account/local/admin-blockcmd-state",{scope:activeBlockcmdScope}).then(({config})=>{
-          fillBlockcmdForm(config);
-          document.getElementById("blockcmdScopeLabel").textContent=blockcmdGear.closest(".setting-card").querySelector(".setting-scope").textContent;
-          blockcmdFormFeedback.textContent="";
-        }).catch(error=>{blockcmdFormFeedback.classList.add("error");blockcmdFormFeedback.textContent=error.message});
-        return;
-      }
-      const antipalavrasGear=event.target.closest("[data-antipalavras-config]");
-      if(antipalavrasGear){
-        activeAntipalavrasScope=JSON.parse(antipalavrasGear.dataset.scope);
-        antipalavrasFormFeedback.classList.remove("error");antipalavrasFormFeedback.textContent="Carregando configurações...";
-        antipalavrasDialog.showModal();
-        requestAdminApi("/api/account/local/admin-antipalavras-state",{scope:activeAntipalavrasScope}).then(({config})=>{
-          fillAntipalavrasForm(config);
-          document.getElementById("antipalavrasScopeLabel").textContent=antipalavrasGear.closest(".setting-card").querySelector(".setting-scope").textContent;
-          antipalavrasFormFeedback.textContent="";
-        }).catch(error=>{antipalavrasFormFeedback.classList.add("error");antipalavrasFormFeedback.textContent=error.message});
-        return;
-      }
-      const antiraidGear=event.target.closest("[data-antiraid-config]");
-      if(antiraidGear){
-        activeAntiraidScope=JSON.parse(antiraidGear.dataset.scope);
-        antiraidFormFeedback.classList.remove("error");antiraidFormFeedback.textContent="Carregando configurações...";
-        antiraidDialog.showModal();
-        requestAdminApi("/api/account/local/admin-antiraid-state",{scope:activeAntiraidScope}).then(({config})=>{
-          fillAntiraidForm(config);
-          document.getElementById("antiraidScopeLabel").textContent=antiraidGear.closest(".setting-card").querySelector(".setting-scope").textContent;
-          antiraidFormFeedback.textContent="";
-        }).catch(error=>{antiraidFormFeedback.classList.add("error");antiraidFormFeedback.textContent=error.message});
-        return;
-      }
-      const antimediaGear=event.target.closest("[data-antimedia-config]");
-      if(antimediaGear){
-        activeAntimediaScope=JSON.parse(antimediaGear.dataset.scope);
-        antimediaFormFeedback.classList.remove("error");antimediaFormFeedback.textContent="Carregando configurações...";
-        antimediaDialog.showModal();
-        requestAdminApi("/api/account/local/admin-antimedia-state",{scope:activeAntimediaScope}).then(({config})=>{
-          fillAntimediaForm(config);
-          const badge=antimediaGear.closest(".setting-card").querySelector(".setting-scope").textContent;
-          document.getElementById("antimediaScopeLabel").textContent=badge;
-          antimediaFormFeedback.textContent="";
-        }).catch(error=>{antimediaFormFeedback.classList.add("error");antimediaFormFeedback.textContent=error.message});
-        return;
-      }
-      const gear=event.target.closest("[data-antilink-config]");
-      if(gear){
-        activeAntilinkScope=JSON.parse(gear.dataset.scope);
-        antilinkFormFeedback.classList.remove("error");antilinkFormFeedback.textContent="Carregando configurações...";
-        antilinkDialog.showModal();
-        requestAdminApi("/api/account/local/admin-antilink-state",{scope:activeAntilinkScope}).then(({config})=>{
-          fillAntilinkForm(config);
-          const badge=gear.closest(".setting-card").querySelector(".setting-scope").textContent;
-          document.getElementById("antilinkScopeLabel").textContent=badge;
-          antilinkFormFeedback.textContent="";
-        }).catch(error=>{antilinkFormFeedback.classList.add("error");antilinkFormFeedback.textContent=error.message});
-        return;
-      }
       const button=event.target.closest("[data-setting]");
       if(button)saveSetting(button);
     });
-    antilinkDialog.querySelectorAll("[data-close-antilink]").forEach(button=>button.addEventListener("click",()=>antilinkDialog.close()));
-    antilinkDialog.addEventListener("click",event=>{if(event.target===antilinkDialog)antilinkDialog.close()});
-    antimediaDialog.querySelectorAll("[data-close-antimedia]").forEach(button=>button.addEventListener("click",()=>antimediaDialog.close()));
-    antimediaDialog.addEventListener("click",event=>{if(event.target===antimediaDialog)antimediaDialog.close()});
-    antipalavrasDialog.querySelectorAll("[data-close-antipalavras]").forEach(button=>button.addEventListener("click",()=>antipalavrasDialog.close()));
-    antipalavrasDialog.addEventListener("click",event=>{if(event.target===antipalavrasDialog)antipalavrasDialog.close()});
-    antiraidDialog.querySelectorAll("[data-close-antiraid]").forEach(button=>button.addEventListener("click",()=>antiraidDialog.close()));
-    antiraidDialog.addEventListener("click",event=>{if(event.target===antiraidDialog)antiraidDialog.close()});
-    blockcmdDialog.querySelectorAll("[data-close-blockcmd]").forEach(button=>button.addEventListener("click",()=>blockcmdDialog.close()));
-    blockcmdDialog.addEventListener("click",event=>{if(event.target===blockcmdDialog)blockcmdDialog.close()});
-    antilinkForm.addEventListener("submit",async event=>{
-      event.preventDefault();
-      const submitButton=antilinkForm.querySelector('[type="submit"]');
-      submitButton.disabled=true;antilinkFormFeedback.classList.remove("error");antilinkFormFeedback.textContent="Salvando...";
-      try{
-        const result=await requestAdminApi("/api/account/local/admin-antilink",{scope:activeAntilinkScope,config:readAntilinkForm()});
-        fillAntilinkForm(result.config);
-        antilinkFormFeedback.textContent="Configurações do antilink salvas.";
-        feedback.classList.toggle("error",Boolean(result.announcementWarning));
-        feedback.textContent=result.announcementWarning||result.message||"Configurações atualizadas.";
-      }catch(error){antilinkFormFeedback.classList.add("error");antilinkFormFeedback.textContent=error.message}
-      finally{submitButton.disabled=false}
-    });
-    antimediaForm.addEventListener("submit",async event=>{
-      event.preventDefault();
-      const submitButton=antimediaForm.querySelector('[type="submit"]');
-      submitButton.disabled=true;antimediaFormFeedback.classList.remove("error");antimediaFormFeedback.textContent="Salvando...";
-      try{
-        const result=await requestAdminApi("/api/account/local/admin-antimedia",{scope:activeAntimediaScope,config:readAntimediaForm()});
-        fillAntimediaForm(result.config);
-        antimediaFormFeedback.textContent="Configurações do antimídia salvas.";
-        feedback.classList.toggle("error",Boolean(result.announcementWarning));
-        feedback.textContent=result.announcementWarning||result.message||"Configurações atualizadas.";
-      }catch(error){antimediaFormFeedback.classList.add("error");antimediaFormFeedback.textContent=error.message}
-      finally{submitButton.disabled=false}
-    });
-    antipalavrasForm.addEventListener("submit",async event=>{
-      event.preventDefault();
-      const submitButton=antipalavrasForm.querySelector('[type="submit"]');
-      submitButton.disabled=true;antipalavrasFormFeedback.classList.remove("error");antipalavrasFormFeedback.textContent="Salvando...";
-      try{
-        const result=await requestAdminApi("/api/account/local/admin-antipalavras",{scope:activeAntipalavrasScope,config:readAntipalavrasForm()});
-        fillAntipalavrasForm(result.config);
-        antipalavrasFormFeedback.textContent="Configurações do antipalavras salvas.";
-        feedback.classList.toggle("error",Boolean(result.announcementWarning));
-        feedback.textContent=result.announcementWarning||result.message||"Configurações atualizadas.";
-      }catch(error){antipalavrasFormFeedback.classList.add("error");antipalavrasFormFeedback.textContent=error.message}
-      finally{submitButton.disabled=false}
-    });
-    antiraidForm.addEventListener("submit",async event=>{
-      event.preventDefault();
-      const submitButton=antiraidForm.querySelector('[type="submit"]');
-      submitButton.disabled=true;antiraidFormFeedback.classList.remove("error");antiraidFormFeedback.textContent="Salvando...";
-      try{
-        const result=await requestAdminApi("/api/account/local/admin-antiraid",{scope:activeAntiraidScope,config:readAntiraidForm()});
-        fillAntiraidForm(result.config);
-        antiraidFormFeedback.textContent="Configurações do antiraid salvas.";
-        feedback.classList.toggle("error",Boolean(result.announcementWarning));
-        feedback.textContent=result.announcementWarning||result.message||"Configurações atualizadas.";
-      }catch(error){antiraidFormFeedback.classList.add("error");antiraidFormFeedback.textContent=error.message}
-      finally{submitButton.disabled=false}
-    });
-    blockcmdForm.addEventListener("submit",async event=>{
-      event.preventDefault();
-      const submitButton=blockcmdForm.querySelector('[type="submit"]');
-      submitButton.disabled=true;blockcmdFormFeedback.classList.remove("error");blockcmdFormFeedback.textContent="Salvando...";
-      try{
-        const result=await requestAdminApi("/api/account/local/admin-blockcmd",{scope:activeBlockcmdScope,config:readBlockcmdForm()});
-        fillBlockcmdForm(result.config);
-        blockcmdFormFeedback.textContent="Configurações do bloqueio de comandos salvas.";
-        feedback.classList.toggle("error",Boolean(result.announcementWarning));
-        feedback.textContent=result.announcementWarning||result.message||"Configurações atualizadas.";
-      }catch(error){blockcmdFormFeedback.classList.add("error");blockcmdFormFeedback.textContent=error.message}
-      finally{submitButton.disabled=false}
-    });
     if(context.platform==="discord"){
-      const categorySelect=document.getElementById("categorySelect"),channelSelect=document.getElementById("channelSelect"),channelPicker=document.getElementById("channelPicker");
-      let discordCategories=[];
       const logsChannelSelect=document.getElementById("logsChannelSelect");
-      requestAdminApi("/api/account/local/admin-systems-options").then(({categories,chatChannels,logChannels,logChannelId})=>{
-        discordCategories=categories;
-        for(const category of discordCategories){const option=document.createElement("option");option.value=category.id;option.textContent=category.name;categorySelect.append(option)}
+      requestAdminApi("/api/account/local/admin-systems-options").then(({chatChannels,logChannels,logChannelId})=>{
         if(chatControlChannel){
           chatControlChannel.innerHTML='<option value="">Selecione um canal</option>';
           for(const channel of chatChannels||[]){const option=document.createElement("option");option.value=channel.id;option.textContent=channel.name;chatControlChannel.append(option)}
@@ -5707,57 +5888,6 @@ function renderGroupAdmin(data) {
         }catch(error){feedback.classList.add("error");feedback.textContent=error.message}
         finally{logsChannelSelect.disabled=false}
       });
-      categorySelect.addEventListener("change",async()=>{
-        channelPicker.hidden=!categorySelect.value;channelSelect.innerHTML='<option value="">Selecione um chat</option>';
-        if(!categorySelect.value){
-          if(scopeFilter.value==="server")loadScope({level:"server"});
-          else showScopeMessage(document.getElementById("rootSettings"),"Selecione uma categoria para ver as configurações desse escopo.");
-          return;
-        }
-        try{
-          scopeFilter.value="categoria";
-          await loadScope({level:"categoria",categoryId:categorySelect.value});
-          const category=discordCategories.find(item=>item.id===categorySelect.value);
-          for(const channel of category?.channels||[]){const option=document.createElement("option");option.value=channel.id;option.textContent=channel.name;channelSelect.append(option)}
-        }catch(error){feedback.classList.add("error");feedback.textContent=error.message}
-      });
-      channelSelect.addEventListener("change",()=>{if(channelSelect.value){scopeFilter.value="chat";loadScope({level:"chat",categoryId:categorySelect.value,channelId:channelSelect.value})}});
-      scopeFilter.addEventListener("change",()=>{
-        if(scopeFilter.value==="server")loadScope({level:"server"});
-        else if(scopeFilter.value==="categoria"&&categorySelect.value)loadScope({level:"categoria",categoryId:categorySelect.value});
-        else if(scopeFilter.value==="chat"&&categorySelect.value&&channelSelect.value)loadScope({level:"chat",categoryId:categorySelect.value,channelId:channelSelect.value});
-        else showScopeMessage(document.getElementById("rootSettings"),scopeFilter.value==="chat"?"Selecione uma categoria e um chat para ver as configurações desse escopo.":"Selecione uma categoria para ver as configurações desse escopo.");
-      });
-    }else if(context.platform==="telegram"){
-      const topicSelect=document.getElementById("topicSelect");
-      requestAdminApi("/api/account/local/admin-systems-options").then(({topics,isForum})=>{
-        for(const topic of topics){const option=document.createElement("option");option.value=topic.id;option.textContent=topic.name;topicSelect.append(option)}
-        if(!isForum){
-          document.getElementById("topicPicker").hidden=true;
-          scopeFilter.querySelector('option[value="topic"]').remove();
-          document.getElementById("scopeNote").textContent="Este grupo não usa tópicos. As configurações são aplicadas somente ao grupo.";
-        }else{
-          document.getElementById("topicPicker").hidden=false;
-          scopeFilter.querySelector('option[value="topic"]').hidden=false;
-          if(!topics.length)document.getElementById("scopeNote").textContent="Nenhum tópico conhecido pelo bot. Os tópicos aparecerão aqui após o bot observar mensagens neles.";
-        }
-      }).catch(error=>{feedback.classList.add("error");feedback.textContent=error.message});
-      topicSelect.addEventListener("change",()=>{if(topicSelect.value){scopeFilter.value="topic";loadScope({level:"topic",topicId:topicSelect.value})}});
-      scopeFilter.addEventListener("change",()=>{
-        if(scopeFilter.value==="server")loadScope({level:"server"});
-        else if(topicSelect.value)loadScope({level:"topic",topicId:topicSelect.value});
-        else showScopeMessage(document.getElementById("rootSettings"),"Selecione um tópico para ver as configurações desse escopo.");
-      });
-    }else if(context.platform==="whatsapp"){
-      const communityOption=scopeFilter.querySelector('option[value="server"]');
-      requestAdminApi("/api/account/local/admin-systems-options").then(({hasCommunity,communityName})=>{
-        if(hasCommunity){
-          communityOption.hidden=false;
-          communityOption.textContent="Comunidade"+(communityName?" · "+communityName:"");
-          document.getElementById("scopeNote").textContent="Selecione o grupo ou a comunidade. Os menus de configuração acompanham o escopo escolhido.";
-        }
-      }).catch(error=>{feedback.classList.add("error");feedback.textContent=error.message});
-      scopeFilter.addEventListener("change",()=>loadScope({level:scopeFilter.value}));
     }
     const moderationFeedback=document.getElementById("moderationFeedback");
     const warningConfigForm=document.getElementById("warningConfigForm");
@@ -6072,6 +6202,11 @@ function renderGroupAdmin(data) {
       if(button)removeWarningFromList(button.dataset.warningUser,button);
     });
   </script></body></html>`;
+  return adminHtml
+    .replace(/<dialog class="antilink-dialog" id="antimediaDialog"[\s\S]*?<\/dialog>/, "")
+    .replace(/<dialog class="antilink-dialog" id="antipalavrasDialog"[\s\S]*?<\/dialog>/, "")
+    .replace(/<dialog class="antilink-dialog" id="antiraidDialog"[\s\S]*?<\/dialog>/, "")
+    .replace(/<dialog class="antilink-dialog" id="blockcmdDialog"[\s\S]*?<\/dialog>/, "");
 }
 
 async function readProfile(url, { allowEmpty = false } = {}) {
@@ -6468,7 +6603,47 @@ function homeStyles() {
   return `:root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb;--text:#f5f7fb;--muted:#9da8bd;--line:#334366}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:0 28px;background:radial-gradient(ellipse at 50% -18%,#344779 0,transparent 48%),radial-gradient(circle at 95% 82%,#432d67 0,transparent 30%),linear-gradient(155deg,#111522 0%,#0c1019 65%,#10121d 100%)}button,input{font-family:inherit}a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid #a99dff;outline-offset:3px}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}`;
 }
 
-function renderHome(botName, central = null, loginError = "") {
+function renderChangelog(botName) {
+  const changelog = getCurrentChangelog();
+  const renderList = items => items.map(item => `<li>${escapeHtml(item)}</li>`).join("");
+  const platformLabels = { whatsapp: "WhatsApp", discord: "Discord", telegram: "Telegram" };
+  const summaries = Object.entries(changelog.platformSummaries)
+    .map(([platform, summary]) => `<article class="summary-card"><h3>${platformLabels[platform]}</h3><p>${escapeHtml(summary)}</p></article>`)
+    .join("");
+
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Novidades · ${escapeHtml(botName)}</title><style>
+    ${homeStyles()}
+    .release-page{width:min(900px,100%);margin:0 auto;padding:28px 0 52px}
+    .button{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:9px 13px;border:1px solid var(--line);border-radius:11px;background:#ffffff08;color:var(--text);font-size:13px;font-weight:700;text-decoration:none}
+    .button:hover{border-color:#8599ff88;background:#8599ff12}
+    .release-nav{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:20px;border-bottom:1px solid var(--line)}
+    .release-links{display:flex;flex-wrap:wrap;gap:10px}
+    .release-hero{margin:28px 0 18px;padding:27px;border:1px solid #8b7bff44;border-radius:20px;background:linear-gradient(125deg,#8877ff20,#577cff0c)}
+    .release-eyebrow{color:#b9c6ff;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+    .release-hero h1{margin:8px 0;font-size:clamp(28px,5vw,40px)}
+    .release-hero p{margin:0;color:#c1c9df;line-height:1.6}
+    .release-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .release-card{padding:21px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#171d2b,#131925)}
+    .release-card h2{margin:0 0 12px;font-size:18px}
+    .release-card ul{display:grid;gap:11px;margin:0;padding-left:20px;color:#c4cce0;line-height:1.6}
+    .release-card li::marker{color:#a99dff}
+    .platform-summaries{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}
+    .summary-card{padding:17px;border:1px solid #ffffff12;border-radius:14px;background:#ffffff05}
+    .summary-card h3{margin:0 0 7px;font-size:14px}
+    .summary-card p{margin:0;color:#b9c4d9;font-size:12px;line-height:1.6}
+    @media(max-width:680px){body{padding:0 18px}.release-page{padding-top:20px}.release-grid,.platform-summaries{grid-template-columns:1fr}.release-nav{align-items:flex-start}}
+  </style></head><body><main class="release-page">
+    <nav class="release-nav" aria-label="Navegação principal"><a class="button" href="/">← Home</a><div class="release-links"><a class="button" href="/dashboard">Dashboard</a><a class="button" href="/novidades">Novidades</a></div></nav>
+    <header class="release-hero"><span class="release-eyebrow">Versão atual</span><h1>Novidades · v${escapeHtml(changelog.version)}</h1><p>Resumo desta versão. As notas são atualizadas junto com o conteúdo centralizado do changelog.</p></header>
+    <div class="release-grid" style="${changelog.features.length ? "" : "grid-template-columns:1fr"}">
+      ${changelog.features.length ? `<section class="release-card"><h2>✨ Novas funções</h2><ul>${renderList(changelog.features)}</ul></section>` : ""}
+      <section class="release-card"><h2>🛠️ Correções</h2><ul>${renderList(changelog.fixes)}</ul></section>
+    </div>
+    ${summaries ? `<section class="release-card" style="margin-top:14px"><h2>🌐 Resumo por plataforma</h2><div class="platform-summaries">${summaries}</div></section>` : ""}
+  </main></body></html>`;
+}
+
+function renderHome(botName, central = null, loginError = "", hasSession = Boolean(central)) {
   const safeBotName = escapeHtml(botName);
   if (central) {
     const vipHelper = require("./vipHelper");
@@ -6508,7 +6683,7 @@ function renderHome(botName, central = null, loginError = "") {
     .brand{display:flex;align-items:center;gap:12px;font-weight:800;letter-spacing:.02em}
     .brand-mark{width:42px;height:42px;display:grid;place-items:center;border-radius:14px;background:linear-gradient(145deg,#8f79ff,#536eff);box-shadow:0 8px 24px #645fff55;font-size:21px}
     .brand small{display:block;margin-top:2px;color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
-    .top-actions{display:flex;align-items:center;gap:12px}
+    .top-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap}
     .secure-badge,.connected{display:inline-flex;align-items:center;gap:7px;color:#9cf0cf;font-size:12px;font-weight:700}
     .secure-badge:before,.connected:before{content:"";width:7px;height:7px;border-radius:50%;background:#58d6a3;box-shadow:0 0 12px #58d6a377}
     .button{display:inline-flex;align-items:center;justify-content:center;gap:9px;border:1px solid var(--line);border-radius:12px;background:#ffffff08;color:var(--text);padding:11px 16px;font:inherit;font-size:14px;font-weight:700;text-decoration:none;cursor:pointer;transition:transform .18s ease,border-color .18s ease,background .18s ease}
@@ -6591,16 +6766,16 @@ function renderHome(botName, central = null, loginError = "") {
     .password-recovery summary{color:#b9c6ff;font-size:13px;font-weight:700;cursor:pointer}
     .password-recovery p{color:var(--muted);font-size:12px;line-height:1.7}
     footer{display:flex;justify-content:space-between;gap:12px;margin-top:28px;color:#71809d;font-size:12px}
-    @media(max-width:720px){.dashboard{padding:22px 0 38px}.welcome{padding:26px}.stats{grid-template-columns:1fr}.account-layout{grid-template-columns:1fr}.account-menu{grid-template-columns:1fr}.account-action{min-height:0}.topbar{align-items:flex-start}.secure-badge{display:none}}
+    @media(max-width:720px){.dashboard{padding:22px 0 38px}.welcome{padding:26px}.stats{grid-template-columns:1fr}.account-layout{grid-template-columns:1fr}.account-menu{grid-template-columns:1fr}.account-action{min-height:0}.topbar{align-items:flex-start}.top-actions{gap:7px}.secure-badge{display:none}}
     @media(max-width:480px){.nofap-overview{grid-template-columns:auto 1fr}.nofap-overview strong{grid-column:2;text-align:left}}
-    @media(max-width:420px){body{padding:0 18px}.topbar{padding-bottom:18px}.brand-mark{width:38px;height:38px}.button{padding:9px 11px;font-size:12px}.welcome{padding:23px 20px}.platform-card .connected{font-size:0}.platform-card .connected:before{width:8px;height:8px}}
+    @media(max-width:420px){body{padding:0 18px}.topbar{padding-bottom:18px}.brand-mark{width:38px;height:38px}.top-actions{gap:6px}.button{padding:9px 11px;font-size:12px}.welcome{padding:23px 20px}.platform-card .connected{font-size:0}.platform-card .connected:before{width:8px;height:8px}}
   </style>
 </head>
 <body>
   <main class="dashboard">
     <nav class="topbar" aria-label="Navegação principal">
         <div class="brand"><span class="brand-mark">✦</span><span>${safeBotName}<small>PAINEL DA CONTA</small></span></div>
-        <div class="top-actions"><span class="secure-badge">Sessão protegida</span><button class="button" id="logout" type="button">Sair <span aria-hidden="true">↗</span></button></div>
+        <div class="top-actions"><a class="button" href="/">Home</a><a class="button" href="/novidades">Novidades</a><span class="secure-badge">Sessão protegida</span><button class="button" id="logout" type="button">Sair <span aria-hidden="true">↗</span></button></div>
     </nav>
     <section class="welcome">
         <div class="eyebrow">Sua central de controle</div>
@@ -6799,6 +6974,7 @@ function renderHome(botName, central = null, loginError = "") {
     ${homeStyles()}
     .landing{width:min(1080px,100%);min-height:100vh;margin:auto;display:flex;flex-direction:column}
     .topbar{display:flex;align-items:center;justify-content:space-between;padding:27px 0}
+    .top-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap}
     .brand{display:flex;align-items:center;gap:12px;font-weight:800;letter-spacing:.02em}
     .brand-mark{width:42px;height:42px;display:grid;place-items:center;border-radius:14px;background:linear-gradient(145deg,#8f79ff,#536eff);box-shadow:0 8px 24px #645fff55;font-size:21px}
     .brand small{display:block;margin-top:2px;color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
@@ -6850,7 +7026,7 @@ function renderHome(botName, central = null, loginError = "") {
     @keyframes spin{to{transform:rotate(360deg)}}
     @keyframes modal-in{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
     @media(max-width:760px){.hero{grid-template-columns:1fr;gap:8px}.hero-art{min-height:190px}.orbit{width:170px;height:170px}.orbit-core{width:82px;height:82px;border-radius:25px;font-size:40px}.features{grid-template-columns:1fr}.feature{display:flex;gap:13px;align-items:flex-start}.feature-icon{flex:none;margin:0}.hero{margin-bottom:24px}}
-    @media(max-width:480px){body{padding:0 18px}.topbar{padding:19px 0}.brand-mark{width:38px;height:38px}.top-link{font-size:11px}.hero{padding:26px 21px;border-radius:21px}.hero h1{font-size:43px}.hero-copy{font-size:14px}.hero-art{min-height:160px}.orbit{width:145px;height:145px}.orbit-chip{width:40px;height:40px}.features{margin-bottom:30px}.page-footer{font-size:10px}}
+    @media(max-width:480px){body{padding:0 18px}.topbar{padding:19px 0;gap:10px}.top-actions{gap:7px}.brand-mark{width:38px;height:38px}.top-link{font-size:11px}.top-actions .button{padding:9px 10px;font-size:11px}.hero{padding:26px 21px;border-radius:21px}.hero h1{font-size:43px}.hero-copy{font-size:14px}.hero-art{min-height:160px}.orbit{width:145px;height:145px}.orbit-chip{width:40px;height:40px}.features{margin-bottom:30px}.page-footer{font-size:10px}}
     #help[hidden],#loginForm[hidden]{display:none}
   </style>
 </head>
@@ -6858,7 +7034,7 @@ function renderHome(botName, central = null, loginError = "") {
   <div class="landing">
     <nav class="topbar" aria-label="Navegação principal">
       <div class="brand"><span class="brand-mark">✦</span><span>${safeBotName}<small>PAINEL DO BOT</small></span></div>
-      <a class="top-link" href="/perfil?grupo=ID&amp;usuario=ID&amp;plataforma=discord">Ver exemplo de perfil <span aria-hidden="true">↗</span></a>
+      <div class="top-actions">${hasSession ? '<a class="button" href="/dashboard">Abrir dashboard</a>' : ""}<a class="button" href="/novidades">Novidades</a><a class="top-link" href="/perfil?grupo=ID&amp;usuario=ID&amp;plataforma=discord">Ver exemplo de perfil <span aria-hidden="true">↗</span></a></div>
     </nav>
     <main>
       <section class="hero">
@@ -6866,7 +7042,9 @@ function renderHome(botName, central = null, loginError = "") {
           <span class="eyebrow">Seu espaço, suas comunidades</span>
           <h1>Seu bot.<br><span>Tudo conectado.</span></h1>
           <p class="hero-copy">Acesse sua Conta Central e acompanhe em um só lugar as conexões e recursos do ${safeBotName}.</p>
-          <div class="hero-actions"><button class="button primary" id="openLogin" type="button">Entrar no painel <span aria-hidden="true">→</span></button><button class="button" id="openHelp" type="button">Não sei meu login ou senha</button></div>
+          <div class="hero-actions">${hasSession
+            ? '<a class="button primary" href="/dashboard">Abrir meu dashboard <span aria-hidden="true">→</span></a>'
+            : '<button class="button primary" id="openLogin" type="button">Entrar no painel <span aria-hidden="true">→</span></button><button class="button" id="openHelp" type="button">Não sei meu login ou senha</button>'}</div>
           ${securityNotice}
         </div>
         <div class="hero-art" aria-hidden="true"><div class="orbit"><span class="orbit-core">✦</span><span class="orbit-chip chip-one">◈</span><span class="orbit-chip chip-two">⌁</span><span class="orbit-chip chip-three">✧</span></div></div>
@@ -6899,8 +7077,10 @@ function renderHome(botName, central = null, loginError = "") {
     const form=document.getElementById("loginForm");
     const helpSection=document.getElementById("help");
     const dialogTitle=document.getElementById("dialogTitle");
-    document.getElementById("openLogin").onclick=()=>{form.hidden=false;helpSection.hidden=true;dialogTitle.textContent="Entrar no painel";dialog.showModal()};
-    document.getElementById("openHelp").onclick=()=>{form.hidden=true;helpSection.hidden=false;dialogTitle.textContent="Recuperar acesso";dialog.showModal()};
+    const openLogin=document.getElementById("openLogin");
+    const openHelp=document.getElementById("openHelp");
+    if(openLogin)openLogin.onclick=()=>{form.hidden=false;helpSection.hidden=true;dialogTitle.textContent="Entrar no painel";dialog.showModal()};
+    if(openHelp)openHelp.onclick=()=>{form.hidden=true;helpSection.hidden=false;dialogTitle.textContent="Recuperar acesso";dialog.showModal()};
     document.getElementById("closeDialog").onclick=()=>dialog.close();
     form.onsubmit=async event=>{
       event.preventDefault();
@@ -6910,7 +7090,7 @@ function renderHome(botName, central = null, loginError = "") {
         const response=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({login:document.getElementById("loginIdentifier").value,password:document.getElementById("password").value,rememberMe:document.getElementById("rememberMe").checked})});
         const result=await response.json();
         if(!response.ok)throw new Error(result.error||"Falha no login.");
-        location.href="/";
+        location.href="/dashboard";
       }catch(err){error.textContent=err.message}
     };
   </script>
@@ -7621,13 +7801,20 @@ function start() {
       if ([
         "/api/account/local/admin-schedules-state",
         "/api/account/local/admin-schedules",
-        "/api/account/local/admin-schedules-media"
+        "/api/account/local/admin-schedules-media",
+        "/api/account/local/admin-schedules-overview"
       ].includes(requestUrl.pathname)) {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
         const isStateRequest = requestUrl.pathname.endsWith("-state");
         try {
-          await getGroupAdminData(central, platform, groupId);
+          const adminData = await getGroupAdminData(central, platform, groupId);
+          if (requestUrl.pathname.endsWith("-overview")) {
+            sendJson(response, 200, {
+              schedules: await getAdminSchedulesOverview(platform, groupId, adminData.groupName)
+            });
+            return;
+          }
           const scope = await validateAdminSettingsScope(platform, groupId, payload?.scope || {});
           if (!getAdminSystemDefinitions(platform, scope.level).some(item => item.key === "agendar")) {
             sendJson(response, 400, { error: "Agendamentos não estão disponíveis neste escopo." });
@@ -7995,6 +8182,7 @@ function start() {
               !Number.isSafeInteger(input.robberyVaultChance) || input.robberyVaultChance < 0 || input.robberyVaultChance > 100) {
             throw new Error("Informe valores válidos para o mínimo, imposto e chance de roubo.");
           }
+          const previousVaultConfig = economy.getVaultConfig(message);
           const vaultConfig = economy.updateVaultConfig(message, {
             mode: input.mode,
             minimumMovement: input.minimumMovement,
@@ -8004,6 +8192,14 @@ function start() {
             robberyVaultChance: input.robberyVaultChance
           });
           if (!vaultConfig) throw new Error("Configuração do cofre inválida.");
+          const changes = describeVaultConfigChanges(previousVaultConfig, vaultConfig);
+          if (changes.length) {
+            await auditLogs.log(
+              message,
+              "vault",
+              `👤 Responsável: ${auditLogs.describeActor(message)}\nAlterações: ${changes.join("; ")}`
+            );
+          }
           sendJson(response, 200, { success: true, vaultConfig });
         } catch (error) {
           const reason = String(error?.message || "");
@@ -8224,7 +8420,7 @@ function start() {
           const reason = String(error?.message || "");
           const statusCode = /não participa|não está vinculada|permissão administrativa/i.test(reason) ? 403
             : /offline/i.test(reason) ? 503
-              : /inválid|configure uma cidade|cadastre ao menos uma cidade|cadastre ao menos uma consulta/i.test(reason) ? 400 : 500;
+              : /inválid|configure uma cidade|cadastre ao menos uma cidade|cadastre ao menos uma consulta|escolha o canal de destino/i.test(reason) ? 400 : 500;
           if (statusCode === 503 || statusCode === 500) {
             console.error("[WEB] Falha ao atualizar configuração administrativa:", error.message || error);
           }
@@ -9040,7 +9236,19 @@ function start() {
       return;
     }
 
-    if (requestUrl.pathname === "/" || requestUrl.pathname === "/index.html" || requestUrl.pathname === "/dashboard") {
+    if (request.method === "GET" && (requestUrl.pathname === "/" || requestUrl.pathname === "/index.html")) {
+      const central = await getSessionCentral(request);
+      response.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff"
+      });
+      response.end(renderHome(config.getBotName(), null, "", Boolean(central)));
+      return;
+    }
+
+    if (request.method === "GET" && requestUrl.pathname === "/dashboard") {
       const central = await getSessionCentral(request);
       response.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
@@ -9049,6 +9257,17 @@ function start() {
         "X-Content-Type-Options": "nosniff"
       });
       response.end(renderHome(config.getBotName(), central));
+      return;
+    }
+
+    if (request.method === "GET" && requestUrl.pathname === "/novidades") {
+      response.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff"
+      });
+      response.end(renderChangelog(config.getBotName()));
       return;
     }
 
@@ -9191,6 +9410,97 @@ function start() {
       return;
     }
 
+    if (request.method === "GET" && ["/painel-agendamentos", "/painel-monitores"].includes(requestUrl.pathname)) {
+      const central = await getSessionCentral(request);
+      if (!central) {
+        response.writeHead(302, { Location: "/dashboard", "Cache-Control": "no-store" });
+        response.end();
+        return;
+      }
+      const platform = String(requestUrl.searchParams.get("plataforma") || "").toLowerCase();
+      const groupId = String(requestUrl.searchParams.get("grupo") || "");
+      let requestedScope = null;
+      try {
+        requestedScope = JSON.parse(String(requestUrl.searchParams.get("scope") || "null"));
+      } catch {
+        requestedScope = null;
+      }
+      try {
+        const data = await getGroupAdminData(central, platform, groupId);
+        const html = requestUrl.pathname === "/painel-agendamentos"
+          ? renderSchedulesAdmin({ ...data, requestedScope })
+          : renderMonitorsAdmin({ ...data, requestedScope });
+        response.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Referrer-Policy": "no-referrer",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(html);
+      } catch (error) {
+        const reason = String(error?.message || "");
+        const statusCode = /não participa|não está vinculada|permissão administrativa/i.test(reason) ? 403
+          : /offline/i.test(reason) ? 503 : /inválid/i.test(reason) ? 400 : 500;
+        if (statusCode === 503 || statusCode === 500) {
+          console.error("[WEB] Falha ao abrir painel de agendamentos ou monitores:", error.message || error);
+        }
+        response.writeHead(statusCode, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Painel indisponível</title><body style="font-family:Segoe UI,Arial;background:#10131c;color:#f5f7fb;padding:40px"><h1>Painel indisponível</h1><p>${escapeHtml(reason || "Não foi possível carregar as configurações.")}</p><a href="/painel-admin?plataforma=${encodeURIComponent(platform)}&grupo=${encodeURIComponent(groupId)}" style="color:#b9c6ff">Voltar ao painel de administração</a></body></html>`);
+      }
+      return;
+    }
+
+    if (request.method === "GET" && [
+      "/painel-antilink", "/painel-antipalavras", "/painel-antimedia", "/painel-antiraid", "/painel-blockcmd", "/painel-boas-vindas"
+    ].includes(requestUrl.pathname)) {
+      const setting = requestUrl.pathname === "/painel-antipalavras" ? "antipalavras"
+        : requestUrl.pathname === "/painel-antimedia" ? "antimedia"
+          : requestUrl.pathname === "/painel-antiraid" ? "antiraid"
+            : requestUrl.pathname === "/painel-blockcmd" ? "blockcmd"
+              : requestUrl.pathname === "/painel-boas-vindas" ? "boas-vindas" : "antilink";
+      const renderPage = setting === "antipalavras" ? renderAntipalavrasAdmin
+        : setting === "antimedia" ? renderAntimediaAdmin
+          : setting === "antiraid" ? renderAntiraidAdmin
+            : setting === "blockcmd" ? renderBlockcmdAdmin
+              : setting === "boas-vindas" ? renderWelcomeAdmin : renderAntilinkAdmin;
+      const central = await getSessionCentral(request);
+      if (!central) {
+        response.writeHead(302, { Location: "/dashboard", "Cache-Control": "no-store" });
+        response.end();
+        return;
+      }
+      const platform = String(requestUrl.searchParams.get("plataforma") || "").toLowerCase();
+      const groupId = String(requestUrl.searchParams.get("grupo") || "");
+      try {
+        const data = await getGroupAdminData(central, platform, groupId);
+        response.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Referrer-Policy": "no-referrer",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(renderPage(data));
+      } catch (error) {
+        const reason = String(error?.message || "");
+        const statusCode = /não participa|não está vinculada|permissão administrativa/i.test(reason) ? 403
+          : /offline/i.test(reason) ? 503 : /inválid/i.test(reason) ? 400 : 500;
+        if (statusCode === 503 || statusCode === 500) {
+          console.error(`[WEB] Falha ao abrir as configurações de ${setting}:`, error.message || error);
+        }
+        response.writeHead(statusCode, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Configurações indisponíveis</title><body style="font-family:Segoe UI,Arial;background:#10131c;color:#f5f7fb;padding:40px"><h1>Configurações de ${escapeHtml(setting)} indisponíveis</h1><p>${escapeHtml(reason || "Não foi possível carregar as configurações.")}</p><a href="/dashboard" style="color:#b9c6ff">Voltar à Conta Central</a></body></html>`);
+      }
+      return;
+    }
+
     if (request.method === "GET" && requestUrl.pathname === "/painel-admin") {
       const central = await getSessionCentral(request);
       if (!central) {
@@ -9236,4 +9546,4 @@ function start() {
   return server;
 }
 
-module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking, renderLocalAccount, renderLocalBank, renderSignalSearch, renderCosmeticsStore, renderShopCatalog, renderGroupAdmin, renderEconomyAdmin, canManagePlatformGroup };
+module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking, renderChangelog, renderLocalAccount, renderLocalBank, renderSignalSearch, renderCosmeticsStore, renderShopCatalog, renderGroupAdmin, renderEconomyAdmin, renderAntilinkAdmin, renderAntipalavrasAdmin, renderAntimediaAdmin, renderAntiraidAdmin, renderBlockcmdAdmin, renderWelcomeAdmin, renderSchedulesAdmin, renderMonitorsAdmin, canManagePlatformGroup };
