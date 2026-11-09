@@ -2827,6 +2827,16 @@ function renderLocalBank(data) {
   </script></body></html>`;
 }
 
+function getSignalSearchOutlineStyles(outlineKey) {
+  const outline = economy.PROFILE_OUTLINES[outlineKey];
+  if (!outline) return "";
+  const targets = ".signal-page .signal-hero,.signal-page .signal-level-tab,.signal-page .signal-level-card,.signal-page .signal-featured-card,.signal-page .signal-prize-card,.signal-page .signal-wallet,.signal-page .signal-results .signal-result,.signal-dialog,.signal-error-dialog,.signal-reveal-stage,.signal-mini-card";
+  if (outline.rainbow) {
+    return `@keyframes signal-outline-cycle{0%{border-color:#ff1744}16%{border-color:#ff9100}32%{border-color:#ffea00}48%{border-color:#00e676}64%{border-color:#00b0ff}80%{border-color:#651fff}100%{border-color:#ff1744}}${targets}{border-width:3px;border-style:solid;border-color:#ff1744;animation:signal-outline-cycle 5s linear infinite}.signal-mini-card{animation:mini-card-in .35s ease both,signal-outline-cycle 5s linear infinite}@media(prefers-reduced-motion:reduce){${targets}{animation:none!important;border-color:#ff70cf}}`;
+  }
+  return `${targets}{border-color:${outline.color}cc!important}.signal-page .signal-level-tab[aria-selected=true],.signal-page .signal-prize-card:hover,.signal-page .signal-prize-card:focus-visible{border-color:${outline.color}!important;box-shadow:0 0 18px ${outline.color}44}.signal-mini-card{border-color:${outline.color}cc}`;
+}
+
 function renderSignalSearch(data) {
   const currency = amount => economy.formatMoney(Number(amount) || 0);
   const rarityLabels = {
@@ -3076,6 +3086,13 @@ function renderSignalSearch(data) {
     .signal-card.epic .signal-card-art-core{border-color:#f6ddff;background:radial-gradient(circle at 35% 30%,#fff5ff,#db9fff 38%,#75439c 100%);box-shadow:0 0 42px #d584ffdd,inset 0 0 18px #fff3ff}
     .signal-card.epic .signal-card-stars,.signal-card.epic .signal-card-rarity{color:#edc1ff}
     .signal-card.epic .signal-card-art-glint{color:#fff0ff;text-shadow:0 0 16px #dfa0ff}
+    .signal-card.legendary .signal-card-face{border-color:#ffe28a;box-shadow:0 20px 70px #d49b2877,inset 0 0 0 5px #fff0b322,inset 0 0 38px #ffd65a66}
+    .signal-card.legendary .signal-card-face:before{border-color:#fff0b366}
+    .signal-card.legendary .signal-card-stars,.signal-card.legendary .signal-card-rarity{color:#ffe28a;text-shadow:0 0 12px #ffc94a99}
+    .signal-card.legendary .signal-card-art-orbit{border-color:#ffe28acc;box-shadow:0 0 42px #ffd65a99,inset 0 0 25px #ffd65a55;animation:legendary-orbit 4s linear infinite}
+    .signal-card.legendary .signal-card-art-core{border-color:#fff0b3;background:radial-gradient(circle at 35% 30%,#fffbe6,#ffe28a 38%,#9c641e 100%);box-shadow:0 0 48px #ffd65add,inset 0 0 18px #fff9d8}
+    .signal-card.legendary .signal-card-art-glint{color:#fff4c2;text-shadow:0 0 20px #ffd65a;animation:legendary-glint 1.2s ease-in-out infinite alternate}
+    .signal-reveal-stage.is-legendary{border-color:#ffe28a;box-shadow:0 24px 100px #a9762466,inset 0 0 65px #f4c84a33}
     .signal-card.rainbow-background .signal-card-face{background:linear-gradient(145deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744);background-size:350% 350%;animation:signal-rainbow 6s linear infinite}
     .signal-card.rainbow-outline .signal-card-face{border:8px solid transparent;background:linear-gradient(145deg,#161b2b,#10131e) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:signal-rainbow 5s linear infinite}
     @keyframes camera-sweep{0%{transform:perspective(1200px) rotateX(-5deg) rotateY(-10deg)}50%{transform:perspective(1200px) rotateX(3deg) rotateY(7deg)}100%{transform:perspective(1200px) rotateX(-2deg) rotateY(12deg)}}
@@ -3123,15 +3140,29 @@ function renderSignalSearch(data) {
     .signal-mini-card.is-epic .signal-mini-rarity{color:#efc5ff}
     .signal-mini-art{display:grid;flex:1;place-items:center;margin:10px 0;border:1px solid #ffffff20;border-radius:9px;background:#07101c55;color:#b9f1ff;font-size:30px;text-shadow:0 0 20px currentColor}
     .signal-mini-card.is-epic .signal-mini-art{color:#f3c8ff}
+    .signal-mini-card.is-legendary{border-color:#ffe28a;background:radial-gradient(circle at 50% 38%,#d19b3766,transparent 58%),linear-gradient(155deg,#59451f,#292115 58%,#17140e);box-shadow:0 8px 30px #a9762444}
+    .signal-mini-card.is-legendary .signal-mini-rarity,.signal-mini-card.is-legendary .signal-mini-art{color:#ffe28a}
+    .signal-mini-card.is-legendary .signal-mini-art{animation:legendary-glint 1.2s ease-in-out infinite alternate}
     .signal-mini-card strong{font-size:11px;line-height:1.2}.signal-mini-card small{margin-top:4px;color:#aab8cf;font-size:8px;line-height:1.3}
     .signal-mini-card.is-owned{filter:saturate(.62);border-style:dashed}
     .signal-mini-card.is-owned:before{position:absolute;right:7px;bottom:7px;color:#c0c9d8;content:"DUPLICADO";font-size:7px;font-weight:800;letter-spacing:.08em}
     @keyframes scan{to{transform:translateY(350px)}}@keyframes orb-pulse{to{transform:scale(1.12);filter:brightness(1.35)}}@keyframes grid-flicker{50%{opacity:.42}}
     @keyframes mini-card-in{from{opacity:0;transform:translateY(12px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
     @keyframes camera-sweep{0%{transform:perspective(1200px) rotateX(-5deg) rotateY(-10deg)}50%{transform:perspective(1200px) rotateX(3deg) rotateY(7deg)}100%{transform:perspective(1200px) rotateX(-2deg) rotateY(12deg)}}
+    @keyframes legendary-orbit{to{transform:rotate(360deg) scale(1.08)}}@keyframes legendary-glint{to{transform:scale(1.3) rotate(18deg);filter:brightness(1.4)}}
     .signal-reveal-stage.is-revealed .signal-card-camera{animation:camera-sweep 4.8s ease-in-out 1.1s infinite alternate}
     @media(max-width:600px){.signal-reveal-stage{min-height:330px}.signal-ten-results{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:none;grid-auto-rows:145px;gap:8px;padding:14px}.signal-reveal-stage.is-results{min-height:790px}.signal-mini-card{padding:10px}.signal-mini-art{margin:6px 0;font-size:24px}}
-    @media(prefers-reduced-motion:reduce){.signal-reveal-stage.is-revealed .signal-card-camera,.signal-reveal-stage.is-revealed .signal-card,.signal-mini-card{animation-duration:.01ms!important;animation-iteration-count:1!important}.signal-card.rainbow-outline .signal-card-face{animation:none!important}}
+    @media(prefers-reduced-motion:reduce){.signal-reveal-stage.is-revealed .signal-card-camera,.signal-reveal-stage.is-revealed .signal-card,.signal-mini-card,.signal-card.legendary .signal-card-art-orbit,.signal-card.legendary .signal-card-art-glint,.signal-mini-card.is-legendary .signal-mini-art{animation-duration:.01ms!important;animation-iteration-count:1!important}.signal-card.rainbow-outline .signal-card-face{animation:none!important}}
+    .signal-error-dialog{width:min(440px,calc(100% - 32px));max-width:none;padding:0;border:1px solid #ff9da766;border-radius:18px;background:linear-gradient(145deg,#241923,#11131f);color:#f5f7fb;box-shadow:0 28px 90px #000b}
+    .signal-error-dialog::backdrop{background:#03040bcc;backdrop-filter:blur(7px)}
+    .signal-error-content{padding:24px}
+    .signal-error-icon{display:grid;width:44px;height:44px;place-items:center;border:1px solid #ff9da766;border-radius:14px;background:#ff72851c;color:#ffb5bd;font-size:23px}
+    .signal-error-content h2{margin:16px 0 8px;font-size:20px}
+    .signal-error-content p{margin:0;color:#d0c4cf;font-size:14px;line-height:1.6;overflow-wrap:anywhere}
+    .signal-error-actions{display:flex;justify-content:flex-end;margin-top:22px}
+    .signal-error-actions button{min-height:42px;padding:9px 18px;border:1px solid #ff9da777;border-radius:10px;background:#ff728522;color:#ffe8ec;font-weight:800;cursor:pointer}
+    .signal-error-actions button:hover,.signal-error-actions button:focus-visible{background:#ff728544;outline:2px solid #ff9da766;outline-offset:2px}
+    ${getSignalSearchOutlineStyles(data.profileOutline)}
   </style>
   <dialog id="signalSearchDialog" class="signal-dialog" aria-labelledby="signalDialogTitle">
     <div class="signal-dialog-inner"><header class="signal-dialog-top"><small id="signalDialogTitle">PRÉVIA DO PRÊMIO</small><button id="signalDialogClose" class="signal-dialog-close" type="button" aria-label="Fechar">×</button></header>
@@ -3143,10 +3174,15 @@ function renderSignalSearch(data) {
       <footer class="signal-modal-footer"><button id="signalModalNext" class="signal-modal-next" type="button" hidden>Próximo especial</button></footer>
     </div>
   </dialog>
+  <dialog id="signalErrorDialog" class="signal-error-dialog" aria-labelledby="signalErrorTitle" aria-describedby="signalErrorMessage">
+    <div class="signal-error-content"><span class="signal-error-icon" aria-hidden="true">!</span><h2 id="signalErrorTitle">Busca não realizada</h2><p id="signalErrorMessage"></p><footer class="signal-error-actions"><button id="signalErrorClose" type="button">Entendi</button></footer></div>
+  </dialog>
   <audio id="normalSignalAudio" preload="none" src="/sinal.mp3"></audio><audio id="epicSignalAudio" preload="none" src="/sinal2.mp3"></audio>
   <script>
     const localContext=${JSON.stringify(context)};
     const dialog=document.getElementById("signalSearchDialog"),nextButton=document.getElementById("signalModalNext"),stage=document.getElementById("signalRevealStage"),tenResults=document.getElementById("signalTenResults");
+    const errorDialog=document.getElementById("signalErrorDialog");
+    let activeSignalAudio=null;
     const signalRarity=${JSON.stringify(rarityLabels)};
     const wait=duration=>new Promise(resolve=>window.setTimeout(resolve,duration));
     async function submitSignalSearch(level,quantity){
@@ -3155,6 +3191,12 @@ function renderSignalSearch(data) {
       if(!response.ok)throw new Error(result.error||"Não foi possível fazer esta busca.");
       return result;
     }
+    function showSignalError(message){
+      document.getElementById("signalErrorMessage").textContent=message;
+      if(!errorDialog.open)errorDialog.showModal();
+      document.getElementById("signalErrorClose").focus();
+    }
+    document.getElementById("signalErrorClose").addEventListener("click",()=>errorDialog.close());
     function setCardReward(reward,details,rarity,preview){
       const card=document.getElementById("signal3dCard");
       const camera=document.getElementById("signalCardCamera");
@@ -3163,9 +3205,10 @@ function renderSignalSearch(data) {
       document.getElementById("signalDialogTitle").textContent=preview?"PRÉVIA DO PRÊMIO":"SINAL RECEBIDO";
       document.getElementById("signalCardType").textContent=preview?"PRÉVIA DO PRÊMIO":"RECOMPENSA DA BUSCA";
       const isHighRarity=rarity==="epico"||rarity==="lendario";
-      card.className="signal-card"+(isHighRarity?" epic":"");
+      card.className="signal-card"+(isHighRarity?" epic":"")+(rarity==="lendario"?" legendary":"");
       front.style.background="";
       front.style.borderColor="";
+      front.style.borderWidth="";
       art.style.background="";
       document.getElementById("signalCardRarity").textContent=signalRarity[rarity]||String(rarity||"Prêmio");
       document.getElementById("signalCardName").textContent=reward.name;
@@ -3182,18 +3225,29 @@ function renderSignalSearch(data) {
         }
       }else if(reward.type==="outline"){
         card.classList.toggle("rainbow-outline",Boolean(reward.rainbow));
-        if(!reward.rainbow)front.style.borderColor=reward.color;
+        if(!reward.rainbow){
+          front.style.borderColor=reward.color;
+          front.style.borderWidth="8px";
+        }
       }
       tenResults.hidden=true;
-      stage.classList.remove("is-running","is-revealed","is-epic","is-results");
+      stage.classList.remove("is-running","is-revealed","is-epic","is-legendary","is-results");
       stage.classList.add("is-revealed");
       if(isHighRarity)stage.classList.add("is-epic");
+      if(rarity==="lendario")stage.classList.add("is-legendary");
       card.style.animation="none";camera.style.animation="none";void card.offsetWidth;
       card.style.animation="";camera.style.animation="";
       nextButton.hidden=true;
       if(!dialog.open)dialog.showModal();
     }
     document.getElementById("signalDialogClose").addEventListener("click",()=>dialog.close());
+    dialog.addEventListener("close",()=>{
+      const audio=activeSignalAudio;
+      if(!audio||audio.ended)return;
+      window.setTimeout(()=>{
+        if(audio.paused&&!audio.ended)audio.play().catch(error=>console.warn("[WEB] Não foi possível continuar o áudio após fechar a exibição:",error.message||error));
+      },0);
+    });
     document.querySelectorAll("[data-signal-reward]").forEach(button=>button.addEventListener("click",()=>{
       const reward=localContext.rewards[button.dataset.signalReward];
       if(reward)setCardReward(reward,reward.details,reward.rarity,true);
@@ -3207,6 +3261,7 @@ function renderSignalSearch(data) {
       const audio=document.getElementById(type==="epic"?"epicSignalAudio":"normalSignalAudio");
       try{
         [document.getElementById("normalSignalAudio"),document.getElementById("epicSignalAudio")].forEach(track=>{track.pause();track.currentTime=0});
+        activeSignalAudio=audio;
         await audio.play();
         return "";
       }catch(error){
@@ -3271,7 +3326,7 @@ function renderSignalSearch(data) {
         const isNew=isSpecial&&reward.isNew&&!shown.has(identity)&&presentedSpecials.has(identity);
         const isOwned=isSpecial&&!isNew;
         if(isNew)shown.add(identity);
-        card.className="signal-mini-card"+(isSpecial?" is-epic":"")+(isNew?" is-new":"")+(isOwned?" is-owned":"");
+        card.className="signal-mini-card"+(isSpecial?" is-epic":"")+(reward.rarity==="lendario"?" is-legendary":"")+(isNew?" is-new":"")+(isOwned?" is-owned":"");
         card.setAttribute("role","listitem");
         card.style.animationDelay=(index*45)+"ms";
         const rarity=document.createElement("span");
@@ -3288,7 +3343,7 @@ function renderSignalSearch(data) {
         card.append(rarity,art,name,detail);
         return card;
       }));
-      stage.classList.remove("is-running","is-revealed","is-epic");
+      stage.classList.remove("is-running","is-revealed","is-epic","is-legendary");
       stage.classList.add("is-results");
       tenResults.hidden=false;
       document.getElementById("signalDialogTitle").textContent="RESULTADOS DA BUSCA";
@@ -3319,7 +3374,7 @@ function renderSignalSearch(data) {
         const presentedSpecials=new Set();
         const singleReward=quantity===1?result.rewards[0]:null;
         beginReveal();
-        const audioNotice=await playSignalAudio((singleReward?.rarity==="epico"||specials.length)?"epic":"normal");
+        const audioNotice=await playSignalAudio((singleReward?.rarity==="epico"||singleReward?.rarity==="lendario"||specials.length)?"epic":"normal");
         await wait(1500);
         if(!dialog.open)return;
         if(quantity===1){
@@ -3329,7 +3384,7 @@ function renderSignalSearch(data) {
         }else{
           for(let index=0;index<specials.length;index++){
             if(index>0){
-              stage.classList.remove("is-revealed","is-epic");
+              stage.classList.remove("is-revealed","is-epic","is-legendary");
               stage.classList.add("is-running");
               await wait(420);
             }
@@ -3363,7 +3418,7 @@ function renderSignalSearch(data) {
         }
         feedback.textContent=progress+audioNotice;
         if(audioNotice)feedback.classList.add("error");
-      }catch(error){feedback.textContent=error.message;feedback.classList.add("error")}
+      }catch(error){feedback.textContent="";feedback.classList.remove("error");showSignalError(error.message||"Não foi possível fazer esta busca.")}
       finally{buttons.forEach(item=>item.disabled=false)}
     }));
   </script></body></html>`;
@@ -6545,7 +6600,7 @@ function renderHome(botName, central = null, loginError = "") {
   <main class="dashboard">
     <nav class="topbar" aria-label="Navegação principal">
         <div class="brand"><span class="brand-mark">✦</span><span>${safeBotName}<small>PAINEL DA CONTA</small></span></div>
-        <div class="top-actions"><span class="secure-badge">Sessão protegida</span><a class="button" href="/demo-busca-sinais">✦ Demo Busca de Sinais</a><button class="button" id="logout" type="button">Sair <span aria-hidden="true">↗</span></button></div>
+        <div class="top-actions"><span class="secure-badge">Sessão protegida</span><button class="button" id="logout" type="button">Sair <span aria-hidden="true">↗</span></button></div>
     </nav>
     <section class="welcome">
         <div class="eyebrow">Sua central de controle</div>

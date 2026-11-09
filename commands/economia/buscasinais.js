@@ -18,6 +18,17 @@ const LOCAL_RARITY_LABELS = {
     lendario: "Lendário"
 };
 
+const RESET_EMOJIS = {
+    work: "💼",
+    fishing: "🎣",
+    mining: "⛏️",
+    casino: "🎰",
+    transfer: "💸",
+    robbery: "🥷",
+    all: "🔄",
+    shield: "🛡️"
+};
+
 module.exports = {
     name: "buscasinais",
     aliases: [
@@ -162,7 +173,7 @@ async function replyPrizeCatalog(message, rawLevel) {
         const title = chunks.length > 1
             ? `✦ Prêmios possíveis (${index + 1}/${chunks.length})`
             : "✦ Prêmios possíveis";
-        await replyNativeText(message, title, chunks[index]);
+        await replyPrizeCatalogChunk(message, title, chunks[index]);
     }
 }
 
@@ -174,51 +185,50 @@ function getPrizeCatalogSection(level, state, local) {
             .filter(item => item.rarity === economy.ITEM_RARITY.EPIC && !item.product);
         return [
             `👤 RECRUTA`,
-            `Custo: ${economy.formatMoney(state.levels.recruta.price)} por busca`,
+            `💸 Custo: ${economy.formatMoney(state.levels.recruta.price)} por busca`,
             "",
-            "Chances por busca:",
-            `• 70% — SatCoins: ${economy.formatMoney(economy.SIGNAL_SEARCH_LEVELS.recruta.cashMin)} a ${economy.formatMoney(economy.SIGNAL_SEARCH_LEVELS.recruta.cashMax)}`,
-            "• 30% — reset da Loja do Bot",
-            ...formatWrappedNames("Resets possíveis:", resets.map(item => item.name)),
+            "🎲 Chances por busca:",
+            `• 70% — 💰 SatCoins: ${economy.formatMoney(economy.SIGNAL_SEARCH_LEVELS.recruta.cashMin)} a ${economy.formatMoney(economy.SIGNAL_SEARCH_LEVELS.recruta.cashMax)}`,
+            "• 30% — 🔄 reset da Loja do Bot",
+            ...formatWrappedNames("🔄 Resets possíveis:", resets.map(formatResetPrize)),
             "",
-            `Garantias: resetar trabalho em até ${state.levels.recruta.pullsUntilWorkReset} busca(s).`,
-            ...formatWrappedNames(`Prêmio épico (até ${state.levels.recruta.pullsUntilEpic} buscas):`, epicResets.map(item => item.name))
+            `🛡️ Garantias: resetar trabalho em até ${state.levels.recruta.pullsUntilWorkReset} busca(s).`,
+            ...formatWrappedNames(`✨ Prêmio épico (até ${state.levels.recruta.pullsUntilEpic} buscas):`, epicResets.map(formatResetPrize))
         ];
     }
     if (level === "especializada") {
         const resets = economy.getStoreItems()
             .filter(item => !item.product && item.key !== "all" && item.key !== "shield");
         const epicResets = economy.getStoreItems()
-            .filter(item => item.rarity === economy.ITEM_RARITY.EPIC && !item.product)
-            .map(item => item.name);
+            .filter(item => item.rarity === economy.ITEM_RARITY.EPIC && !item.product);
         const epicCosmetics = getCosmeticPrizeNames(economy.ITEM_RARITY.EPIC);
         const cosmeticGroups = getCosmeticPrizeGroups();
         return [
             "🛡️ ESPECIALIZADA",
-            `Custo: ${economy.formatMoney(state.levels.especializada.price)} por busca`,
+            `💸 Custo: ${economy.formatMoney(state.levels.especializada.price)} por busca`,
             "",
-            "Chances por busca:",
-            `• 55% — SatCoins: ${economy.formatMoney(economy.SIGNAL_SEARCH_LEVELS.especializada.cashMin)} a ${economy.formatMoney(economy.SIGNAL_SEARCH_LEVELS.especializada.cashMax)}`,
-            "• 20% — reset da Loja do Bot",
-            "• 25% — cosmético",
+            "🎲 Chances por busca:",
+            `• 55% — 💰 SatCoins: ${economy.formatMoney(economy.SIGNAL_SEARCH_LEVELS.especializada.cashMin)} a ${economy.formatMoney(economy.SIGNAL_SEARCH_LEVELS.especializada.cashMax)}`,
+            "• 20% — 🔄 reset da Loja do Bot",
+            "• 25% — 🎨 cosmético",
             "",
-            ...formatWrappedNames("Resets possíveis:", resets.map(item => item.name)),
+            ...formatWrappedNames("🔄 Resets possíveis:", resets.map(formatResetPrize)),
             "",
-            "Cosméticos possíveis:",
-            ...formatWrappedNames("Fundos:", cosmeticGroups.backgrounds),
-            ...formatWrappedNames("Outlines:", cosmeticGroups.outlines),
+            "🎨 Cosméticos possíveis:",
+            ...formatWrappedNames("🖼️ Fundos:", cosmeticGroups.backgrounds.map(name => `🖼️ ${name}`)),
+            ...formatWrappedNames("🖍️ Outlines:", cosmeticGroups.outlines.map(name => `🖍️ ${name}`)),
             "",
             ...formatWrappedNames(
-                `Garantia épica (até ${state.levels.especializada.pullsUntilEpic} buscas):`,
-                [...epicResets, ...epicCosmetics]
+                `✨ Garantia épica (até ${state.levels.especializada.pullsUntilEpic} buscas):`,
+                [...epicResets.map(formatResetPrize), ...epicCosmetics]
             )
         ];
     }
 
     const lines = [
         "🏠 BUSCA LOCAL",
-        `Custo: ${economy.formatMoney(local.price)} por busca · ${local.enabled ? "ativa" : "desativada"}`,
-        "Prêmios e chances definidos pelos administradores:",
+        `💸 Custo: ${economy.formatMoney(local.price)} por busca · ${local.enabled ? "ativa" : "desativada"}`,
+        "🎲 Prêmios e chances definidos pelos administradores:",
         ""
     ];
     for (const rarity of economy.LOCAL_SIGNAL_RARITIES) {
@@ -226,43 +236,47 @@ function getPrizeCatalogSection(level, state, local) {
         if (!tier.chance) continue;
         const prizes = [];
         if (tier.cashMin !== null && tier.cashMax !== null) {
-            prizes.push(`SatCoins ${economy.formatMoney(tier.cashMin)}–${economy.formatMoney(tier.cashMax)}`);
+            prizes.push(`💰 SatCoins ${economy.formatMoney(tier.cashMin)}–${economy.formatMoney(tier.cashMax)}`);
         }
         for (const key of tier.botItems) {
             const item = local.botItems.find(candidate => candidate.key === key);
-            if (item) prizes.push(item.name);
+            if (item) prizes.push(formatResetPrize(item));
         }
         for (const id of tier.marketItems) {
             const item = local.marketItems.find(candidate => candidate.id === id && candidate.quantity !== 0);
-            if (item) prizes.push(item.name);
+            if (item) prizes.push(`🛍️ ${item.name}`);
         }
         for (const key of tier.backgrounds) {
             const item = local.backgrounds.find(candidate => candidate.key === key);
-            if (item) prizes.push(`Fundo ${item.name}`);
+            if (item) prizes.push(`🖼️ Fundo ${item.name}`);
         }
         for (const key of tier.outlines) {
             const item = local.outlines.find(candidate => candidate.key === key);
-            if (item) prizes.push(`Outline ${item.name}`);
+            if (item) prizes.push(`🖍️ Outline ${item.name}`);
         }
         const guarantee = tier.guaranteeAfter
-            ? `Garantia em até ${local.pullsUntilGuarantee[rarity]} busca(s).`
+            ? `🛡️ Garantia em até ${local.pullsUntilGuarantee[rarity]} busca(s).`
             : "";
-        lines.push(`${LOCAL_RARITY_LABELS[rarity]} · ${tier.chance}%`);
+        lines.push(`⭐ ${LOCAL_RARITY_LABELS[rarity]} · ${tier.chance}%`);
         if (guarantee) lines.push(guarantee);
-        lines.push(...formatWrappedNames("Prêmios:", prizes.length ? prizes : ["nenhum disponível"]));
+        lines.push(...formatWrappedNames("🎁 Prêmios:", prizes.length ? prizes : ["nenhum disponível"]));
         lines.push("");
     }
     if (!local.tiers || !economy.LOCAL_SIGNAL_RARITIES.some(rarity => local.tiers[rarity].chance > 0)) {
-        lines.push("Nenhum prêmio configurado.");
+        lines.push("⚠️ Nenhum prêmio configurado.");
     }
     return lines;
+}
+
+function formatResetPrize(item) {
+    return `${RESET_EMOJIS[item.key] || "🔄"} ${item.name}`;
 }
 
 function getCosmeticPrizeNames(rarity) {
     const groups = getCosmeticPrizeGroups(rarity);
     return [
-        ...groups.backgrounds.map(name => `Fundo ${name}`),
-        ...groups.outlines.map(name => `Outline ${name}`)
+        ...groups.backgrounds.map(name => `🖼️ Fundo ${name}`),
+        ...groups.outlines.map(name => `🖍️ Outline ${name}`)
     ];
 }
 
@@ -320,6 +334,43 @@ function chunkLines(lines, maxLength) {
     return chunks;
 }
 
+function replyPrizeCatalogChunk(message, title, body) {
+    const description = formatPrizeCatalogBody(body, message.platform);
+    if (message.platform === "discord") {
+        return message.reply({
+            embed: {
+                color: 0xb68bff,
+                title,
+                description
+            }
+        });
+    }
+    if (message.platform === "telegram") {
+        return message.reply({
+            text: `<b>${escapeHtml(title)}</b>\n${description}`,
+            parse_mode: "HTML"
+        });
+    }
+    return message.reply({ text: `*${escapeMarkdown(title)}*\n${description}` });
+}
+
+function formatPrizeCatalogBody(body, platform) {
+    return body.split("\n").map(line => {
+        const content = platform === "telegram" ? escapeHtml(line) : escapeMarkdown(line);
+        if (!isPrizeCatalogHeading(line)) return content;
+        if (platform === "telegram") return `<b>${content}</b>`;
+        return platform === "discord" ? `**${content}**` : `*${content}*`;
+    }).join("\n");
+}
+
+function isPrizeCatalogHeading(line) {
+    return /^(?:👤 RECRUTA|🛡️ ESPECIALIZADA|🏠 BUSCA LOCAL|💸 Custo:|🎲 Chances por busca:|🎲 Prêmios e chances|🔄 Resets possíveis:|🎨 Cosméticos possíveis:|🖼️ Fundos:|🖍️ Outlines:|✨ Prêmio épico|✨ Garantia épica|🛡️ Garantias:|⭐ |🛡️ Garantia em|🎁 Prêmios:|⚠️ Nenhum prêmio)/.test(line);
+}
+
+function escapeMarkdown(value) {
+    return String(value ?? "").replace(/([*_~`\\])/g, "\\$1");
+}
+
 function rewardLine(reward, index, isLocal = false) {
     const position = index === null ? "" : `${index + 1}. `;
     const rarity = isLocal ? ` · ${LOCAL_RARITY_LABELS[reward.rarity] || reward.rarity}` : "";
@@ -334,9 +385,16 @@ function rewardLine(reward, index, isLocal = false) {
         return `${position}💰 ${reward.name}: ${economy.formatMoney(reward.amount)}${rarity}${reward.converted ? " · conversão de item (50%)" : ""}${guarantee}`;
     }
     if (reward.type === "reset") {
-        return `${position}🔄 ${reward.name} aplicado${rarity}${guarantee}`;
+        const emoji = reward.itemKey === "shield"
+            ? "🛡️"
+            : RESET_EMOJIS[reward.itemKey] || "🔄";
+        return `${position}${emoji} ${reward.name} aplicado${rarity}${guarantee}`;
     }
-    return `${position}🎨 ${reward.name} adicionado à coleção${rarity}${guarantee}`;
+    if (reward.type === "market") {
+        return `${position}🛍️ ${reward.name} adicionado aos pedidos da Loja Local${rarity}${guarantee}`;
+    }
+    const cosmeticEmoji = reward.cosmeticType === "outline" ? "🖍️" : "🖼️";
+    return `${position}${cosmeticEmoji} ${reward.name} adicionado à coleção${rarity}${guarantee}`;
 }
 
 async function replyHighlights(message) {

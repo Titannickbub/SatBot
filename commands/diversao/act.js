@@ -492,6 +492,9 @@ async function sendMedia(message, media, caption, mentions, scope = "global") {
     }
 
     if (message.platform === "discord") {
+        if (detected.isMp4 && typeof message.replyVideo === "function") {
+            return message.replyVideo({ video: buffer, caption, fileName });
+        }
         if (typeof message.replyImg === "function") {
             return message.replyImg({ image: buffer, caption, fileName });
         }
