@@ -28,8 +28,7 @@ const MAX_TRANSFERS_PER_DAY = 3;
 const MAX_ROBBERIES_PER_DAY = 3;
 const MIN_TRANSFER_AMOUNT = 1000;
 const MIN_VAULT_DEPOSIT = 50000;
-const VAULT_DAY_MS = 24 * 60 * 60 * 1000;
-const VAULT_MIN_TAX_INTERVAL_MS = 60 * 60 * 1000;
+const VAULT_TAX_INTERVAL_MS = 60 * 60 * 1000;
 const VAULT_MODES = Object.freeze(["secure", "tax", "robbery"]);
 const MIN_ROBBABLE_BALANCE = 2000;
 const STORE_ROBBERY_PRICE = 20000;
@@ -698,23 +697,31 @@ function moveToVault(message, amount, operation) {
 
 function calculateVaultTax(balance, lastOperationAt, config, now) {
     const lastOperation = Number(lastOperationAt);
-    if (!Number.isFinite(lastOperation) || lastOperation <= 0 || now - lastOperation < VAULT_MIN_TAX_INTERVAL_MS) {
+    if (!Number.isFinite(lastOperation) || lastOperation <= 0 || balance <= 0 ||
+        now - lastOperation <= VAULT_TAX_INTERVAL_MS) {
         return { amount: 0, periods: 0 };
     }
-    const periods = Math.floor((now - lastOperation) / VAULT_DAY_MS);
-    if (periods <= 0 || balance <= 0) return { amount: 0, periods: 0 };
+    const periods = Math.floor((now - lastOperation - VAULT_TAX_INTERVAL_MS) / VAULT_TAX_INTERVAL_MS);
+    if (periods <= 0) return { amount: 0, periods: 0 };
 
     let remaining = balance;
     if (config.taxType === "fixed") {
-        const total = BigInt(config.taxFixedAmount) * BigInt(periods);
+        const total = BigInt(config.taxFixedAmount) * BigInt(periods) / 24n;
         remaining = Math.max(0, balance - Number(total > BigInt(balance) ? BigInt(balance) : total));
     } else {
         const denominator = 10000n;
         const retainedRate = BigInt(10000 - config.taxRateBasisPoints);
-        for (let period = 0; period < periods && remaining > 0; period++) {
+        const fullDays = Math.floor(periods / 24);
+        const partialDayHours = periods % 24;
+        for (let period = 0; period < fullDays && remaining > 0; period++) {
             const next = Number((BigInt(remaining) * retainedRate) / denominator);
             if (next === remaining) break;
             remaining = next;
+        }
+        if (partialDayHours > 0 && remaining > 0) {
+            const partialTax = BigInt(remaining) * BigInt(config.taxRateBasisPoints) *
+                BigInt(partialDayHours) / (denominator * 24n);
+            remaining -= Number(partialTax);
         }
     }
     return { amount: balance - remaining, periods };

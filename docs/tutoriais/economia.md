@@ -32,7 +32,7 @@ O cofre guarda satcoins separadamente da carteira. O saldo guardado não pode se
 !cofre sacar 500
 ```
 
-Ao consultar `!cofre`, o bot também mostra o imposto acumulado desde a última movimentação e os comandos de depósito e saque. No modo de imposto, a cobrança é calculada em períodos completos de 24 horas; consultar o cofre não desconta o imposto. A cobrança é aplicada quando uma movimentação é realizada e aparece como despesa no comando `!lucro` e no extrato do banco web, na data em que foi paga.
+Ao consultar `!cofre`, o bot também mostra o imposto acumulado desde a última movimentação e os comandos de depósito e saque. No modo de imposto, a taxa configurada para 24 horas é acumulada proporcionalmente por hora completa, sem cobrança na primeira hora; consultar o cofre não desconta o imposto. A cobrança é aplicada quando uma movimentação é realizada e aparece como despesa no comando `!lucro` e no extrato do banco web, na data em que foi paga.
 
 Cada membro pode fazer **um depósito e um saque por dia local**. O valor mínimo por movimentação é configurável pelos administradores; se o imposto reduzir o saldo antes de um saque, o cofre informa o valor descontado e transfere o que restar. A carteira, o cofre e o patrimônio total aparecem no comando `!carteira` e no banco web local.
 

@@ -32,14 +32,14 @@ module.exports = {
                     "",
                     `Modo: ${modeLabel(config.mode)}`,
                     ...(config.mode === "tax"
-                        ? [`🧾 Impostos acumulados desde a última movimentação: ${economy.formatMoney(taxPreview.amount)} (${taxPreview.periods} período(s) completo(s) de 24h).`]
+                        ? [`🧾 Impostos acumulados desde a última movimentação: ${economy.formatMoney(taxPreview.amount)} (${taxPreview.periods} hora(s) completa(s), após a primeira hora).`]
                         : ["🧾 Impostos acumulados: não há cobrança no modo atual."]),
                     `Mínimo por movimentação: ${economy.formatMoney(config.minimumMovement)}`,
                     `Depósito hoje: ${account.vaultDepositDate === today ? "já utilizado" : "disponível"} · Saque hoje: ${account.vaultWithdrawDate === today ? "já utilizado" : "disponível"}`,
                     "",
                     `➕ Depositar: ${prefix}cofre depositar <valor>`,
                     `➖ Sacar: ${prefix}cofre sacar <valor>`,
-                    ...(config.mode === "tax" ? [`Imposto: ${config.taxType === "percent" ? `${formatPercent(config.taxRateBasisPoints)} por 24h` : `${economy.formatMoney(config.taxFixedAmount)} por 24h`}`] : []),
+                    ...(config.mode === "tax" ? [`Imposto: ${config.taxType === "percent" ? `${formatPercent(config.taxRateBasisPoints)} por 24h` : `${economy.formatMoney(config.taxFixedAmount)} por 24h`}, cobrado por hora após a primeira hora.`] : []),
                     ...(config.mode === "robbery" ? [`Chance do roubo atingir o cofre: ${config.robberyVaultChance}%`] : [])
                 ].join("\n")
             });
@@ -79,7 +79,7 @@ module.exports = {
                         : result.amount > 0
                             ? "✅ Saque realizado."
                             : "⚠️ O imposto consumiu o saldo disponível; nenhum valor restou para sacar.",
-                result.taxPaid > 0 ? `Imposto descontado do saldo anterior: ${economy.formatMoney(result.taxPaid)} (${result.taxPeriods} período(s) de 24h).` : null,
+                result.taxPaid > 0 ? `Imposto descontado do saldo anterior: ${economy.formatMoney(result.taxPaid)} (${result.taxPeriods} hora(s) completa(s)).` : null,
                 action === "withdraw" && result.shortfall > 0
                     ? `Valor solicitado: ${economy.formatMoney(result.requestedAmount)} · Sacado: ${economy.formatMoney(result.amount)}`
                     : null,
@@ -114,10 +114,13 @@ function formatHelp(prefix, config) {
         `O mínimo por movimentação é ${economy.formatMoney(config.minimumMovement)}. Você pode fazer um depósito e um saque por dia.`,
         `Modo atual: ${modeLabel(config.mode)}.`,
         ...(config.mode === "tax"
-            ? [`Imposto: ${config.taxType === "percent" ? `${formatPercent(config.taxRateBasisPoints)} por período de 24 horas` : `${economy.formatMoney(config.taxFixedAmount)} por período de 24 horas`}.`]
+            ? [`Imposto: ${config.taxType === "percent" ? `${formatPercent(config.taxRateBasisPoints)} por período de 24 horas` : `${economy.formatMoney(config.taxFixedAmount)} por período de 24 horas`}, calculado por hora após a primeira hora.`]
             : []),
         ...(config.mode === "robbery"
             ? [`Chance de o roubo atingir o cofre: ${config.robberyVaultChance}%.`]
+            : []),
+        ...(config.mode === "tax"
+            ? ["O imposto configurado para 24 horas é acumulado proporcionalmente por hora completa, sem cobrança na primeira hora."]
             : []),
         "",
         `Use ${prefix}cofre help para rever estas instruções.`

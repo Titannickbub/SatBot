@@ -3860,7 +3860,7 @@ function renderEconomyAdmin(data) {
       <button type="button" role="tab" aria-selected="false" aria-controls="balancesPanel" data-economy-tab="balances">Editar saldo</button>
     </nav>
     <section id="vaultPanel" class="panel" role="tabpanel"><h2>Configurações do cofre</h2>
-      <p class="muted">Impenetrável protege o saldo; Imposto progressivo cobra por períodos completos de 24 horas desde a movimentação anterior (sem cobrança antes de 1 hora); Roubo permitido sorteia entre carteira e cofre conforme as chances configuradas.</p>
+      <p class="muted">Impenetrável protege o saldo; Imposto progressivo é calculado por hora completa após a primeira hora, proporcional à taxa configurada para 24 horas; Roubo permitido sorteia entre carteira e cofre conforme as chances configuradas.</p>
       <div class="setting"><label><input id="includeVault" type="checkbox"> Considerar cofre no ranking de riqueza</label><span id="rankStatus" class="muted">Carregando...</span></div><p id="rankFeedback" class="feedback" role="status"></p>
       <form id="vaultConfigForm" class="grid" style="margin-top:16px">
         <label>Modo do cofre<select name="mode"><option value="secure">Impenetrável — saldo seguro</option><option value="tax">Imposto progressivo</option><option value="robbery">Roubo permitido</option></select></label>
@@ -3870,7 +3870,7 @@ function renderEconomyAdmin(data) {
         <label>Chance de o roubo atingir o cofre (%)<input name="robberyVaultChance" type="number" min="0" max="100" step="1" required><small class="muted">A chance restante será aplicada à carteira.</small></label>
         <div><button class="primary" type="submit">Salvar configurações do cofre</button></div>
       </form><p id="vaultConfigFeedback" class="feedback" role="status"></p>
-      <p class="muted">Cada pessoa pode fazer um depósito e um saque por dia local. O imposto considera períodos completos de 24 horas desde a movimentação anterior; movimentações com menos de 1 hora de intervalo não geram cobrança.</p>
+      <p class="muted">Cada pessoa pode fazer um depósito e um saque por dia local. O imposto configurado por 24 horas é acumulado proporcionalmente por hora completa desde a movimentação anterior; a primeira hora não gera cobrança.</p>
     </section>
     <section id="storePanel" class="panel" role="tabpanel" hidden><h2>Loja Local</h2><p class="muted">Gerencie itens do catálogo e pedidos do Mercado Local.</p>
       <nav class="tabs" role="tablist" aria-label="Gerenciamento da Loja Local">

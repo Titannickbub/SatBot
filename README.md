@@ -113,6 +113,13 @@ Consulte [VIP e `set_vip`](./docs/setvip.md) para detalhes sobre as opções VIP
 
 ## 📚 Instalação e documentação
 
+### Canal beta
+
+🔴 **Versão beta instável:** pode conter bugs e recursos incompletos. Para
+atualizar manualmente uma instalação beta, execute `update_beta.bat` no Windows
+ou `bash update_beta.sh` no Linux, dentro da pasta dessa instalação. A branch
+`main` e suas instalações permanecem independentes.
+
 <p><a href="./docs/instalacao.md"><img src="https://img.shields.io/badge/🚀%20Instalação-escolha%20seu%20guia-4CAF50" alt="Escolha seu guia de instalação"></a></p>
 <p><a href="./docs/configuracao.md"><img src="https://img.shields.io/badge/⚙️%20Configuração-configure%20o%20SatBot-2196F3" alt="Guia de configuração"></a></p>
 <p><a href="./docs/antipv-onlychats.md"><img src="https://img.shields.io/badge/🛡️%20Anti--PV%20e%20OnlyChats-entenda%20as%20proteções-673AB7" alt="Documentação de Anti-PV e OnlyChats"></a></p>
