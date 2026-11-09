@@ -1,5 +1,6 @@
 @echo off
 setlocal
+chcp 65001 >nul
 
 set "REPO_URL=https://github.com/Titannickbub/SatBot.git"
 set "BRANCH=beta"
@@ -8,6 +9,9 @@ if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 set "TMP_DIR=%TEMP%\satbot-beta-update-%RANDOM%-%RANDOM%"
 set "BACKUP_DIR=%TMP_DIR%\backup"
 set "REPO_DIR=%TMP_DIR%\repo"
+
+powershell -NoProfile -Command "Write-Host 'AVISO: VERSAO BETA INSTAVEL - pode conter bugs e recursos incompletos.' -ForegroundColor Red"
+echo.
 
 if not exist "%ROOT%\package.json" (
   echo [UPDATE BETA] package.json nao encontrado. Execute este script na pasta do bot.
@@ -27,13 +31,13 @@ if errorlevel 1 (
 )
 
 echo =========================================
-echo [UPDATE BETA] Atualizando manualmente pela branch %BRANCH%...
+echo [UPDATE BETA] Atualizacao manual pela branch %BRANCH%.
 echo [UPDATE BETA] Preservando: settings
 echo =========================================
 
 git clone --depth 1 --branch "%BRANCH%" "%REPO_URL%" "%REPO_DIR%"
 if errorlevel 1 (
-  echo [UPDATE BETA] Nao foi possivel baixar a branch %BRANCH%. Nenhum arquivo do bot foi alterado.
+  echo [UPDATE BETA] Falha ao baixar a branch. Nenhum arquivo do bot foi alterado.
   rmdir /s /q "%TMP_DIR%" >nul 2>&1
   exit /b 1
 )
@@ -64,7 +68,7 @@ for /f "delims=" %%F in ('dir /b "%ROOT%"') do (
 
 xcopy "%REPO_DIR%\*" "%ROOT%\" /E /H /I /Y /Q >nul
 if errorlevel 1 (
-  echo [UPDATE BETA] Falha ao copiar a atualizacao. Verifique a pasta do bot.
+  echo [UPDATE BETA] Falha ao copiar os arquivos. Verifique a pasta do bot.
   rmdir /s /q "%TMP_DIR%" >nul 2>&1
   exit /b 1
 )
@@ -78,8 +82,6 @@ if exist "%BACKUP_DIR%\update_beta.bat" copy /y "%BACKUP_DIR%\update_beta.bat" "
 if exist "%BACKUP_DIR%\update_beta.sh" copy /y "%BACKUP_DIR%\update_beta.sh" "%ROOT%\update_beta.sh" >nul
 
 rmdir /s /q "%TMP_DIR%" >nul 2>&1
-
 echo.
-echo [UPDATE BETA] Atualizacao concluida.
-echo [UPDATE BETA] A pasta settings foi preservada.
+echo [UPDATE BETA] Atualizacao concluida. A pasta settings foi preservada.
 exit /b 0

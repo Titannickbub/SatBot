@@ -1,6 +1,10 @@
 const { isOwner } = require("../../../functions/owners");
 const config = require("../../../functions/config");
-const { getVersionStatus, readLocalPackage } = require("../../../functions/autoUpdate");
+const { isEnabled: isAutoUpdateEnabled, getVersionStatus, readLocalPackage } = require("../../../functions/autoUpdate");
+
+function state(enabled) {
+    return enabled ? "✅ ATIVADO" : "❌ DESATIVADO";
+}
 
 function formatUptime(milliseconds) {
     const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
@@ -70,7 +74,7 @@ module.exports = {
         const coreStatus = core.status || {};
         const processMemory = process.memoryUsage();
         const versionNotice = versionStatus.comparison > 0
-            ? `\n⚠️ *Nova versão beta disponível:* ${versionStatus.remoteVersion} (atual: ${pkg.version})\n💡 Atualize manualmente com update_beta.bat ou bash update_beta.sh.`
+            ? `\n⚠️ *Nova versão disponível:* ${versionStatus.remoteVersion} (atual: ${pkg.version})\n💡 Atualize manualmente ou use !autoupdate on para atualizar na próxima reinicialização.`
             : versionStatus.error
                 ? `\n⚠️ *Aviso de versão:* ${versionStatus.error}`
                 : "";
@@ -121,7 +125,7 @@ module.exports = {
 • Nome: ${config.getBotName?.() || "Sat Bot"}
 • Prefixo: ${config.getPrefix?.() || "!"}
 📦 *Versão:* ${pkg.version || "desconhecida"}${versionNotice}
-🔄 *Canal de atualizações:* Beta (manual)
+🔄 *Auto Update:* ${state(isAutoUpdateEnabled())}
 • Node.js: ${process.version}
 • Sistema: ${process.platform} (${process.arch})
 • PID: ${process.pid}

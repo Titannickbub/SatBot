@@ -115,11 +115,10 @@ Consulte [VIP e `set_vip`](./docs/setvip.md) para detalhes sobre as opções VIP
 
 ### Canal beta
 
-Esta branch é um canal de testes atualizado manualmente. Para atualizar uma
-instalação beta, execute `update_beta.bat` no Windows ou `bash update_beta.sh`
-no Linux, dentro da pasta dessa instalação. Os scripts preservam `settings` e
-não atualizam outras pastas; a instalação normal da branch `main` continua
-independente.
+🔴 **Versão beta instável:** pode conter bugs e recursos incompletos. Para
+atualizar manualmente uma instalação beta, execute `update_beta.bat` no Windows
+ou `bash update_beta.sh` no Linux, dentro da pasta dessa instalação. A branch
+`main` e suas instalações permanecem independentes.
 
 <p><a href="./docs/instalacao.md"><img src="https://img.shields.io/badge/🚀%20Instalação-escolha%20seu%20guia-4CAF50" alt="Escolha seu guia de instalação"></a></p>
 <p><a href="./docs/configuracao.md"><img src="https://img.shields.io/badge/⚙️%20Configuração-configure%20o%20SatBot-2196F3" alt="Guia de configuração"></a></p>

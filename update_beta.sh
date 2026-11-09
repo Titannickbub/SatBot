@@ -13,6 +13,8 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
+printf '\033[1;31mAVISO: VERSÃO BETA INSTÁVEL - pode conter bugs e recursos incompletos.\033[0m\n\n'
+
 if [ ! -f "$ROOT_DIR/package.json" ]; then
     echo "[UPDATE BETA] package.json não encontrado; execute este script na pasta do bot." >&2
     exit 1
@@ -24,12 +26,12 @@ if ! command -v git >/dev/null 2>&1; then
 fi
 
 echo "========================================"
-echo "[UPDATE BETA] Atualizando manualmente pela branch $BRANCH..."
+echo "[UPDATE BETA] Atualização manual pela branch $BRANCH."
 echo "[UPDATE BETA] Preservando: settings"
 echo "========================================"
 
 if ! git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$REPO_DIR"; then
-    echo "[UPDATE BETA] Não foi possível baixar a branch $BRANCH. Nenhum arquivo do bot foi alterado." >&2
+    echo "[UPDATE BETA] Falha ao baixar a branch. Nenhum arquivo do bot foi alterado." >&2
     exit 1
 fi
 
@@ -63,5 +65,4 @@ for updater in update_beta.sh update_beta.bat; do
 done
 
 echo ""
-echo "[UPDATE BETA] Atualização concluída."
-echo "[UPDATE BETA] A pasta settings foi preservada."
+echo "[UPDATE BETA] Atualização concluída. A pasta settings foi preservada."
