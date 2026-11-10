@@ -674,7 +674,8 @@ function bufferToStream(buffer) {
 async function sendText(
     chatId,
     threadId,
-    text
+    text,
+    sendOptions = {}
 ) {
 
     if (!bot) {
@@ -683,7 +684,7 @@ async function sendText(
         );
     }
 
-    const options = {};
+    const options = { ...sendOptions };
 
     if (threadId) {
 

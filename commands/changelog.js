@@ -15,9 +15,9 @@ module.exports = {
         const changelog = getCurrentChangelog();
         const sections = [
             `Novidades da versão ${changelog.version}`,
-            "",
-            "✨ Novas funções",
-            ...changelog.features.map(item => `• ${item}`),
+            ...(changelog.features.length
+                ? ["", "✨ Novas funções", ...changelog.features.map(item => `• ${item}`)]
+                : []),
             "",
             "🛠️ Correções",
             ...changelog.fixes.map(item => `• ${item}`)
@@ -49,9 +49,9 @@ module.exports = {
         const escapeMarkdown = value => String(value).replace(/([*_~`\\])/g, "\\$1");
         const whatsappText = [
             `📰 *Novidades · v${escapeMarkdown(changelog.version)}*`,
-            "",
-            "*✨ Novas funções*",
-            ...changelog.features.map(item => `• ${escapeMarkdown(item)}`),
+            ...(changelog.features.length
+                ? ["", "*✨ Novas funções*", ...changelog.features.map(item => `• ${escapeMarkdown(item)}`)]
+                : []),
             "",
             "*🛠️ Correções*",
             ...changelog.fixes.map(item => `• ${escapeMarkdown(item)}`)

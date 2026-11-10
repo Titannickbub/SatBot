@@ -18,6 +18,16 @@ O prefixo nos exemplos é `!`. Se o prefixo do bot foi alterado, substitua-o pel
 
 ---
 
+## Painel administrativo do antiraid
+
+Os limites e as exceções podem ser ajustados na página **Antiraid**, acessada pelo cartão da categoria **Proteção** no painel administrativo. O cartão mantém o status e o atalho para a página dedicada.
+
+- **WhatsApp:** configure somente o grupo aberto no painel.
+- **Telegram:** escolha o grupo e chat principal ou um tópico específico.
+- **Discord:** escolha o servidor, uma categoria ou um chat.
+
+---
+
 ## Comportamento por plataforma
 
 - **Discord:** monitora e soma mensagens de um mesmo usuário em todos os canais e tópicos do servidor (escopo global do servidor).

@@ -16,6 +16,11 @@ pelo prefixo configurado.
 - **Onde funciona:** em grupos e servidores no WhatsApp, Telegram e Discord.
   Cada agendamento pertence exclusivamente ao chat onde foi criado.
 
+No painel administrativo, o cartão **Agendamentos** abre a página dedicada.
+As abas separam a criação da edição; a lista de edição mostra todos os
+agendamentos do grupo ou servidor, incluindo o chat de destino no Discord e o
+tópico no Telegram.
+
 ---
 
 ## Passo a passo para criar um agendamento

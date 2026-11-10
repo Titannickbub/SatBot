@@ -128,6 +128,41 @@ function addOwner(
 
 }
 
+function addOwners(entries) {
+    if (!Array.isArray(entries)) {
+        throw new TypeError("A lista de superusuários deve ser um array.");
+    }
+
+    const data = load();
+    const knownOwners = new Set(
+        data.owners.map(owner => `${owner.platform}:${owner.id}`)
+    );
+    const additions = [];
+
+    for (const entry of entries) {
+        const platform = String(entry?.platform || "").trim().toLowerCase();
+        const id = String(entry?.id || "").trim();
+        if (!platform || !id) {
+            throw new TypeError("Cada superusuário deve ter plataforma e ID.");
+        }
+
+        const key = `${platform}:${id}`;
+        if (knownOwners.has(key)) {
+            continue;
+        }
+
+        knownOwners.add(key);
+        additions.push({ platform, id, addedAt: Date.now() });
+    }
+
+    if (additions.length) {
+        data.owners.push(...additions);
+        save(data);
+    }
+
+    return additions.map(({ platform, id }) => ({ platform, id }));
+}
+
 function removeOwner(
     platform,
     id
@@ -151,6 +186,38 @@ function removeOwner(
 
     return before !== data.owners.length;
 
+}
+
+function removeOwners(entries) {
+    if (!Array.isArray(entries)) {
+        throw new TypeError("A lista de superusuários deve ser um array.");
+    }
+
+    const targets = new Set(
+        entries.map(entry => `${entry?.platform}:${entry?.id}`)
+    );
+    const data = load();
+    const removed = data.owners.filter(owner =>
+        targets.has(`${owner.platform}:${owner.id}`)
+    );
+    const remaining = data.owners.filter(owner =>
+        !targets.has(`${owner.platform}:${owner.id}`)
+    );
+
+    if (!removed.length) {
+        return { removed: [], blocked: false };
+    }
+    if (!remaining.length) {
+        return { removed: [], blocked: true };
+    }
+
+    data.owners = remaining;
+    save(data);
+
+    return {
+        removed: removed.map(({ platform, id }) => ({ platform, id })),
+        blocked: false
+    };
 }
 
 function isOwner(message) {
@@ -260,7 +327,11 @@ module.exports = {
 
     addOwner,
 
+    addOwners,
+
     removeOwner,
+
+    removeOwners,
 
     isOwner,
 

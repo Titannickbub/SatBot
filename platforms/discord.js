@@ -971,7 +971,9 @@ async function sendText(
 
     const msg = await channel.send(options.disableMentions
         ? { content: text, allowedMentions: { parse: [] } }
-        : text);
+        : options.allowedMentions
+            ? { content: text, allowedMentions: options.allowedMentions }
+            : text);
 
     return msg.id;
 

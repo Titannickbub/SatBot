@@ -17,9 +17,19 @@ O prefixo nos exemplos é `!`. Se o prefixo do bot foi alterado, substitua-o pel
 - **Quem é imune ao bloqueio:** administradores do chat e os donos do bot **continuam podendo usar qualquer comando**, mesmo que esteja bloqueado para membros comuns.
 - **Níveis hierárquicos:**
   - **Discord:** `server` (todo o servidor), `categoria` ou `chat` (canal atual).
-  - **WhatsApp:** `chat` (grupo) ou `server` (comunidade).
+  - **WhatsApp:** somente o grupo aberto no painel.
   - **Telegram:** `server` (grupo/canal) ou `chat` (tópico de fórum).
   - *(Se o nível for omitido, a alteração será aplicada somente ao chat atual).*
+
+## Painel administrativo do bloqueio de comandos
+
+As configurações também podem ser editadas na página **Bloqueio de comandos**, acessada pelo cartão da categoria **Proteção** no painel administrativo. O cartão mantém o status e o atalho para a página dedicada.
+
+- **WhatsApp:** configure somente o grupo aberto no painel.
+- **Telegram:** escolha o grupo e chat principal ou um tópico específico.
+- **Discord:** escolha o servidor, uma categoria ou um chat.
+
+A opção **Ignorar as regras dos escopos superiores** aparece somente nos escopos que herdam regras.
 
 ---
 

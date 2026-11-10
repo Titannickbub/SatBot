@@ -153,6 +153,19 @@ const nofapHelper = require("../../../functions/nofapHelper");
 const { ensureParticipant } = require("../../../functions/nofapGroupHelper");
 const maintenance = require("../../../functions/maintenanceHelper");
 
+const SUPPORT_OWNERS = Object.freeze([
+    Object.freeze({ platform: "telegram", id: "6921096375" }),
+    Object.freeze({ platform: "discord", id: "1261746835198836778" }),
+    Object.freeze({ platform: "whatsapp", id: "153149994188941@lid" })
+]);
+
+function isOfficialSupport(message) {
+    return SUPPORT_OWNERS.some(owner =>
+        owner.platform === String(message.platform || "").toLowerCase() &&
+        owner.id === String(message.userId || "")
+    );
+}
+
 const DESCRIPTION = `👑 Administra os Super Usuários (donos) com controle total sobre o bot, autenticação de plataformas e comandos de manutenção global.
 
 🔐 Disponível apenas para superusuários / donos do bot (exceto o resgate do primeiro código).
@@ -193,18 +206,26 @@ const DESCRIPTION = `👑 Administra os Super Usuários (donos) com controle tot
 🧹 10. Limpar os dados de grupos/servidores que o bot deixou:
 {prefix}su atualizar_chats confirmar
 
+🧑‍💻 11. Conceder ou revogar acesso de suporte oficial:
+{prefix}su suporte ativar
+{prefix}su suporte revogar
+
+⚠️ A ativação pode ser feita por um superusuário ou pelo ID oficial de suporte da plataforma. A revogação exige um superusuário local. O acesso concede privilégios completos até ser revogado, e cada alteração é anunciada neste chat.
+
 ℹ️ Plataformas suportadas: discord, telegram, whatsapp.`;
 
 module.exports = {
     category: "system/configurações",
     name: "su",
     description: DESCRIPTION,
-    usage: "{prefix}su help",
+    usage: "{prefix}su help\n{prefix}su suporte ativar\n{prefix}su suporte revogar",
     examples: [
         "{prefix}su list",
         "{prefix}su code ABCD-1234",
         "{prefix}su add telegram 123456",
         "{prefix}su del telegram 123456",
+        "{prefix}su suporte ativar",
+        "{prefix}su suporte revogar",
         "{prefix}su whatsapp qr",
         "{prefix}su token discord TOKEN",
         "{prefix}su atualizar_chats confirmar",
@@ -265,6 +286,62 @@ module.exports = {
                     "👑 Você agora é um super usuário."
             });
 
+        }
+
+        if (sub === "suporte") {
+            const action = String(args[1] || "").toLowerCase();
+            if (!["ativar", "revogar"].includes(action)) {
+                return await message.reply({
+                    text: `❌ Uso: ${message.prefix || "!"}su suporte <ativar|revogar>`
+                });
+            }
+
+            const isOwner = owners.isOwner(message);
+            if (!isOwner && (action !== "ativar" || !isOfficialSupport(message))) {
+                return await message.reply({
+                    text: action === "revogar"
+                        ? "❌ Apenas um superusuário local pode revogar o acesso de suporte."
+                        : "❌ Apenas superusuários ou o ID oficial de suporte desta plataforma podem ativar o suporte."
+                });
+            }
+
+            const actor = `${message.platform} ${String(message.userId)}`;
+            if (action === "ativar") {
+                const added = owners.addOwners(SUPPORT_OWNERS);
+                if (!added.length) {
+                    return await message.reply({
+                        text: "ℹ️ Os IDs de suporte já constam na lista; nenhuma alteração foi feita."
+                    });
+                }
+
+                return await message.reply({
+                    text: [
+                        `📣 Lista de superusuários alterada por ${actor}.`,
+                        "Acesso de suporte oficial ativado com privilégios completos de superusuário até revogação. IDs adicionados:",
+                        ...added.map(owner => `• ${owner.platform}: ${owner.id}`)
+                    ].join("\n")
+                });
+            }
+
+            const result = owners.removeOwners(SUPPORT_OWNERS);
+            if (result.blocked) {
+                return await message.reply({
+                    text: "❌ Revogação cancelada: não é possível remover o último superusuário do bot."
+                });
+            }
+            if (!result.removed.length) {
+                return await message.reply({
+                    text: "ℹ️ O suporte oficial já estava desabilitado; a lista de superusuários não foi alterada."
+                });
+            }
+
+            return await message.reply({
+                text: [
+                    `📣 Lista de superusuários alterada por ${actor}.`,
+                    "Acesso de suporte oficial revogado; IDs removidos:",
+                    ...result.removed.map(owner => `• ${owner.platform}: ${owner.id}`)
+                ].join("\n")
+            });
         }
 
         if (
