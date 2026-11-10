@@ -52,6 +52,12 @@ Remove definitivamente todo o pacote de figurinhas criado por você no bot.`,
         const repliedSticker = message.raw?.message?.reply_to_message?.sticker;
         const isDeleteStickerMode = ["delfig", "delsticker"].includes(cmdName) || !!repliedSticker;
 
+        if (["delfig", "delsticker"].includes(cmdName) && !repliedSticker) {
+            return message.reply({
+                text: `⚠️ Responda à figurinha que deseja remover do seu pacote com ${message.prefix || "!"}delfig.`
+            });
+        }
+
         // MODO 1: Excluir uma figurinha específica marcada
         if (isDeleteStickerMode && repliedSticker) {
             const stickerFileId = repliedSticker.file_id;

@@ -2251,6 +2251,21 @@ function saveAdminAutodownloadConfig(message, scope, input) {
   return getAdminAutodownloadConfig(scopedMessage, {});
 }
 
+function getAdminAutoIAConfig(message, scope) {
+  const scopedMessage = getScopedAdminMessage(message, scope);
+  return { mode: autoiaHelper.getAutoIAMode(scopedMessage) };
+}
+
+function saveAdminAutoIAConfig(message, scope, input) {
+  if (!input || typeof input !== "object" || Array.isArray(input) ||
+      !["off", "mention", "all"].includes(input.mode)) {
+    throw new Error("Modo do Auto-IA inválido.");
+  }
+  const scopedMessage = getScopedAdminMessage(message, scope);
+  autoiaHelper.setAutoIAMode(scopedMessage, input.mode);
+  return getAdminAutoIAConfig(scopedMessage, {});
+}
+
 function validateAdminMonitorTimes(values) {
   if (!Array.isArray(values) || values.some(value => typeof value !== "string")) {
     throw new Error("A lista de horários é inválida.");
@@ -4236,6 +4251,125 @@ function renderBlockcmdAdmin(data) {
   return renderProtectionAdmin(data, "blockcmd");
 }
 
+function renderAutomationAdmin(data, setting, requestedScope = null) {
+  const definitions = {
+    autodownload: {
+      title: "Download automático",
+      description: "Veja o estado do recurso e configure a exclusão do link original por chat.",
+      configEndpoint: "autodownload",
+      fields: `<label class="check"><input type="checkbox" name="deletelink"> Excluir a mensagem com o link original depois do download</label>`
+    },
+    autoia: {
+      title: "Auto-IA",
+      description: "Escolha se a IA responde quando mencionada ou em todas as mensagens.",
+      configEndpoint: "autoia",
+      fields: `<label>Modo<select name="mode"><option value="off">Desativado</option><option value="mention">Responder quando mencionada</option><option value="all">Responder a todas as mensagens</option></select></label>`
+    },
+    autorepo: {
+      title: "Respostas automáticas",
+      description: "Gerencie respostas globais e respostas específicas por chat.",
+      configEndpoint: "autorepo",
+      fields: `<label class="check"><input type="checkbox" name="useGlobal"> Usar respostas oficiais globais</label>
+        <section class="responses"><div class="responses-heading"><h2>Respostas deste chat</h2><button type="button" id="addResponse">Adicionar resposta</button></div><div id="responseList" class="response-list"></div></section>`
+    },
+    autoTranscribe: {
+      title: "Transcrição automática",
+      description: "Ative ou desative a transcrição automática para o escopo selecionado.",
+      configEndpoint: null,
+      fields: ""
+    }
+  }[setting];
+  if (!definitions) throw new Error("Painel de automação inválido.");
+  const context = JSON.stringify({ platform: data.platform, groupId: data.groupId });
+  const requestedScopeJson = JSON.stringify(requestedScope).replace(/</g, "\\u003c");
+  const scopes = (ADMIN_SYSTEM_SETTINGS.find(item => item.key === setting)?.scopes[data.platform] || [])
+    .filter(level => !(setting === "autoTranscribe" && data.platform === "discord" && level === "categoria"));
+  const scopeOptions = data.platform === "discord"
+    ? `<label>Escopo<select id="scopeLevel">${scopes.map(level => `<option value="${level}">${level === "server" ? "Servidor" : level === "categoria" ? "Categoria" : "Chat"}</option>`).join("")}</select></label>
+       <label id="categoryField" hidden>Categoria<select id="categorySelect"><option value="">Selecione uma categoria</option></select></label>
+       <label id="channelField" hidden>Chat<select id="channelSelect"><option value="">Selecione uma categoria primeiro</option></select></label>`
+    : data.platform === "telegram" && scopes.includes("topic")
+      ? `<div class="scope-tabs"><button type="button" id="groupScope" aria-pressed="true">Grupo todo + chat principal</button><button type="button" id="topicScope" aria-pressed="false">Tópico</button></div><label id="topicField" hidden>Tópico<select id="topicSelect"><option value="">Selecione um tópico</option></select></label>`
+      : `<p class="muted">${data.platform === "whatsapp" ? "Configuração aplicada a este grupo." : "Configuração aplicada ao grupo todo."}</p>`;
+  const enableField = setting === "autoia"
+    ? ""
+    : `<label class="check"><input id="enabled" type="checkbox" disabled> Ativar ${definitions.title.toLowerCase()}<span id="enabledStatus" class="muted">Carregando...</span></label>`;
+  const backHref = `/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}`;
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Painel · ${escapeHtml(definitions.title)}</title><style>
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb;--line:#334366;--muted:#9da8bd}*{box-sizing:border-box}body{margin:0;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}button,input,textarea,select{font:inherit}.page{width:min(900px,100%);margin:0 auto}.top{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:8px 0 20px;border-bottom:1px solid var(--line)}a{color:#b9c6ff;text-decoration:none;font-weight:700}.hero,.panel{margin-top:20px;padding:22px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#1c2438,#131925)}h1{margin:7px 0;font-size:clamp(23px,4vw,34px)}h2{margin:0;font-size:16px}.muted{color:var(--muted);line-height:1.55}.scope{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-top:16px}.scope label,label{display:grid;gap:7px;color:#dce2f3;font-size:12px;font-weight:700}.scope select,input:not([type=checkbox]),textarea,select{width:100%;padding:10px 11px;border:1px solid #485776;border-radius:9px;background:#0e1422;color:#f5f7fb}.panel{display:grid;gap:16px}.check{display:flex;align-items:center;gap:9px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#ffffff05}.check input{width:18px;height:18px;accent-color:#9b8cff}.check span{margin-left:auto}.feedback{min-height:20px;margin:0;color:#9cf0cf;font-size:12px}.feedback.error{color:#ff9eaa}.actions,.scope-tabs{display:flex;gap:8px;flex-wrap:wrap}.scope-tabs{margin-top:12px}.scope-tabs button,button{padding:9px 12px;border:1px solid #7582a3;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-weight:700;cursor:pointer}.scope-tabs button[aria-pressed=true],.primary{border-color:#9b8cff;background:#8b7bff30}.responses{display:grid;gap:12px}.responses-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}.response-list{display:grid;gap:10px}.response-card{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:13px;border:1px solid var(--line);border-radius:10px;background:#ffffff05}.response-card .wide{grid-column:1/-1}.response-card button{grid-column:1/-1;justify-self:end}.panel[hidden],label[hidden]{display:none!important}button:disabled{opacity:.55;cursor:wait}@media(max-width:620px){body{padding:14px}.top{align-items:flex-start;flex-direction:column}.hero,.panel{padding:16px}.response-card{grid-template-columns:1fr}.response-card .wide{grid-column:auto}.responses-heading{align-items:flex-start;flex-direction:column}}
+  </style></head><body><main class="page">
+    <nav class="top"><a href="${backHref}">← Painel de administração</a><span>${escapeHtml(data.platform)} · ${escapeHtml(data.groupName)}</span></nav>
+    <header class="hero"><small>PAINEL DEDICADO</small><h1>${escapeHtml(definitions.title)}</h1><p class="muted">${escapeHtml(definitions.description)}</p><nav class="scope" aria-label="Escopo da configuração">${scopeOptions}</nav></header>
+    <form class="panel" id="automationForm"><h2 id="scopeLabel">Configuração do chat</h2>${enableField}${definitions.fields}<p id="feedback" class="feedback" role="status" aria-live="polite"></p><div class="actions">${definitions.configEndpoint ? '<button type="submit" class="primary">Salvar configurações</button>' : ""}<a href="/painel-agendamentos?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">Abrir agendamentos</a></div></form>
+  </main><script>
+    const context=${context},setting=${JSON.stringify(setting)},supportedScopes=${JSON.stringify(scopes)};
+    let requestedScope=${requestedScopeJson},activeScope=null,options={};
+    try{if(typeof requestedScope==="string")requestedScope=JSON.parse(requestedScope)}catch{requestedScope=null}
+    const form=document.getElementById("automationForm"),feedback=document.getElementById("feedback"),enabled=document.getElementById("enabled");
+    const levelSelect=document.getElementById("scopeLevel"),categorySelect=document.getElementById("categorySelect"),channelSelect=document.getElementById("channelSelect");
+    const api=async(path,body={})=>{const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...context,...body})});const result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível carregar as configurações.");return result};
+    const showError=message=>{feedback.classList.add("error");feedback.textContent=message};
+    function initialScope(){if(requestedScope&&supportedScopes.includes(requestedScope.level))return requestedScope;if(context.platform==="whatsapp")return{level:"chat"};if(context.platform==="discord")return supportedScopes.includes("server")?{level:"server"}:null;return{level:"server"}}
+    function makeResponse(response={}){const card=document.createElement("article");card.className="response-card";if(response.id)card.dataset.id=response.id;const field=(label,name,value,type="text",wide=false)=>{const wrapper=document.createElement("label");if(wide)wrapper.className="wide";wrapper.textContent=label;let input;if(type==="textarea"){input=document.createElement("textarea");input.rows=3}else if(name==="action"){input=document.createElement("select");for(const [key,text]of [["reply","Responder com texto"],["react","Reagir com emoji"]])input.add(new Option(text,key));input.value=value||"reply"}else if(type==="select"){input=document.createElement("select");for(const [key,text]of [["exact","Mensagem exata"],["contains","Contém a frase"],["starts","Começa com"]])input.add(new Option(text,key));input.value=value||"exact"}else{input=document.createElement("input");input.type=type;input.value=value??""}input.name=name;wrapper.append(input);card.append(wrapper)};field("Gatilho","trigger",response.trigger||"");field("Correspondência","matchType",response.matchType||"exact","select");field("Ação","action",response.action||"reply","select");field("Intervalo (segundos)","cooldown",response.cooldown||5,"number");field("Texto ou emoji da resposta","content",response.content||"","textarea",true);const remove=document.createElement("button");remove.type="button";remove.textContent="Remover";remove.addEventListener("click",()=>card.remove());card.append(remove);return card}
+    function renderResponses(responses){const list=document.getElementById("responseList");list.replaceChildren();if(!responses.length){const empty=document.createElement("p");empty.className="muted";empty.textContent="Nenhuma resposta local cadastrada.";list.append(empty);return}responses.forEach(item=>list.append(makeResponse(item)))}
+    function selectedScope(){if(context.platform==="discord"){const level=levelSelect.value;if(level==="server")return{level};if(level==="categoria")return{level,categoryId:categorySelect.value};return{level,categoryId:categorySelect.value==="__none__"?"":categorySelect.value,channelId:channelSelect.value}}if(context.platform==="telegram"&&supportedScopes.includes("topic")&&document.getElementById("topicScope").getAttribute("aria-pressed")==="true")return{level:"topic",topicId:document.getElementById("topicSelect").value};return{level:context.platform==="whatsapp"?"chat":"server"}}
+    function fillChannels(){const category=categorySelect.value==="__none__"?"":categorySelect.value;channelSelect.replaceChildren(new Option("Selecione um chat",""));for(const item of options.chatChannels||[])if(item.categoryId===category)channelSelect.add(new Option(item.name,item.id));channelSelect.disabled=!channelSelect.options.length||channelSelect.options.length===1}
+    function updateScopeControls(shouldLoad=true){if(context.platform!=="discord")return;const level=levelSelect.value,categoryField=document.getElementById("categoryField"),channelField=document.getElementById("channelField");categoryField.hidden=level==="server";channelField.hidden=level!=="chat";if(level!=="server")fillChannels();if(shouldLoad)load()}
+    async function load(){activeScope=selectedScope();const label=document.getElementById("scopeLabel");if(!activeScope||((activeScope.level==="chat")&&!activeScope.channelId)||((activeScope.level==="categoria")&&!activeScope.categoryId)||((activeScope.level==="topic")&&!activeScope.topicId)){label.textContent="Selecione um chat para carregar as configurações.";form.querySelectorAll("input,textarea,select,button").forEach(control=>control.disabled=true);if(enabled)enabled.disabled=true;return}
+      form.querySelectorAll("input,textarea,select,button").forEach(control=>control.disabled=false);feedback.classList.remove("error");feedback.textContent="Carregando configurações...";try{const {settings}=await api("/api/account/local/admin-settings-state",{scope:activeScope});if(enabled){enabled.checked=settings[setting]===true;document.getElementById("enabledStatus").textContent=enabled.checked?"Ativado":"Desativado"}
+        if(setting==="autodownload"){const {config}=await api("/api/account/local/admin-autodownload-state",{scope:activeScope});form.elements.deletelink.checked=config.deletelink===true}
+        if(setting==="autoia"){const {config}=await api("/api/account/local/admin-autoia-state",{scope:activeScope});form.elements.mode.value=config.mode||"off"}
+        if(setting==="autorepo"){const {config}=await api("/api/account/local/admin-autorepo-state",{scope:activeScope});form.elements.useGlobal.checked=config.useGlobal!==false;renderResponses(config.responses||[])}
+        label.textContent="Escopo selecionado: "+(activeScope.level==="chat"?"Chat":activeScope.level==="categoria"?"Categoria":activeScope.level==="topic"?"Tópico":context.platform==="discord"?"Servidor":"Grupo");feedback.textContent=""
+      }catch(error){showError(error.message)}}
+    async function initialize(){try{options=await api("/api/account/local/admin-systems-options");if(context.platform==="discord"){for(const item of options.categories||[])categorySelect.add(new Option(item.name,item.id));if((options.chatChannels||[]).some(item=>!item.categoryId))categorySelect.add(new Option("Sem categoria","__none__"));levelSelect.addEventListener("change",updateScopeControls);categorySelect.addEventListener("change",()=>{fillChannels();load()});channelSelect.addEventListener("change",load);const initial=initialScope();if(initial){levelSelect.value=initial.level;if(initial.categoryId)categorySelect.value=initial.categoryId;else if(initial.level==="chat"&&(options.chatChannels||[]).some(item=>!item.categoryId))categorySelect.value="__none__";updateScopeControls(false);if(initial.channelId)channelSelect.value=initial.channelId;load()}else{levelSelect.value=supportedScopes[0]||"";updateScopeControls(false);load()}}
+        else if(context.platform==="telegram"&&supportedScopes.includes("topic")){for(const topic of options.topics||[])document.getElementById("topicSelect").add(new Option(topic.name,topic.id));const group=document.getElementById("groupScope"),topic=document.getElementById("topicScope");group.addEventListener("click",()=>{group.setAttribute("aria-pressed","true");topic.setAttribute("aria-pressed","false");document.getElementById("topicField").hidden=true;load()});topic.addEventListener("click",()=>{group.setAttribute("aria-pressed","false");topic.setAttribute("aria-pressed","true");document.getElementById("topicField").hidden=false;load()});document.getElementById("topicSelect").addEventListener("change",load);if(initialScope()?.level==="topic"){topic.click();document.getElementById("topicSelect").value=requestedScope.topicId;await load()}else await load()}
+        else{activeScope=initialScope();await load()}}
+      catch(error){showError(error.message)}}
+    if(enabled)enabled.addEventListener("change",async()=>{enabled.disabled=true;try{const result=await api("/api/account/local/admin-settings",{setting,enabled:enabled.checked,scope:activeScope});enabled.checked=result.settings[setting]===true;document.getElementById("enabledStatus").textContent=enabled.checked?"Ativado":"Desativado";feedback.classList.toggle("error",Boolean(result.announcementWarning));feedback.textContent=result.announcementWarning||result.message||"Configuração atualizada."}catch(error){showError(error.message);enabled.checked=!enabled.checked}finally{enabled.disabled=false}});
+    document.getElementById("addResponse")?.addEventListener("click",()=>{const list=document.getElementById("responseList");list.querySelector(".muted")?.remove();const card=makeResponse();list.append(card);card.querySelector('[name="trigger"]').focus()});
+    form.addEventListener("submit",async event=>{event.preventDefault();if(!activeScope)return;const button=form.querySelector('[type="submit"]');button.disabled=true;feedback.classList.remove("error");feedback.textContent="Salvando configurações...";try{let result;if(setting==="autodownload")result=await api("/api/account/local/admin-autodownload",{scope:activeScope,config:{deletelink:form.elements.deletelink.checked}});else if(setting==="autoia")result=await api("/api/account/local/admin-autoia",{scope:activeScope,config:{mode:form.elements.mode.value}});else if(setting==="autorepo"){const responses=[...document.querySelectorAll(".response-card")].map(card=>({id:card.dataset.id,trigger:card.querySelector('[name="trigger"]').value,matchType:card.querySelector('[name="matchType"]').value,action:card.querySelector('[name="action"]').value,cooldown:Number(card.querySelector('[name="cooldown"]').value),content:card.querySelector('[name="content"]').value}));result=await api("/api/account/local/admin-autorepo",{scope:activeScope,config:{useGlobal:form.elements.useGlobal.checked,responses}});renderResponses(result.config.responses||[])}feedback.classList.toggle("error",Boolean(result.announcementWarning));feedback.textContent=result.announcementWarning||"Configurações salvas."}catch(error){showError(error.message)}finally{button.disabled=false}});
+    initialize();
+  </script></body></html>`;
+}
+
+function renderRpSystemAdmin(data, setting) {
+  if (!["xp", "activity"].includes(setting)) throw new Error("Sistema de grupo inválido.");
+  const isXp = setting === "xp";
+  const title = isXp ? "Sistema de XP" : "Registro de atividade";
+  const platformLabel = data.platform === "discord" ? "Servidor" : "Grupo";
+  const scope = { level: data.platform === "whatsapp" ? "chat" : "server" };
+  const context = JSON.stringify({ platform: data.platform, groupId: data.groupId });
+  const scopeJson = JSON.stringify(scope);
+  const backHref = `/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}`;
+  const xpSettings = isXp
+    ? `<section class="panel"><h2>Mensagens de level-up</h2><label class="check"><input id="muted" type="checkbox"><span>Silenciar avisos de level-up</span></label><label><span id="destinationLabel">Destino das mensagens de level-up</span><select id="destination"><option value="">Onde o XP foi ganho</option></select><small id="destinationHint" class="muted">Deixe o destino padrão para avisar onde o XP foi ganho.</small></label><button type="button" class="primary" id="saveXp">Salvar configurações</button></section>`
+    : "";
+  const resetLabel = isXp ? "Resetar XP de todos" : "Resetar atividades de todos";
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Painel · ${title}</title><style>
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb;--line:#334366;--muted:#9da8bd}*{box-sizing:border-box}body{margin:0;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}button,input,select{font:inherit}.page{width:min(900px,100%);margin:0 auto}.top{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:8px 0 20px;border-bottom:1px solid var(--line)}a{color:#b9c6ff;text-decoration:none;font-weight:700}.hero,.panel{margin-top:20px;padding:22px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#1c2438,#131925)}h1{margin:7px 0;font-size:clamp(23px,4vw,34px)}h2{margin:0;font-size:17px}.muted{color:var(--muted);line-height:1.55}.setting{display:flex;align-items:center;justify-content:space-between;gap:12px}.setting input,.check input{width:19px;height:19px;accent-color:#9b8cff}.setting label,.check{display:flex;align-items:center;gap:9px;font-weight:700}.panel{display:grid;gap:14px}.check{padding:12px;border:1px solid var(--line);border-radius:10px;background:#ffffff05}.check span{flex:1}label{display:grid;gap:7px;color:#dce2f3;font-size:12px;font-weight:700}input:not([type=checkbox]),select{width:100%;padding:10px 11px;border:1px solid #485776;border-radius:9px;background:#0e1422;color:#f5f7fb}.search{display:flex;gap:8px}.search input{flex:1}button{padding:9px 12px;border:1px solid #7582a3;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-weight:700;cursor:pointer}.primary{border-color:#9b8cff;background:#8b7bff30}.danger{border-color:#b65b6a66;color:#ffb3bd}.feedback{min-height:20px;margin:0;color:#9cf0cf;font-size:12px}.feedback.error{color:#ff9eaa}.user-list{display:grid;gap:10px}.user-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px 12px;padding:13px;border:1px solid var(--line);border-radius:11px;background:#ffffff05}.user-card small,.user-card p{grid-column:1/-1;margin:0;color:var(--muted);font-size:12px;overflow-wrap:anywhere}.user-card .value{align-self:center}.user-actions{display:flex;flex-wrap:wrap;gap:7px}.user-actions input{min-width:125px}.toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px}.empty{padding:14px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);text-align:center}@media(max-width:600px){body{padding:14px}.top{align-items:flex-start;flex-direction:column}.hero,.panel{padding:16px}.search,.toolbar{align-items:stretch;flex-direction:column}.user-card{grid-template-columns:1fr}.user-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}}
+  </style></head><body><main class="page">
+    <nav class="top"><a href="${backHref}">← Painel de administração</a><span>${platformLabel} · ${escapeHtml(data.groupName)}</span></nav>
+    <header class="hero"><small>PAINEL DEDICADO</small><h1>${title}</h1><p class="muted">${isXp ? "Consulte e ajuste o XP dos membros e configure as mensagens de level-up." : "Consulte e remova registros de atividade dos membros."} As alterações se aplicam a este ${platformLabel.toLowerCase()}.</p><div class="setting"><label><input id="enabled" type="checkbox"> Ativar ${title.toLowerCase()}</label><span id="state" class="muted">Carregando...</span></div></header>
+    ${xpSettings}
+    <section class="panel"><div class="toolbar"><h2>${isXp ? "XP dos membros" : "Atividade dos membros"}</h2><button id="resetAll" class="danger" type="button">${resetLabel}</button></div><form id="searchForm" class="search"><input id="search" type="search" maxlength="100" autocomplete="off" placeholder="Buscar por nome, username ou ID" aria-label="Buscar membro"><button type="submit">Buscar</button></form><div id="users" class="user-list" aria-live="polite"></div><p id="feedback" class="feedback" role="status" aria-live="polite"></p></section>
+  </main><script>
+    const context=${context},scope=${scopeJson},setting=${JSON.stringify(setting)};
+    const api=async(path,body={})=>{const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...context,...body})});const result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível carregar as configurações.");return result};
+    const enabled=document.getElementById("enabled"),state=document.getElementById("state"),feedback=document.getElementById("feedback"),users=document.getElementById("users");
+    const showError=message=>{feedback.classList.add("error");feedback.textContent=message};
+    function renderUsers(items,total){users.replaceChildren();if(!items.length){const empty=document.createElement("p");empty.className="empty";empty.textContent="Nenhum registro encontrado.";users.append(empty);return}for(const user of items){const card=document.createElement("article");card.className="user-card";const name=document.createElement("strong");name.textContent=user.displayName||user.username||user.userId;const detail=document.createElement("small");detail.textContent=(user.username?(context.platform==="whatsapp"?"Nome salvo: ":"@")+user.username+" · ":"")+"ID: "+user.userId;const value=document.createElement("strong");value.className="value";value.textContent=setting==="xp"?(Number(user.value)||0)+" XP":(Number(user.value)||0)+" registros";const description=document.createElement("p");description.textContent=user.detail;card.append(name,value,detail,description);const actions=document.createElement("div");actions.className="user-actions";let amount=null;if(setting==="xp"){amount=document.createElement("input");amount.type="number";amount.min="0";amount.step="1";amount.placeholder="Quantidade de XP";amount.setAttribute("aria-label","Quantidade de XP para "+user.userId);actions.append(amount)}const addAction=(label,action)=>{const button=document.createElement("button");button.type="button";button.textContent=label;if(action==="reset")button.className="danger";button.addEventListener("click",()=>changeUser(button,user.userId,action,amount?.value));actions.append(button)};if(setting==="xp"){addAction("Definir","set");addAction("Adicionar","add");addAction("Retirar","subtract")}addAction(setting==="xp"?"Zerar XP":"Apagar registro","reset");card.append(actions);users.append(card)}if(total>items.length){const more=document.createElement("p");more.className="muted";more.textContent="Mostrando "+items.length+" de "+total+" registros. Refine a busca pelo nome ou ID.";users.append(more)}}
+    async function loadUsers(query=""){feedback.classList.remove("error");feedback.textContent="Carregando registros...";try{const result=await api("/api/account/local/admin-rp-state",{scope,setting,query});renderUsers(result.users||[],result.total||0);feedback.textContent=(result.total||0)+" registro(s) encontrado(s)."}catch(error){showError(error.message)}}
+    async function changeUser(button,userId,action,amount){if(action==="reset"&&!window.confirm("Confirma zerar/remover os dados deste usuário?"))return;button.disabled=true;feedback.classList.remove("error");feedback.textContent="Atualizando registro...";try{await api("/api/account/local/admin-rp-action",{scope,setting,userId,action,amount});await loadUsers(document.getElementById("search").value)}catch(error){showError(error.message)}finally{button.disabled=false}}
+    enabled.addEventListener("change",async()=>{const desired=enabled.checked;enabled.disabled=true;try{const result=await api("/api/account/local/admin-settings",{scope,setting,enabled:desired});enabled.checked=result.settings[setting]===true;state.textContent=enabled.checked?"Ativado":"Desativado";feedback.classList.toggle("error",Boolean(result.announcementWarning));feedback.textContent=result.announcementWarning||result.message||"Configuração atualizada."}catch(error){showError(error.message);enabled.checked=!desired}finally{enabled.disabled=false}});
+    document.getElementById("searchForm").addEventListener("submit",event=>{event.preventDefault();loadUsers(document.getElementById("search").value)});
+    document.getElementById("resetAll").addEventListener("click",async event=>{if(!window.confirm("Esta ação é irreversível e vai resetar os dados de todos os membros neste escopo. Deseja continuar?"))return;const button=event.currentTarget;button.disabled=true;feedback.classList.remove("error");feedback.textContent="Resetando dados...";try{const result=await api("/api/account/local/admin-rp-action",{scope,setting,action:"resetAll"});await loadUsers(document.getElementById("search").value);feedback.textContent="Reset concluído para "+(Number(result.result?.resetCount)||0)+" registro(s)."}catch(error){showError(error.message)}finally{button.disabled=false}});
+    if(setting==="xp"){const destination=document.getElementById("destination"),muted=document.getElementById("muted");document.getElementById("saveXp").addEventListener("click",async event=>{const button=event.currentTarget;button.disabled=true;feedback.classList.remove("error");feedback.textContent="Salvando configurações de XP...";try{const result=await api("/api/account/local/admin-xp",{scope,config:{muted:muted.checked,destination:destination.value}});feedback.classList.toggle("error",Boolean(result.announcementWarning));feedback.textContent=result.announcementWarning||"Configurações de XP salvas."}catch(error){showError(error.message)}finally{button.disabled=false}});api("/api/account/local/admin-xp-state",{scope}).then(({config,destinations})=>{muted.checked=config.muted;destination.replaceChildren(new Option(context.platform==="discord"?"Onde o XP foi ganho":"Tópico onde o XP foi ganho",""));for(const item of destinations||[])destination.add(new Option(item.name,item.id));destination.value=config.threadId||config.chatId||"";if(context.platform==="telegram"&&!(destinations||[]).length)document.getElementById("destinationHint").textContent="Nenhum tópico conhecido. Envie uma mensagem em cada tópico para que ele apareça nesta lista."}).catch(error=>showError(error.message))}
+    api("/api/account/local/admin-settings-state",{scope}).then(({settings})=>{enabled.checked=settings[setting]===true;state.textContent=enabled.checked?"Ativado":"Desativado"}).catch(error=>{enabled.disabled=true;showError(error.message)});
+    loadUsers();
+  </script></body></html>`;
+}
+
 function renderWelcomeAdmin(data) {
   const context = JSON.stringify({ platform: data.platform, groupId: data.groupId });
   const groupType = data.platform === "discord" ? "Servidor" : "Grupo";
@@ -4765,23 +4899,30 @@ function renderGroupAdmin(data) {
         ? `<h3 class="setting-category" style="margin:12px 0 0;color:#b9c6ff;font-size:14px">${escapeHtml(setting.category)}</h3>`
         : "";
       previousSettingCategory = setting.category || previousSettingCategory;
-      const configurableSettings = ["welcome", "goodbye", "autorepo", "autodownload", "autoApprove"];
+      const configurableSettings = ["welcome", "goodbye", "autoApprove"];
+      const dedicatedAutomation = ["autodownload", "autoia", "autorepo", "autoTranscribe"].includes(setting.key);
       const isMonitor = Object.prototype.hasOwnProperty.call(ADMIN_MONITOR_HELPERS, setting.key);
       const dedicatedProtection = ["antilink", "antipalavras", "antimedia", "antiraid", "blockcmd"].includes(setting.key);
+      const noMainActivationShortcut = ["antilink", "antimedia", "antipalavras"].includes(setting.key);
       const dedicatedWelcome = ["welcome", "goodbye"].includes(setting.key);
       const welcomePageHref = `/painel-boas-vindas?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}&scope=${encodeURIComponent(JSON.stringify(scope))}`;
-      const dedicatedHref = `/painel-${setting.key === "agendar" ? "agendamentos" : "monitores"}?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}&scope=${encodeURIComponent(JSON.stringify(scope))}`;
+      const dedicatedPage = setting.key === "agendar" ? "agendamentos"
+        : setting.key === "autodownload" ? "autodownload"
+          : setting.key === "autoia" ? "autoia"
+            : setting.key === "autorepo" ? "autorepo"
+              : setting.key === "autoTranscribe" ? "transcrever"
+                : setting.key === "xp" ? "xp"
+                  : setting.key === "activity" ? "atividade" : "monitores";
+      const dedicatedHref = `/painel-${dedicatedPage}?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}&scope=${encodeURIComponent(JSON.stringify(scope))}`;
       const configButton = dedicatedProtection
         ? `<a href="/painel-${setting.key}?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}" style="display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:8px 10px;text-decoration:none;border:1px solid #6f7fa5;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-size:11px;font-weight:700">Ir para o painel</a>`
         : dedicatedWelcome
         ? `<a href="${welcomePageHref}" style="display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:8px 10px;text-decoration:none;border:1px solid #6f7fa5;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-size:11px;font-weight:700">Ir para o painel</a>`
-        : setting.key === "agendar" || isMonitor
+        : setting.key === "agendar" || dedicatedAutomation || isMonitor || ["xp", "activity"].includes(setting.key)
         ? `<a href="${dedicatedHref}" style="display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:8px 10px;text-decoration:none;border:1px solid #6f7fa5;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-size:11px;font-weight:700">Ir para o painel</a>`
         : supportedInScope && configurableSettings.includes(setting.key)
         ? `<button type="button" class="setting-icon-button" data-${setting.key.toLowerCase()}-config data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Configurar ${setting.key} neste escopo" title="Configurações do ${setting.key}">${ADMIN_SETTINGS_GEAR_ICON}</button>`
-        : ["xp", "activity"].includes(setting.key)
-          ? `<button type="button" class="setting-icon-button" data-rp-config="${setting.key}" data-scope="${escapeHtml(JSON.stringify(scope))}" aria-label="Gerenciar ${setting.label}" title="Gerenciar ${setting.label}">${ADMIN_SETTINGS_GEAR_ICON}</button>`
-          : setting.key === "economy"
+        : setting.key === "economy"
             ? `<a href="/painel-economia?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}" style="display:inline-flex;align-items:center;width:auto;height:auto;padding:8px 10px;text-decoration:none;border:1px solid #6f7fa5;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-size:11px;font-weight:700">Economia, loja e busca</a>`
         : "";
       const unavailableState = hasChatScopeOnly
@@ -4789,6 +4930,8 @@ function renderGroupAdmin(data) {
         : `<span class="state off" data-state="${setting.key}">Indisponível nesta plataforma</span>`;
       const controls = !supportedInScope
         ? `${unavailableState}${configButton}`
+        : noMainActivationShortcut
+        ? `<span class="state ${enabled ? "on" : "off"}" data-state="${setting.key}">${enabled ? "Ativado" : "Desativado"}</span>${configButton}`
         : setting.key === "agendar"
         ? `<span class="state ${enabled ? "on" : "off"}" data-state="${setting.key}">${enabled ? "Ativo" : "Sem agendamentos ativos"}</span>${configButton}`
         : `<span class="state ${enabled ? "on" : "off"}" data-state="${setting.key}">${enabled ? "Ativado" : "Desativado"}</span><button type="button" data-setting="${setting.key}" data-enabled="${enabled ? "true" : "false"}" data-scope="${escapeHtml(JSON.stringify(scope))}">${enabled ? "Desativar" : "Ativar"}</button>${configButton}`;
@@ -8017,6 +8160,8 @@ function start() {
         "/api/account/local/admin-autorepo",
         "/api/account/local/admin-autodownload-state",
         "/api/account/local/admin-autodownload",
+        "/api/account/local/admin-autoia-state",
+        "/api/account/local/admin-autoia",
         "/api/account/local/admin-monitor-state",
         "/api/account/local/admin-monitor"
       ].includes(requestUrl.pathname)) {
@@ -8024,7 +8169,7 @@ function start() {
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
         const setting = requestUrl.pathname.includes("/admin-monitor")
           ? (typeof payload?.setting === "string" && Object.prototype.hasOwnProperty.call(ADMIN_MONITOR_HELPERS, payload.setting) ? payload.setting : "")
-          : ["antimedia", "antipalavras", "antiraid", "blockcmd", "welcome", "goodbye", "autorepo", "autodownload"].find(key => requestUrl.pathname.includes(key)) || "antilink";
+          : ["antimedia", "antipalavras", "antiraid", "blockcmd", "welcome", "goodbye", "autorepo", "autodownload", "autoia"].find(key => requestUrl.pathname.includes(key)) || "antilink";
         const isStateRequest = requestUrl.pathname.endsWith("-state");
         const isMediaRequest = requestUrl.pathname.endsWith("-media");
         try {
@@ -8069,6 +8214,7 @@ function start() {
             goodbye: (target, requestedScope) => getAdminWelcomeConfig(target, requestedScope, setting),
             autorepo: getAdminAutorespostaConfig,
             autodownload: getAdminAutodownloadConfig,
+            autoia: getAdminAutoIAConfig,
             ...Object.fromEntries(Object.keys(ADMIN_MONITOR_HELPERS).map(key => [
               key,
               target => getAdminMonitorConfig(getScopedAdminMessage(target, scope), key)
@@ -8084,6 +8230,7 @@ function start() {
             goodbye: (target, requestedScope, input) => saveAdminWelcomeConfig(target, requestedScope, setting, input),
             autorepo: saveAdminAutorespostaConfig,
             autodownload: saveAdminAutodownloadConfig,
+            autoia: saveAdminAutoIAConfig,
             ...Object.fromEntries(Object.keys(ADMIN_MONITOR_HELPERS).map(key => [
               key,
               (target, requestedScope, input) => saveAdminMonitorConfig(target, requestedScope, key, input)
@@ -9455,6 +9602,88 @@ function start() {
     }
 
     if (request.method === "GET" && [
+      "/painel-autodownload", "/painel-autoia", "/painel-autorepo", "/painel-transcrever"
+    ].includes(requestUrl.pathname)) {
+      const setting = requestUrl.pathname === "/painel-autodownload" ? "autodownload"
+        : requestUrl.pathname === "/painel-autoia" ? "autoia"
+          : requestUrl.pathname === "/painel-autorepo" ? "autorepo" : "autoTranscribe";
+      const central = await getSessionCentral(request);
+      if (!central) {
+        response.writeHead(302, { Location: "/dashboard", "Cache-Control": "no-store" });
+        response.end();
+        return;
+      }
+      const platform = String(requestUrl.searchParams.get("plataforma") || "").toLowerCase();
+      const groupId = String(requestUrl.searchParams.get("grupo") || "");
+      let requestedScope = null;
+      try {
+        requestedScope = JSON.parse(String(requestUrl.searchParams.get("scope") || "null"));
+      } catch {
+        requestedScope = null;
+      }
+      try {
+        const data = await getGroupAdminData(central, platform, groupId);
+        response.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Referrer-Policy": "no-referrer",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(renderAutomationAdmin(data, setting, requestedScope));
+      } catch (error) {
+        const reason = String(error?.message || "");
+        const statusCode = /não participa|não está vinculada|permissão administrativa/i.test(reason) ? 403
+          : /offline/i.test(reason) ? 503 : /inválid/i.test(reason) ? 400 : 500;
+        if (statusCode === 503 || statusCode === 500) {
+          console.error("[WEB] Falha ao abrir painel de automação:", error.message || error);
+        }
+        response.writeHead(statusCode, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Painel indisponível</title><body style="font-family:Segoe UI,Arial;background:#10131c;color:#f5f7fb;padding:40px"><h1>Painel indisponível</h1><p>${escapeHtml(reason || "Não foi possível carregar as configurações.")}</p><a href="/painel-admin?plataforma=${encodeURIComponent(platform)}&grupo=${encodeURIComponent(groupId)}" style="color:#b9c6ff">Voltar ao painel de administração</a></body></html>`);
+      }
+      return;
+    }
+
+    if (request.method === "GET" && ["/painel-xp", "/painel-atividade"].includes(requestUrl.pathname)) {
+      const setting = requestUrl.pathname === "/painel-xp" ? "xp" : "activity";
+      const central = await getSessionCentral(request);
+      if (!central) {
+        response.writeHead(302, { Location: "/dashboard", "Cache-Control": "no-store" });
+        response.end();
+        return;
+      }
+      const platform = String(requestUrl.searchParams.get("plataforma") || "").toLowerCase();
+      const groupId = String(requestUrl.searchParams.get("grupo") || "");
+      try {
+        const data = await getGroupAdminData(central, platform, groupId);
+        response.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Referrer-Policy": "no-referrer",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(renderRpSystemAdmin(data, setting));
+      } catch (error) {
+        const reason = String(error?.message || "");
+        const statusCode = /não participa|não está vinculada|permissão administrativa/i.test(reason) ? 403
+          : /offline/i.test(reason) ? 503 : /inválid/i.test(reason) ? 400 : 500;
+        if (statusCode === 503 || statusCode === 500) {
+          console.error("[WEB] Falha ao abrir painel de XP ou atividade:", error.message || error);
+        }
+        response.writeHead(statusCode, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Painel indisponível</title><body style="font-family:Segoe UI,Arial;background:#10131c;color:#f5f7fb;padding:40px"><h1>Painel indisponível</h1><p>${escapeHtml(reason || "Não foi possível carregar as configurações.")}</p><a href="/painel-admin?plataforma=${encodeURIComponent(platform)}&grupo=${encodeURIComponent(groupId)}" style="color:#b9c6ff">Voltar ao painel de administração</a></body></html>`);
+      }
+      return;
+    }
+
+    if (request.method === "GET" && [
       "/painel-antilink", "/painel-antipalavras", "/painel-antimedia", "/painel-antiraid", "/painel-blockcmd", "/painel-boas-vindas"
     ].includes(requestUrl.pathname)) {
       const setting = requestUrl.pathname === "/painel-antipalavras" ? "antipalavras"
@@ -9546,4 +9775,4 @@ function start() {
   return server;
 }
 
-module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking, renderChangelog, renderLocalAccount, renderLocalBank, renderSignalSearch, renderCosmeticsStore, renderShopCatalog, renderGroupAdmin, renderEconomyAdmin, renderAntilinkAdmin, renderAntipalavrasAdmin, renderAntimediaAdmin, renderAntiraidAdmin, renderBlockcmdAdmin, renderWelcomeAdmin, renderSchedulesAdmin, renderMonitorsAdmin, canManagePlatformGroup };
+module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking, renderChangelog, renderLocalAccount, renderLocalBank, renderSignalSearch, renderCosmeticsStore, renderShopCatalog, renderGroupAdmin, renderEconomyAdmin, renderAntilinkAdmin, renderAntipalavrasAdmin, renderAntimediaAdmin, renderAntiraidAdmin, renderBlockcmdAdmin, renderWelcomeAdmin, renderAutomationAdmin, renderRpSystemAdmin, renderSchedulesAdmin, renderMonitorsAdmin, canManagePlatformGroup };
