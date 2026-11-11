@@ -118,6 +118,18 @@ function createAtempoFilter(rate) {
     return filters.join(",");
 }
 
+function createBassDuckingFilter(gain) {
+    return [
+        "[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,asplit=2[bandin][keyin]",
+        "[bandin]acrossover=split=250|4000:order=1[low][mid][high]",
+        `[low]bass=g=${gain}:f=120:w=0.7,alimiter=limit=0.95[bass]`,
+        "[high]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[highfmt]",
+        "[keyin]lowpass=f=180,aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[sc]",
+        "[highfmt][sc]sidechaincompress=threshold=0.05:ratio=4:attack=20:release=500[ducked]",
+        "[bass][mid][ducked]amix=inputs=3:weights=1 1 1,volume=3[processed]"
+    ].join(";");
+}
+
 function getEffectFilters(effect, multiplier) {
     if (effect.grayscale) {
         return { videoFilter: "hue=s=0" };
@@ -160,7 +172,7 @@ function getEffectFilters(effect, multiplier) {
     }
     if (effect.bassGain) {
         return {
-            audioFilter: `bass=g=${effect.bassGain * multiplier}:f=120:w=0.7,alimiter=limit=0.95`
+            audioComplexFilter: createBassDuckingFilter(effect.bassGain * multiplier)
         };
     }
     return {};
@@ -209,6 +221,17 @@ function buildFfmpegArgs(inputPath, outputPath, type, effect) {
     }
 
     if (type === "audio") {
+        if (effect.audioComplexFilter) {
+            return args.concat([
+                "-filter_complex", effect.audioComplexFilter,
+                "-map", "[processed]",
+                "-vn",
+                "-c:a", "libmp3lame",
+                "-q:a", "2",
+                outputPath
+            ]);
+        }
+
         const audioArgs = [
             "-map", "0:a:0",
             "-vn",
@@ -220,7 +243,7 @@ function buildFfmpegArgs(inputPath, outputPath, type, effect) {
         return args.concat(audioArgs);
     }
 
-    args.push("-map", "0:v:0?", "-map", "0:a:0?");
+    args.push("-map", "0:v:0?");
     if (effect.videoFilter) {
         args.push(
             "-vf", effect.videoFilter,
@@ -233,10 +256,17 @@ function buildFfmpegArgs(inputPath, outputPath, type, effect) {
         args.push("-c:v", "copy");
     }
 
-    if (effect.audioFilter) {
+    if (effect.audioComplexFilter) {
+        args.push(
+            "-filter_complex", effect.audioComplexFilter,
+            "-map", "[processed]",
+            "-c:a", "aac",
+            "-b:a", "192k"
+        );
+    } else if (effect.audioFilter) {
         args.push("-af", effect.audioFilter, "-c:a", "aac", "-b:a", "192k");
     } else {
-        args.push("-c:a", "copy");
+        args.push("-map", "0:a:0?", "-c:a", "copy");
     }
 
     args.push("-movflags", "+faststart", outputPath);
