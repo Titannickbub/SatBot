@@ -34,6 +34,79 @@ function text(value, x, y, size, color = "#f5f7fb", weight = 400, anchor = "star
     return `<text x="${x}" y="${y}" fill="${color}" font-family="Arial,Segoe UI,sans-serif" font-size="${size}px" font-weight="${weight}" text-anchor="${anchor}">${escapeXml(value)}</text>`;
 }
 
+function snowflakeOverlay(width, height, spacing = 115, opacity = 0.12) {
+    const flakes = [];
+    for (let y = spacing / 2; y < height; y += spacing) {
+        for (let x = spacing / 2; x < width; x += spacing) {
+            flakes.push(`<text x="${x}" y="${y}" fill="#eaf7ff" font-size="18" opacity="${opacity}" text-anchor="middle">❄</text>`);
+        }
+    }
+    return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">${flakes.join("")}</svg>`;
+}
+
+function snowflakeMarks(cx, cy, radius, count = 8, size = 14, opacity = 0.95) {
+    return Array.from({ length: count }, (_, index) => {
+        const angle = (Math.PI * 2 * index) / count - Math.PI / 2;
+        const x = cx + Math.cos(angle) * radius;
+        const y = cy + Math.sin(angle) * radius + size * 0.32;
+        return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" fill="#f5fcff" font-size="${size}" opacity="${opacity}" text-anchor="middle">❄</text>`;
+    }).join("");
+}
+
+function profileCircleFrame(cx, cy, radius, circle, strokeWidth = 3) {
+    if (circle.frozen) {
+        const color = circle.color;
+        return `<circle cx="${cx}" cy="${cy}" r="${radius + 4}" fill="none" stroke="${color}" stroke-width="${strokeWidth + 5}" opacity=".55"/><circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="#f5fcff" stroke-width="${strokeWidth + 2}"/><circle cx="${cx}" cy="${cy}" r="${radius - 4}" fill="none" stroke="${color}" stroke-width="2"/>${snowflakeMarks(cx, cy, radius + 1, 8, Math.max(12, strokeWidth * 3))}`;
+    }
+    return `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${circle.rainbow ? "url(#rainbow)" : circle.color}" stroke-width="${strokeWidth}"/>`;
+}
+
+function frozenProfileLinesOverlay() {
+    const flakes = [];
+    const iceLines = [];
+    const rectangles = [
+        [28, 28, 1144, 594, 26],
+        [70, 205, 1060, 64, 14],
+        [70, 295, 510, 130, 18],
+        [600, 295, 530, 130, 18],
+        [70, 445, 510, 130, 18],
+        [600, 445, 530, 130, 18]
+    ];
+    for (const [x, y, width, height, radius] of rectangles) {
+        iceLines.push(`<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" fill="none" stroke="#83dfff" stroke-width="7" opacity=".38"/><rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" fill="none" stroke="#f5fcff" stroke-width="2" opacity=".82"/>`);
+        for (let position = x + 48; position < x + width - 25; position += 90) {
+            flakes.push(`<text x="${position}" y="${y + 13}" fill="#eaf7ff" font-size="16" text-anchor="middle">❄</text>`);
+            flakes.push(`<text x="${position}" y="${y + height - 2}" fill="#eaf7ff" font-size="16" text-anchor="middle">❄</text>`);
+        }
+        for (let position = y + 34; position < y + height - 15; position += 75) {
+            flakes.push(`<text x="${x + 8}" y="${position}" fill="#eaf7ff" font-size="16" text-anchor="middle">❄</text>`);
+            flakes.push(`<text x="${x + width - 8}" y="${position}" fill="#eaf7ff" font-size="16" text-anchor="middle">❄</text>`);
+        }
+    }
+    return `<svg width="1200" height="650" xmlns="http://www.w3.org/2000/svg">${iceLines.join("")}${flakes.join("")}</svg>`;
+}
+
+function frozenOutlinePreviewOverlay(color) {
+    const iceLines = [];
+    const flakes = [];
+    const cards = [
+        [105, 365, 470, 130, 18],
+        [625, 365, 470, 130, 18]
+    ];
+    for (const [x, y, width, height, radius] of cards) {
+        iceLines.push(
+            `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" fill="none" stroke="${color}" stroke-width="7" opacity=".32"/>`,
+            `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" fill="none" stroke="#f5fcff" stroke-width="2" opacity=".88"/>`
+        );
+        flakes.push(
+            `<text x="${x + width / 2}" y="${y + 13}" fill="#f5fcff" font-size="13" opacity=".92" text-anchor="middle">❄</text>`,
+            `<text x="${x + width - 7}" y="${y + height / 2 + 5}" fill="#f5fcff" font-size="13" opacity=".92" text-anchor="middle">❄</text>`,
+            `<text x="${x + width / 2}" y="${y + height - 2}" fill="#f5fcff" font-size="13" opacity=".92" text-anchor="middle">❄</text>`
+        );
+    }
+    return `<svg width="1200" height="650" xmlns="http://www.w3.org/2000/svg">${iceLines.join("")}${flakes.join("")}</svg>`;
+}
+
 function card(x, y, width, label, value, detail, valueColor = "#f5f7fb", theme, outlineColor) {
     const outlineWidth = outlineColor === "url(#rainbow)" ? 8 : outlineColor ? 4 : 2;
     return [
@@ -106,6 +179,8 @@ async function renderProfile(message) {
         : "Sem casamento neste grupo/servidor";
     const backgroundTheme = profileCosmetics.getProfileBackground(profile.economy.background);
     const profileOutline = profileCosmetics.getProfileOutline(profile.economy.outline);
+    const profileCircle = profileCosmetics.getProfileCircle(profile.economy.circle);
+    const profileEffect = profileCosmetics.getProfileEffect(profile.economy.effect);
     const outlineColor = profileOutline?.rainbow ? "url(#rainbow)" : profileOutline?.color;
     let avatarBuffer = null;
     let avatarUrl = profile.platform === "discord" ? profile.avatarUrl : null;
@@ -145,13 +220,19 @@ async function renderProfile(message) {
     }
     let partnerAvatarBuffer = null;
     let partnerBackgroundTheme = null;
+    let partnerCircle = null;
+    let partnerEffect = null;
+    let partnerOutline = null;
     let multiPartnerAvatars = [];
     if (marriages.length === 1 && currentMarriage && !currentMarriage.selfMarriage && currentMarriage.partnerId) {
         const partnerProfile = await resolvePlatformProfile(profile.platform, currentMarriage.partnerId, {
             centralAccounts: message.functions?.centralAccounts
         });
-        const partnerBackground = economy.getProfileCosmetics(message, currentMarriage.partnerId).background;
-        partnerBackgroundTheme = profileCosmetics.getProfileBackground(partnerBackground);
+        const partnerCosmetics = economy.getProfileCosmetics(message, currentMarriage.partnerId);
+        partnerBackgroundTheme = profileCosmetics.getProfileBackground(partnerCosmetics.background);
+        partnerCircle = profileCosmetics.getProfileCircle(partnerCosmetics.circle);
+        partnerEffect = profileCosmetics.getProfileEffect(partnerCosmetics.effect);
+        partnerOutline = profileCosmetics.getProfileOutline(partnerCosmetics.outline);
         const partnerAvatar = await loadCoupleAvatar(partnerProfile?.avatarUrl, currentMarriage.partnerId);
         if (partnerAvatar) {
             partnerAvatarBuffer = await sharp(partnerAvatar).resize(76, 76).png().toBuffer();
@@ -165,12 +246,21 @@ async function renderProfile(message) {
                     centralAccounts: message.functions?.centralAccounts
                 }))?.avatarUrl;
             const avatar = await loadCoupleAvatar(partnerAvatarUrl, partnerId);
-            return avatar ? sharp(avatar).resize(76, 76).png().toBuffer() : null;
+            const cosmetics = economy.getProfileCosmetics(message, partnerId);
+            return {
+                avatar: avatar ? await sharp(avatar).resize(76, 76).png().toBuffer() : null,
+                circle: profileCosmetics.getProfileCircle(cosmetics.circle),
+                effect: profileCosmetics.getProfileEffect(cosmetics.effect)
+            };
         }));
     }
     const marriageTheme = currentMarriage && !currentMarriage.selfMarriage
         ? partnerBackgroundTheme
         : backgroundTheme;
+    const marriageOutline = currentMarriage && !currentMarriage.selfMarriage && partnerOutline
+        ? partnerOutline
+        : profileOutline;
+    const marriageOutlineColor = marriageOutline?.rainbow ? "url(#rainbow)" : marriageOutline?.color;
     const marriageCard = marriages.length > 1
         ? [
             `<rect x="600" y="445" width="530" height="130" rx="18" fill="${backgroundTheme?.stops[1] || "#202a40"}" stroke="${outlineColor || backgroundTheme?.accent || "#334566"}" stroke-width="${outlineColor === "url(#rainbow)" ? 8 : outlineColor ? 4 : 2}"/>`,
@@ -178,9 +268,9 @@ async function renderProfile(message) {
         ].join("")
         : currentMarriage && !currentMarriage.selfMarriage
             ? [
-                `<rect x="600" y="445" width="530" height="130" rx="18" fill="${marriageTheme?.stops[1] || "#202a40"}" stroke="${outlineColor || marriageTheme?.accent || "#334566"}" stroke-width="${outlineColor === "url(#rainbow)" ? 8 : outlineColor ? 4 : 2}"/>`,
+                `<rect x="600" y="445" width="530" height="130" rx="18" fill="${marriageTheme?.stops[1] || "#202a40"}" stroke="${marriageOutlineColor || marriageTheme?.accent || "#334566"}" stroke-width="${marriageOutlineColor === "url(#rainbow)" ? 8 : marriageOutlineColor ? 4 : 2}"/>`,
                 text("CASAMENTO", 622, 477, 14, "#9da8bd", 700),
-                `<circle cx="660" cy="526" r="42" fill="${marriageTheme?.stops[2] || "#0e1422"}" stroke="${marriageTheme?.accent || "#e9a8c6"}" stroke-width="3"/>`,
+                `<circle cx="660" cy="526" r="42" fill="${marriageTheme?.stops[2] || "#0e1422"}" ${partnerCircle ? `stroke="${partnerCircle.rainbow ? "url(#rainbow)" : partnerCircle.color}" stroke-width="3"` : 'stroke="none" stroke-width="0"'}/>`,
                 text(fitCoupleName(currentMarriage.partnerName, 22), 716, 530, 19, "#f5f7fb", 800),
                 text(marriageDetail, 716, 557, 12, "#b8c3d9")
             ].join("")
@@ -207,7 +297,7 @@ async function renderProfile(message) {
     if (avatarBuffer) composites.push({ input: avatarBuffer, left: 70, top: 102 });
     if (partnerAvatarBuffer) composites.push({ input: partnerAvatarBuffer, left: 622, top: 488 });
     if (multiPartnerAvatars.length) {
-        const visibleAvatars = multiPartnerAvatars.filter(Boolean);
+        const visibleAvatars = multiPartnerAvatars.filter(item => item.avatar);
         const hasMoreRelationships = marriages.length > 3;
         const itemCount = visibleAvatars.length + (hasMoreRelationships ? 1 : 0);
         const avatarSize = 76;
@@ -216,27 +306,45 @@ async function renderProfile(message) {
         const startX = 600 + (530 - totalWidth) / 2;
         const avatarTop = 488;
         const frames = [];
-        visibleAvatars.forEach((avatar, index) => {
+        visibleAvatars.forEach(({ avatar, circle, effect }, index) => {
             const left = startX + index * (avatarSize + gap);
             composites.push({ input: avatar, left, top: avatarTop });
-            frames.push(`<circle cx="${left + avatarSize / 2}" cy="${avatarTop + avatarSize / 2}" r="38" fill="none" stroke="#e9a8c6" stroke-width="3"/>`);
+            if (circle) frames.push(profileCircleFrame(left + avatarSize / 2, avatarTop + avatarSize / 2, 38, circle, circle.rainbow ? 7 : 3));
+            if (effect?.snowflakes) {
+                frames.push(`<text x="${left + avatarSize / 2}" y="${avatarTop + 8}" fill="#eaf7ff" font-size="12" opacity=".16" text-anchor="middle">❄</text>`);
+            }
         });
         if (hasMoreRelationships) {
             const left = startX + visibleAvatars.length * (avatarSize + gap);
-            frames.push(`<circle cx="${left + avatarSize / 2}" cy="${avatarTop + avatarSize / 2}" r="38" fill="#352338" stroke="#e9a8c6" stroke-width="3"/>`);
+            frames.push(`<circle cx="${left + avatarSize / 2}" cy="${avatarTop + avatarSize / 2}" r="38" fill="#352338" stroke="none" stroke-width="0"/>`);
             frames.push(text("+", left + avatarSize / 2, avatarTop + 50, 36, "#fff3f8", 800, "middle"));
         }
         composites.push({
             input: Buffer.from(`<svg width="1200" height="650" xmlns="http://www.w3.org/2000/svg">${frames.join("")}</svg>`)
         });
     }
-    if (avatarBuffer) {
-        const avatarStroke = outlineColor || backgroundTheme?.accent || "#334566";
-        const avatarStrokeWidth = outlineColor === "url(#rainbow)" ? 7 : 3;
+    if (avatarBuffer && profileCircle) {
         composites.push({
-            input: Buffer.from(`<svg width="1200" height="650" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="rainbow"><stop offset="0" stop-color="#ff1744"/><stop offset=".17" stop-color="#ff9100"/><stop offset=".34" stop-color="#ffea00"/><stop offset=".51" stop-color="#00e676"/><stop offset=".68" stop-color="#00b0ff"/><stop offset=".85" stop-color="#651fff"/><stop offset="1" stop-color="#ff1744"/></linearGradient></defs><circle cx="118" cy="150" r="50" fill="none" stroke="${avatarStroke}" stroke-width="${avatarStrokeWidth}"/></svg>`)
+            input: Buffer.from(`<svg width="1200" height="650" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="rainbow"><stop offset="0" stop-color="#ff1744"/><stop offset=".17" stop-color="#ff9100"/><stop offset=".34" stop-color="#ffea00"/><stop offset=".51" stop-color="#00e676"/><stop offset=".68" stop-color="#00b0ff"/><stop offset=".85" stop-color="#651fff"/><stop offset="1" stop-color="#ff1744"/></linearGradient></defs>${profileCircleFrame(118, 150, 50, profileCircle, profileCircle.rainbow ? 7 : 3)}</svg>`)
         });
     }
+    if (partnerAvatarBuffer && partnerCircle) {
+        composites.push({
+            input: Buffer.from(`<svg width="1200" height="650" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="rainbow"><stop offset="0" stop-color="#ff1744"/><stop offset=".17" stop-color="#ff9100"/><stop offset=".34" stop-color="#00e676"/><stop offset=".51" stop-color="#00b0ff"/><stop offset=".68" stop-color="#ffea00"/><stop offset=".85" stop-color="#651fff"/><stop offset="1" stop-color="#ff1744"/></linearGradient></defs>${profileCircleFrame(660, 526, 40, partnerCircle, partnerCircle.rainbow ? 7 : 3)}</svg>`)
+        });
+    }
+    if (partnerEffect?.snowflakes) {
+        composites.push({
+            input: Buffer.from('<svg width="1200" height="650" xmlns="http://www.w3.org/2000/svg"><text x="690" y="483" fill="#eaf7ff" font-size="16" opacity=".16">❄</text><text x="632" y="565" fill="#eaf7ff" font-size="16" opacity=".16">❄</text></svg>')
+        });
+    }
+    if (marriageOutline?.frozen) {
+        composites.push({
+            input: Buffer.from('<svg width="1200" height="650" xmlns="http://www.w3.org/2000/svg"><text x="700" y="458" fill="#eaf7ff" font-size="16">❄</text><text x="800" y="458" fill="#eaf7ff" font-size="16">❄</text><text x="900" y="458" fill="#eaf7ff" font-size="16">❄</text><text x="1000" y="458" fill="#eaf7ff" font-size="16">❄</text><text x="700" y="572" fill="#eaf7ff" font-size="16">❄</text><text x="800" y="572" fill="#eaf7ff" font-size="16">❄</text><text x="900" y="572" fill="#eaf7ff" font-size="16">❄</text><text x="1000" y="572" fill="#eaf7ff" font-size="16">❄</text></svg>')
+        });
+    }
+    if (profileOutline?.frozen) composites.push({ input: Buffer.from(frozenProfileLinesOverlay()) });
+    if (profileEffect?.snowflakes) composites.push({ input: Buffer.from(snowflakeOverlay(1200, 650)) });
     if (composites.length) image.composite(composites);
     return {
         buffer: await image.png().toBuffer(),
@@ -253,7 +361,7 @@ async function renderProfileBackgroundPreview(backgroundKey) {
         text("PRÉVIA DO FUNDO", 105, 270, 16, background.accent, 800),
         text("Seu perfil com este visual", 105, 323, 30, "#f5f7fb", 800),
         `<rect x="105" y="355" width="990" height="150" rx="18" fill="${background.stops[1]}" stroke="${background.accent}" stroke-opacity=".55"/>`,
-        `<circle cx="170" cy="430" r="36" fill="${background.stops[0]}" stroke="${background.accent}" stroke-width="3"/>`,
+        `<circle cx="170" cy="430" r="36" fill="${background.stops[0]}" stroke="none" stroke-width="0"/>`,
         text("U", 170, 439, 25, "#f5f7fb", 800, "middle"),
         text("Seu nome", 230, 415, 22, "#f5f7fb", 800),
         text("Destaques e cartões usam esta paleta", 230, 449, 16, "#b8c3d9"),
@@ -289,17 +397,69 @@ async function renderProfileOutlinePreview(outlineKey) {
         card(105, 365, 470, "PATRIMÔNIO", "1 000,00💷", "Carteira e cofre", "#8ff0bf", null, outlineColor),
         card(625, 365, 470, "EXPERIÊNCIA", "Nível 10", "Seu nível atual", "#f5f7fb", null, outlineColor)
     ].join("");
-    const buffer = await sharp(Buffer.from(baseSvg(
+    const image = sharp(Buffer.from(baseSvg(
         1200,
         650,
         `Outline ${outline.label}`,
         "Prévia do contorno das bolhas • não altera seu perfil",
         body
-    ))).png().toBuffer();
+    )));
+    if (outline.frozen) image.composite([{ input: Buffer.from(frozenOutlinePreviewOverlay(outline.color)) }]);
+    const buffer = await image.png().toBuffer();
 
     return {
         buffer,
         caption: `🖍️ Prévia do outline ${outline.label} aplicado aos contornos das bolhas do perfil.`
+    };
+}
+
+async function renderProfileCirclePreview(circleKey) {
+    const circle = profileCosmetics.getProfileCircle(circleKey);
+    if (!circle) return { error: "Círculo de perfil inválido." };
+    const body = [
+        `<rect x="70" y="215" width="1060" height="340" rx="24" fill="#111827" stroke="#334366" stroke-width="2"/>`,
+        text("PRÉVIA DO CÍRCULO DE PERFIL", 105, 270, 16, circle.rainbow ? "#ff70cf" : circle.color, 800),
+        `<circle cx="600" cy="405" r="95" fill="#202a40" stroke="none" stroke-width="0"/>`,
+        profileCircleFrame(600, 405, 95, circle, circle.rainbow ? 10 : 8),
+        text("U", 600, 425, 58, "#f5f7fb", 800, "middle"),
+        text(circle.label, 600, 535, 22, "#f5f7fb", 800, "middle")
+    ].join("");
+    const image = sharp(Buffer.from(baseSvg(
+        1200,
+        650,
+        `Círculo ${circle.label}`,
+        "Prévia do contorno da foto de perfil • não altera seu perfil",
+        body
+    )));
+    const buffer = await image.png().toBuffer();
+    return {
+        buffer,
+        caption: `⭕ Prévia do círculo ${circle.label} aplicado à foto de perfil.`
+    };
+}
+
+async function renderProfileEffectPreview(effectKey) {
+    const effect = profileCosmetics.getProfileEffect(effectKey);
+    if (!effect) return { error: "Efeito de perfil inválido." };
+    const body = [
+        `<rect x="70" y="215" width="1060" height="340" rx="24" fill="#111827" stroke="#334366" stroke-width="2"/>`,
+        text("PRÉVIA DO EFEITO DE PERFIL", 105, 270, 16, "#c8efff", 800),
+        text("Flocos translúcidos em todo o perfil", 105, 323, 30, "#f5f7fb", 800),
+        card(105, 365, 470, "PATRIMÔNIO", "1 000,00💷", "Carteira e cofre"),
+        card(625, 365, 470, "EXPERIÊNCIA", "Nível 10", "Seu nível atual")
+    ].join("");
+    const image = sharp(Buffer.from(baseSvg(
+        1200,
+        650,
+        `Efeito ${effect.label}`,
+        "Prévia do efeito • não altera seu perfil",
+        body
+    )));
+    image.composite([{ input: Buffer.from(snowflakeOverlay(1200, 650, 78, 0.12)) }]);
+    const buffer = await image.png().toBuffer();
+    return {
+        buffer,
+        caption: `❄️ Prévia do efeito ${effect.label}, com flocos translúcidos sobre o perfil.`
     };
 }
 
@@ -320,7 +480,15 @@ async function renderMarriageBanner(message, currentMarriage = marriage.getMarri
         return {
             name: resolveCoupleDisplayName(person.name, profile?.name, index),
             avatar: await loadCoupleAvatar(profile?.avatarUrl, person.id),
-            background: economy.getProfileCosmetics(message, person.id).background
+            ...(() => {
+                const cosmetics = economy.getProfileCosmetics(message, person.id);
+                return {
+                    background: cosmetics.background,
+                    circle: profileCosmetics.getProfileCircle(cosmetics.circle),
+                    outline: profileCosmetics.getProfileOutline(cosmetics.outline),
+                    effect: profileCosmetics.getProfileEffect(cosmetics.effect)
+                };
+            })()
         };
     }));
 
@@ -346,15 +514,18 @@ async function renderMarriageBanner(message, currentMarriage = marriage.getMarri
 <defs>
   <linearGradient id="wedding-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${leftStops[0]}"/><stop offset=".5" stop-color="${leftStops[1]}"/><stop offset=".5001" stop-color="${rightStops[1]}"/><stop offset="1" stop-color="${rightStops[2]}"/></linearGradient>
   <radialGradient id="wedding-glow"><stop offset="0" stop-color="${weddingGlow}" stop-opacity=".32"/><stop offset="1" stop-color="${weddingGlow}" stop-opacity="0"/></radialGradient>
+  <linearGradient id="wedding-rainbow"><stop offset="0" stop-color="#ff1744"/><stop offset=".17" stop-color="#ff9100"/><stop offset=".34" stop-color="#ffea00"/><stop offset=".51" stop-color="#00e676"/><stop offset=".68" stop-color="#00b0ff"/><stop offset=".85" stop-color="#651fff"/><stop offset="1" stop-color="#ff1744"/></linearGradient>
 </defs>
 <rect width="1200" height="680" fill="url(#wedding-bg)"/>
 <circle cx="190" cy="250" r="280" fill="url(#wedding-glow)"/><circle cx="1010" cy="360" r="300" fill="url(#wedding-glow)"/>
-<rect x="28" y="28" width="1144" height="624" rx="34" fill="#111521cc" stroke="#79516d" stroke-width="2"/>
+<rect x="28" y="28" width="1144" height="624" rx="34" fill="#111521cc" stroke="${people.some(person => person.outline?.frozen) ? "#c8efff" : "#79516d"}" stroke-width="${people.some(person => person.outline?.frozen) ? 4 : 2}"/>
 ${text(botName, 600, 76, 20, "#e4a9c6", 800, "middle")}
 ${text("CASAMENTO", 600, 130, 38, "#fff2f8", 800, "middle")}
 ${text(subtitle, 600, 166, 18, "#d1b1c4", 400, "middle")}
-<circle cx="300" cy="310" r="119" fill="#352338" stroke="#e9a8c6" stroke-width="6"/>
-<circle cx="900" cy="310" r="119" fill="#352338" stroke="#e9a8c6" stroke-width="6"/>
+<circle cx="300" cy="310" r="119" fill="#352338" ${people[0].circle ? `stroke="${people[0].circle.rainbow ? "url(#wedding-rainbow)" : people[0].circle.color}" stroke-width="6"` : 'stroke="none" stroke-width="0"'}/>
+<circle cx="900" cy="310" r="119" fill="#352338" ${people[1].circle ? `stroke="${people[1].circle.rainbow ? "url(#wedding-rainbow)" : people[1].circle.color}" stroke-width="6"` : 'stroke="none" stroke-width="0"'}/>
+${people[0].circle?.frozen ? `<text x="300" y="195" fill="#eaf7ff" font-size="24" text-anchor="middle">❄</text><text x="415" y="318" fill="#eaf7ff" font-size="24" text-anchor="middle">❄</text><text x="300" y="433" fill="#eaf7ff" font-size="24" text-anchor="middle">❄</text><text x="185" y="318" fill="#eaf7ff" font-size="24" text-anchor="middle">❄</text>` : ""}
+${people[1].circle?.frozen ? `<text x="900" y="195" fill="#eaf7ff" font-size="24" text-anchor="middle">❄</text><text x="1015" y="318" fill="#eaf7ff" font-size="24" text-anchor="middle">❄</text><text x="900" y="433" fill="#eaf7ff" font-size="24" text-anchor="middle">❄</text><text x="785" y="318" fill="#eaf7ff" font-size="24" text-anchor="middle">❄</text>` : ""}
 ${text(selfMarriage ? "♥" : "♡", 600, 326, 64, "#f08db7", 800, "middle")}
 ${text(fitCoupleName(people[0].name, 22), 300, 472, coupleNameFont(people[0].name, 42), "#fff3f8", 800, "middle")}
 ${text(selfMarriage ? "UMA ESCOLHA DE AMOR-PRÓPRIO" : "JUNTOS DESDE", 600, 469, 16, "#e6a8c4", 700, "middle")}
@@ -372,9 +543,9 @@ ${text(`${botName} • ${message.platform}`, 600, 628, 13, "#a8829a", 600, "midd
             top: 212
         } : null)
         .filter(Boolean);
-    composites.push({
-        input: Buffer.from(`<svg width="1200" height="680" xmlns="http://www.w3.org/2000/svg"><circle cx="300" cy="310" r="117" fill="none" stroke="#e9a8c6" stroke-width="6"/><circle cx="900" cy="310" r="117" fill="none" stroke="#e9a8c6" stroke-width="6"/></svg>`)
-    });
+    if (people.some(person => person.effect?.snowflakes)) {
+        composites.push({ input: Buffer.from(snowflakeOverlay(1200, 680, 105, 0.12)) });
+    }
 
     return {
         buffer: await sharp(Buffer.from(svg)).composite(composites).png().toBuffer(),
@@ -416,7 +587,9 @@ async function renderRanking(message, type, order = "rich") {
                 entry,
                 avatar: avatar ? await sharp(avatar).resize(136, 136).png().toBuffer() : null,
                 background: cosmetics.background,
-                outline: cosmetics.outline
+                outline: cosmetics.outline,
+                circle: cosmetics.circle,
+                effect: cosmetics.effect
             };
         }
 
@@ -432,7 +605,9 @@ async function renderRanking(message, type, order = "rich") {
             entry,
             avatar: avatar ? await sharp(avatar).resize(136, 136).png().toBuffer() : null,
             background: cosmetics.background,
-            outline: cosmetics.outline
+            outline: cosmetics.outline,
+            circle: cosmetics.circle,
+            effect: cosmetics.effect
         };
     }));
 
@@ -448,12 +623,14 @@ async function renderRanking(message, type, order = "rich") {
             : economy.getIncludeVaultInRanking(message)
                 ? "RANKING DE PATRIMÔNIO"
                 : "RANKING DE CARTEIRA";
-    const cardSvg = cards.map(({ entry, background, outline }, index) => {
+    const cardOverlays = [];
+    const cardSvg = cards.map(({ entry, background, outline, circle, effect }, index) => {
         const x = startX + index * (cardWidth + cardGap);
         const colors = ["#667c27", "#a9345c", "#9b4939", "#315d83", "#6d4c8d"];
         const color = colors[index];
         const theme = profileCosmetics.getProfileBackground(background);
         const profileOutline = profileCosmetics.getProfileOutline(outline);
+        const profileCircle = profileCosmetics.getProfileCircle(circle);
         const outlineColor = profileOutline?.rainbow ? "url(#rainbow)" : profileOutline?.color || color;
         const outlineWidth = profileOutline?.rainbow ? 8 : 4;
         const name = entry?.name || "Perfil não encontrado";
@@ -477,10 +654,10 @@ async function renderRanking(message, type, order = "rich") {
                     : isPoor
                         ? (entry.includesVault ? "MENOR PATRIMÔNIO TOTAL" : "MENOR SALDO DE CARTEIRA")
                         : (entry.includesVault ? "PATRIMÔNIO TOTAL" : "SALDO DE CARTEIRA");
-        return [
+        const cardMarkup = [
             `<rect x="${x}" y="${cardY}" width="${cardWidth}" height="${cardHeight}" rx="22" fill="${theme?.stops[1] || "#161b24"}" stroke="${outlineColor}" stroke-width="${outlineWidth}"/>`,
             `<path d="M${x + 2} ${cardY + 22} Q${x + 2} ${cardY + 2} ${x + 22} ${cardY + 2} H${x + cardWidth - 22} Q${x + cardWidth - 2} ${cardY + 2} ${x + cardWidth - 2} ${cardY + 22} V${cardY + 178} H${x + 2} Z" fill="${theme?.stops[0] || color}" opacity="0.76"/>`,
-            `<circle cx="${x + cardWidth / 2}" cy="${cardY + 91}" r="68" fill="#0c1018" stroke="#f4f1e9" stroke-width="4"/>`,
+            `<circle cx="${x + cardWidth / 2}" cy="${cardY + 91}" r="68" fill="#0c1018" stroke="none" stroke-width="0"/>`,
             text(entry ? position : `#${index + 1}`, x + 18, cardY + 220, 20, "#f4d66b", 800),
             text(clippedName, x + cardWidth / 2, cardY + 265, 20, "#f5f7fb", 800, "middle"),
             text(metric, x + cardWidth / 2, cardY + 327, 25, "#f5f7fb", 800, "middle"),
@@ -489,6 +666,24 @@ async function renderRanking(message, type, order = "rich") {
                 ? `<rect x="${x + cardWidth - 76}" y="${cardY + 16}" width="60" height="24" rx="12" fill="#f4d66b"/>${text("VOCÊ", x + cardWidth - 46, cardY + 33, 11, "#171a20", 800, "middle")}`
                 : ""
         ].join("");
+        if (profileCircle) {
+            cardOverlays.push(profileCircleFrame(x + cardWidth / 2, cardY + 91, 68, profileCircle, profileCircle.rainbow ? 8 : 4));
+        }
+        if (profileOutline?.frozen) {
+            cardOverlays.push(`<rect x="${x}" y="${cardY}" width="${cardWidth}" height="${cardHeight}" rx="22" fill="none" stroke="#83dfff" stroke-width="9" opacity=".34"/><rect x="${x}" y="${cardY}" width="${cardWidth}" height="${cardHeight}" rx="22" fill="none" stroke="#f5fcff" stroke-width="2" opacity=".88"/>`);
+            for (let mark = 1; mark <= 4; mark++) {
+                const markX = x + cardWidth * mark / 5;
+                cardOverlays.push(`<text x="${markX}" y="${cardY + 15}" fill="#f5fcff" font-size="14" text-anchor="middle">❄</text><text x="${markX}" y="${cardY + cardHeight - 3}" fill="#f5fcff" font-size="14" text-anchor="middle">❄</text>`);
+            }
+            for (let mark = 1; mark <= 3; mark++) {
+                const markY = cardY + cardHeight * mark / 4;
+                cardOverlays.push(`<text x="${x + 10}" y="${markY + 5}" fill="#f5fcff" font-size="14" text-anchor="middle">❄</text><text x="${x + cardWidth - 10}" y="${markY + 5}" fill="#f5fcff" font-size="14" text-anchor="middle">❄</text>`);
+            }
+        }
+        if (effect === "congelado") {
+            cardOverlays.push(`<text x="${x + 35}" y="${cardY + 130}" fill="#eaf7ff" font-size="18" opacity=".16">❄</text><text x="${x + cardWidth - 35}" y="${cardY + 180}" fill="#eaf7ff" font-size="18" opacity=".16">❄</text><text x="${x + 35}" y="${cardY + 260}" fill="#eaf7ff" font-size="18" opacity=".16">❄</text><text x="${x + cardWidth - 35}" y="${cardY + 350}" fill="#eaf7ff" font-size="18" opacity=".16">❄</text>`);
+        }
+        return cardMarkup;
     }).join("");
     const body = [
         `<rect x="35" y="180" width="1330" height="470" rx="28" fill="#0b0e14" stroke="#343b48" stroke-width="2"/>`,
@@ -501,6 +696,11 @@ async function renderRanking(message, type, order = "rich") {
             top: cardY + 23
         } : null)
         .filter(Boolean);
+    if (cardOverlays.length) {
+        composites.push({
+            input: Buffer.from(`<svg width="1400" height="700" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="rainbow"><stop offset="0" stop-color="#ff1744"/><stop offset=".17" stop-color="#ff9100"/><stop offset=".34" stop-color="#ffea00"/><stop offset=".51" stop-color="#00e676"/><stop offset=".68" stop-color="#00b0ff"/><stop offset=".85" stop-color="#651fff"/><stop offset="1" stop-color="#ff1744"/></linearGradient></defs>${cardOverlays.join("")}</svg>`)
+        });
+    }
     const image = sharp(Buffer.from(baseSvg(
         1400,
         700,
@@ -531,6 +731,8 @@ function getRequesterRankingEntry(message, type) {
             position: index >= 0 ? index + 1 : "—",
             background: cosmetics.background,
             outline: cosmetics.outline,
+            circle: cosmetics.circle,
+            effect: cosmetics.effect,
             isRequester: true
         };
     }
@@ -548,6 +750,8 @@ function getRequesterRankingEntry(message, type) {
             position: index >= 0 ? index + 1 : "—",
             background: cosmetics.background,
             outline: cosmetics.outline,
+            circle: cosmetics.circle,
+            effect: cosmetics.effect,
             isRequester: true
         };
     }
@@ -566,6 +770,8 @@ function getRequesterRankingEntry(message, type) {
         position: economy.getBalancePosition(message, userId) || "—",
         background: cosmetics.background,
         outline: cosmetics.outline,
+        circle: cosmetics.circle,
+        effect: cosmetics.effect,
         isRequester: true
     };
 }
@@ -851,6 +1057,8 @@ module.exports = {
     renderProfile,
     renderProfileBackgroundPreview,
     renderProfileOutlinePreview,
+    renderProfileCirclePreview,
+    renderProfileEffectPreview,
     renderRanking,
     renderCoupleTest,
     renderMarriageBanner,

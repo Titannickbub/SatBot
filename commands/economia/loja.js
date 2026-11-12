@@ -47,7 +47,7 @@ O bot lista todos os resets (trabalho, pesca, mineração, roubo, cassino) e ite
             "⏳ Resets só podem ser comprados quando o limite correspondente acabar.",
             "🔄 O reset todos exige que trabalho, pesca, mineração e roubo estejam no limite.",
             "🛡️ O escudo exige saldo mínimo de 500,00💷 e só pode ser comprado sem outro escudo ativo.",
-            `🎨 Cosméticos: personalize o fundo do perfil com ${prefix}cosmeticos fundo. Cada cor custa ${economy.formatMoney(economy.PROFILE_BACKGROUND_PRICE)}.`
+            `🎨 Cosméticos de perfil: consulte fundos, outlines, círculos e efeitos com ${prefix}cosmeticos.`
         ];
 
         if (message.platform === "discord") {

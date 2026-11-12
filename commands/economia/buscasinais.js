@@ -126,6 +126,7 @@ function replyHelp(message, prefix) {
         `• Especializada: ${economy.formatMoney(specialized.price)} por busca`,
         "  Sorteia SatCoins, resets da Loja do Bot ou cosméticos",
         `  Prêmio épico garantido em até ${specialized.pullsUntilEpic} busca(s)`,
+        "  Destaque: Pacote Congelado Azul; não comprável e repetido rende 250,00 SatCoins",
         `• Local: ${economy.formatMoney(local.price)} por busca · ${local.enabled ? "ativa" : "desativada"}`,
         "  Prêmios, chances e garantias personalizados pelos administradores deste grupo/servidor",
         ...(localGuarantees.length ? [`  Garantias: ${localGuarantees.join("; ")}`] : []),
@@ -137,6 +138,7 @@ function replyHelp(message, prefix) {
         "🔟 Faça dez buscas de uma vez acrescentando x10; o custo é dez vezes o valor unitário.",
         "📌 O pagamento sai da carteira, nunca do cofre. As garantias são independentes por modalidade.",
         "Cosméticos repetidos e resets indisponíveis são convertidos em 50% do preço da loja.",
+        "Pacote Congelado Azul repetido rende 250,00 SatCoins.",
         "",
         "Exemplos (1 busca):",
         `${prefix}buscasinais recruta`,
@@ -202,6 +204,8 @@ function getPrizeCatalogSection(level, state, local) {
         const epicResets = economy.getStoreItems()
             .filter(item => item.rarity === economy.ITEM_RARITY.EPIC && !item.product);
         const epicCosmetics = getCosmeticPrizeNames(economy.ITEM_RARITY.EPIC);
+        const bundleNames = Object.values(economy.SIGNAL_SEARCH_BUNDLES)
+            .map(bundle => `${bundle.label} (${bundle.contentsLabel}; repetido: ${economy.formatMoney(bundle.duplicateReward)})`);
         const cosmeticGroups = getCosmeticPrizeGroups();
         return [
             "🛡️ ESPECIALIZADA",
@@ -217,10 +221,11 @@ function getPrizeCatalogSection(level, state, local) {
             "🎨 Cosméticos possíveis:",
             ...formatWrappedNames("🖼️ Fundos:", cosmeticGroups.backgrounds.map(name => `🖼️ ${name}`)),
             ...formatWrappedNames("🖍️ Outlines:", cosmeticGroups.outlines.map(name => `🖍️ ${name}`)),
+            ...formatWrappedNames("📦 Pacotes:", bundleNames),
             "",
             ...formatWrappedNames(
                 `✨ Garantia épica (até ${state.levels.especializada.pullsUntilEpic} buscas):`,
-                [...epicResets.map(formatResetPrize), ...epicCosmetics]
+                [...epicResets.map(formatResetPrize), ...epicCosmetics, ...bundleNames]
             )
         ];
     }
@@ -364,7 +369,7 @@ function formatPrizeCatalogBody(body, platform) {
 }
 
 function isPrizeCatalogHeading(line) {
-    return /^(?:👤 RECRUTA|🛡️ ESPECIALIZADA|🏠 BUSCA LOCAL|💸 Custo:|🎲 Chances por busca:|🎲 Prêmios e chances|🔄 Resets possíveis:|🎨 Cosméticos possíveis:|🖼️ Fundos:|🖍️ Outlines:|✨ Prêmio épico|✨ Garantia épica|🛡️ Garantias:|⭐ |🛡️ Garantia em|🎁 Prêmios:|⚠️ Nenhum prêmio)/.test(line);
+    return /^(?:👤 RECRUTA|🛡️ ESPECIALIZADA|🏠 BUSCA LOCAL|💸 Custo:|🎲 Chances por busca:|🎲 Prêmios e chances|🔄 Resets possíveis:|🎨 Cosméticos possíveis:|🖼️ Fundos:|🖍️ Outlines:|📦 Pacotes:|✨ Prêmio épico|✨ Garantia épica|🛡️ Garantias:|⭐ |🛡️ Garantia em|🎁 Prêmios:|⚠️ Nenhum prêmio)/.test(line);
 }
 
 function escapeMarkdown(value) {
@@ -382,7 +387,10 @@ function rewardLine(reward, index, isLocal = false) {
                 ? " · GARANTIA RESET DE TRABALHO"
                 : "";
     if (reward.type === "money") {
-        return `${position}💰 ${reward.name}: ${economy.formatMoney(reward.amount)}${rarity}${reward.converted ? " · conversão de item (50%)" : ""}${guarantee}`;
+        const conversion = reward.duplicateBundle
+            ? " · repetição do pacote"
+            : reward.converted ? " · conversão de item (50%)" : "";
+        return `${position}💰 ${reward.name}: ${economy.formatMoney(reward.amount)}${rarity}${conversion}${guarantee}`;
     }
     if (reward.type === "reset") {
         const emoji = reward.itemKey === "shield"
@@ -392,6 +400,9 @@ function rewardLine(reward, index, isLocal = false) {
     }
     if (reward.type === "market") {
         return `${position}🛍️ ${reward.name} adicionado aos pedidos da Loja Local${rarity}${guarantee}`;
+    }
+    if (reward.type === "bundle") {
+        return `${position}📦 ${reward.name} adicionado à coleção (${reward.contentsLabel})${rarity}${guarantee}`;
     }
     const cosmeticEmoji = reward.cosmeticType === "outline" ? "🖍️" : "🖼️";
     return `${position}${cosmeticEmoji} ${reward.name} adicionado à coleção${rarity}${guarantee}`;
@@ -420,6 +431,7 @@ async function replyHighlights(message) {
 }
 
 function highlightsCaption(platform, prefix, localPrice) {
+    const highlights = "Destaques: Resetar todos na Recruta e Pacote Congelado Azul na Especializada (não comprável; repetido rende 250,00 SatCoins).";
     const examples = [
         [`${prefix}buscasinais recruta`, economy.SIGNAL_SEARCH_LEVELS.recruta.price],
         [`${prefix}buscasinais especializada`, economy.SIGNAL_SEARCH_LEVELS.especializada.price],
@@ -446,7 +458,7 @@ function highlightsCaption(platform, prefix, localPrice) {
     if (platform === "telegram") {
         return [
             "<b>✦ Busca de Sinais</b>",
-            "Recruta sorteia dinheiro ou resets; Especializada também pode dar cosméticos; a Local tem prêmios definidos pelos administradores.",
+            highlights + " Recruta sorteia dinheiro ou resets; Especializada também pode dar cosméticos; a Local tem prêmios definidos pelos administradores.",
             "",
             ...infoCommands,
             "",
@@ -457,7 +469,7 @@ function highlightsCaption(platform, prefix, localPrice) {
     if (platform === "discord") {
         return [
             "## ✦ Busca de Sinais",
-            "Recruta sorteia dinheiro ou resets; Especializada também pode dar cosméticos; a Local tem prêmios definidos pelos administradores.",
+            highlights + " Recruta sorteia dinheiro ou resets; Especializada também pode dar cosméticos; a Local tem prêmios definidos pelos administradores.",
             "",
             ...infoCommands,
             "",
@@ -467,7 +479,7 @@ function highlightsCaption(platform, prefix, localPrice) {
     }
     return [
         "*✦ Busca de Sinais*",
-        "Recruta sorteia dinheiro ou resets; Especializada também pode dar cosméticos; a Local tem prêmios definidos pelos administradores.",
+        highlights + " Recruta sorteia dinheiro ou resets; Especializada também pode dar cosméticos; a Local tem prêmios definidos pelos administradores.",
         "",
         ...infoCommands,
         "",

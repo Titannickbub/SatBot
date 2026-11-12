@@ -1,5 +1,6 @@
 const economy = require("../../functions/economy");
 const imageBanner = require("../../functions/imageBanner");
+const profileCosmetics = require("../../functions/profileCosmetics");
 
 const RARITY_LABELS = {
     [economy.ITEM_RARITY.COMMON]: "Comum",
@@ -13,7 +14,7 @@ module.exports = {
     name: "cosmeticos",
     aliases: ["cosmético", "cosmetico", "cosméticos", "cosmetics"],
     category: "economia",
-    description: "Consulte e equipe fundos e contornos cosméticos no seu perfil.",
+    description: "Consulte e equipe fundos, outlines, círculos e efeitos cosméticos no seu perfil.",
     usage: "{prefix}cosmeticos help",
 
     async execute(message) {
@@ -36,6 +37,8 @@ module.exports = {
         const currentOutline = state.outline
             ? economy.PROFILE_OUTLINES[state.outline].label
             : "Padrão (acompanha o fundo)";
+        const currentCircle = state.circle ? economy.PROFILE_CIRCLES[state.circle].label : "Nenhum";
+        const currentEffect = state.effect ? economy.PROFILE_EFFECTS[state.effect].label : "Nenhum";
 
         if (normalizedAction === "previa" || normalizedAction === "preview") {
             const type = cosmeticType(category);
@@ -44,91 +47,106 @@ module.exports = {
                     text: `❌ Uso: ${prefix}cosmeticos previa fundo|linha <cor>`
                 });
             }
-            const key = normalizeCommand(colorArgument);
-            const items = type === "background" ? economy.PROFILE_BACKGROUNDS : economy.PROFILE_OUTLINES;
-            const item = items[key];
+            const resolvers = {
+                background: profileCosmetics.resolveProfileBackground,
+                outline: profileCosmetics.resolveProfileOutline,
+                circle: profileCosmetics.resolveProfileCircle,
+                effect: profileCosmetics.resolveProfileEffect
+            };
+            const item = resolvers[type](colorArgument);
             if (!item) {
                 return message.reply({
-                    text: `❌ Cor inválida. Use ${prefix}cosmeticos ${type === "background" ? "fundo" : "linha"} para consultar as opções.`
+                    text: `❌ Opção inválida. Use ${prefix}cosmeticos ${categoryName(type)} para consultar as opções.`
                 });
             }
-            return sendPreview(message, { ...item, key }, prefix, type, false);
+            return sendPreview(message, item, prefix, type, false);
         }
 
         if (!normalizedAction) {
-            return replyMenu(message, currentBackground, currentOutline, prefix);
+            return replyMenu(message, currentBackground, currentOutline, currentCircle, currentEffect, prefix);
         }
 
         const type = cosmeticType(normalizedAction);
         if (!type) {
             return message.reply({
-                text: `❌ Use ${prefix}cosmeticos para abrir a loja, ${prefix}cosmeticos fundo para fundos ou ${prefix}cosmeticos linha para outlines.`
+                text: `❌ Use ${prefix}cosmeticos para abrir a loja, ${prefix}cosmeticos fundo, linha, circulo ou efeito para consultar as categorias.`
             });
         }
 
         if (!category) {
-            return replyCosmeticCatalog(message, state, type, currentBackground, currentOutline, prefix);
+            return replyCosmeticCatalog(message, state, type, currentBackground, currentOutline, currentCircle, currentEffect, prefix);
         }
 
         const key = normalizeCommand(category);
         if (["padrao", "original", "default", "resetar"].includes(key)) {
-            const result = type === "background"
-                ? economy.resetProfileBackground(message)
-                : economy.resetProfileOutline(message);
+            const resetters = {
+                background: economy.resetProfileBackground,
+                outline: economy.resetProfileOutline,
+                circle: economy.resetProfileCircle,
+                effect: economy.resetProfileEffect
+            };
+            const result = resetters[type](message);
             return message.reply({
                 text: result.changed
-                    ? type === "background"
-                        ? "✅ Fundo original restaurado. Suas cores compradas continuam disponíveis."
-                        : "✅ Outline padrão restaurado; ele acompanha a cor do fundo atual. Suas cores compradas continuam disponíveis."
-                    : type === "background"
-                        ? "ℹ️ Seu perfil já está usando o fundo original."
-                        : "ℹ️ O outline já está acompanhando a cor do fundo."
+                    ? type === "outline"
+                        ? "✅ Outline padrão restaurado; ele acompanha a cor do fundo. Seus outlines comprados continuam disponíveis."
+                        : `✅ ${typeLabel(type)} removido. Os cosméticos comprados continuam disponíveis.`
+                    : type === "outline"
+                        ? "ℹ️ O outline já acompanha a cor do fundo."
+                        : `ℹ️ Você já está sem ${typeLabel(type).toLowerCase()}.`
             });
         }
 
-        const items = type === "background" ? economy.PROFILE_BACKGROUNDS : economy.PROFILE_OUTLINES;
+        const items = itemsForType(type);
         const item = items[key];
         if (!item) {
             return message.reply({
-                text: `❌ Opção inválida. Use ${prefix}cosmeticos ${type === "background" ? "fundo" : "linha"} para consultar as opções.`
+                text: `❌ Opção inválida. Use ${prefix}cosmeticos ${categoryName(type)} para consultar as opções.`
             });
         }
         const freshState = economy.getProfileCosmetics(message);
-        const owned = type === "background" ? freshState.ownedBackgrounds : freshState.ownedOutlines;
+        const owned = ownedForType(freshState, type);
         if (!owned.includes(key)) {
             return message.reply({
-                text: `🎨 Você ainda não possui ${type === "background" ? "o fundo" : "o outline"} ${item.label}.\nPara comprar, use ${prefix}comprar ${item.id} ou ${prefix}comprar ${type === "background" ? "fundo" : "linha"} ${key}.\nPara ver a prévia, use ${prefix}cosmeticos previa ${type === "background" ? "fundo" : "linha"} ${key}.`
+                text: `🎨 Você ainda não possui ${typeLabel(type).toLowerCase()} ${item.label}.\nPara comprar, use ${prefix}comprar ${item.id} ou ${prefix}comprar ${categoryName(type)} ${key}.\nPara ver a prévia, use ${prefix}cosmeticos previa ${categoryName(type)} ${key}.`
             });
         }
 
-        const result = type === "background"
-            ? economy.setProfileBackground(message, key)
-            : economy.setProfileOutline(message, key);
+        const setters = {
+            background: economy.setProfileBackground,
+            outline: economy.setProfileOutline,
+            circle: economy.setProfileCircle,
+            effect: economy.setProfileEffect
+        };
+        const result = setters[type](message, key);
         if (!result.purchased) {
             return message.reply({
                 text: "❌ Não foi possível aplicar esse cosmético. Tente novamente."
             });
         }
         return message.reply({
-            text: type === "background" ? `✅ Fundo ${item.label} aplicado.` : `✅ Outline ${item.label} aplicado às bolhas do perfil.`
+            text: `✅ ${typeLabel(type)} ${item.label} aplicado.`
         });
     }
 };
 
 async function sendPreview(message, item, prefix, type, includePurchaseInfo) {
     try {
-        const result = type === "background"
-            ? await imageBanner.renderProfileBackgroundPreview(item.key)
-            : await imageBanner.renderProfileOutlinePreview(item.key);
+        const renderers = {
+            background: imageBanner.renderProfileBackgroundPreview,
+            outline: imageBanner.renderProfileOutlinePreview,
+            circle: imageBanner.renderProfileCirclePreview,
+            effect: imageBanner.renderProfileEffectPreview
+        };
+        const result = await renderers[type](item.key);
         if (result.error) return message.reply({ text: `❌ ${result.error}` });
-        const category = type === "background" ? "fundo" : "linha";
         const purchaseInfo = includePurchaseInfo
-            ? `\n\n💳 Para comprar: ${prefix}comprar ${item.id} ou ${prefix}comprar ${category} ${item.key}.\nPreço: ${economy.formatMoney(type === "background" ? economy.getProfileBackgroundPrice(item.key) : economy.getProfileOutlinePrice(item.key))}.${cosmeticIsOwned(message, item.key, type) ? " Você já possui este cosmético; comprá-lo novamente apenas o equipa, sem cobrança." : ""}`
+            ? `\n\n💳 Para comprar: ${prefix}comprar ${item.id} ou ${prefix}comprar ${categoryName(type)} ${item.key}.\nPreço: ${economy.formatMoney(priceForType(type, item.key))}.${cosmeticIsOwned(message, item.key, type) ? " Você já possui este cosmético; comprá-lo novamente apenas o equipa, sem cobrança." : ""}`
             : "";
         return message.replyImg({
             image: result.buffer,
             caption: `${result.caption}${purchaseInfo}`,
-            fileName: `previa-${category}-${item.key}.png`
+            fileName: `previa-${categoryName(type)}-${item.key}.png`
         });
     } catch (error) {
         console.error("[COSMETICOS] Não foi possível gerar a prévia do cosmético:", error.message || error);
@@ -138,15 +156,17 @@ async function sendPreview(message, item, prefix, type, includePurchaseInfo) {
 
 function cosmeticIsOwned(message, key, type) {
     const state = economy.getProfileCosmetics(message);
-    return (type === "background" ? state.ownedBackgrounds : state.ownedOutlines).includes(key);
+    return ownedForType(state, type).includes(key);
 }
 
-function replyMenu(message, currentBackground, currentOutline, prefix) {
+function replyMenu(message, currentBackground, currentOutline, currentCircle, currentEffect, prefix) {
     const categoryLines = [
         `🎨 Fundos de perfil — ${prefix}cosmeticos fundo`,
-        `🖍️ Linha das bolhas — ${prefix}cosmeticos linha`
+        `🖍️ Outlines de perfil — ${prefix}cosmeticos linha`,
+        `⭕ Círculos de perfil — ${prefix}cosmeticos circulo`,
+        `❄️ Efeitos de perfil — ${prefix}cosmeticos efeito`
     ];
-    const currentLine = `Fundo: ${currentBackground}\nOutline das bolhas: ${currentOutline}`;
+    const currentLine = `Fundo: ${currentBackground}\nOutline: ${currentOutline}\nCírculo de perfil: ${currentCircle}\nEfeito de perfil: ${currentEffect}`;
     if (message.platform === "discord") {
         return message.reply({
             embed: {
@@ -185,44 +205,47 @@ function replyMenu(message, currentBackground, currentOutline, prefix) {
 function formatHelp(prefix) {
     return [
         "🎨 COSMÉTICOS DO PERFIL",
-        "Consulte fundos e a linha colorida das bolhas do perfil.",
+        "Consulte fundos, outlines, círculos e efeitos de perfil.",
         "",
         "Abra a loja e veja as opções:",
         `${prefix}cosmeticos`,
         `${prefix}cosmeticos fundo`,
         `${prefix}cosmeticos linha`,
+        `${prefix}cosmeticos circulo`,
+        `${prefix}cosmeticos efeito`,
         "",
-        "Veja a prévia de uma cor:",
-        `${prefix}cosmeticos previa fundo <cor>`,
-        `${prefix}cosmeticos previa linha <cor>`,
+        "Veja a prévia de um cosmético:",
+        `${prefix}cosmeticos previa fundo <id|cor>`,
+        `${prefix}cosmeticos previa linha <id|cor>`,
+        `${prefix}cosmeticos previa circulo <id|cor>`,
+        `${prefix}cosmeticos previa efeito <id|nome>`,
         "",
         "Equipe um cosmético que já possui:",
         `${prefix}cosmeticos fundo <cor>`,
         `${prefix}cosmeticos linha <cor>`,
-        "A linha pode acompanhar o fundo atual com:",
-        `${prefix}cosmeticos linha padrao`,
+        `${prefix}cosmeticos circulo <cor>`,
+        `${prefix}cosmeticos efeito congelado`,
+        "Use 'padrao' para remover o cosmético equipado, sem perder os itens comprados.",
         "",
         "Para comprar, use o ID na loja ou:",
         `${prefix}comprar fundo <cor>`,
         `${prefix}comprar linha <cor>`,
-        `Fundos tradicionais custam ${economy.formatMoney(economy.PROFILE_BACKGROUND_PRICE)} e linhas tradicionais ${economy.formatMoney(economy.PROFILE_OUTLINE_PRICE)}. RGB custa ${economy.formatMoney(economy.getProfileBackgroundPrice("rgb"))} para fundos e ${economy.formatMoney(economy.getProfileOutlinePrice("rgb"))} para linhas. Cosméticos comprados podem ser equipados novamente sem custo.`
+        `${prefix}comprar circulo <cor>`,
+        `${prefix}comprar efeito congelado`,
+        `Cosméticos comprados podem ser equipados novamente sem custo.`
     ].join("\n");
 }
 
-function replyCosmeticCatalog(message, state, type, currentBackground, currentOutline, prefix) {
-    const isBackground = type === "background";
-    const category = isBackground ? "fundo" : "linha";
-    const itemsByKey = isBackground ? economy.PROFILE_BACKGROUNDS : economy.PROFILE_OUTLINES;
-    const ownedItems = isBackground ? state.ownedBackgrounds : state.ownedOutlines;
-    const activeItem = isBackground ? state.background : state.outline;
+function replyCosmeticCatalog(message, state, type, currentBackground, currentOutline, currentCircle, currentEffect, prefix) {
+    const itemsByKey = itemsForType(type);
+    const ownedItems = ownedForType(state, type);
+    const activeItem = state[ type === "background" ? "background" : type === "outline" ? "outline" : type === "circle" ? "circle" : "effect" ];
     const groups = new Map();
     for (const [key, item] of Object.entries(itemsByKey)) {
         if (!groups.has(item.rarity)) groups.set(item.rarity, []);
         const selected = activeItem === key;
         const owned = ownedItems.includes(key);
-        const price = isBackground
-            ? economy.getProfileBackgroundPrice(key)
-            : economy.getProfileOutlinePrice(key);
+        const price = priceForType(type, key);
         const status = selected ? "em uso" : owned ? "comprado" : economy.formatMoney(price);
         groups.get(item.rarity).push(
             `${selected ? "✅" : owned ? "☑️" : "🎨"} ID ${item.id}. ${item.label} (${key}) — ${status}`
@@ -230,9 +253,14 @@ function replyCosmeticCatalog(message, state, type, currentBackground, currentOu
     }
 
     const lines = [
-        isBackground ? "🎨 FUNDOS DE PERFIL" : "🖍️ OUTLINES DAS BOLHAS DO PERFIL",
+        `${typeEmoji(type)} ${typeLabel(type).toUpperCase()}`,
         "━━━━━━━━━━━━━━━━━━━━━━",
-        isBackground ? `Fundo atual: ${currentBackground}` : `Outline atual: ${currentOutline}`,
+        `Em uso: ${{
+            background: currentBackground,
+            outline: currentOutline,
+            circle: currentCircle,
+            effect: currentEffect
+        }[type]}`,
         ...[...groups].flatMap(([rarity, items]) => [
             "",
             `Categoria: ${RARITY_LABELS[rarity] || rarity}`,
@@ -240,19 +268,19 @@ function replyCosmeticCatalog(message, state, type, currentBackground, currentOu
         ]),
         "",
         "Para ver a prévia e aplicar uma opção comprada:",
-        `${prefix}cosmeticos ${category} <cor>`,
-        `${prefix}cosmeticos previa ${category} <cor>`,
+        `${prefix}cosmeticos ${categoryName(type)} <item>`,
+        `${prefix}cosmeticos previa ${categoryName(type)} <id|item>`,
         "",
-        `Compre com ${prefix}comprar <id> ou ${prefix}comprar ${category} <cor>.`,
-        `As cores tradicionais custam ${economy.formatMoney(isBackground ? economy.PROFILE_BACKGROUND_PRICE : economy.PROFILE_OUTLINE_PRICE)}; RGB custa ${economy.formatMoney(isBackground ? economy.getProfileBackgroundPrice("rgb") : economy.getProfileOutlinePrice("rgb"))}. Opções compradas podem ser equipadas novamente sem custo.`,
-        isBackground ? "" : `Use ${prefix}cosmeticos linha padrao para acompanhar a cor do fundo atual.`
+        `Compre com ${prefix}comprar <id> ou ${prefix}comprar ${categoryName(type)} <item>.`,
+        `Itens épicos custam ${economy.formatMoney(economy.PROFILE_EFFECT_PRICE)}. Opções compradas podem ser equipadas novamente sem custo.`,
+        `${prefix}cosmeticos ${categoryName(type)} padrao — remover o item equipado.`
     ];
 
     if (message.platform === "discord") {
         return message.reply({
             embed: {
-                color: isBackground ? 0x8fb5ff : 0xf0a8c6,
-                title: isBackground ? "🎨 Fundos de perfil" : "🖍️ Outline das bolhas",
+                color: 0x8fb5ff,
+                title: `${typeEmoji(type)} ${typeLabel(type)}`,
                 description: lines.slice(2).join("\n")
             }
         });
@@ -270,7 +298,48 @@ function cosmeticType(value) {
     const normalized = normalizeCommand(value);
     if (["fundo", "fundos", "background", "backgrounds"].includes(normalized)) return "background";
     if (["linha", "linhas", "outline", "contorno", "contornos"].includes(normalized)) return "outline";
+    if (["circulo", "circulos", "anel", "aneis", "circle", "circles"].includes(normalized)) return "circle";
+    if (["efeito", "efeitos", "effect", "effects"].includes(normalized)) return "effect";
     return null;
+}
+
+function itemsForType(type) {
+    return {
+        background: economy.PROFILE_BACKGROUNDS,
+        outline: economy.PROFILE_OUTLINES,
+        circle: economy.PROFILE_CIRCLES,
+        effect: economy.PROFILE_EFFECTS
+    }[type];
+}
+
+function ownedForType(state, type) {
+    return {
+        background: state.ownedBackgrounds,
+        outline: state.ownedOutlines,
+        circle: state.ownedCircles,
+        effect: state.ownedEffects
+    }[type];
+}
+
+function priceForType(type, key) {
+    return {
+        background: economy.getProfileBackgroundPrice,
+        outline: economy.getProfileOutlinePrice,
+        circle: economy.getProfileCirclePrice,
+        effect: economy.getProfileEffectPrice
+    }[type](key);
+}
+
+function categoryName(type) {
+    return { background: "fundo", outline: "linha", circle: "circulo", effect: "efeito" }[type];
+}
+
+function typeLabel(type) {
+    return { background: "Fundo", outline: "Outline", circle: "Círculo de perfil", effect: "Efeito de perfil" }[type];
+}
+
+function typeEmoji(type) {
+    return { background: "🎨", outline: "🖍️", circle: "⭕", effect: "❄️" }[type];
 }
 
 function normalizeCommand(value) {

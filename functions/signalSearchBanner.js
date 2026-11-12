@@ -84,42 +84,44 @@ function finishBanner(content, footer, cosmetics) {
     return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
-function featuredCard({ x, name, id, price, accent, outline }) {
-    const frame = outline
-        ? `<rect x="${x + 25}" y="260" width="474" height="270" rx="22" fill="#151c2a" stroke="url(#rainbow)" stroke-width="8"/><rect x="${x + 39}" y="274" width="446" height="242" rx="14" fill="#101725" stroke="#35415a"/>`
-        : `<rect x="${x + 25}" y="260" width="474" height="270" rx="22" fill="url(#rainbow)"/><rect x="${x + 33}" y="268" width="458" height="254" rx="17" fill="#111827" fill-opacity=".72"/>`;
+function featuredCard({ x, name, kicker, detail, note, footer, accent, frozen }) {
+    const frame = frozen
+        ? `<rect x="${x + 25}" y="260" width="474" height="270" rx="22" fill="#101b2b" stroke="#91dcff" stroke-width="4"/><rect x="${x + 34}" y="269" width="456" height="252" rx="16" fill="none" stroke="#d9f6ff" stroke-opacity=".55" stroke-width="1"/>`
+        : `<rect x="${x + 25}" y="260" width="474" height="270" rx="22" fill="#211b35" stroke="#d6b3ff" stroke-width="3"/><rect x="${x + 34}" y="269" width="456" height="252" rx="16" fill="none" stroke="#ffffff" stroke-opacity=".2" stroke-width="1"/>`;
     return `${frame}
-<text x="${x + 58}" y="314" fill="#d6b3ff" font-family="Arial,Segoe UI,sans-serif" font-size="15px" font-weight="800" letter-spacing="2">ÉPICO · DESTAQUE ATUAL</text>
-<text x="${x + 58}" y="390" fill="#ffffff" font-family="Arial,Segoe UI,sans-serif" font-size="38px" font-weight="800">${escapeXml(name)}</text>
-<text x="${x + 58}" y="433" fill="${escapeXml(accent)}" font-family="Arial,Segoe UI,sans-serif" font-size="19px" font-weight="700">ID ${escapeXml(id)}</text>
-<text x="${x + 58}" y="486" fill="#c0cbdd" font-family="Arial,Segoe UI,sans-serif" font-size="17px">Disponível na Busca Especializada</text>
-<text x="${x + 58}" y="556" fill="#ffffff" font-family="Arial,Segoe UI,sans-serif" font-size="20px" font-weight="700">Loja: ${escapeXml(formatBannerMoney(price))}</text>`;
+<text x="${x + 58}" y="314" fill="${escapeXml(accent)}" font-family="Arial,Segoe UI,sans-serif" font-size="15px" font-weight="800" letter-spacing="2">${escapeXml(kicker)}</text>
+<text x="${x + 58}" y="390" fill="#ffffff" font-family="Arial,Segoe UI,sans-serif" font-size="34px" font-weight="800">${escapeXml(name)}</text>
+<text x="${x + 58}" y="433" fill="#e1e8f3" font-family="Arial,Segoe UI,sans-serif" font-size="17px" font-weight="700">${escapeXml(detail)}</text>
+<text x="${x + 58}" y="463" fill="#c0cbdd" font-family="Arial,Segoe UI,sans-serif" font-size="15px">${escapeXml(note)}</text>
+<text x="${x + 58}" y="512" fill="#ffffff" font-family="Arial,Segoe UI,sans-serif" font-size="15px" font-weight="700">${escapeXml(footer)}</text>`;
 }
 
 async function renderHighlightsBanner(cosmetics) {
-    const background = economy.PROFILE_BACKGROUNDS.rgb;
-    const outline = economy.PROFILE_OUTLINES.rgb;
     const content = bannerFrame(
         "DESTAQUES DE AGORA",
         "Prêmios em destaque",
-        "Destaques épicos disponíveis na Busca Especializada",
+        "Destaques épicos da Busca Recruta e da Busca Especializada",
         cosmetics
     );
     const cards = [
         featuredCard({
             x: 64,
-            name: `Fundo ${background.label}`,
-            id: background.id,
-            price: economy.getProfileBackgroundPrice("rgb"),
-            accent: "#ff9bdc"
+            name: "Resetar todos",
+            kicker: "RECRUTA · ÉPICO",
+            detail: "Reset da Loja do Bot em todos os itens",
+            note: "Destaque da Busca Recruta",
+            footer: "Prêmio disponível na Busca Recruta",
+            accent: "#d6b3ff"
         }),
         featuredCard({
             x: 576,
-            name: `Outline ${outline.label}`,
-            id: outline.id,
-            price: economy.getProfileOutlinePrice("rgb"),
-            accent: "#8fdcff",
-            outline: true
+            name: "Pacote Congelado Azul",
+            kicker: "ESPECIALIZADA · ÉPICO",
+            detail: "Fundo Grafite + decorações azul-claro",
+            note: "Outline, círculo e efeito Congelado",
+            footer: "Duplicata: 250,00 SatCoins · não comprável",
+            accent: "#91dcff",
+            frozen: true
         })
     ].join("");
     const commands = `    <text x="64" y="625" fill="#e1d7f0" font-family="Arial,Segoe UI,sans-serif" font-size="18px" font-weight="700">Recruta: ${escapeXml(formatBannerMoney(economy.SIGNAL_SEARCH_LEVELS.recruta.price))} por tentativa</text>
@@ -144,10 +146,12 @@ function rewardCard(reward, index, quantity) {
     const nameMax = isSingle ? 40 : 20;
     const detail = reward.type === "money"
         ? isSingle
-            ? `${reward.converted ? "Conversão em SatCoins" : "Prêmio em SatCoins"} · ${formatBannerMoney(reward.amount)}`
-            : `${reward.converted ? "Convertido" : "+"} ${formatBannerMoney(reward.amount)}`
+            ? `${reward.duplicateBundle ? "Pacote repetido" : reward.converted ? "Conversão em SatCoins" : "Prêmio em SatCoins"} · ${formatBannerMoney(reward.amount)}`
+            : `${reward.duplicateBundle ? "Pacote repetido" : reward.converted ? "Convertido" : "+"} ${formatBannerMoney(reward.amount)}`
         : reward.type === "reset"
             ? isSingle ? "Reset aplicado à sua conta" : "Reset aplicado"
+            : reward.type === "bundle"
+                ? isSingle ? reward.contentsLabel : "Pacote adicionado"
             : reward.converted
                 ? isSingle ? `Cosmético repetido · ${formatBannerMoney(reward.amount)}` : `Convertido · ${formatBannerMoney(reward.amount)}`
                 : isSingle ? "Cosmético adicionado à coleção" : "Adicionado à coleção";
@@ -158,7 +162,7 @@ function rewardCard(reward, index, quantity) {
                 ? `GARANTIA · ${RARITY_LABELS[reward.guarantee]}`
                 : isSingle ? "GARANTIA ÉPICA" : "GARANTIA"
         : "";
-    const icon = reward.type === "reset" ? "↻" : reward.cosmeticType === "outline" ? "◫" : "▧";
+    const icon = reward.type === "bundle" ? "❄" : reward.type === "reset" ? "↻" : reward.cosmeticType === "outline" ? "◫" : "▧";
     const nameMaxY = isSingle ? y + 192 : y + 152;
     const detailY = isSingle ? y + 242 : y + 172;
     const textX = isSingle ? x + 350 : x + cardWidth / 2;

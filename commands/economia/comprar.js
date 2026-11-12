@@ -17,6 +17,7 @@ module.exports = {
 Consulte a {prefix}loja para verificar a lista de produtos, números e preços atuais.
 Para comprar um item da loja configurada pelos administradores, use {prefix}loja2 e informe o ID (a partir de 1001) ou nome. Os pedidos aguardam entrega manual e podem ser cancelados pela equipe.
 Fundos cosméticos podem ser comprados pelo ID (a partir de 2000) ou com "fundo <cor>". Outlines das bolhas usam IDs a partir de 3000 ou "linha <cor>".
+Círculos de perfil usam IDs a partir de 4000 ou "circulo <cor>"; efeitos usam IDs a partir de 5000 ou "efeito <nome>".
 
 ⚠️ Resets só podem ser comprados após esgotar o limite diário da atividade correspondente.`,
     usage: "{prefix}comprar [texto]",
@@ -37,12 +38,17 @@ Fundos cosméticos podem ser comprados pelo ID (a partir de 2000) ou com "fundo 
                         });
                     }
                     return message.reply({
-                        text: `❌ Cosmético não encontrado. Use ${message.prefix}cosmeticos fundo ou ${message.prefix}cosmeticos linha para consultar os IDs e nomes disponíveis.`
+                        text: `❌ Cosmético não encontrado. Use ${message.prefix}cosmeticos para consultar as categorias, IDs e nomes disponíveis.`
                     });
                 }
 
                 const cosmeticName = cosmeticResult.item.label;
-                const cosmeticType = cosmeticResult.type === "outline" ? "Outline das bolhas" : "Fundo";
+                const cosmeticType = {
+                    outline: "Outline",
+                    circle: "Círculo de perfil",
+                    effect: "Efeito de perfil",
+                    background: "Fundo"
+                }[cosmeticResult.type];
                 const text = cosmeticResult.boughtNow
                     ? `✅ ${cosmeticType} ${cosmeticName} comprado e aplicado por ${economy.formatMoney(cosmeticResult.price)}.\nSaldo atual: ${economy.formatMoney(cosmeticResult.balance)}`
                     : `✅ ${cosmeticType} ${cosmeticName} aplicado. Você já tinha comprado esse cosmético, então não houve cobrança.`;
