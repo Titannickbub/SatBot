@@ -9895,6 +9895,156 @@ function start() {
       return;
     }
 
+    if (request.method === "GET" && requestUrl.pathname === "/api/account/local/bank") {
+      let central;
+      try {
+        central = await getSessionCentral(request);
+      } catch (error) {
+        console.error("[WEB] Falha ao validar sessão para o banco do app:", error.message || error);
+        sendJson(response, 500, { error: "Não foi possível validar sua sessão agora." });
+        return;
+      }
+      if (!central) {
+        sendJson(response, 401, { error: "Sua sessão expirou. Entre novamente para continuar." });
+        return;
+      }
+
+      const platform = String(requestUrl.searchParams.get("platform") || "").toLowerCase();
+      const groupId = String(requestUrl.searchParams.get("groupId") || "");
+      if (!["discord", "telegram", "whatsapp"].includes(platform) || !isValidPlatformGroupId(groupId)) {
+        sendJson(response, 400, { error: "Plataforma ou identificador do grupo inválido." });
+        return;
+      }
+
+      try {
+        const data = await getLocalAccountData(central, platform, groupId);
+        const message = getLocalGroupMessage(platform, groupId, data.platformId);
+        const account = economy.getAccountByUser(message, data.platformId);
+        const today = economy.getLocalDate();
+        const vaultConfig = data.vaultConfig || economy.getVaultConfig(message);
+        const minimumVaultAmount = Math.max(1, Number(vaultConfig?.minimumMovement) || 0);
+        const balance = Number(data.account.balance) || 0;
+        const vaultBalance = Number(data.account.vaultBalance) || 0;
+        const taskStatus = (used, maximum, extra = {}) => ({
+          used,
+          maximum,
+          remaining: Math.max(0, maximum - used),
+          ...extra
+        });
+        const statementLabels = [
+          ["resgate", "Resgate diário"],
+          ["trabalho", "Trabalho"],
+          ["pesca", "Pesca"],
+          ["mineracao", "Mineração"],
+          ["cassino", "Cassino"],
+          ["transferenciaEnviada", "Transferências enviadas"],
+          ["transferenciaRecebida", "Transferências recebidas"],
+          ["roubo", "Roubos feitos"],
+          ["rouboSofrido", "Roubos sofridos"],
+          ["loja", "Loja"],
+          ["busca", "Busca de Sinais"],
+          ["impostoCofre", "Impostos pagos no cofre"]
+        ];
+        const statementEntries = statementLabels.map(([key, label]) => {
+          const amount = Number(data.dailyProfits?.[key]) || 0;
+          return {
+            key,
+            label,
+            amountMinorUnits: amount,
+            amountFormatted: amount > 0
+              ? `+${economy.formatMoney(amount)}`
+              : economy.formatMoney(amount)
+          };
+        });
+        const groupType = platform === "discord" ? "server" : "group";
+        const groupTypeLabel = platform === "discord" ? "Servidor" : "Grupo";
+        const totalBalance = balance + vaultBalance;
+        const transferMinimum = economy.MIN_TRANSFER_AMOUNT;
+        const depositUsedToday = account?.vaultDepositDate === today;
+        const withdrawalUsedToday = account?.vaultWithdrawDate === today;
+
+        sendJson(response, 200, {
+          platform,
+          group: {
+            id: data.groupId,
+            name: data.groupName,
+            type: groupType,
+            typeLabel: groupTypeLabel
+          },
+          user: {
+            id: data.platformId,
+            name: data.userName,
+            avatarUrl: data.avatarUrl
+          },
+          economyEnabled: data.economyEnabled,
+          balances: {
+            walletMinorUnits: balance,
+            walletFormatted: economy.formatMoney(balance),
+            vaultMinorUnits: vaultBalance,
+            vaultFormatted: economy.formatMoney(vaultBalance),
+            totalMinorUnits: totalBalance,
+            totalFormatted: economy.formatMoney(totalBalance),
+            position: data.ranks.balance
+          },
+          dailyActivities: {
+            date: today,
+            dailyClaim: {
+              claimed: data.account.dailyClaimed,
+              ...taskStatus(data.account.dailyClaimed ? 1 : 0, 1)
+            },
+            work: taskStatus(data.account.workCount, economy.MAX_WORKS_PER_DAY, {
+              lastJob: data.account.lastJob
+            }),
+            fishing: taskStatus(data.account.fishingCount, economy.MAX_WORKS_PER_DAY),
+            mining: taskStatus(data.account.miningCount, economy.MAX_WORKS_PER_DAY),
+            casino: taskStatus(data.account.casinoCount, economy.MAX_CASINO_PER_DAY),
+            robberies: taskStatus(data.account.robberyCount, economy.MAX_ROBBERIES_PER_DAY),
+            transfers: taskStatus(data.account.transferCount, economy.MAX_TRANSFERS_PER_DAY)
+          },
+          statement: {
+            date: today,
+            entries: statementEntries,
+            netMinorUnits: Number(data.dailyProfitTotal) || 0,
+            netFormatted: economy.formatMoney(Number(data.dailyProfitTotal) || 0)
+          },
+          limits: {
+            transferMinimumMinorUnits: transferMinimum,
+            transferMinimumFormatted: economy.formatMoney(transferMinimum),
+            transfersPerDay: economy.MAX_TRANSFERS_PER_DAY,
+            depositsPerDay: 1,
+            withdrawalsPerDay: 1
+          },
+          vault: {
+            enabled: data.economyEnabled,
+            mode: vaultConfig.mode,
+            modeDescription: vaultModeDescription(vaultConfig),
+            configuredMinimumMinorUnits: vaultConfig.minimumMovement,
+            minimumAmountMinorUnits: minimumVaultAmount,
+            minimumAmountFormatted: economy.formatMoney(minimumVaultAmount),
+            depositUsedToday,
+            depositsRemainingToday: depositUsedToday ? 0 : 1,
+            withdrawalUsedToday,
+            withdrawalsRemainingToday: withdrawalUsedToday ? 0 : 1
+          }
+        });
+      } catch (error) {
+        const reason = String(error?.message || "");
+        const statusCode = /não participa|não está vinculada/i.test(reason) ? 403
+          : /offline|não está disponível/i.test(reason) ? 503
+            : /inválido/i.test(reason) ? 400 : 500;
+        if (statusCode === 500 || statusCode === 503) {
+          console.error("[WEB] Falha ao carregar o banco do app:", error.message || error);
+        }
+        const errorMessage = statusCode === 400 || statusCode === 403
+          ? reason
+          : statusCode === 503
+            ? "A plataforma está indisponível no momento."
+            : "Não foi possível carregar os dados do banco.";
+        sendJson(response, statusCode, { error: errorMessage });
+      }
+      return;
+    }
+
     if (request.method === "GET" && (requestUrl.pathname === "/" || requestUrl.pathname === "/index.html")) {
       const central = await getSessionCentral(request);
       response.writeHead(200, {

@@ -249,3 +249,295 @@ Erros
 
 Exemplo de erro:
 {"error":"mensagem explicando o problema"}
+
+API do banco: trabalhos e extrato
+---------------------------------
+GET /api/account/local/bank?platform=discord&groupId=ID_DO_GRUPO
+
+Use a mesma sessão e o mesmo platform/groupId escolhidos para a API do painel.
+A rota verifica o vínculo e a participação do usuário e retorna os saldos, as
+atividades diárias mostradas em "Trabalhos", o extrato do dia e os limites das
+operações. Não requer corpo nem Origin.
+
+Exemplo de resposta (HTTP 200):
+{
+  "platform": "discord",
+  "group": {
+    "id": "123456789012345678",
+    "name": "Comunidade Exemplo",
+    "type": "server",
+    "typeLabel": "Servidor"
+  },
+  "user": {
+    "id": "987654321012345678",
+    "name": "Ana Silva",
+    "avatarUrl": "https://cdn.discordapp.com/avatars/987654321012345678/avatar.png"
+  },
+  "economyEnabled": true,
+  "balances": {
+    "walletMinorUnits": 125000,
+    "walletFormatted": "1 250.00💷",
+    "vaultMinorUnits": 30000,
+    "vaultFormatted": "300.00💷",
+    "totalMinorUnits": 155000,
+    "totalFormatted": "1 550.00💷",
+    "position": 4
+  },
+  "dailyActivities": {
+    "date": "2026-11-12",
+    "dailyClaim": {
+      "claimed": true,
+      "used": 1,
+      "maximum": 1,
+      "remaining": 0
+    },
+    "work": {
+      "used": 1,
+      "maximum": 2,
+      "remaining": 1,
+      "lastJob": "Mineiro"
+    },
+    "fishing": {
+      "used": 2,
+      "maximum": 2,
+      "remaining": 0
+    },
+    "mining": {
+      "used": 0,
+      "maximum": 2,
+      "remaining": 2
+    },
+    "casino": {
+      "used": 1,
+      "maximum": 5,
+      "remaining": 4
+    },
+    "robberies": {
+      "used": 0,
+      "maximum": 3,
+      "remaining": 3
+    },
+    "transfers": {
+      "used": 1,
+      "maximum": 3,
+      "remaining": 2
+    }
+  },
+  "statement": {
+    "date": "2026-11-12",
+    "entries": [
+      {"key":"resgate","label":"Resgate diário","amountMinorUnits":200000,"amountFormatted":"+2 000.00💷"},
+      {"key":"trabalho","label":"Trabalho","amountMinorUnits":2500,"amountFormatted":"+25.00💷"},
+      {"key":"pesca","label":"Pesca","amountMinorUnits":8000,"amountFormatted":"+80.00💷"},
+      {"key":"mineracao","label":"Mineração","amountMinorUnits":0,"amountFormatted":"0.00💷"},
+      {"key":"cassino","label":"Cassino","amountMinorUnits":0,"amountFormatted":"0.00💷"},
+      {"key":"transferenciaEnviada","label":"Transferências enviadas","amountMinorUnits":-1000,"amountFormatted":"-10.00💷"},
+      {"key":"transferenciaRecebida","label":"Transferências recebidas","amountMinorUnits":0,"amountFormatted":"0.00💷"},
+      {"key":"roubo","label":"Roubos feitos","amountMinorUnits":0,"amountFormatted":"0.00💷"},
+      {"key":"rouboSofrido","label":"Roubos sofridos","amountMinorUnits":0,"amountFormatted":"0.00💷"},
+      {"key":"loja","label":"Loja","amountMinorUnits":-5000,"amountFormatted":"-50.00💷"},
+      {"key":"busca","label":"Busca de Sinais","amountMinorUnits":0,"amountFormatted":"0.00💷"},
+      {"key":"impostoCofre","label":"Impostos pagos no cofre","amountMinorUnits":0,"amountFormatted":"0.00💷"}
+    ],
+    "netMinorUnits": 204500,
+    "netFormatted": "2 045.00💷"
+  },
+  "limits": {
+    "transferMinimumMinorUnits": 1000,
+    "transferMinimumFormatted": "10.00💷",
+    "transfersPerDay": 3,
+    "depositsPerDay": 1,
+    "withdrawalsPerDay": 1
+  },
+  "vault": {
+    "enabled": true,
+    "mode": "secure",
+    "modeDescription": "Modo impenetrável: o saldo guardado fica seguro contra roubos e não pode ser usado diretamente.",
+    "configuredMinimumMinorUnits": 50000,
+    "minimumAmountMinorUnits": 50000,
+    "minimumAmountFormatted": "500.00💷",
+    "depositUsedToday": true,
+    "depositsRemainingToday": 0,
+    "withdrawalUsedToday": false,
+    "withdrawalsRemainingToday": 1
+  }
+}
+
+Leitura dos dados do banco
+--------------------------
+- balances contém carteira, cofre, patrimônio total e posição. Os campos
+  MinorUnits são inteiros em centésimos de SatCoin: 100 equivale a 1.00 SatCoin.
+  Os campos Formatted já estão prontos para exibição.
+- dailyActivities mostra quantas vezes cada ação foi usada hoje, o limite e o
+  quanto ainda resta. work.lastJob é o último trabalho feito hoje.
+- statement.entries contém os mesmos itens do extrato da página, inclusive
+  valores zero; amountMinorUnits é assinado e netMinorUnits é a soma líquida.
+  É um resumo diário por categoria, não uma lista cronológica de transações.
+- limits e vault informam os limites atuais da transferência e do cofre.
+  date usa a data local do servidor do bot.
+- Se a economia estiver desativada, economyEnabled e vault.enabled serão false.
+  Se ainda não houver conta ou extrato, saldos e contadores serão 0 e a lista do
+  extrato virá preenchida com valores zero.
+
+Depositar ou sacar do cofre
+---------------------------
+POST /api/account/local/vault
+
+Envie cookie satbot_session, Origin do mesmo host e JSON com:
+{
+  "platform": "discord",
+  "groupId": "123456789012345678",
+  "action": "deposit",
+  "amount": "500.00"
+}
+
+action aceita "deposit" para depositar da carteira ao cofre ou "withdraw" para
+sacar do cofre para a carteira. amount é informado em SatCoins, como string
+decimal com até duas casas; vírgula também é aceita. O usuário só pode fazer
+um depósito e um saque por dia local, independentemente um do outro. O mínimo
+por operação é o configurado para o cofre do grupo; o padrão é 500.00💷. O
+valor configurado e o mínimo efetivo são retornados na API de leitura do banco.
+Mesmo que a configuração seja 0, a operação precisa ser maior que zero.
+
+Sucesso (HTTP 200), exemplo de depósito:
+{
+  "success": true,
+  "balance": "750.00💷",
+  "vaultBalance": "800.00💷",
+  "totalBalance": "1 550.00💷",
+  "amount": "500.00💷",
+  "requestedAmount": "500.00💷",
+  "taxPaid": null,
+  "taxPeriods": 0,
+  "shortfall": null
+}
+
+Em modo de imposto, taxPaid e taxPeriods informam o imposto aplicado. Em um
+saque, amount pode ser menor que requestedAmount se o imposto deixar menos
+saldo disponível; shortfall informa a diferença. Erros HTTP 400 incluem valor
+abaixo do mínimo, saldo insuficiente, economia desativada ou limite diário
+atingido.
+
+Transferir para outra conta
+---------------------------
+POST /api/account/local/transfer
+
+Envie cookie satbot_session, Origin do mesmo host e JSON com:
+{
+  "platform": "discord",
+  "groupId": "123456789012345678",
+  "recipientId": "111222333444555666",
+  "amount": "10.00"
+}
+
+recipientId é o ID da conta destinatária na plataforma; ela precisa ter uma
+conta de economia neste mesmo grupo. amount é informado em SatCoins, com até
+duas casas decimais. O mínimo é 10.00💷 e o remetente pode fazer até 3
+transferências por dia local. Transferências usam o saldo da carteira, não o
+saldo do cofre; não é possível transferir para si mesmo.
+
+Sucesso (HTTP 200):
+{
+  "success": true,
+  "balance": "1 240.00💷",
+  "vaultBalance": "300.00💷",
+  "totalBalance": "1 540.00💷",
+  "amount": "10.00💷"
+}
+
+Erros das operações
+-------------------
+- HTTP 400: ação ou valor inválido, valor abaixo do mínimo, saldo insuficiente,
+  transferência para si mesmo, limite atingido ou economia desativada.
+- HTTP 401: sessão ausente, expirada ou inválida.
+- HTTP 403: Origin inválido ou a conta vinculada não participa do grupo.
+- HTTP 404: plataforma não vinculada ou conta destinatária não encontrada.
+- HTTP 503: integração da plataforma indisponível ou falha ao processar a ação.
+
+Após uma operação, use os saldos da resposta para atualizar a tela. Para
+atualizar também o extrato, os limites e o uso diário, chame novamente
+GET /api/account/local/bank com o mesmo platform e groupId.
+
+Resumo das probabilidades da economia
+-------------------------------------
+As porcentagens abaixo são as chances por tentativa válida, antes de qualquer
+garantia. Elas descrevem o sorteio do resultado, não o lucro esperado.
+
+Trabalhar
+- A profissão é sorteada igualmente entre 10 opções: Entregador, Atendente de
+  loja, Mecânico, Cozinheiro, Jardineiro, Fotógrafo, Eletricista, Barista,
+  Técnico de informática e Guia turístico. A profissão do trabalho anterior
+  não pode se repetir: sem trabalho anterior salvo, cada opção tem 10%; caso
+  contrário, cada uma das 9 opções restantes tem 11,11%.
+- Salário normal: 75%, ganho aleatório de 20 a 80 SatCoins.
+- Incidente ruim: 20%, perda aleatória de 20 a 80 SatCoins. Há 5 mensagens
+  possíveis, cada uma com 4% por tentativa.
+- Bônus: 5%, ganho aleatório de 100 a 200 SatCoins. Há 5 mensagens possíveis,
+  cada uma com 1% por tentativa.
+
+Pescar
+- Peixe comum: 40%, ganho de 20 a 60 SatCoins; cada uma das 3 mensagens
+  possíveis tem 13,33%.
+- Peixe raro: 10%, ganho de 100 a 150 SatCoins; cada uma das 3 mensagens tem
+  3,33%.
+- Lixo, sem ganho nem perda: 20%; cada uma das 3 mensagens tem 6,67%.
+- Imprevisto ruim: 15%, perda de 20 a 60 SatCoins; cada uma das 4 mensagens
+  tem 3,75%.
+- Evento bom: 15%, ganho de 160 a 220 SatCoins; cada uma das 3 mensagens tem
+  5%.
+
+Minerar
+- Minério comum: 50%, ganho de 20 a 70 SatCoins; cada uma das 8 mensagens
+  tem 6,25%.
+- Minério raro: 10%, ganho de 80 a 160 SatCoins; cada uma das 8 mensagens
+  tem 1,25%.
+- Loot lendário: 10%, ganho de 90 a 180 SatCoins; cada uma das 8 mensagens
+  tem 1,25%.
+- Incidente ruim: 30%, perda de 20 a 70 SatCoins; cada uma das 12 mensagens
+  tem 2,5%.
+- O mineral também é sorteado dentro da categoria: 4 opções equiprováveis
+  (25% cada). Assim, uma combinação específica de mensagem e mineral tem
+  1,5625% no resultado comum e 0,3125% nos resultados raro e lendário.
+
+Roubar
+- As chances abaixo só se aplicam a um alvo válido, sem escudo e com pelo
+  menos 20 SatCoins no saldo que será atingido. O saldo acima de 2.000 SatCoins
+  usa a tabela "alvo rico"; caso contrário, usa "alvo comum".
+- Alvo comum: roubo parcial 23,3333%; tentativa sem ganho/perda 46,6667%;
+  pego e paga 5 a 10 SatCoins 10%; roubo total 10%; processo e paga 50 a 150
+  SatCoins 10%.
+- Alvo rico: roubo parcial 35%; tentativa sem ganho/perda 25%; pego e paga
+  5 a 10 SatCoins 15%; roubo total 10%; processo e paga 50 a 150 SatCoins
+  15%.
+- Um escudo ativo bloqueia a tentativa e consome uma carga, sem fazer o sorteio
+  acima. Se o cofre estiver no modo de roubo, há ainda um sorteio separado para
+  escolher o saldo do cofre em vez da carteira: chance configurável, padrão
+  40%. Esse percentual não altera as chances do desfecho do roubo.
+
+Busca de Sinais: Recruta e Especializada
+- Recruta: fora das garantias, 70% SatCoins e 30% reset da Loja do Bot. Os
+  SatCoins variam de 5 a 30. Os resets são sorteados igualmente entre trabalho,
+  pesca, mineração, cassino, transferência e roubo: 5% por item. Reset
+  indisponível é convertido em SatCoins.
+- Especializada: fora das garantias, 55% SatCoins, 20% reset e 25% cosmético
+  ou pacote. Os SatCoins variam de 20 a 100. Os 6 resets têm a mesma chance
+  (aproximadamente 3,33% cada); o prêmio cosmético/pacote é sorteado igualmente
+  entre os itens elegíveis. Cosmético repetido é convertido em SatCoins.
+- Recruta garante reset de trabalho em até 5 buscas e prêmio épico em até
+  10; Especializada garante prêmio épico em até 10. A garantia ativa substitui
+  as chances normais daquela busca. O reset garantido que não puder ser usado
+  é convertido em SatCoins. As garantias são independentes por modalidade.
+
+Busca de Sinais Local
+- Não existe uma porcentagem fixa: os administradores configuram a chance de
+  cada raridade (comum, incomum, rara, épica e lendária) para cada grupo. As
+  chances configuradas devem somar 100%. Por padrão, a busca está desativada e
+  todas as chances são 0%.
+- Dentro da raridade sorteada, o prêmio é escolhido igualmente entre os
+  prêmios disponíveis configurados naquela raridade. Itens do mercado local
+  sem estoque não são elegíveis.
+- Cada raridade pode ter uma garantia após certo número de buscas sem recebê-la.
+  Quando uma garantia vence, ela substitui o sorteio normal; se mais de uma
+  raridade estiver devida, a de maior raridade tem prioridade. Para saber as
+  porcentagens e garantias efetivas, os administradores podem consultar
+  `{prefix}configbuscasinais status`; elas podem diferir entre grupos.
