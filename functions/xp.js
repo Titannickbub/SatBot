@@ -219,9 +219,29 @@ async function notifyLevelUp(message, level, config, reward = null) {
     const threadId = config.chatId ? config.threadId : message.threadId;
     const name = message.displayName || message.username || message.name || message.userId;
     const rewardText = reward ? `\n💷 Recompensa: ${economy.formatMoney(reward.amount)}` : "";
-    const text = `🎉 ${name} alcançou o nível ${level} no rank XP!${rewardText}`;
+    let text;
+    let options;
+    if (message.platform === "discord") {
+        text = `🎉 <@${message.userId}> alcançou o nível ${level} no rank XP!${rewardText}`;
+        options = { allowedMentions: { users: [String(message.userId)] } };
+    } else if (message.platform === "telegram") {
+        const escapedName = String(name).replace(/[&<>"']/g, character => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+        })[character]);
+        text = `🎉 <a href="tg://user?id=${encodeURIComponent(String(message.userId))}">${escapedName}</a> alcançou o nível ${level} no rank XP!${rewardText}`;
+        options = { parse_mode: "HTML" };
+    } else if (message.platform === "whatsapp") {
+        text = `🎉 @${name} alcançou o nível ${level} no rank XP!${rewardText}`;
+        options = [String(message.userId)];
+    } else {
+        text = `🎉 ${name} alcançou o nível ${level} no rank XP!${rewardText}`;
+    }
     try {
-        await send.text(message.platform, chatId, threadId, text);
+        await send.text(message.platform, chatId, threadId, text, options);
     } catch (error) {
         console.error("[xp] Não foi possível enviar aviso de level-up:", error);
     }

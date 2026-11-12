@@ -40,7 +40,11 @@ function normalizeUser(user, userId) {
         messages: Math.max(0, Number(user?.messages) || 0),
         commands: Math.max(0, Number(user?.commands) || 0),
         stickers: Math.max(0, Number(user?.stickers) || 0),
-        files: Math.max(0, Number(user?.files) || 0)
+        files: Math.max(0, Number(user?.files) || 0),
+        dailyMessages: Math.max(0, Number(user?.dailyMessages) || 0),
+        dailyCommands: Math.max(0, Number(user?.dailyCommands) || 0),
+        dailyStickers: Math.max(0, Number(user?.dailyStickers) || 0),
+        dailyFiles: Math.max(0, Number(user?.dailyFiles) || 0)
     };
 }
 
@@ -115,14 +119,27 @@ function record(message, kind) {
     if (user.dailyDate !== today) {
         user.dailyDate = today;
         user.dailyTotal = 0;
+        user.dailyMessages = 0;
+        user.dailyCommands = 0;
+        user.dailyStickers = 0;
+        user.dailyFiles = 0;
     }
     user.total += 1;
     user.dailyTotal += 1;
 
-    if (kind === "command") user.commands += 1;
-    else if (kind === "sticker") user.stickers += 1;
-    else if (kind === "file") user.files += 1;
-    else user.messages += 1;
+    if (kind === "command") {
+        user.commands += 1;
+        user.dailyCommands += 1;
+    } else if (kind === "sticker") {
+        user.stickers += 1;
+        user.dailyStickers += 1;
+    } else if (kind === "file") {
+        user.files += 1;
+        user.dailyFiles += 1;
+    } else {
+        user.messages += 1;
+        user.dailyMessages += 1;
+    }
 
     data.users[userId] = user;
     save(message, data);
@@ -138,7 +155,12 @@ function ranking(message) {
         users: Object.values(data.users)
             .map(user => {
                 const normalized = normalizeUser(user, user.userId);
-                normalized.dailyTotal = normalized.dailyDate === today ? normalized.dailyTotal : 0;
+                const isToday = normalized.dailyDate === today;
+                normalized.dailyTotal = isToday ? normalized.dailyTotal : 0;
+                normalized.dailyMessages = isToday ? normalized.dailyMessages : 0;
+                normalized.dailyCommands = isToday ? normalized.dailyCommands : 0;
+                normalized.dailyStickers = isToday ? normalized.dailyStickers : 0;
+                normalized.dailyFiles = isToday ? normalized.dailyFiles : 0;
                 return normalized;
             })
             .sort((a, b) => b.total - a.total || String(a.userId).localeCompare(String(b.userId)))

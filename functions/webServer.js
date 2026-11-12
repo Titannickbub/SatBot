@@ -7,6 +7,8 @@ const economy = require("./economy");
 const xp = require("./xp");
 const centralAccounts = require("./centralAccounts");
 const nofapHelper = require("./nofapHelper");
+const nofapGroupHelper = require("./nofapGroupHelper");
+const vipHelper = require("./vipHelper");
 const marriage = require("./marriageService");
 const groupSettings = require("./groupSettings");
 const auditLogs = require("./auditLogs");
@@ -1530,7 +1532,6 @@ async function getGroupAdminData(central, platform, groupId) {
   }
 
   const message = getLocalGroupMessage(platform, groupId, platformId);
-  const cosmetics = economy.getProfileCosmetics(message, platformId);
   const profileUrl = new URL("http://localhost/perfil");
   profileUrl.searchParams.set("plataforma", platform);
   profileUrl.searchParams.set("grupo", groupId);
@@ -1541,8 +1542,6 @@ async function getGroupAdminData(central, platform, groupId) {
     groupId,
     groupName: profile.groupName || `Grupo ${groupId}`,
     userName: profile.name || platformAccount.displayName || platformAccount.username || "Sua conta",
-    profileBackground: cosmetics.background,
-    profileOutline: cosmetics.outline,
     avatarUrl: await getProfileAvatar(platform, groupId, platformId),
     settings: getAdminSettings(message),
     moderation: getModerationWarnings(platform, groupId, platformId),
@@ -2537,6 +2536,8 @@ async function getLocalAccountData(central, platform, groupId) {
     userName: profile.name || platformAccount.displayName || platformAccount.username || "Sua conta",
     profileBackground: cosmetics.background,
     profileOutline: cosmetics.outline,
+    profileCircle: cosmetics.circle,
+    profileEffect: cosmetics.effect,
     avatarUrl: await getProfileAvatar(platform, groupId, platformId),
     warnings: getUserWarns(message, platformId),
     maxWarnings: warnConfig?.max || 3,
@@ -2643,6 +2644,15 @@ function describeVaultConfigChanges(previous, next) {
 function renderLocalAccount(data) {
   const safeBotName = escapeHtml(config.getBotName());
   const cosmeticThemeStyles = getCosmeticPanelStyles(data.profileBackground, "local", data.profileOutline);
+  const profileCircle = economy.PROFILE_CIRCLES[data.profileCircle] || null;
+  const avatarFrameClasses = [
+    "local-avatar-frame",
+    profileCircle ? "has-profile-circle" : "",
+    profileCircle?.frozen ? "frozen-profile-circle" : "",
+    profileCircle?.rainbow ? "rainbow-profile-circle" : ""
+  ].filter(Boolean).join(" ");
+  const avatarFrameStyle = profileCircle ? `style="--profile-circle-color:${profileCircle.color};"` : "";
+  const pageClass = data.profileEffect ? "profile-frozen" : "";
   const groupType = data.platform === "discord" ? "Servidor" : "Grupo";
   const currency = amount => economy.formatMoney(Number(amount) || 0);
   const accountStats = `<div class="local-stats">
@@ -2698,6 +2708,14 @@ function renderLocalAccount(data) {
     .cosmetics-store-button:hover,.cosmetics-store-button:focus-visible{border-color:#f0a8c6;background:linear-gradient(120deg,#f076a550,#bd72ff40)}
     .local-avatar-frame{display:grid;width:88px;height:88px;flex:none;place-items:center;padding:3px;border:3px solid #a99dff66;border-radius:27px;background:#171d2b}
     .local-avatar{width:76px;height:76px;border-radius:18px;object-fit:cover;background:#171d2b}
+    .local-avatar-frame.has-profile-circle{position:relative;border:4px solid var(--profile-circle-color);border-radius:50%;box-shadow:0 0 0 2px var(--profile-circle-color),0 0 15px var(--profile-circle-color)}
+    .local-avatar-frame.has-profile-circle .local-avatar{border-radius:50%}
+    .local-avatar-frame.frozen-profile-circle{border:4px double #f5fcff;outline:2px solid var(--profile-circle-color);box-shadow:0 0 0 3px var(--profile-circle-color),0 0 18px var(--profile-circle-color),inset 0 0 12px #c9f2ff88}
+    .local-avatar-frame.frozen-profile-circle:after{content:"❄";position:absolute;top:-7px;right:1px;color:#f5fcff;font-size:15px;text-shadow:0 0 8px var(--profile-circle-color);pointer-events:none}
+    .local-avatar-frame.rainbow-profile-circle{border:5px solid transparent;border-radius:50%;background:linear-gradient(#171d2b,#171d2b) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:local-circle-rainbow 5s linear infinite}
+    @keyframes local-circle-rainbow{to{background-position:0 0,100% 50%}}
+    body.profile-frozen:after{content:"";position:fixed;inset:0;z-index:3;pointer-events:none;opacity:.12;background-image:url("${profileSnowPattern(0.8)}");background-size:120px 120px}
+    body.profile-frozen .local-page{position:relative;z-index:2}
     .local-hero h1{margin:0;font-size:clamp(25px,4vw,38px);overflow-wrap:anywhere}
     .local-hero p{margin:7px 0 0;color:#c1c9df}
     .local-section{margin-top:24px}
@@ -2758,9 +2776,9 @@ function renderLocalAccount(data) {
     @media(max-width:640px){.local-hero{align-items:flex-start;flex-direction:column}.local-hero-main{align-items:flex-start}.local-hero-actions{width:100%}.local-hero-action-links{width:100%}.admin-panel-button{width:100%}}
     @media(max-width:480px){.local-page{padding:20px 0 38px}.local-hero{padding:20px}.local-avatar-frame{width:68px;height:68px;border-radius:21px}.local-avatar{width:56px;height:56px;border-radius:12px}.local-panel{padding:18px}.local-stats{grid-template-columns:1fr}.daily-list{grid-template-columns:1fr}}
     ${cosmeticThemeStyles}
-  </style></head><body><main class="local-page">
+  </style></head><body class="${pageClass}"><main class="local-page">
     <nav class="local-topbar"><a href="/dashboard">← Conta Central</a><span>${safeBotName} · Painel local</span></nav>
-    <header class="local-hero"><div class="local-hero-main"><span class="local-avatar-frame"><img class="local-avatar" src="${escapeHtml(data.avatarUrl || "/semfoto.jpg")}" alt="Foto de perfil de ${escapeHtml(data.userName)}" onerror="this.onerror=null;this.src='/semfoto.jpg'"></span><div><div class="eyebrow">Painel da conta local</div><h1>${escapeHtml(data.userName)}</h1><p>${groupType}: ${escapeHtml(data.groupName)} · ${escapeHtml(data.platform)}</p></div></div><div class="local-hero-actions"><div class="local-hero-action-links">${data.canManage ? `<a class="admin-panel-button" href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">⚙ Painel de administração</a>` : ""}</div></div></header>
+    <header class="local-hero"><div class="local-hero-main"><span class="${avatarFrameClasses}" ${avatarFrameStyle}><img class="local-avatar" src="${escapeHtml(data.avatarUrl || "/semfoto.jpg")}" alt="Foto de perfil de ${escapeHtml(data.userName)}" onerror="this.onerror=null;this.src='/semfoto.jpg'"></span><div><div class="eyebrow">Painel da conta local</div><h1>${escapeHtml(data.userName)}</h1><p>${groupType}: ${escapeHtml(data.groupName)} · ${escapeHtml(data.platform)}</p></div></div><div class="local-hero-actions"><div class="local-hero-action-links">${data.canManage ? `<a class="admin-panel-button" href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">⚙ Painel de administração</a>` : ""}</div></div></header>
     <section class="local-section" aria-labelledby="displaySectionTitle">
       <header class="local-section-heading"><div><h2 id="displaySectionTitle">Exibição</h2><p>Consulte seus dados e posições neste grupo ou servidor.</p></div></header>
       <div class="local-layout">
@@ -3019,11 +3037,16 @@ function renderSignalSearch(data) {
     }),
     recruitResets: resetItems.filter(item => item.key !== "all").map(item => addReward({
       id: `reset-${item.key}`, type: "reset", name: item.name, details: "Reset da Loja do Bot",
-      rarity: item.rarity
+      rarity: item.rarity, itemKey: item.key
     })),
     epicResets: resetItems.filter(item => item.rarity === economy.ITEM_RARITY.EPIC).map(item => addReward({
       id: `reset-${item.key}`, type: "reset", name: item.name, details: "Reset Épico da Loja do Bot",
-      rarity: item.rarity
+      rarity: item.rarity, itemKey: item.key
+    })),
+    bundles: Object.values(economy.SIGNAL_SEARCH_BUNDLES).map(bundle => addReward({
+      id: `bundle-${bundle.key}`, type: "bundle", name: bundle.label,
+      details: `${bundle.contentsLabel} · não comprável · repetido: ${currency(bundle.duplicateReward)}`,
+      rarity: bundle.rarity, bundleKey: bundle.key, contentsLabel: bundle.contentsLabel
     })),
     cosmetics: [
       ...Object.entries(economy.PROFILE_BACKGROUNDS).map(([key, item]) => addReward({
@@ -3051,13 +3074,16 @@ function renderSignalSearch(data) {
         : `border:5px solid ${reward.color}`;
       return `<span class="signal-reward-art outline-art${reward.rainbow ? " rainbow-outline-art" : ""}" aria-hidden="true"><i style="${border}"></i></span>`;
     }
+    if (reward.type === "bundle") {
+      return `<span class="signal-reward-art icon-art" style="border-color:#91dcff;background:radial-gradient(circle,#285b78,#111827 72%);color:#c6f4ff;text-shadow:0 0 16px #75dfff" aria-hidden="true">❄</span>`;
+    }
     return `<span class="signal-reward-art icon-art" aria-hidden="true">${reward.type === "money" ? "💷" : reward.type === "market" ? "📦" : "↻"}</span>`;
   };
   const rewardButton = reward => `<button class="signal-prize-card${reward.rarity === economy.ITEM_RARITY.EPIC ? " epic" : ""}${reward.rainbow ? " rainbow-prize" : ""}" type="button" data-signal-reward="${escapeHtml(reward.id)}" aria-label="Ver prêmio: ${escapeHtml(reward.name)}">
     ${rewardArt(reward)}<span class="signal-prize-info"><strong>${escapeHtml(reward.name)}</strong><small>${escapeHtml(rarityLabels[reward.rarity] || reward.rarity)} · ${escapeHtml(reward.details)}</small></span><span class="signal-prize-open">Ver</span>
   </button>`;
-  const featuredBackground = rewards.cosmetics.find(item => item.type === "background" && item.key === "rgb");
-  const featuredOutline = rewards.cosmetics.find(item => item.type === "outline" && item.key === "rgb");
+  const featuredReset = rewards.epicResets.find(item => item.itemKey === "all");
+  const featuredBundle = rewards.bundles[0];
   const localSignalSearch = data.localSignalSearch || { enabled: false, tiers: {}, featured: [], marketItems: [], botItems: [] };
   const localRewards = [];
   for (const rarity of economy.LOCAL_SIGNAL_RARITIES) {
@@ -3123,7 +3149,7 @@ function renderSignalSearch(data) {
     const disabled = data.economyEnabled ? "" : " disabled";
     const availableRewards = isRecruit
       ? [rewards.moneyRecruta, ...rewards.recruitResets, ...rewards.epicResets]
-      : [rewards.moneyEspecializada, ...rewards.recruitResets, ...rewards.epicResets, ...rewards.cosmetics];
+      : [rewards.moneyEspecializada, ...rewards.recruitResets, ...rewards.epicResets, ...rewards.cosmetics, ...rewards.bundles];
     const prizeList = `<div class="signal-prize-grid">${availableRewards.map(rewardButton).join("")}</div>`;
     const detail = isRecruit
       ? `${level.weights.money}% de chance de SatCoins e ${level.weights.reset}% de reset. Reset de trabalho garantido em até ${progress.pullsUntilWorkReset} busca(s); Épico em até ${progress.pullsUntilEpic}.`
@@ -3179,6 +3205,7 @@ function renderSignalSearch(data) {
     :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#090c15;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;background:radial-gradient(ellipse at 50% -15%,#4b3176 0,#151a31 34%,#090c15 74%)}button,a{font:inherit}.signal-page{width:min(1040px,100%);margin:0 auto}.signal-topbar{display:flex;justify-content:space-between;gap:12px;padding:8px 0 18px;border-bottom:1px solid #ffffff18}.signal-topbar a{color:#d5c9ff;text-decoration:none;font-weight:700}.signal-topbar span{color:#aab3c8;font-size:12px}.signal-hero{position:relative;overflow:hidden;margin:22px 0;padding:clamp(22px,5vw,38px);border:1px solid #b996ff44;border-radius:22px;background:linear-gradient(120deg,#171c35eF,#32204be8 65%,#102b3beF);box-shadow:0 22px 70px #0005}.signal-hero:after{position:absolute;inset:auto -12% -90% 45%;height:100%;border-radius:50%;background:#c085ff22;filter:blur(35px);content:""}.signal-hero h1{position:relative;z-index:1;margin:7px 0;font-size:clamp(29px,5vw,44px)}.signal-hero p{position:relative;z-index:1;max-width:680px;margin:0;color:#d0d5e5;line-height:1.6}.signal-eyebrow,.signal-level-kicker{color:#d1b3ff;font-size:10px;font-weight:850;letter-spacing:.18em}.signal-balance{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}.signal-balance span{padding:9px 12px;border:1px solid #ffffff1a;border-radius:10px;background:#05091466;color:#bbc4d7;font-size:12px}.signal-balance strong{color:#fff}.signal-featured{position:relative;z-index:1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:22px}.signal-featured-card{display:flex;min-width:0;align-items:center;gap:14px;padding:14px;border:1px solid #d6a5ff77;border-radius:15px;background:#100d1caa;color:#fff;text-align:left;cursor:pointer;transition:transform .18s ease,border-color .18s ease}.signal-featured-card:hover,.signal-featured-card:focus-visible{transform:translateY(-3px);border-color:#fff;outline:2px solid #d6a5ff66;outline-offset:2px}.signal-featured-card strong,.signal-featured-card small{display:block}.signal-featured-card small{margin-top:5px;color:#c5b9d8;font-size:11px}.signal-featured-card .signal-reward-art{width:72px;height:58px;flex:none}.signal-section-title{margin:28px 0 12px}.signal-section-title h2{margin:0;font-size:20px}.signal-section-title p{margin:5px 0 0;color:#aab3c8;font-size:12px}.signal-wallet{margin:14px 0;padding:13px 15px;border:1px solid #ffffff16;border-radius:13px;background:#ffffff06;color:#adb7ca;font-size:13px}.signal-wallet strong{color:#fff}.signal-level-picker{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}.signal-level-tab{min-height:48px;padding:10px 14px;border:1px solid #ffffff24;border-radius:12px;background:#ffffff08;color:#cbd2e2;text-align:left;font-weight:750;cursor:pointer}.signal-level-tab span{float:right;color:#9da7bb;font-size:11px;font-weight:500}.signal-level-tab[aria-selected=true]{border-color:#b997ff;background:linear-gradient(120deg,#8c68dc3b,#557cff22);color:#fff;box-shadow:0 0 22px #8f68ff1c}.signal-level-card{padding:clamp(17px,4vw,25px);border:1px solid #ffffff1c;border-radius:18px;background:linear-gradient(145deg,#191e30,#111724);box-shadow:0 16px 42px #0003}.signal-level-card[hidden]{display:none}.signal-level-card>header{display:flex;justify-content:space-between;align-items:center}.signal-level-card h2{margin:4px 0 0;font-size:24px}.signal-level-emblem{display:grid;width:44px;height:44px;place-items:center;border:1px solid #c59dff66;border-radius:14px;background:#a775ff1a;color:#ddc8ff;font-size:25px}.signal-level-card>p{max-width:700px;color:#aab3c8;font-size:13px;line-height:1.6}.signal-level-cost{display:grid;grid-template-columns:1fr auto;gap:8px;margin:17px 0;padding:12px 14px;border:1px solid #ffffff12;border-radius:12px;background:#ffffff05;color:#aab3c8;font-size:12px}.signal-level-cost strong{color:#fff;text-align:right}.signal-search-buttons{display:flex;flex-wrap:wrap;gap:9px}.signal-search-buttons button,.signal-modal-next{min-height:44px;padding:10px 17px;border:0;border-radius:11px;background:linear-gradient(120deg,#9876ff,#5a7bff);color:#fff;font-weight:800;cursor:pointer;box-shadow:0 8px 22px #625cff2b}.signal-search-buttons button:hover,.signal-modal-next:hover{filter:brightness(1.12)}.signal-search-buttons button:disabled{opacity:.5;cursor:not-allowed}.signal-prizes-details{margin-top:20px;border-top:1px solid #ffffff12}.signal-prizes-details summary{padding:15px 0 4px;color:#d8c6ff;font-size:13px;font-weight:750;cursor:pointer}.signal-prize-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:14px}.signal-prize-card{display:flex;min-width:0;align-items:center;gap:10px;padding:10px;border:1px solid #ffffff19;border-radius:12px;background:#ffffff05;color:#f5f7fb;text-align:left;cursor:pointer;transition:transform .16s ease,border-color .16s ease}.signal-prize-card:hover,.signal-prize-card:focus-visible{transform:translateY(-2px);border-color:#8ecfff;outline:2px solid #8ecfff33;outline-offset:1px}.signal-prize-card.epic{border-color:#d4a0ff66;background:linear-gradient(130deg,#a45adb14,#ffffff05)}.signal-prize-card.rainbow-prize{border-color:#ff92e988;box-shadow:inset 0 0 18px #f0a8c611}.signal-reward-art{display:grid;width:56px;height:44px;flex:none;place-items:center;overflow:hidden;border:1px solid #ffffff24;border-radius:9px;background:linear-gradient(145deg,#263858,#111827);font-size:23px}.signal-reward-art.rainbow-background{background-size:300% 300%;animation:signal-rainbow 5s linear infinite}    .outline-art{padding:8px;background:#111827}.outline-art i{display:block;width:100%;height:100%;border-radius:7px}.outline-art.rainbow-outline-art i{animation:signal-rainbow 5s linear infinite}.signal-prize-info{display:block;min-width:0;flex:1}.signal-prize-info strong,.signal-prize-info small{display:block;overflow:hidden;text-overflow:ellipsis}.signal-prize-info strong{font-size:12px}.signal-prize-info small{margin-top:4px;color:#9da9c0;font-size:10px;line-height:1.4}.signal-prize-open{color:#d1b3ff;font-size:11px;font-weight:800}.signal-featured .outline-art{width:72px;height:58px}.signal-feedback{min-height:22px;margin-top:12px;color:#9cf0cf;font-size:13px;line-height:1.5}.signal-feedback.error{color:#ff9caa}.signal-results{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:14px}.signal-results[hidden]{display:none}.signal-result{padding:11px;border:1px solid #73c9ec44;border-radius:11px;background:linear-gradient(145deg,#14324a,#0c1423);font-size:11px;line-height:1.5;overflow-wrap:anywhere}.signal-result.epic{border-color:#d8a4ff88;background:linear-gradient(145deg,#42244f,#161326)}.signal-return{display:inline-block;margin-top:18px;color:#cbbaff;text-decoration:none;font-size:12px}.signal-dialog{width:min(720px,calc(100% - 24px));max-width:none;max-height:min(850px,calc(100% - 24px));padding:0;overflow:auto;border:1px solid #d2a2ff77;border-radius:22px;background:#0b0d17;color:#f5f7fb;box-shadow:0 30px 110px #000d}.signal-dialog::backdrop{background:#03040bcc;backdrop-filter:blur(7px)}.signal-dialog-inner{position:relative;min-height:440px;padding:clamp(18px,5vw,32px);background:radial-gradient(ellipse at 50% 15%,#7251a055,transparent 58%),radial-gradient(circle at 15% 80%,#3b81a52b,transparent 35%),linear-gradient(145deg,#101525,#090b13 70%)}.signal-dialog-inner:before{position:absolute;inset:12% 18%;border:1px solid #d8b7ff26;border-radius:50%;box-shadow:0 0 60px #a883ff1c,0 0 140px #748aff12;content:"";pointer-events:none}.signal-dialog-top{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px}.signal-dialog-top small{color:#d6bbff;font-size:10px;font-weight:850;letter-spacing:.2em}.signal-dialog-close{display:grid;width:38px;height:38px;place-items:center;border:1px solid #ffffff2a;border-radius:11px;background:#ffffff0b;color:#fff;font-size:22px;cursor:pointer}.signal-presentation-wrap{position:relative;z-index:1;display:grid;min-height:330px;place-items:center;perspective:1200px;overflow:hidden}.signal-3d-card{position:relative;display:flex;width:min(380px,100%);min-height:270px;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;border:1px solid #8fd7ff88;border-radius:20px;background:linear-gradient(145deg,#173752,#111727 68%);text-align:center;transform-style:preserve-3d;box-shadow:0 24px 70px #0009,0 0 38px #54c9ff24;animation:signal-card-camera 4.8s ease-in-out infinite}.signal-3d-card.epic{border-color:#dba7ff;background:linear-gradient(145deg,#4f2b68,#171326 72%);box-shadow:0 24px 70px #0009,0 0 50px #d8a4ff44}.signal-3d-card.rainbow-bg{background:linear-gradient(130deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744);background-size:350% 350%;animation:signal-card-camera 4.8s ease-in-out infinite,signal-rainbow 6s linear infinite}.signal-3d-card.rainbow-outline{border:3px solid transparent;background:linear-gradient(145deg,#161b2b,#10131e) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:signal-card-camera 4.8s ease-in-out infinite,signal-rainbow 5s linear infinite}.signal-card-icon{display:grid;width:78px;height:78px;place-items:center;border:1px solid #ffffff38;border-radius:22px;background:#ffffff14;font-size:38px;box-shadow:0 12px 30px #0004;transform:translateZ(38px)}.signal-3d-card h2{max-width:100%;margin:0;font-size:clamp(22px,5vw,30px);text-shadow:0 3px 20px #0008;transform:translateZ(30px)}.signal-3d-card p{max-width:320px;margin:0;color:#e0e4ef;font-size:13px;line-height:1.5;transform:translateZ(22px)}.signal-card-rarity{padding:6px 10px;border:1px solid #ffffff44;border-radius:20px;background:#090b1688;color:#fff;font-size:10px;font-weight:850;letter-spacing:.14em;text-transform:uppercase;transform:translateZ(44px)}.signal-modal-footer{position:relative;z-index:2;display:flex;justify-content:center;gap:10px}.signal-modal-next[hidden]{display:none}.signal-modal-footer .signal-feedback{margin:0;text-align:center}.signal-dialog-results{position:relative;z-index:2;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.signal-dialog-results[hidden]{display:none}.signal-dialog-results .signal-result{text-align:left}@keyframes signal-card-camera{0%,100%{transform:rotateY(-15deg) rotateX(7deg) translateY(0)}35%{transform:rotateY(12deg) rotateX(-3deg) translateY(-7px)}68%{transform:rotateY(20deg) rotateX(5deg) translateY(2px)}}@keyframes signal-rainbow{to{background-position:100% 50%}}@media(prefers-reduced-motion:reduce){.signal-reward-art.rainbow-background,.signal-3d-card{animation:none}}@media(max-width:700px){body{padding:15px}.signal-featured,.signal-level-picker{grid-template-columns:1fr}.signal-prize-grid{grid-template-columns:1fr}.signal-results,.signal-dialog-results{grid-template-columns:repeat(2,minmax(0,1fr))}.signal-dialog-inner{min-height:400px}.signal-presentation-wrap{min-height:285px}.signal-3d-card{min-height:240px}}@media(max-width:420px){.signal-level-cost{font-size:11px}.signal-search-buttons button{flex:1}.signal-results,.signal-dialog-results{grid-template-columns:1fr 1fr}.signal-dialog-results .signal-result{padding:8px;font-size:10px}}
   </style><style>
     .signal-level-picker{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+    .signal-featured{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
     .signal-featured-group{display:contents}
     .signal-featured-group[hidden]{display:none}
     .signal-featured-empty{grid-column:1/-1;margin:0;padding:14px;border:1px dashed #ffffff2b;border-radius:12px;color:#aab3c8;font-size:12px}
@@ -3187,9 +3214,11 @@ function renderSignalSearch(data) {
     <header class="signal-hero"><span class="signal-eyebrow">TRANSMISSÃO DE SINAIS</span><h1>Busca de Sinais</h1><p>Escolha um nível, faça uma busca x1 ou x10 e revele os prêmios disponíveis.</p>
       <div class="signal-balance"><span>Carteira: <strong id="signalWalletBalance">${currency(data.account.balance)}</strong></span><span>Garantias independentes por nível</span></div>
       <div class="signal-featured" aria-label="Prêmios em destaque">
-        <div class="signal-featured-group" data-signal-featured-group="bot">
-          <button class="signal-featured-card" type="button" data-signal-reward="${featuredBackground.id}">${rewardArt(featuredBackground)}<span><strong>Fundo RGB</strong><small>Épico · ID ${economy.PROFILE_BACKGROUNDS.rgb.id} · Destaque</small></span></button>
-          <button class="signal-featured-card" type="button" data-signal-reward="${featuredOutline.id}">${rewardArt(featuredOutline)}<span><strong>Outline RGB</strong><small>Épico · ID ${economy.PROFILE_OUTLINES.rgb.id} · Destaque</small></span></button>
+        <div class="signal-featured-group" data-signal-featured-group="recruta">
+          <button class="signal-featured-card" type="button" data-signal-reward="${featuredReset.id}">${rewardArt(featuredReset)}<span><strong>Resetar todos</strong><small>Épico · Destaque da Busca Recruta</small></span></button>
+        </div>
+        <div class="signal-featured-group" data-signal-featured-group="especializada" hidden>
+          <button class="signal-featured-card" type="button" data-signal-reward="${featuredBundle.id}">${rewardArt(featuredBundle)}<span><strong>Pacote Congelado Azul</strong><small>Épico · não comprável · duplicata: 250,00 SatCoins</small></span></button>
         </div>
         <div class="signal-featured-group" data-signal-featured-group="local" hidden>${localFeaturedMarkup}</div>
       </div>
@@ -3359,7 +3388,7 @@ function renderSignalSearch(data) {
       document.getElementById("signalDialogTitle").textContent=preview?"PRÉVIA DO PRÊMIO":"SINAL RECEBIDO";
       document.getElementById("signalCardType").textContent=preview?"PRÉVIA DO PRÊMIO":"RECOMPENSA DA BUSCA";
       const isHighRarity=rarity==="epico"||rarity==="lendario";
-      card.className="signal-card"+(isHighRarity?" epic":"")+(rarity==="lendario"?" legendary":"");
+      card.className="signal-card"+(isHighRarity?" epic":"")+(rarity==="lendario"?" legendary":"")+(reward.type==="bundle"?" frozen-bundle":"");
       front.style.background="";
       front.style.borderColor="";
       front.style.borderWidth="";
@@ -3368,7 +3397,7 @@ function renderSignalSearch(data) {
       document.getElementById("signalCardName").textContent=reward.name;
       document.getElementById("signalCardDetails").textContent=details||reward.details||"Prêmio da Busca de Sinais";
       const icon=document.getElementById("signalCardIcon");
-      icon.textContent=reward.type==="background"?"▧":reward.type==="outline"?"◫":reward.type==="money"?"💷":reward.type==="market"?"📦":"↻";
+      icon.textContent=reward.type==="bundle"?"❄":reward.type==="background"?"▧":reward.type==="outline"?"◫":reward.type==="money"?"💷":reward.type==="market"?"📦":"↻";
       document.getElementById("signalCardStars").textContent=isHighRarity?"✦ ✦ ✦ ✦ ✦":"✦ ✦ ✦";
       if(reward.type==="background"){
         card.classList.toggle("rainbow-background",Boolean(reward.rainbow));
@@ -3383,6 +3412,11 @@ function renderSignalSearch(data) {
           front.style.borderColor=reward.color;
           front.style.borderWidth="8px";
         }
+      }else if(reward.type==="bundle"){
+        front.style.background="linear-gradient(145deg,#244b68,#122031 58%,#101522)";
+        front.style.borderColor="#91dcff";
+        front.style.borderWidth="8px";
+        art.style.background="radial-gradient(circle,#285b78,#111827 72%)";
       }
       tenResults.hidden=true;
       stage.classList.remove("is-running","is-revealed","is-epic","is-legendary","is-results");
@@ -3409,7 +3443,7 @@ function renderSignalSearch(data) {
     document.querySelectorAll("[data-signal-level-tab]").forEach(button=>button.addEventListener("click",()=>{
       document.querySelectorAll("[data-signal-level-tab]").forEach(tab=>tab.setAttribute("aria-selected",String(tab===button)));
       document.querySelectorAll("[data-signal-level-card]").forEach(card=>card.hidden=card.dataset.signalLevelCard!==button.dataset.signalLevelTab);
-      document.querySelectorAll("[data-signal-featured-group]").forEach(group=>group.hidden=group.dataset.signalFeaturedGroup!==(button.dataset.signalLevelTab==="local"?"local":"bot"));
+      document.querySelectorAll("[data-signal-featured-group]").forEach(group=>group.hidden=group.dataset.signalFeaturedGroup!==button.dataset.signalLevelTab);
     }));
     async function playSignalAudio(type){
       const audio=document.getElementById(type==="epic"?"epicSignalAudio":"normalSignalAudio");
@@ -3426,6 +3460,8 @@ function renderSignalSearch(data) {
     function rewardIdentity(reward){
       return reward.type==="market"
         ? "market:"+reward.itemId
+        : reward.type==="bundle"
+        ? "bundle:"+reward.bundleKey
         : reward.type==="money"
         ? "money:"+reward.rarity+":"+reward.amount
         : reward.type==="cosmetic"
@@ -3489,11 +3525,11 @@ function renderSignalSearch(data) {
         const art=document.createElement("span");
         art.className="signal-mini-art";
         art.setAttribute("aria-hidden","true");
-        art.textContent=reward.type==="money"?"💷":reward.type==="market"?"📦":reward.type==="reset"?"↻":reward.cosmeticType==="outline"?"◫":"▧";
+        art.textContent=reward.type==="bundle"?"❄":reward.type==="money"?"💷":reward.type==="market"?"📦":reward.type==="reset"?"↻":reward.cosmeticType==="outline"?"◫":"▧";
         const name=document.createElement("strong");
         name.textContent=reward.name;
         const detail=document.createElement("small");
-        detail.textContent=reward.type==="money"?reward.amountFormatted:reward.converted?"Convertido em SatCoins":reward.type==="market"?"Pedido local criado":reward.type==="reset"?"Prêmio do bot aplicado":"Cosmético adicionado";
+        detail.textContent=reward.type==="money"?(reward.duplicateBundle?"Pacote repetido · "+reward.amountFormatted:reward.amountFormatted):reward.converted?"Convertido em SatCoins":reward.type==="market"?"Pedido local criado":reward.type==="reset"?"Prêmio do bot aplicado":reward.type==="bundle"?"Pacote adicionado":"Cosmético adicionado";
         card.append(rarity,art,name,detail);
         return card;
       }));
@@ -3533,7 +3569,7 @@ function renderSignalSearch(data) {
         if(!dialog.open)return;
         if(quantity===1){
           const reward=result.rewards[0];
-          const details=reward.type==="money"?reward.amountFormatted:reward.converted?"Convertido em SatCoins":reward.type==="market"?"Pedido criado para entrega pelos administradores":reward.type==="reset"?"Prêmio do Bot aplicado à sua conta":"Adicionado à sua coleção";
+          const details=reward.type==="money"?(reward.duplicateBundle?"Pacote repetido · "+reward.amountFormatted:reward.amountFormatted):reward.converted?"Convertido em SatCoins":reward.type==="market"?"Pedido criado para entrega pelos administradores":reward.type==="reset"?"Prêmio do Bot aplicado à sua conta":reward.type==="bundle"?"Adicionado à coleção: "+reward.contentsLabel:"Adicionado à sua coleção";
           showRewardCard(reward,details);
         }else{
           for(let index=0;index<specials.length;index++){
@@ -3543,7 +3579,7 @@ function renderSignalSearch(data) {
               await wait(420);
             }
             const reward=specials[index];
-            const details=reward.converted?"Convertido em SatCoins":reward.type==="market"?"Pedido criado para entrega pelos administradores":reward.type==="reset"?"Prêmio do Bot aplicado à sua conta":"Adicionado à sua coleção";
+            const details=reward.duplicateBundle?"Pacote repetido · "+reward.amountFormatted:reward.converted?"Convertido em SatCoins":reward.type==="market"?"Pedido criado para entrega pelos administradores":reward.type==="reset"?"Prêmio do Bot aplicado à sua conta":reward.type==="bundle"?"Adicionado à coleção: "+reward.contentsLabel:"Adicionado à sua coleção";
             showRewardCard(reward,details);
             presentedSpecials.add(rewardIdentity(reward));
             if(specials.length>1){
@@ -3589,6 +3625,8 @@ function renderCosmeticsStore(data) {
   };
   const ownedBackgrounds = data.cosmetics.ownedBackgrounds || [];
   const ownedOutlines = data.cosmetics.ownedOutlines || [];
+  const ownedCircles = data.cosmetics.ownedCircles || [];
+  const ownedEffects = data.cosmetics.ownedEffects || [];
   const groups = new Map();
   for (const [key, background] of Object.entries(backgrounds)) {
     if (!groups.has(background.rarity)) groups.set(background.rarity, []);
@@ -3619,9 +3657,53 @@ function renderCosmeticsStore(data) {
         const owned = ownedOutlines.includes(outline.key);
         const active = data.cosmetics.outline === outline.key;
         const price = economy.getProfileOutlinePrice(outline.key);
+        const frostMarks = outline.frozen
+          ? ["top-left", "top-center", "top-right", "right-mid", "bottom-right", "bottom-center", "bottom-left", "left-mid"]
+            .map(position => `<span class="frost-mark frost-mark-${position}">❄</span>`).join("")
+          : "";
         return `<article class="color-card${active ? " active" : ""}" data-outline-card="${escapeHtml(outline.key)}">
-          <div class="color-swatch" aria-hidden="true" style="height:86px;padding:16px;background:#111827"><div class="${outline.rainbow ? "rainbow-outline-sample" : ""}" style="height:54px;border:${outline.rainbow ? "6px solid transparent" : "4px solid " + outline.color};border-radius:14px${outline.rainbow ? ";background:linear-gradient(#111827,#111827) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%" : ""}"></div></div>
+          <div class="color-swatch outline-swatch${outline.frozen ? " frozen-outline-swatch" : ""}" aria-hidden="true" style="height:86px;padding:16px;background:#111827;--frost-color:${outline.color}"><div class="outline-sample${outline.rainbow ? " rainbow-outline-sample" : ""}" style="height:54px;border:${outline.rainbow ? "6px solid transparent" : "4px solid " + outline.color};border-radius:14px${outline.rainbow ? ";background:linear-gradient(#111827,#111827) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%" : ""}"></div>${frostMarks}</div>
           <div class="color-card-info"><div><h3>${escapeHtml(outline.label)}</h3><p>${active ? "Em uso" : owned ? "Comprado" : `ID ${outline.id} · ${escapeHtml(rarityLabels[outline.rarity] || outline.rarity)} · ${economy.formatMoney(price)}`}</p></div><button class="color-action" type="button" data-preview-outline="${escapeHtml(outline.key)}">Mostrar prévia</button></div>
+        </article>`;
+      }).join("")}</div>
+    </section>`).join("");
+  const circleGroups = new Map();
+  for (const [key, circle] of Object.entries(economy.PROFILE_CIRCLES)) {
+    if (!circleGroups.has(circle.rarity)) circleGroups.set(circle.rarity, []);
+    circleGroups.get(circle.rarity).push({ key, ...circle });
+  }
+  const circleCategories = [...circleGroups].map(([rarity, items]) => `
+    <section class="store-panel category-panel">
+      <header class="category-heading"><div><h2>Círculos de perfil · ${escapeHtml(rarityLabels[rarity] || rarity)}</h2><p class="store-muted">${items.length} opções</p></div></header>
+      <div class="store-items">${items.map(circle => {
+        const owned = ownedCircles.includes(circle.key);
+        const active = data.cosmetics.circle === circle.key;
+        const price = economy.getProfileCirclePrice(circle.key);
+        const frostMarks = circle.frozen
+          ? ["top", "upper-right", "right", "lower-right", "bottom", "lower-left", "left", "upper-left"]
+            .map(position => `<span class="circle-frost-mark circle-frost-${position}">❄</span>`).join("")
+          : "";
+        return `<article class="color-card${active ? " active" : ""}" data-circle-card="${escapeHtml(circle.key)}">
+          <div class="color-swatch circle-swatch${circle.frozen ? " frozen-circle-swatch" : ""}" aria-hidden="true" style="height:86px;padding:12px;background:#111827;display:grid;place-items:center;position:relative;--frost-color:${circle.color}"><div class="circle-sample${circle.rainbow ? " rainbow-outline-sample" : ""}" style="width:58px;height:58px;border:${circle.rainbow ? "5px solid transparent" : "4px solid " + circle.color};border-radius:50%${circle.rainbow ? ";background:linear-gradient(#111827,#111827) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%" : ""}"></div>${frostMarks}</div>
+          <div class="color-card-info"><div><h3>${escapeHtml(circle.label)}</h3><p>${active ? "Em uso" : owned ? "Comprado" : `ID ${circle.id} · ${escapeHtml(rarityLabels[circle.rarity] || circle.rarity)} · ${economy.formatMoney(price)}`}</p></div><button class="color-action" type="button" data-preview-circle="${escapeHtml(circle.key)}">Mostrar prévia</button></div>
+        </article>`;
+      }).join("")}</div>
+    </section>`).join("");
+  const effectGroups = new Map();
+  for (const [key, effect] of Object.entries(economy.PROFILE_EFFECTS)) {
+    if (!effectGroups.has(effect.rarity)) effectGroups.set(effect.rarity, []);
+    effectGroups.get(effect.rarity).push({ key, ...effect });
+  }
+  const effectCategories = [...effectGroups].map(([rarity, items]) => `
+    <section class="store-panel category-panel">
+      <header class="category-heading"><div><h2>Efeitos de perfil · ${escapeHtml(rarityLabels[rarity] || rarity)}</h2><p class="store-muted">${items.length} opções</p></div></header>
+      <div class="store-items">${items.map(effect => {
+        const owned = ownedEffects.includes(effect.key);
+        const active = data.cosmetics.effect === effect.key;
+        const price = economy.getProfileEffectPrice(effect.key);
+        return `<article class="color-card${active ? " active" : ""}" data-effect-card="${escapeHtml(effect.key)}">
+          <div class="color-swatch" aria-hidden="true" style="height:86px;display:grid;place-items:center;background:radial-gradient(circle,#253c55,#101722)"><span style="font-size:38px;color:#d9f4ff">❄</span></div>
+          <div class="color-card-info"><div><h3>${escapeHtml(effect.label)}</h3><p>${active ? "Em uso" : owned ? "Comprado" : `ID ${effect.id} · ${escapeHtml(rarityLabels[effect.rarity] || effect.rarity)} · ${economy.formatMoney(price)}`}</p></div><button class="color-action" type="button" data-preview-effect="${escapeHtml(effect.key)}">Mostrar prévia</button></div>
         </article>`;
       }).join("")}</div>
     </section>`).join("");
@@ -3651,27 +3733,55 @@ function renderCosmeticsStore(data) {
       { ...outline, price: economy.formatMoney(economy.getProfileOutlinePrice(key)) }
     ])),
     ownedOutlines,
-    appliedOutline: data.cosmetics.outline
+    appliedOutline: data.cosmetics.outline,
+    circles: Object.fromEntries(Object.entries(economy.PROFILE_CIRCLES).map(([key, circle]) => [
+      key,
+      { ...circle, price: economy.formatMoney(economy.getProfileCirclePrice(key)) }
+    ])),
+    ownedCircles,
+    appliedCircle: data.cosmetics.circle,
+    effects: Object.fromEntries(Object.entries(economy.PROFILE_EFFECTS).map(([key, effect]) => [
+      key,
+      { ...effect, price: economy.formatMoney(economy.getProfileEffectPrice(key)) }
+    ])),
+    ownedEffects,
+    appliedEffect: data.cosmetics.effect
   };
   const profileLink = `/painel-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}`;
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Loja de cosméticos · ${escapeHtml(data.groupName)}</title><style>
     :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;background:radial-gradient(circle at 15% 0,#312344 0,#10131c 48%,#090b10 100%)}button,a{font:inherit}.store-page{width:min(980px,100%);margin:0 auto}.store-topbar{display:flex;justify-content:space-between;gap:12px;padding:8px 0 20px;border-bottom:1px solid #ffffff16}.store-topbar a{color:#d6b5ff;text-decoration:none;font-weight:700}.store-topbar span,.store-muted{color:#aab3c8}.store-hero{margin:24px 0;padding:26px;border:1px solid #f0a8c633;border-radius:20px;background:linear-gradient(120deg,#452b4a,#24263d 70%,#1b2435)}.store-hero h1{margin:4px 0 8px;font-size:clamp(28px,5vw,40px)}.store-hero p{margin:0;color:#d0c8dc;line-height:1.6}    .store-panel{margin-top:16px;padding:22px;border:1px solid #ffffff14;border-radius:18px;background:linear-gradient(145deg,#191e2d,#131824)}.category-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.category-heading h2{margin:0;font-size:19px}.category-heading p{margin:5px 0 0}.category-picker{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;margin-top:16px;padding:17px;border:1px solid #f0a8c644;border-radius:14px;background:#f0a8c60a;color:#f5f7fb;text-align:left;cursor:pointer}.category-picker:hover,.category-picker:focus-visible{border-color:#f0a8c6;outline:2px solid #f0a8c644;outline-offset:2px}.category-picker strong,.category-picker small{display:block}.category-picker small{margin-top:5px;color:#aab3c8;font-size:12px}.category-picker>span:last-child{font-size:22px;color:#f0a8c6}.store-items{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:18px}.color-card{overflow:hidden;border:1px solid #ffffff16;border-radius:14px;background:#ffffff05}.color-card.active{border-color:#f0a8c6aa;box-shadow:0 0 0 1px #f0a8c633}.color-swatch{height:64px;border-bottom:1px solid #ffffff12}.color-card-info{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px}.color-card-info h3{margin:0;font-size:14px}.color-card-info p{margin:5px 0 0;color:#aab3c8;font-size:11px}.color-action,.reset-button,.modal-button{min-height:38px;padding:8px 12px;border:1px solid #f0a8c655;border-radius:10px;background:#f076a51a;color:#ffe0ef;font-size:12px;font-weight:750;cursor:pointer;white-space:nowrap}.color-action:hover,.modal-button:hover{background:#f076a532}.store-balance{display:flex;justify-content:space-between;gap:12px;margin-top:14px;padding:13px;border:1px solid #ffffff14;border-radius:12px;background:#ffffff06;color:#aab3c8;font-size:12px}.store-balance strong{color:#f5f7fb}.store-feedback{min-height:22px;margin:12px 0 0;color:#9cf0cf;font-size:13px}.store-feedback.error{color:#ff9caa}.reset-button{margin-top:14px;border-color:#ffffff30;background:#ffffff08;color:#e8ebf5}.preview-dialog{width:min(560px,calc(100% - 28px));padding:0;border:1px solid #f0a8c655;border-radius:20px;background:#151a27;color:#f5f7fb;box-shadow:0 24px 90px #000b}.preview-dialog::backdrop{background:#05070bcc;backdrop-filter:blur(4px)}.dialog-content{padding:22px}.dialog-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.dialog-header h2{margin:0}.dialog-header p{margin:5px 0 0;color:#aab3c8;font-size:13px}.dialog-close{width:38px;height:38px;border:1px solid #ffffff25;border-radius:10px;background:#ffffff08;color:#f5f7fb;font-size:20px;cursor:pointer}.preview-card{min-height:240px;margin-top:18px;padding:20px;border:1px solid #ffffff30;border-radius:16px;box-shadow:0 18px 45px #0004}.preview-label{display:inline-block;padding:6px 9px;border:1px solid #ffffff32;border-radius:20px;background:#0003;color:#fff;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.preview-user{display:flex;align-items:center;gap:12px;margin-top:30px}.preview-avatar{display:grid;width:54px;height:54px;place-items:center;border:2px solid var(--preview-accent);border-radius:17px;background:#ffffff18;color:#fff;font-size:21px;font-weight:800}.preview-user strong,.preview-user small{display:block}.preview-user small{margin-top:4px;color:#ffffffb8}.preview-profile{margin-top:16px;padding:14px;border:1px solid #ffffff2a;border-radius:12px;background:#080b1280}.preview-profile strong{color:var(--preview-accent)}.preview-profile p{margin:6px 0 0;color:#ffffffbb;font-size:12px;line-height:1.5}.dialog-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}.dialog-actions .secondary{border-color:#ffffff30;background:#ffffff08;color:#e8ebf5}.dialog-actions button:disabled,.reset-button:disabled{opacity:.55;cursor:wait}.store-footer{margin:18px 0;color:#8390a9}@media(max-width:600px){body{padding:16px}.store-hero,.store-panel,.dialog-content{padding:18px}.store-items{grid-template-columns:1fr}.color-card-info{align-items:flex-start}.dialog-actions{flex-direction:column-reverse}.dialog-actions button{width:100%}}
     .category-catalog[hidden]{display:none}
+    .outline-swatch,.circle-swatch{position:relative;overflow:visible}
+    .frost-mark,.circle-frost-mark{position:absolute;z-index:2;color:#f5fcff;font-size:15px;line-height:1;text-shadow:0 0 5px #fff,0 0 11px var(--frost-color);pointer-events:none}
+    .frozen-outline-swatch{background:radial-gradient(ellipse at center,#1a2a3d,#111827)!important}
+    .frozen-outline-swatch .outline-sample{position:relative;border:3px double #f5fcff!important;box-shadow:0 0 0 2px var(--frost-color),0 0 12px var(--frost-color),inset 0 0 12px #c9f2ff55}
+    .frost-mark-top-left{top:9px;left:25px}.frost-mark-top-center{top:8px;left:50%;transform:translateX(-50%)}.frost-mark-top-right{top:9px;right:25px}
+    .frost-mark-right-mid{top:50%;right:7px;transform:translateY(-50%)}.frost-mark-bottom-right{right:25px;bottom:8px}.frost-mark-bottom-center{bottom:7px;left:50%;transform:translateX(-50%)}
+    .frost-mark-bottom-left{bottom:8px;left:25px}.frost-mark-left-mid{top:50%;left:7px;transform:translateY(-50%)}
+    .frozen-circle-swatch{background:radial-gradient(circle,#1d3043,#111827)!important}
+    .frozen-circle-swatch .circle-sample{border:3px double #f5fcff!important;box-shadow:0 0 0 3px var(--frost-color),0 0 14px var(--frost-color),inset 0 0 10px #c9f2ff88}
+    .circle-frost-top{top:5px;left:50%;transform:translateX(-50%)}.circle-frost-upper-right{top:14px;right:calc(50% - 34px)}
+    .circle-frost-right{top:50%;right:calc(50% - 42px);transform:translateY(-50%)}.circle-frost-lower-right{bottom:14px;right:calc(50% - 34px)}
+    .circle-frost-bottom{bottom:5px;left:50%;transform:translateX(-50%)}.circle-frost-lower-left{bottom:14px;left:calc(50% - 34px)}
+    .circle-frost-left{top:50%;left:calc(50% - 42px);transform:translateY(-50%)}.circle-frost-upper-left{top:14px;left:calc(50% - 34px)}
     .rainbow-background{animation:rainbow-cycle 5s linear infinite}
     .rainbow-outline-sample{animation:rainbow-cycle 5s linear infinite}
     .preview-card.rainbow-background{background-image:linear-gradient(110deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744)!important;background-size:300% 300%;animation:rainbow-cycle 5s linear infinite}
-    .profile-outline-preview{border:5px solid var(--preview-outline)!important}
-    .rainbow-outline-preview{border:6px solid transparent!important;background:linear-gradient(#111722,#111722) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box!important;background-size:100% 100%,300% 100%;animation:rainbow-cycle 5s linear infinite}
+    .profile-outline-preview{border:5px solid var(--preview-outline)}
+    .rainbow-outline-preview{border:6px solid transparent;background:linear-gradient(#111722,#111722) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:rainbow-cycle 5s linear infinite}
+    .profile-frozen-preview{background-image:url("${profileSnowPattern(0.14)}")!important;background-size:90px 90px!important}
     @keyframes rainbow-cycle{to{background-position:100% 50%}}
     @media(prefers-reduced-motion:reduce){.rainbow-background,.rainbow-outline-sample,.rainbow-outline-preview,.signal-card.rainbow-outline .signal-card-face,.outline-art.rainbow-outline-art i{animation:none}}
   </style></head><body><main class="store-page">
     <nav class="store-topbar"><a href="${profileLink}">← Voltar ao perfil</a><span>Loja de cosméticos · ${escapeHtml(data.groupName)}</span></nav>
-    <header class="store-hero"><h1>🎨 Loja de cosméticos</h1><p>Personalize os fundos do perfil e o outline das bolhas. Cosméticos comprados podem ser trocados sem custo.</p></header>
-    <section id="cosmeticCategories" class="store-panel"><h2>Categorias de cosméticos</h2><button id="showBackgrounds" class="category-picker" type="button"><span><strong>Fundos</strong><small>Confira os fundos disponíveis e suas categorias de raridade</small></span><span aria-hidden="true">→</span></button><button id="showOutlines" class="category-picker" type="button"><span><strong>Linha das bolhas (outline)</strong><small>Personalize o contorno dos cartões do perfil</small></span><span aria-hidden="true">→</span></button></section>
+    <header class="store-hero"><h1>🎨 Loja de cosméticos</h1><p>Personalize os fundos, outlines, círculos e efeitos do perfil. Cosméticos comprados podem ser trocados sem custo.</p></header>
+    <section id="cosmeticCategories" class="store-panel"><h2>Categorias de cosméticos</h2><button id="showBackgrounds" class="category-picker" type="button"><span><strong>Fundos</strong><small>Confira os fundos disponíveis e suas categorias de raridade</small></span><span aria-hidden="true">→</span></button><button id="showOutlines" class="category-picker" type="button"><span><strong>Outlines</strong><small>Personalize as linhas dos cartões de perfil</small></span><span aria-hidden="true">→</span></button><button id="showCircles" class="category-picker" type="button"><span><strong>Círculos de perfil</strong><small>Contornos opcionais para as fotos de perfil</small></span><span aria-hidden="true">→</span></button><button id="showEffects" class="category-picker" type="button"><span><strong>Efeitos de perfil</strong><small>Sobreposições visuais exibidas junto ao perfil</small></span><span aria-hidden="true">→</span></button></section>
     <div id="backgroundCatalog" class="category-catalog" hidden><section class="store-panel"><button id="backToCategories" class="reset-button" type="button">← Categorias de cosméticos</button></section>${categories}
       <section class="store-panel"><div class="store-balance"><span>Seu saldo local</span><strong id="storeBalance">${pageContext.balance}</strong></div><button id="resetBackground" class="reset-button" type="button">Restaurar fundo original</button><p id="storeFeedback" class="store-feedback" role="status" aria-live="polite"></p></section>
     </div>
     <div id="outlineCatalog" class="category-catalog" hidden><section class="store-panel"><button id="backFromOutlines" class="reset-button" type="button">← Categorias de cosméticos</button><header class="category-heading"><div><h2>Linha das bolhas (outline)</h2><p class="store-muted">Outlines organizadas por raridade; o modo padrão acompanha a cor do fundo.</p></div></header></section>${outlineCategories}<section class="store-panel"><div class="store-balance"><span>Seu saldo local</span><strong id="outlineStoreBalance">${pageContext.balance}</strong></div><button id="resetOutline" class="reset-button" type="button">Usar outline padrão</button><p id="outlineFeedback" class="store-feedback" role="status" aria-live="polite"></p></section></div>
+    <div id="circleCatalog" class="category-catalog" hidden><section class="store-panel"><button id="backFromCircles" class="reset-button" type="button">← Categorias de cosméticos</button><header class="category-heading"><div><h2>Círculos de perfil</h2><p class="store-muted">Sem um círculo equipado, a foto de perfil aparece sem contorno.</p></div></header></section>${circleCategories}<section class="store-panel"><div class="store-balance"><span>Seu saldo local</span><strong id="circleStoreBalance">${pageContext.balance}</strong></div><button id="resetCircle" class="reset-button" type="button">Remover círculo de perfil</button><p id="circleFeedback" class="store-feedback" role="status" aria-live="polite"></p></section></div>
+    <div id="effectCatalog" class="category-catalog" hidden><section class="store-panel"><button id="backFromEffects" class="reset-button" type="button">← Categorias de cosméticos</button><header class="category-heading"><div><h2>Efeitos de perfil</h2><p class="store-muted">Os efeitos aparecem sobre as páginas e bolhas em que seu perfil é exibido.</p></div></header></section>${effectCategories}<section class="store-panel"><div class="store-balance"><span>Seu saldo local</span><strong id="effectStoreBalance">${pageContext.balance}</strong></div><button id="resetEffect" class="reset-button" type="button">Remover efeito de perfil</button><p id="effectFeedback" class="store-feedback" role="status" aria-live="polite"></p></section></div>
     <p class="store-footer">Os cosméticos e o saldo são individuais desta plataforma e deste grupo.</p>
   </main>
   <dialog id="previewDialog" class="preview-dialog" aria-labelledby="dialogTitle"><div class="dialog-content"><header class="dialog-header"><div><h2 id="dialogTitle">Prévia do fundo</h2><p id="dialogDescription"></p></div><button class="dialog-close" type="button" data-close-dialog aria-label="Fechar">×</button></header><div id="previewCard" class="preview-card"><span class="preview-label">Perfil neste grupo</span><div class="preview-user"><div id="previewAvatar" class="preview-avatar">U</div><div><strong>${escapeHtml(data.userName)}</strong><small>${escapeHtml(data.groupName)}</small></div></div><div id="previewProfile" class="preview-profile"><strong id="previewColorName"></strong><p id="previewProfileDescription">Esta é uma prévia do fundo no perfil local.</p></div></div><p id="dialogFeedback" class="store-feedback" role="status" aria-live="polite"></p><footer class="dialog-actions"><button class="modal-button secondary" type="button" data-close-dialog>Fechar</button><button id="previewAction" class="modal-button" type="button">Comprar e equipar</button></footer></div></dialog>
@@ -3680,23 +3790,48 @@ function renderCosmeticsStore(data) {
     const backgroundUrl="/api/account/local/cosmetics";
     let appliedBackground=storeContext.appliedBackground;
     let appliedOutline=storeContext.appliedOutline;
+    let appliedCircle=storeContext.appliedCircle;
+    let appliedEffect=storeContext.appliedEffect;
     let previewKey=null;
     let previewType="background";
     const dialog=document.getElementById("previewDialog");
     const dialogFeedback=document.getElementById("dialogFeedback");
+    const frostPreviewStyles=document.createElement("style");
+    frostPreviewStyles.textContent=".preview-profile{position:relative;overflow:visible}.preview-profile.profile-outline-preview{border:3px solid var(--preview-outline);box-shadow:0 0 0 1px var(--preview-outline)}.preview-profile.rainbow-outline-preview{border:5px solid #f5fcff;box-shadow:0 0 0 2px #f0a8c6}.preview-profile.frozen-outline-preview{border:3px double #f5fcff;outline:2px solid var(--preview-outline);box-shadow:0 0 0 3px var(--preview-outline),0 0 18px var(--preview-outline),inset 0 0 14px #c9f2ff66}.preview-frost-marks{position:absolute;inset:0;z-index:2;pointer-events:none}.preview-frost-mark{position:absolute;color:#f5fcff;font-size:12px;line-height:1;text-shadow:0 0 6px #fff,0 0 12px var(--preview-outline)}.preview-frost-top-left{left:8px;top:-7px}.preview-frost-top-center{left:50%;top:-7px;transform:translateX(-50%)}.preview-frost-top-right{right:8px;top:-7px}.preview-frost-right-mid{right:-7px;top:50%;transform:translateY(-50%)}.preview-frost-bottom-right{right:8px;bottom:-7px}.preview-frost-bottom-center{left:50%;bottom:-7px;transform:translateX(-50%)}.preview-frost-bottom-left{left:8px;bottom:-7px}.preview-frost-left-mid{left:-7px;top:50%;transform:translateY(-50%)}.preview-profile>*{position:relative;z-index:1}.preview-profile>.preview-frost-marks{position:absolute;z-index:2}.preview-avatar.frozen-circle-preview{position:relative;border:4px double #f5fcff!important;box-shadow:0 0 0 2px var(--preview-circle),0 0 18px var(--preview-circle),inset 0 0 10px #c9f2ff88}.preview-avatar.frozen-circle-preview:after{content:'❄';position:absolute;top:-3px;right:-2px;color:#f5fcff;font-size:13px;text-shadow:0 0 7px var(--preview-circle)}.preview-card.profile-frozen-preview{position:relative;isolation:isolate;overflow:hidden}.preview-card.profile-frozen-preview:after{content:'❄       ❄       ❄       ❄       ❄';position:absolute;inset:0;display:flex;align-items:center;justify-content:space-around;color:#f5fcff;font-size:23px;opacity:.1;text-shadow:0 0 8px #c9f2ff;pointer-events:none;z-index:0}.preview-card>*{position:relative;z-index:1}";
+    document.head.appendChild(frostPreviewStyles);
     document.getElementById("showBackgrounds").addEventListener("click",()=>{document.getElementById("cosmeticCategories").hidden=true;document.getElementById("backgroundCatalog").hidden=false});
     document.getElementById("backToCategories").addEventListener("click",()=>{document.getElementById("backgroundCatalog").hidden=true;document.getElementById("cosmeticCategories").hidden=false});
     document.getElementById("showOutlines").addEventListener("click",()=>{document.getElementById("cosmeticCategories").hidden=true;document.getElementById("outlineCatalog").hidden=false});
     document.getElementById("backFromOutlines").addEventListener("click",()=>{document.getElementById("outlineCatalog").hidden=true;document.getElementById("cosmeticCategories").hidden=false});
+    document.getElementById("showCircles").addEventListener("click",()=>{document.getElementById("cosmeticCategories").hidden=true;document.getElementById("circleCatalog").hidden=false});
+    document.getElementById("backFromCircles").addEventListener("click",()=>{document.getElementById("circleCatalog").hidden=true;document.getElementById("cosmeticCategories").hidden=false});
+    document.getElementById("showEffects").addEventListener("click",()=>{document.getElementById("cosmeticCategories").hidden=true;document.getElementById("effectCatalog").hidden=false});
+    document.getElementById("backFromEffects").addEventListener("click",()=>{document.getElementById("effectCatalog").hidden=true;document.getElementById("cosmeticCategories").hidden=false});
     function showFeedback(element,message,isError){element.textContent=message;element.classList.toggle("error",Boolean(isError))}
-    function actionLabel(key,type=previewType){return type==="outline"?(appliedOutline===key?"Em uso":storeContext.ownedOutlines.includes(key)?"Equipar":"Comprar e equipar"):(appliedBackground===key?"Em uso":storeContext.ownedBackgrounds.includes(key)?"Equipar":"Comprar e equipar")}
+    function currentForType(type){return {background:appliedBackground,outline:appliedOutline,circle:appliedCircle,effect:appliedEffect}[type]}
+    function ownedForType(type){return {background:storeContext.ownedBackgrounds,outline:storeContext.ownedOutlines,circle:storeContext.ownedCircles,effect:storeContext.ownedEffects}[type]}
+    function itemsForType(type){return storeContext[type==="background"?"backgrounds":type==="outline"?"outlines":type==="circle"?"circles":"effects"]}
+    function actionLabel(key,type=previewType){return currentForType(type)===key?"Em uso":ownedForType(type).includes(key)?"Equipar":"Comprar e equipar"}
     function setPreviewOutline(outline){
-      for(const element of [document.getElementById("previewProfile"),document.getElementById("previewAvatar")]){
-        element.classList.toggle("profile-outline-preview",Boolean(outline));
-        element.classList.toggle("rainbow-outline-preview",Boolean(outline?.rainbow));
-        if(outline)element.style.setProperty("--preview-outline",outline.color);
-        else element.style.removeProperty("--preview-outline");
-      }
+      const element=document.getElementById("previewProfile");
+      element.classList.toggle("profile-outline-preview",Boolean(outline));
+      element.classList.toggle("rainbow-outline-preview",Boolean(outline?.rainbow));
+      element.classList.toggle("frozen-outline-preview",Boolean(outline?.frozen));
+      const existingMarks=element.querySelector(".preview-frost-marks");
+      if(outline?.frozen&&!existingMarks){
+        const marks=document.createElement("span");
+        marks.className="preview-frost-marks";
+        marks.setAttribute("aria-hidden","true");
+        ["top-left","top-center","top-right","right-mid","bottom-right","bottom-center","bottom-left","left-mid"].forEach(position=>{
+          const mark=document.createElement("span");
+          mark.className="preview-frost-mark preview-frost-"+position;
+          mark.textContent="❄";
+          marks.appendChild(mark);
+        });
+        element.appendChild(marks);
+      }else if(!outline?.frozen&&existingMarks)existingMarks.remove();
+      if(outline)element.style.setProperty("--preview-outline",outline.color);
+      else element.style.removeProperty("--preview-outline");
     }
     function openPreview(key){
       const background=storeContext.backgrounds[key];if(!background)return;
@@ -3708,6 +3843,14 @@ function renderCosmeticsStore(data) {
       const card=document.getElementById("previewCard");
       card.style.background="linear-gradient(145deg,"+background.stops[0]+","+background.stops[1]+" 55%,"+background.stops[2]+")";
       card.classList.toggle("rainbow-background",Boolean(background.rainbow));
+      card.classList.remove("profile-frozen-preview");
+      const avatar=document.getElementById("previewAvatar");
+      avatar.classList.remove("frozen-circle-preview");
+      avatar.style.border="none";
+      avatar.style.borderRadius="17px";
+      avatar.style.background="#ffffff18";
+      avatar.style.boxShadow="";
+      avatar.style.removeProperty("--preview-circle");
       card.style.setProperty("--preview-accent",background.accent);
       setPreviewOutline(storeContext.outlines[appliedOutline]);
       const action=document.getElementById("previewAction");action.textContent=actionLabel(key);action.disabled=appliedBackground===key;
@@ -3725,11 +3868,41 @@ function renderCosmeticsStore(data) {
       const background=storeContext.backgrounds[appliedBackground];
       card.style.background=background?"linear-gradient(145deg,"+background.stops[0]+","+background.stops[1]+" 55%,"+background.stops[2]+")":"#171c2a";
       card.classList.toggle("rainbow-background",Boolean(background?.rainbow));
+      card.classList.remove("profile-frozen-preview");
+      const avatar=document.getElementById("previewAvatar");
+      avatar.classList.remove("frozen-circle-preview");
+      avatar.style.border="none";
+      avatar.style.borderRadius="17px";
+      avatar.style.background="#ffffff18";
+      avatar.style.boxShadow="";
+      avatar.style.removeProperty("--preview-circle");
       card.style.setProperty("--preview-accent",outline.color);
       setPreviewOutline(outline);
       const action=document.getElementById("previewAction");action.textContent=actionLabel(key,"outline");action.disabled=appliedOutline===key;
       showFeedback(dialogFeedback,"",false);
       if(!dialog.open)dialog.showModal();
+    }
+    function openNewPreview(key,type){
+      const item=itemsForType(type)[key];if(!item)return;
+      previewKey=key;previewType=type;
+      document.getElementById("dialogTitle").textContent="Prévia · "+item.label;
+      document.getElementById("dialogDescription").textContent="ID "+item.id+" · "+(storeContext.rarityLabels[item.rarity]||item.rarity)+" · "+(ownedForType(type).includes(key)?"Já comprado":"Preço: "+item.price);
+      document.getElementById("previewColorName").textContent=item.label;
+      const card=document.getElementById("previewCard"),avatar=document.getElementById("previewAvatar");
+      card.style.background=type==="effect"?"radial-gradient(circle,#253c55,#101722)":"#171c2a";
+      card.classList.remove("rainbow-background");
+      card.classList.toggle("profile-frozen-preview",type==="effect");
+      setPreviewOutline(null);
+      avatar.classList.toggle("frozen-circle-preview",type==="circle"&&Boolean(item.frozen));
+      avatar.style.setProperty("--preview-circle",item.color||"transparent");
+      avatar.style.border=type==="circle"?(item.frozen?"4px double #f5fcff":item.rainbow?"5px solid transparent":"4px solid "+item.color):"none";
+      avatar.style.boxShadow="";
+      avatar.style.background=type==="circle"&&item.rainbow?"linear-gradient(#111827,#111827) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box":"#ffffff18";
+      avatar.style.borderRadius=type==="circle"?"50%":"17px";
+      document.getElementById("previewProfileDescription").textContent=type==="circle"?"O círculo aparece somente quando um cosmético de contorno está equipado.": "Flocos translúcidos acompanham o perfil em suas exibições.";
+      document.getElementById("previewAction").textContent=actionLabel(key,type);
+      document.getElementById("previewAction").disabled=currentForType(type)===key;
+      showFeedback(dialogFeedback,"",false);if(!dialog.open)dialog.showModal();
     }
     function refreshCards(){
       document.querySelectorAll("[data-color-card]").forEach(card=>{
@@ -3739,7 +3912,8 @@ function renderCosmeticsStore(data) {
         card.querySelector(".color-card-info p").textContent="ID "+background.id+" · "+(active?"Em uso":owned?"Comprado":"Preço: "+background.price);
       });
       refreshOutlineCards();
-      if(previewKey){const action=document.getElementById("previewAction");action.textContent=actionLabel(previewKey);action.disabled=previewType==="outline"?appliedOutline===previewKey:appliedBackground===previewKey;}
+      refreshCircleCards();refreshEffectCards();
+      if(previewKey){const action=document.getElementById("previewAction");action.textContent=actionLabel(previewKey);action.disabled=currentForType(previewType)===previewKey;}
     }
     function refreshOutlineCards(){
       document.querySelectorAll("[data-outline-card]").forEach(card=>{
@@ -3749,37 +3923,44 @@ function renderCosmeticsStore(data) {
         card.querySelector(".color-card-info p").textContent=active?"Em uso":owned?"Comprado":"ID "+outline.id+" · "+(storeContext.rarityLabels[outline.rarity]||outline.rarity)+" · "+outline.price;
       });
     }
+    function refreshCircleCards(){document.querySelectorAll("[data-circle-card]").forEach(card=>{const key=card.dataset.circleCard,item=storeContext.circles[key],active=appliedCircle===key,owned=storeContext.ownedCircles.includes(key);card.classList.toggle("active",active);card.querySelector(".color-card-info p").textContent=active?"Em uso":owned?"Comprado":"ID "+item.id+" · "+(storeContext.rarityLabels[item.rarity]||item.rarity)+" · "+item.price})}
+    function refreshEffectCards(){document.querySelectorAll("[data-effect-card]").forEach(card=>{const key=card.dataset.effectCard,item=storeContext.effects[key],active=appliedEffect===key,owned=storeContext.ownedEffects.includes(key);card.classList.toggle("active",active);card.querySelector(".color-card-info p").textContent=active?"Em uso":owned?"Comprado":"ID "+item.id+" · "+(storeContext.rarityLabels[item.rarity]||item.rarity)+" · "+item.price})}
     async function submitBackground(payload){
       const response=await fetch(backgroundUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...storeContext,...payload})});
       const result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível atualizar seu perfil.");return result;
     }
     document.querySelectorAll("[data-preview-color]").forEach(button=>button.addEventListener("click",()=>openPreview(button.dataset.previewColor)));
     document.querySelectorAll("[data-preview-outline]").forEach(button=>button.addEventListener("click",()=>openOutlinePreview(button.dataset.previewOutline)));
+    document.querySelectorAll("[data-preview-circle]").forEach(button=>button.addEventListener("click",()=>openNewPreview(button.dataset.previewCircle,"circle")));
+    document.querySelectorAll("[data-preview-effect]").forEach(button=>button.addEventListener("click",()=>openNewPreview(button.dataset.previewEffect,"effect")));
     document.querySelectorAll("[data-close-dialog]").forEach(button=>button.addEventListener("click",()=>dialog.close()));
     dialog.addEventListener("click",event=>{if(event.target===dialog)dialog.close()});
     document.getElementById("previewAction").addEventListener("click",async()=>{
-      const key=previewKey;if(!key||(previewType==="outline"?appliedOutline===key:appliedBackground===key))return;
-      const isOutline=previewType==="outline",owned=isOutline?storeContext.ownedOutlines.includes(key):storeContext.ownedBackgrounds.includes(key);
+      const key=previewKey,type=previewType;if(!key||currentForType(type)===key)return;
+      const owned=ownedForType(type).includes(key);
       const button=document.getElementById("previewAction");
       button.disabled=true;showFeedback(dialogFeedback,owned?"Equipando cosmético...":"Comprando e equipando cosmético...",false);
       try{
-        const result=isOutline
-          ? await submitBackground({action:"setOutline",outline:key})
-          : await submitBackground({action:"set",background:key});
-        if(isOutline){appliedOutline=result.outline;storeContext.appliedOutline=appliedOutline;}
-        else appliedBackground=result.background;
+        const action={background:"set",outline:"setOutline",circle:"setCircle",effect:"setEffect"}[type];
+        const field={background:"background",outline:"outline",circle:"circle",effect:"effect"}[type];
+        const result=await submitBackground({action,[field]:key});
+        if(type==="background")appliedBackground=result.background;
+        if(type==="outline")appliedOutline=result.outline;
+        if(type==="circle")appliedCircle=result.circle;
+        if(type==="effect")appliedEffect=result.effect;
+        storeContext["applied"+type[0].toUpperCase()+type.slice(1)]=key;
         storeContext.balance=result.balance;
         document.getElementById("storeBalance").textContent=result.balance;
-        if(isOutline)document.getElementById("outlineStoreBalance").textContent=result.balance;
-        const ownedItems=isOutline?storeContext.ownedOutlines:storeContext.ownedBackgrounds;
+        for(const id of ["outlineStoreBalance","circleStoreBalance","effectStoreBalance"]){const balance=document.getElementById(id);if(balance)balance.textContent=result.balance}
+        const ownedItems=ownedForType(type);
         if(result.boughtNow&&!ownedItems.includes(key))ownedItems.push(key);
         refreshCards();
-        const cosmeticName=isOutline?"Outline":"Fundo";
+        const cosmeticName={background:"Fundo",outline:"Outline",circle:"Círculo de perfil",effect:"Efeito de perfil"}[type];
         const message=result.boughtNow?cosmeticName+" comprado e equipado!":cosmeticName+" equipado sem cobrança.";
         showFeedback(dialogFeedback,message,false);
-        showFeedback(document.getElementById(isOutline?"outlineFeedback":"storeFeedback"),message,false);
+        showFeedback(document.getElementById({background:"storeFeedback",outline:"outlineFeedback",circle:"circleFeedback",effect:"effectFeedback"}[type]),message,false);
       }catch(error){showFeedback(dialogFeedback,error.message,true)}
-      finally{button.disabled=previewType==="outline"?appliedOutline===key:appliedBackground===key}
+      finally{button.disabled=currentForType(type)===key}
     });
     document.getElementById("resetBackground").addEventListener("click",async()=>{
       const button=document.getElementById("resetBackground");if(!appliedBackground){showFeedback(document.getElementById("storeFeedback"),"Seu perfil já está usando o fundo original.",false);return}
@@ -3800,6 +3981,12 @@ function renderCosmeticsStore(data) {
       }catch(error){showFeedback(document.getElementById("outlineFeedback"),error.message,true)}
       finally{button.disabled=false}
     });
+    async function resetCosmetic(type,buttonId,feedbackId,action){
+      const button=document.getElementById(buttonId);if(!currentForType(type)){showFeedback(document.getElementById(feedbackId),"Nenhum item está equipado nesta categoria.",false);return}
+      button.disabled=true;try{await submitBackground({action});if(type==="circle")appliedCircle=null;else appliedEffect=null;storeContext["applied"+type[0].toUpperCase()+type.slice(1)]=null;refreshCards();showFeedback(document.getElementById(feedbackId),"Cosmético removido. Seus itens comprados continuam disponíveis.",false)}catch(error){showFeedback(document.getElementById(feedbackId),error.message,true)}finally{button.disabled=false}
+    }
+    document.getElementById("resetCircle").addEventListener("click",()=>resetCosmetic("circle","resetCircle","circleFeedback","resetCircle"));
+    document.getElementById("resetEffect").addEventListener("click",()=>resetCosmetic("effect","resetEffect","effectFeedback","resetEffect"));
     refreshCards();
   </script></body></html>`;
 }
@@ -3964,7 +4151,9 @@ function getCosmeticPanelStyles(backgroundKey, panelType, outlineKey) {
     const outlineStyles = outline?.rainbow
       ? `.local-hero,.local-panel,.catalog-hero{border:6px solid transparent;background:${heroBackground} padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 5s linear infinite}.local-panel,.catalog-category{background:${panelBackground} padding-box,${rainbowGradient} border-box}.local-stat,.rank-link,.catalog-item{border:6px solid transparent;background:linear-gradient(${middle},${middle}) padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 5s linear infinite}.local-avatar-frame{border:6px solid transparent;background:linear-gradient(#171d2b,#171d2b) padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%}`
       : outline
-        ? `.local-hero,.local-panel,.local-stat,.rank-link,.local-avatar-frame,.catalog-hero,.catalog-category,.catalog-item{border:3px solid ${borderColor}}`
+        ? outline.frozen
+          ? `.local-hero,.local-panel,.local-stat,.rank-link,.local-avatar-frame,.catalog-hero,.catalog-category,.catalog-item{border:3px double #f5fcff;outline:1px solid ${borderColor};box-shadow:0 0 0 2px ${borderColor}66,0 0 14px ${borderColor}44}.local-hero,.local-panel,.catalog-hero,.catalog-category{position:relative}.local-hero:after,.local-panel:after,.catalog-hero:after,.catalog-category:after{content:"❄";position:absolute;top:-11px;right:18px;z-index:2;color:#f5fcff;font-size:15px;text-shadow:0 0 7px ${borderColor};pointer-events:none}`
+          : `.local-hero,.local-panel,.local-stat,.rank-link,.local-avatar-frame,.catalog-hero,.catalog-category,.catalog-item{border:3px solid ${borderColor}}`
         : "";
     return `${rainbowAnimation}body{background:${pageBackground};${background?.rainbow ? "background-size:300% 300%;animation:cosmetic-rainbow-cycle 7s linear infinite" : ""}}.local-hero,.catalog-hero{border-color:${accent}88;background:${heroBackground}}.local-panel,.catalog-category{border-color:${accent}66;background:${panelBackground}}.local-stat,.rank-link,.catalog-item{border-color:${borderColor}88;background:${middle}88}.local-topbar a,.local-section-heading h2,.rank-link span,.catalog-category h2{color:${accent}}.rank-link:hover,.catalog-item:hover{border-color:${borderColor};background:${start}88}.catalog-buy{border-color:${accent}99;background:${accent}22;color:#f5f7fb}.catalog-buy:hover{border-color:${accent};background:${accent}44}${outlineStyles}`;
   }
@@ -4380,13 +4569,14 @@ function renderWelcomeAdmin(data) {
     ? `<label>Canal de destino<select id="destinationChannel" name="channelId" required><option value="">Carregando canais...</option></select><small class="muted">O bot enviará as mensagens de entrada ou saída neste canal.</small></label>`
     : "";
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Boas-vindas e despedidas</title><style>
-    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb;--line:#334366;--muted:#9da8bd}*{box-sizing:border-box}body{margin:0;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}button,input,textarea,select{font:inherit}.page{width:min(900px,100%);margin:0 auto}.top{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:8px 0 20px;border-bottom:1px solid var(--line)}a{color:#b9c6ff;text-decoration:none;font-weight:700}.hero,.panel{margin-top:20px;padding:22px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#1c2438,#131925)}h1{margin:7px 0;font-size:clamp(23px,4vw,34px)}h2{margin:0 0 8px;font-size:18px}.muted{color:var(--muted);line-height:1.55}.tabs,.scope-tabs{display:flex;gap:8px;overflow-x:auto;margin-top:18px;padding-bottom:3px}.tabs button,.scope-tabs button{flex:none;padding:10px 15px;border-color:var(--line);border-radius:11px;color:#cbd2e2;white-space:nowrap}.tabs button[aria-selected="true"],.scope-tabs button[aria-pressed="true"]{border-color:#9b8cff;background:#8b7bff30;color:#fff}.panel{display:grid;gap:16px}.panel[hidden]{display:none}label{display:grid;gap:7px;color:#dce2f3;font-size:12px;font-weight:700}input:not([type=checkbox]),textarea,select{width:100%;padding:10px 11px;border:1px solid #485776;border-radius:9px;background:#0e1422;color:#f5f7fb}textarea{resize:vertical}button{padding:9px 12px;border:1px solid #7582a3;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-weight:700;cursor:pointer}button:hover{border-color:#9b8cff;background:#8b7bff20}button:disabled{opacity:.55;cursor:wait}.primary{border-color:#9b8cff;background:#8b7bff30}.feedback{min-height:20px;margin:0;color:#9cf0cf;font-size:12px}.feedback.error{color:#ff9eaa}.actions{display:flex;gap:8px;flex-wrap:wrap}.media{display:grid;gap:10px;padding:14px;border:1px solid var(--line);border-radius:12px;background:#ffffff05}.media p{margin:0;color:var(--muted);overflow-wrap:anywhere}.back{font-size:12px}@media(max-width:620px){body{padding:14px}.top{align-items:flex-start;flex-direction:column}.hero,.panel{padding:17px}}
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb;--line:#334366;--muted:#9da8bd}*{box-sizing:border-box}body{margin:0;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}button,input,textarea,select{font:inherit}.page{width:min(900px,100%);margin:0 auto}.top{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:8px 0 20px;border-bottom:1px solid var(--line)}a{color:#b9c6ff;text-decoration:none;font-weight:700}.hero,.panel{margin-top:20px;padding:22px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#1c2438,#131925)}h1{margin:7px 0;font-size:clamp(23px,4vw,34px)}h2{margin:0 0 8px;font-size:18px}.muted{color:var(--muted);line-height:1.55}.tabs,.scope-tabs{display:flex;gap:8px;overflow-x:auto;margin-top:18px;padding-bottom:3px}.tabs button,.scope-tabs button{flex:none;padding:10px 15px;border-color:var(--line);border-radius:11px;color:#cbd2e2;white-space:nowrap}.tabs button[aria-selected="true"],.scope-tabs button[aria-pressed="true"]{border-color:#9b8cff;background:#8b7bff30;color:#fff}.panel{display:grid;gap:16px}.panel[hidden]{display:none}label{display:grid;gap:7px;color:#dce2f3;font-size:12px;font-weight:700}.setting{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px;border:1px solid var(--line);border-radius:11px;background:#ffffff05}.setting span{display:grid;gap:4px}.setting input{width:19px;height:19px;accent-color:#9b8cff}input:not([type=checkbox]),textarea,select{width:100%;padding:10px 11px;border:1px solid #485776;border-radius:9px;background:#0e1422;color:#f5f7fb}textarea{resize:vertical}button{padding:9px 12px;border:1px solid #7582a3;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-weight:700;cursor:pointer}button:hover{border-color:#9b8cff;background:#8b7bff20}button:disabled{opacity:.55;cursor:wait}.primary{border-color:#9b8cff;background:#8b7bff30}.feedback{min-height:20px;margin:0;color:#9cf0cf;font-size:12px}.feedback.error{color:#ff9eaa}.actions{display:flex;gap:8px;flex-wrap:wrap}.media{display:grid;gap:10px;padding:14px;border:1px solid var(--line);border-radius:12px;background:#ffffff05}.media p{margin:0;color:var(--muted);overflow-wrap:anywhere}.back{font-size:12px}@media(max-width:620px){body{padding:14px}.top{align-items:flex-start;flex-direction:column}.hero,.panel{padding:17px}}
   </style></head><body><main class="page">
     <nav class="top"><a class="back" href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">← Painel de administração</a><span>${escapeHtml(groupType)} · ${escapeHtml(data.groupName)}</span></nav>
-    <header class="hero"><small>CONFIGURAÇÕES LOCAIS</small><h1>Boas-vindas e despedidas</h1><p class="muted">Configure as mensagens enviadas quando alguém entra ou sai. A ativação e desativação continuam disponíveis no painel principal.</p>${scopeNavigation}</header>
+    <header class="hero"><small>CONFIGURAÇÕES LOCAIS</small><h1>Boas-vindas e despedidas</h1><p class="muted">Configure as mensagens enviadas quando alguém entra ou sai e ative ou desative cada função neste painel.</p>${scopeNavigation}</header>
     <nav class="tabs" role="tablist" aria-label="Tipo de mensagem"><button type="button" role="tab" aria-selected="true" data-setting="welcome">Boas-vindas</button><button type="button" role="tab" aria-selected="false" data-setting="goodbye">Despedidas</button></nav>
     <form id="welcomeForm" class="panel">
       <div><h2 id="formTitle">Mensagem de boas-vindas</h2><p id="scopeLabel" class="muted"></p></div>
+      <label class="setting"><span><strong id="enabledLabel">Ativar boas-vindas</strong><small id="enabledStatus" class="muted">Carregando estado...</small></span><input id="enabled" type="checkbox" disabled></label>
       ${destinationField}
       <label>Formato da mensagem<select name="mode"><option value="texto">Somente texto</option><option value="media">Mídia com legenda</option></select></label>
       <label>Mensagem<textarea name="text" maxlength="2000" rows="5" required></textarea><small class="muted">Variáveis disponíveis: {user}, {mention}, {group}, {server}, {count} e {members}.</small></label>
@@ -4398,15 +4588,16 @@ function renderWelcomeAdmin(data) {
     const context=${context};
     let requestedScope=null;try{requestedScope=JSON.parse(new URLSearchParams(location.search).get("scope")||"null")}catch{}
     let activeSetting="welcome",activeScope=requestedScope||{level:context.platform==="whatsapp"?"chat":"server"},isTopicScope=context.platform==="telegram"&&activeScope.level==="topic";
-    const form=document.getElementById("welcomeForm"),feedback=document.getElementById("feedback"),mediaStatus=document.getElementById("mediaStatus");
+    const form=document.getElementById("welcomeForm"),feedback=document.getElementById("feedback"),mediaStatus=document.getElementById("mediaStatus"),enabled=document.getElementById("enabled"),enabledStatus=document.getElementById("enabledStatus");
     const destination=document.getElementById("destinationChannel"),topicSelect=document.getElementById("topicSelect");
     function showError(message){feedback.classList.add("error");feedback.textContent=message}
     async function api(path,body={}){const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({platform:context.platform,groupId:context.groupId,...body})});const result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível atualizar a configuração.");return result}
     function setMedia(media){mediaStatus.textContent=media?(media.fileName||"Mídia configurada")+" · "+(media.type||"arquivo"):"Nenhuma mídia configurada.";document.getElementById("removeMedia").hidden=!media}
     function scopeName(){if(context.platform==="telegram"&&isTopicScope)return "Tópico · "+(topicSelect.selectedOptions[0]?.textContent||"selecionado");return context.platform==="discord"?"Servidor inteiro":context.platform==="telegram"?"Grupo todo + chat principal":"Grupo"}
-    async function loadConfig(){feedback.classList.remove("error");feedback.textContent="Carregando configurações...";form.querySelectorAll("input,textarea,select,button").forEach(control=>control.disabled=true);try{const {config}=await api("/api/account/local/admin-"+activeSetting+"-state",{scope:activeScope});form.elements.mode.value=config.mode||"texto";form.elements.text.value=config.text||"";if(destination)destination.value=config.channelId||"";setMedia(config.media);document.getElementById("scopeLabel").textContent=scopeName();feedback.textContent=""}catch(error){showError(error.message)}finally{form.querySelectorAll("input,textarea,select,button").forEach(control=>control.disabled=false)}}
-    document.querySelectorAll("[data-setting]").forEach(button=>button.addEventListener("click",()=>{activeSetting=button.dataset.setting;document.querySelectorAll("[data-setting]").forEach(tab=>tab.setAttribute("aria-selected",String(tab===button)));document.getElementById("formTitle").textContent=activeSetting==="welcome"?"Mensagem de boas-vindas":"Mensagem de despedida";loadConfig()}));
+    async function loadConfig(){let loaded=false;feedback.classList.remove("error");feedback.textContent="Carregando configurações...";enabled.disabled=true;enabledStatus.textContent="Carregando estado...";form.querySelectorAll("input,textarea,select,button").forEach(control=>control.disabled=true);try{const [{config},{settings}]=await Promise.all([api("/api/account/local/admin-"+activeSetting+"-state",{scope:activeScope}),api("/api/account/local/admin-settings-state",{scope:activeScope})]);form.elements.mode.value=config.mode||"texto";form.elements.text.value=config.text||"";if(destination)destination.value=config.channelId||"";setMedia(config.media);document.getElementById("scopeLabel").textContent=scopeName();document.getElementById("enabledLabel").textContent=(activeSetting==="welcome"?"Ativar boas-vindas":"Ativar despedidas");enabled.checked=settings[activeSetting]===true;enabledStatus.textContent=enabled.checked?"Ativado":"Desativado";feedback.textContent="";loaded=true}catch(error){showError(error.message)}finally{form.querySelectorAll("input,textarea,select,button").forEach(control=>control.disabled=false);enabled.disabled=!loaded}}
+    document.querySelectorAll("[data-setting]").forEach(button=>button.addEventListener("click",()=>{activeSetting=button.dataset.setting;document.querySelectorAll("[data-setting]").forEach(tab=>tab.setAttribute("aria-selected",String(tab===button)));document.getElementById("formTitle").textContent=activeSetting==="welcome"?"Mensagem de boas-vindas":"Mensagem de despedida";document.getElementById("enabledLabel").textContent=activeSetting==="welcome"?"Ativar boas-vindas":"Ativar despedidas";loadConfig()}));
     if(context.platform==="telegram"){const groupButton=document.getElementById("groupScope"),topicsButton=document.getElementById("topicsScope"),topicField=document.getElementById("topicField");topicsButton.addEventListener("click",()=>{isTopicScope=true;topicsButton.setAttribute("aria-pressed","true");groupButton.setAttribute("aria-pressed","false");topicField.hidden=false;if(topicSelect.value){activeScope={level:"topic",topicId:topicSelect.value};loadConfig()}else{feedback.textContent="Selecione um tópico para carregar as configurações."}});groupButton.addEventListener("click",()=>{isTopicScope=false;topicsButton.setAttribute("aria-pressed","false");groupButton.setAttribute("aria-pressed","true");topicField.hidden=true;activeScope={level:"server"};loadConfig()});topicSelect.addEventListener("change",()=>{if(topicSelect.value){activeScope={level:"topic",topicId:topicSelect.value};loadConfig()}})}
+    enabled.addEventListener("change",async()=>{const desired=enabled.checked;enabled.disabled=true;feedback.classList.remove("error");feedback.textContent="Atualizando estado...";try{const result=await api("/api/account/local/admin-settings",{setting:activeSetting,scope:activeScope,enabled:desired});enabled.checked=result.settings[activeSetting]===true;enabledStatus.textContent=enabled.checked?"Ativado":"Desativado";feedback.classList.toggle("error",Boolean(result.announcementWarning));feedback.textContent=result.announcementWarning||"Estado atualizado."}catch(error){enabled.checked=!desired;showError(error.message)}finally{enabled.disabled=false}});
     document.getElementById("uploadMedia").addEventListener("click",async()=>{const file=form.elements.mediaFile.files?.[0];if(!file){showError("Selecione uma imagem ou vídeo antes de enviar.");return}if(file.size>8*1024*1024){showError("A mídia deve ter até 8 MB.");return}const button=document.getElementById("uploadMedia");button.disabled=true;feedback.classList.remove("error");feedback.textContent="Enviando mídia...";try{const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error("Não foi possível ler o arquivo selecionado."));reader.readAsDataURL(file)});const result=await api("/api/account/local/admin-"+activeSetting+"-media",{scope:activeScope,mimeType:file.type,data});setMedia(result.config.media);form.elements.mediaFile.value="";feedback.textContent="Mídia atualizada."}catch(error){showError(error.message)}finally{button.disabled=false}});
     document.getElementById("removeMedia").addEventListener("click",async()=>{if(!window.confirm("Remover a mídia configurada?"))return;const button=document.getElementById("removeMedia");button.disabled=true;feedback.classList.remove("error");feedback.textContent="Removendo mídia...";try{const result=await api("/api/account/local/admin-"+activeSetting+"-media",{scope:activeScope,remove:true});setMedia(result.config.media);feedback.textContent="Mídia removida."}catch(error){showError(error.message)}finally{button.disabled=false}});
     form.addEventListener("submit",async event=>{event.preventDefault();const button=form.querySelector('[type="submit"]');button.disabled=true;feedback.classList.remove("error");feedback.textContent="Salvando...";try{const config={mode:form.elements.mode.value,text:form.elements.text.value};if(destination)config.channelId=destination.value;const result=await api("/api/account/local/admin-"+activeSetting,{scope:activeScope,config});setMedia(result.config.media);feedback.textContent="Configurações salvas."}catch(error){showError(error.message)}finally{button.disabled=false}});
@@ -4828,7 +5019,6 @@ function renderEconomyAdmin(data) {
 }
 
 function renderGroupAdmin(data) {
-  const cosmeticThemeStyles = getCosmeticPanelStyles(data.profileBackground, "admin", data.profileOutline);
   const groupType = data.platform === "discord" ? "Servidor" : "Grupo";
   const warningRows = data.moderation.entries.map(item =>
     `<li><div class="warning-identity"><strong>${escapeHtml(item.name || item.userId)}</strong><small>ID: ${escapeHtml(item.userId)}</small></div><strong class="warning-count">${item.count}/${data.moderation.max}</strong><details class="warning-history"><summary>Motivos das advertências (${item.count})</summary><ul>${item.legacyCount ? `<li>${item.legacyCount} advertência(s) antiga(s) sem motivo registrado</li>` : ""}${(item.records || []).map(record => `<li>${escapeHtml(record.reason || "Motivo não informado")}<small>${escapeHtml(formatWarningDate(record.createdAt))}</small></li>`).join("")}</ul></details><button type="button" class="moderation-action danger" data-warning-user="${escapeHtml(item.userId)}">Remover advertências</button></li>`
@@ -5030,7 +5220,6 @@ function renderGroupAdmin(data) {
     .rp-user-actions .moderation-action:only-child{grid-column:1/-1}
     .rp-manager-dialog .antilink-dialog-actions button{min-width:108px}
     @media(max-width:480px){.rp-user-actions{grid-template-columns:1fr}}
-    ${cosmeticThemeStyles}
   </style></head><body><main class="admin-page">
     <nav class="topbar"><a href="/painel-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">← Painel do membro</a><span>${escapeHtml(config.getBotName())} · Administração</span></nav>
     <header class="hero"><img class="avatar" src="${escapeHtml(data.avatarUrl || "/semfoto.jpg")}" alt="Foto de ${escapeHtml(data.userName)}" onerror="this.onerror=null;this.src='/semfoto.jpg'"><div><div class="eyebrow">Painel de administração</div><h1>${escapeHtml(data.groupName)}</h1><p>${groupType} · ${escapeHtml(data.platform)} · Acesso verificado para ${escapeHtml(data.userName)}</p></div></header>
@@ -6407,7 +6596,9 @@ async function readProfile(url, { allowEmpty = false } = {}) {
       vaultBalance: Number(account?.vaultBalance) || 0,
       position: account ? economy.getBalancePosition(message, userId) : null,
       background: cosmetics.background,
-      outline: cosmetics.outline
+      outline: cosmetics.outline,
+      circle: cosmetics.circle,
+      effect: cosmetics.effect
     },
     xp: {
       exists: Boolean(xpUser),
@@ -7275,6 +7466,11 @@ function getAdminStore2State(message) {
   return { store, orders };
 }
 
+function profileSnowPattern(opacity = 1) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"><g opacity="${opacity}" fill="none" stroke="#e8f8ff" stroke-width="2" stroke-linecap="round"><path d="M25 25v18m-8-13 16 8m0-8-16 8M88 72v20m-9-15 18 10m0-10-18 10"/></g><g opacity="${opacity}" fill="#e8f8ff"><circle cx="66" cy="25" r="2"/><circle cx="48" cy="85" r="1.5"/><circle cx="103" cy="39" r="1.5"/></g></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
 function renderProfile(profile) {
   const botName = config.getBotName();
   if (profile.error) {
@@ -7307,17 +7503,25 @@ function renderProfile(profile) {
 
   const profileTheme = profileCosmetics.getProfileBackground(profile.economy.background);
   const profileOutline = profileCosmetics.getProfileOutline(profile.economy.outline);
+  const profileCircle = profileCosmetics.getProfileCircle(profile.economy.circle);
+  const profileEffect = profileCosmetics.getProfileEffect(profile.economy.effect);
   const profileStyle = [
     profileTheme
       ? `--profile-surface:${profileTheme.stops[1]};--profile-deep:${profileTheme.stops[2]};--profile-accent:${profileTheme.accent};--profile-border:${profileTheme.stops[0]};--profile-background:${profileCosmetics.getProfileBackgroundCss(profileTheme.key)}`
       : "",
-    profileOutline ? `--profile-outline:${profileOutline.color}` : ""
+    profileOutline ? `--profile-outline:${profileOutline.color}` : "",
+    profileCircle ? `--profile-circle:${profileCircle.rainbow ? "rainbow" : profileCircle.color}` : ""
   ].filter(Boolean).join(";");
   const profileClasses = [
     profileTheme ? "profile-themed-background" : "",
     profileTheme?.rainbow ? "rainbow-background" : "",
     profileOutline ? "profile-outline" : "",
-    profileOutline?.rainbow ? "rainbow-outline" : ""
+    profileOutline?.rainbow ? "rainbow-outline" : "",
+    profileOutline?.frozen ? "frozen-outline" : "",
+    profileCircle ? "profile-circle" : "",
+    profileCircle?.rainbow ? "rainbow-circle" : "",
+    profileCircle?.frozen ? "frozen-circle" : "",
+    profileEffect?.snowflakes ? "profile-frozen" : ""
   ].filter(Boolean).join(" ");
   const profileAnimationStyles = profileClasses
     ? `<style>
@@ -7327,11 +7531,22 @@ function renderProfile(profile) {
       .card.rainbow-background{background:var(--profile-background)!important;background-size:300% 300%!important;animation:profile-rainbow-background 5s linear infinite}
       .card.profile-outline{border:4px solid var(--profile-outline)}
       .card.profile-outline .grid article{border:4px solid var(--profile-outline)}
-      .card.profile-outline .avatar{border:4px solid var(--profile-outline)}
       .card.rainbow-outline{border:8px solid transparent;background:var(--profile-background,linear-gradient(145deg,var(--profile-surface,#1c2438),var(--profile-deep,#111521))) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box!important;background-size:300% 300%,300% 100%;animation:profile-rainbow-outline 5s linear infinite}
       .card.rainbow-outline .grid article{border:8px solid transparent;background:linear-gradient(var(--profile-surface,#202a40),var(--profile-surface,#202a40)) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:profile-rainbow-outline 5s linear infinite}
-      .card.rainbow-outline .avatar{border:7px solid transparent;background:linear-gradient(var(--profile-surface,#202a40),var(--profile-surface,#202a40)) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:profile-rainbow-outline 5s linear infinite}
-      @media(prefers-reduced-motion:reduce){.card.rainbow-background,.card.rainbow-outline,.card.rainbow-outline .grid article,.card.rainbow-outline .avatar{animation:none}}
+      .card.profile-circle .avatar{border:3px solid var(--profile-circle);border-radius:50%}
+      .card.rainbow-circle .avatar{border:5px solid transparent;border-radius:50%;background:linear-gradient(var(--profile-surface,#202a40),var(--profile-surface,#202a40)) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:profile-rainbow-outline 5s linear infinite}
+      .card.frozen-circle .avatar{position:relative;border:4px double #f5fcff;background:linear-gradient(var(--profile-surface,#202a40),var(--profile-surface,#202a40)) padding-box,linear-gradient(145deg,#fff,var(--profile-circle),#dff8ff,var(--profile-circle),#fff) border-box;box-shadow:0 0 0 2px var(--profile-circle),0 0 18px var(--profile-circle),inset 0 0 12px #c9f2ff88}
+      .card.frozen-circle .avatar:before{content:"❄";position:absolute;bottom:0;left:1px;z-index:2;color:#eaf7ff;font-size:13px;text-shadow:0 0 5px #83dfff}
+      .card.frozen-circle .avatar:after{content:"❄";position:absolute;top:0;right:2px;z-index:2;color:#eaf7ff;font-size:13px;text-shadow:0 0 5px #83dfff}
+      body.profile-frozen:after,.rank-row.profile-frozen:after{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.12;background-image:url("${profileSnowPattern()}");background-size:120px 120px}
+      body.profile-frozen>*{position:relative;z-index:1}
+      .rank-row.profile-frozen{position:relative;isolation:isolate;overflow:hidden}
+      .rank-row.profile-frozen:after{position:absolute}
+      .card.profile-outline.frozen-outline{border:5px double #f5fcff;box-shadow:0 0 0 2px var(--profile-outline),0 0 18px var(--profile-outline),inset 0 0 16px #c9f2ff33}
+      .card.profile-outline.frozen-outline .grid article{border:3px double #eaf7ff;box-shadow:0 0 0 1px var(--profile-outline),0 0 12px var(--profile-outline)}
+      .card.frozen-outline{position:relative;isolation:isolate}
+      .card.frozen-outline:before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:.22;background-image:url("${profileSnowPattern()}");background-size:80px 80px}
+      @media(prefers-reduced-motion:reduce){.card.rainbow-background,.card.rainbow-outline,.card.rainbow-outline .grid article,.card.rainbow-circle .avatar{animation:none}}
     </style>`
     : "";
   const pageBackground = profileTheme
@@ -7340,7 +7555,7 @@ function renderProfile(profile) {
   return `<!doctype html>
 <html lang="pt-BR">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Perfil de ${escapeHtml(profile.name)} - ${escapeHtml(botName)}</title><style>${styles()}</style>${profileAnimationStyles}</head>
-<body ${pageBackground}>
+<body class="${profileEffect?.snowflakes ? "profile-frozen" : ""}" ${pageBackground}>
   <main class="card${profileClasses ? ` ${profileClasses}` : ""}" ${profileStyle ? `style="${profileStyle}"` : ""}>
     <div class="brand">${escapeHtml(botName)} <span>PERFIL</span></div>
     <header><div class="avatar">${escapeHtml(profile.name.charAt(0).toUpperCase())}${avatarContent}</div><div><h1>${escapeHtml(profile.name)}</h1><p class="muted">ID: ${escapeHtml(profile.userId)}</p></div></header>
@@ -7381,15 +7596,20 @@ async function readRanking(url, type, order = "rich") {
       platform,
       groupId,
       groupName,
-      entries: selectedUsers.map(user => ({
-        position: users.findIndex(item => String(item.userId) === String(user.userId)) + 1,
-        name: user.displayName || user.username || user.userId,
-        userId: user.userId,
-        xp: Number(user.xp) || 0,
-        level: xp.levelForXp(user.xp).level,
-        background: economy.getProfileCosmetics(message, user.userId).background,
-        outline: economy.getProfileCosmetics(message, user.userId).outline
-      }))
+      entries: selectedUsers.map(user => {
+        const cosmetics = economy.getProfileCosmetics(message, user.userId);
+        return {
+          position: users.findIndex(item => String(item.userId) === String(user.userId)) + 1,
+          name: user.displayName || user.username || user.userId,
+          userId: user.userId,
+          xp: Number(user.xp) || 0,
+          level: xp.levelForXp(user.xp).level,
+          background: cosmetics.background,
+          outline: cosmetics.outline,
+          circle: cosmetics.circle,
+          effect: cosmetics.effect
+        };
+      })
     };
   }
 
@@ -7400,17 +7620,22 @@ async function readRanking(url, type, order = "rich") {
     groupId,
     groupName,
     includesVault: economy.getIncludeVaultInRanking(message),
-    entries: economy.getRanking(message, order === "poor" ? "poor" : "rich").map((account, index) => ({
-      position: index + 1,
-      name: account.name || account.username || account.userId,
-      userId: account.userId,
-      balance: Number(account.balance) || 0,
-      walletBalance: Number(account.walletBalance) || 0,
-      vaultBalance: Number(account.vaultBalance) || 0,
-      includesVault: account.includesVault === true,
-      background: economy.getProfileCosmetics(message, account.userId).background,
-      outline: economy.getProfileCosmetics(message, account.userId).outline
-    }))
+    entries: economy.getRanking(message, order === "poor" ? "poor" : "rich").map((account, index) => {
+      const cosmetics = economy.getProfileCosmetics(message, account.userId);
+      return {
+        position: index + 1,
+        name: account.name || account.username || account.userId,
+        userId: account.userId,
+        balance: Number(account.balance) || 0,
+        walletBalance: Number(account.walletBalance) || 0,
+        vaultBalance: Number(account.vaultBalance) || 0,
+        includesVault: account.includesVault === true,
+        background: cosmetics.background,
+        outline: cosmetics.outline,
+        circle: cosmetics.circle,
+        effect: cosmetics.effect
+      };
+    })
   };
 }
 
@@ -7481,20 +7706,25 @@ async function readActivityRanking(url, includeAll = false, order = "rich") {
       ? users
       : order === "poor"
         ? users.slice().sort((a, b) => a.total - b.total || String(a.userId).localeCompare(String(b.userId))).slice(0, 5)
-        : users.slice(0, 5)).map((user, index) => ({
-      position: index + 1,
-      name: user.displayName || user.username || user.userId,
-      userId: user.userId,
-      total: user.total,
-      dailyTotal: user.dailyTotal,
-      messages: user.messages,
-      commands: user.commands,
-      stickers: user.stickers,
-      files: user.files,
-      background: economy.getProfileCosmetics(message, user.userId).background,
-      outline: economy.getProfileCosmetics(message, user.userId).outline,
-      profileAvailable: user.profileAvailable !== false
-    })).sort((a, b) => (order === "poor" ? a.total - b.total : b.total - a.total) ||
+        : users.slice(0, 5)).map((user, index) => {
+      const cosmetics = economy.getProfileCosmetics(message, user.userId);
+      return {
+        position: index + 1,
+        name: user.displayName || user.username || user.userId,
+        userId: user.userId,
+        total: user.total,
+        dailyTotal: user.dailyTotal,
+        messages: user.messages,
+        commands: user.commands,
+        stickers: user.stickers,
+        files: user.files,
+        background: cosmetics.background,
+        outline: cosmetics.outline,
+        circle: cosmetics.circle,
+        effect: cosmetics.effect,
+        profileAvailable: user.profileAvailable !== false
+      };
+    }).sort((a, b) => (order === "poor" ? a.total - b.total : b.total - a.total) ||
       String(a.name).localeCompare(String(b.name)))
       .map((entry, index) => ({ ...entry, position: index + 1 }))
   };
@@ -7518,25 +7748,37 @@ function renderRanking(ranking) {
     ).join("")
     : `<p class="muted">Ainda não há usuários neste ranking.</p>`;
 
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)} - ${escapeHtml(botName)}</title><style>${styles()} @keyframes rank-rainbow-cycle{to{background-position:100% 50%,100% 50%}}.ranking{margin-top:22px;display:grid;gap:10px}.rank-row{display:grid;grid-template-columns:60px 1fr auto auto;align-items:center;gap:14px;padding:17px 18px;border:1px solid #334566;border-radius:14px;background:var(--rank-background,#202a40);color:inherit;text-decoration:none;transition:transform .15s ease,border-color .15s ease,filter .15s ease}.rank-row.rainbow-background{background-size:300% 300%;animation:rank-rainbow-cycle 5s linear infinite}.rank-row.rainbow-outline{border:6px solid transparent;background:var(--rank-background,linear-gradient(#202a40,#202a40)) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:rank-rainbow-cycle 5s linear infinite}.rank-row.rainbow-outline.rainbow-background{background-size:300% 300%,300% 100%}.rank-row:hover,.rank-row:focus-visible{transform:translateY(-2px);border-color:#7ea7ff;filter:brightness(1.12);outline:none}.rank-row.rainbow-outline:hover,.rank-row.rainbow-outline:focus-visible{border-color:transparent}.rank-row strong{font-size:22px;color:#8eaaff}.rank-row span{font-weight:700}.rank-row small{display:block;color:#8998b3;font-weight:400;font-size:11px;margin-top:4px}.rank-row b{white-space:nowrap}.rank-row em{font-style:normal;color:#b8c3d9;font-size:13px}@media(prefers-reduced-motion:reduce){.rank-row.rainbow-background,.rank-row.rainbow-outline{animation:none}}@media(max-width:600px){.rank-row{grid-template-columns:42px 1fr auto}.rank-row em{grid-column:2}.rank-row b{font-size:13px}}</style></head><body><main class="card"><div class="brand">${escapeHtml(botName)} <span>RANKING</span></div><header><div><h1>${escapeHtml(title)}</h1><p class="muted">${escapeHtml(ranking.groupName)}</p></div></header><div class="scope">Plataforma: ${escapeHtml(ranking.platform)} <span>•</span> ID: ${escapeHtml(ranking.groupId)}</div><section class="ranking">${rows}</section><footer>Ranking local do grupo/servidor • ${escapeHtml(botName)}</footer></main></body></html>`;
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)} - ${escapeHtml(botName)}</title><style>${styles()} @keyframes rank-rainbow-cycle{to{background-position:100% 50%,100% 50%}}.ranking{margin-top:22px;display:grid;gap:10px}.rank-row{display:grid;grid-template-columns:60px 42px 1fr auto auto;align-items:center;gap:14px;padding:17px 18px;border:1px solid #334566;border-radius:14px;background:var(--rank-background,#202a40);color:inherit;text-decoration:none;transition:transform .15s ease,border-color .15s ease,filter .15s ease}.rank-row.rainbow-background{background-size:300% 300%;animation:rank-rainbow-cycle 5s linear infinite}.rank-row.rainbow-outline{border:6px solid transparent;background:var(--rank-background,linear-gradient(#202a40,#202a40)) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:rank-rainbow-cycle 5s linear infinite}.rank-row.rainbow-outline.rainbow-background{background-size:300% 300%,300% 100%}.rank-row:hover,.rank-row:focus-visible{transform:translateY(-2px);border-color:#7ea7ff;filter:brightness(1.12);outline:none}.rank-row.rainbow-outline:hover,.rank-row.rainbow-outline:focus-visible{border-color:transparent}.rank-row strong{font-size:22px;color:#8eaaff}.rank-row span{font-weight:700}.rank-avatar{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#111827;color:#dcecff!important;font-size:16px}.rank-avatar.has-circle{border:3px solid var(--rank-circle)}.rank-avatar.rainbow-circle{border:4px solid transparent;background:linear-gradient(#111827,#111827) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:rank-rainbow-cycle 5s linear infinite}      .rank-avatar.frozen-circle{position:relative;border:3px double #f5fcff;box-shadow:0 0 0 2px var(--rank-circle),0 0 14px var(--rank-circle)}.rank-avatar.frozen-circle:before,.rank-avatar.frozen-circle:after{position:absolute;color:#eaf7ff;font-size:12px;text-shadow:0 0 5px #83dfff}.rank-avatar.frozen-circle:before{content:"❄";bottom:-5px;left:-5px}.rank-avatar.frozen-circle:after{content:"❄";top:-5px;right:-5px}.rank-row.profile-frozen{position:relative;isolation:isolate;overflow:hidden}.rank-row.profile-frozen:after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:.12;background-image:url("${profileSnowPattern()}");background-size:120px 120px}    .rank-row.frozen-outline{position:relative;isolation:isolate;overflow:hidden;border:4px double #f5fcff;box-shadow:0 0 0 2px var(--rank-outline),0 0 18px var(--rank-outline)}
+  .rank-row.frozen-outline:before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:.22;background-image:url("${profileSnowPattern()}");background-size:80px 80px}.rank-row small{display:block;color:#8998b3;font-weight:400;font-size:11px;margin-top:4px}.rank-row b{white-space:nowrap}.rank-row em{font-style:normal;color:#b8c3d9;font-size:13px}@media(prefers-reduced-motion:reduce){.rank-row.rainbow-background,.rank-row.rainbow-outline,.rank-avatar.rainbow-circle{animation:none}}@media(max-width:600px){.rank-row{grid-template-columns:42px 36px 1fr auto}.rank-row em{grid-column:3}.rank-row b{font-size:13px}}</style></head><body><main class="card"><div class="brand">${escapeHtml(botName)} <span>RANKING</span></div><header><div><h1>${escapeHtml(title)}</h1><p class="muted">${escapeHtml(ranking.groupName)}</p></div></header><div class="scope">Plataforma: ${escapeHtml(ranking.platform)} <span>•</span> ID: ${escapeHtml(ranking.groupId)}</div><section class="ranking">${rows}</section><footer>Ranking local do grupo/servidor • ${escapeHtml(botName)}</footer></main></body></html>`;
 }
 
 function renderRankingEntry(ranking, entry, metrics) {
   const profileUrl = `/perfil?grupo=${encodeURIComponent(ranking.groupId)}&plataforma=${encodeURIComponent(ranking.platform)}&usuario=${encodeURIComponent(entry.userId)}`;
   const outline = profileCosmetics.getProfileOutline(entry.outline);
+  const circle = profileCosmetics.getProfileCircle(entry.circle);
   const styleProperties = [
     entry.background ? `--rank-background:${profileCosmetics.getProfileBackgroundCss(entry.background)}` : "",
     outline ? `--rank-outline:${outline.color}` : "",
-    outline && !outline.rainbow ? `border:4px solid ${outline.color}` : ""
+    outline && !outline.rainbow && !outline.frozen ? `border:4px solid ${outline.color}` : "",
+    circle && !circle.rainbow ? `--rank-circle:${circle.color}` : ""
   ].filter(Boolean).join(";");
   const style = styleProperties ? `style="${styleProperties}"` : "";
   const classes = [
     "rank-row",
     profileCosmetics.getProfileBackground(entry.background)?.rainbow ? "rainbow-background" : "",
     outline ? "profile-outline" : "",
-    outline?.rainbow ? "rainbow-outline" : ""
+    outline?.rainbow ? "rainbow-outline" : "",
+    outline?.frozen ? "frozen-outline" : "",
+    entry.effect === "congelado" ? "profile-frozen" : ""
   ].filter(Boolean).join(" ");
-  const row = `<strong>#${entry.position}</strong><span>${escapeHtml(entry.name)}<small>ID: ${escapeHtml(entry.userId)}</small></span>${metrics}`;
+  const avatarClasses = [
+    "rank-avatar",
+    circle ? "has-circle" : "",
+    circle?.rainbow ? "rainbow-circle" : "",
+    circle?.frozen ? "frozen-circle" : ""
+  ].filter(Boolean).join(" ");
+  const initial = Array.from(String(entry.name || "?"))[0] || "?";
+  const row = `<strong>#${entry.position}</strong><span class="${avatarClasses}">${escapeHtml(initial)}</span><span>${escapeHtml(entry.name)}<small>ID: ${escapeHtml(entry.userId)}</small></span>${metrics}`;
   return entry.profileAvailable === false
     ? `<div class="${classes}" ${style}>${row}</div>`
     : `<a class="${classes}" ${style} href="${profileUrl}" aria-label="Abrir perfil de ${escapeHtml(entry.name)}">${row}</a>`;
@@ -7592,6 +7834,54 @@ function start() {
   const port = getPort();
   const server = http.createServer(async (request, response) => {
     const requestUrl = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
+
+    if (request.method === "GET" && requestUrl.pathname === "/api/account/me") {
+      let central;
+      try {
+        central = await getSessionCentral(request);
+      } catch (error) {
+        console.error("[WEB] Falha ao validar sessão para consulta da Conta Central:", error.message || error);
+        sendJson(response, 500, { error: "Não foi possível validar sua sessão agora." });
+        return;
+      }
+      if (!central) {
+        sendJson(response, 401, { error: "Sua sessão expirou. Entre novamente para continuar." });
+        return;
+      }
+
+      try {
+        const vipStatus = vipHelper.getVipStatus(central.id);
+        const nofapStatus = nofapHelper.getNofapStatus(central.id);
+        sendJson(response, 200, {
+          account: {
+            id: central.id,
+            username: central.webAuth?.username || null,
+            name: central.name || null,
+            createdAt: central.createdAt || null,
+            lastActivityAt: central.lastActivityAt || null,
+            platformAccounts: (central.platformAccounts || []).map(account => ({
+              platform: account.platform,
+              platformId: account.platformId,
+              displayName: account.displayName || null,
+              username: account.username || null,
+              linkedAt: account.linkedAt || null
+            })),
+            vip: {
+              active: vipStatus.active,
+              permanent: vipStatus.permanent,
+              startedAt: vipStatus.startedAt,
+              expiresAt: vipStatus.expiresAt,
+              remainingText: vipStatus.remainingText
+            },
+            nofap: nofapStatus
+          }
+        });
+      } catch (error) {
+        console.error("[WEB] Falha ao carregar dados da Conta Central:", error.message || error);
+        sendJson(response, 500, { error: "Não foi possível carregar os dados da sua conta agora." });
+      }
+      return;
+    }
 
     if (request.method === "POST" && requestUrl.pathname === "/api/login") {
       if (!isSameOriginRequest(request)) {
@@ -8960,6 +9250,42 @@ function start() {
               });
               return;
             }
+            if (payload?.action === "setCircle") {
+              const result = economy.setProfileCircle(message, payload?.circle);
+              if (!result.purchased) {
+                sendJson(response, 400, {
+                  error: result.reason === "insufficient-balance"
+                    ? `Saldo insuficiente. Você precisa de ${economy.formatMoney(result.price)} e tem ${economy.formatMoney(result.balance)}.`
+                    : "O círculo de perfil selecionado não é válido."
+                });
+                return;
+              }
+              sendJson(response, 200, {
+                success: true,
+                circle: result.circle,
+                boughtNow: result.boughtNow,
+                balance: economy.formatMoney(result.balance)
+              });
+              return;
+            }
+            if (payload?.action === "setEffect") {
+              const result = economy.setProfileEffect(message, payload?.effect);
+              if (!result.purchased) {
+                sendJson(response, 400, {
+                  error: result.reason === "insufficient-balance"
+                    ? `Saldo insuficiente. Você precisa de ${economy.formatMoney(result.price)} e tem ${economy.formatMoney(result.balance)}.`
+                    : "O efeito de perfil selecionado não é válido."
+                });
+                return;
+              }
+              sendJson(response, 200, {
+                success: true,
+                effect: result.effect,
+                boughtNow: result.boughtNow,
+                balance: economy.formatMoney(result.balance)
+              });
+              return;
+            }
             if (payload?.action === "reset") {
               const result = economy.resetProfileBackground(message);
               sendJson(response, 200, {
@@ -8971,6 +9297,17 @@ function start() {
             }
             if (payload?.action === "resetOutline") {
               const result = economy.resetProfileOutline(message);
+              sendJson(response, 200, {
+                success: true,
+                changed: result.changed,
+                balance: economy.formatMoney(economy.getBalance(message))
+              });
+              return;
+            }
+            if (payload?.action === "resetCircle" || payload?.action === "resetEffect") {
+              const result = payload.action === "resetCircle"
+                ? economy.resetProfileCircle(message)
+                : economy.resetProfileEffect(message);
               sendJson(response, 200, {
                 success: true,
                 changed: result.changed,
@@ -9380,6 +9717,181 @@ function start() {
       const ranking = await readActivityRanking(requestUrl, true);
       response.writeHead(ranking.error ? 404 : 200, { "Content-Type": "application/json; charset=utf-8" });
       response.end(JSON.stringify(ranking));
+      return;
+    }
+
+    if (request.method === "GET" && requestUrl.pathname === "/api/account/local/home") {
+      let central;
+      try {
+        central = await getSessionCentral(request);
+      } catch (error) {
+        console.error("[WEB] Falha ao validar sessão para o painel local do app:", error.message || error);
+        sendJson(response, 500, { error: "Não foi possível validar sua sessão agora." });
+        return;
+      }
+      if (!central) {
+        sendJson(response, 401, { error: "Sua sessão expirou. Entre novamente para continuar." });
+        return;
+      }
+
+      const platform = String(requestUrl.searchParams.get("platform") || "").toLowerCase();
+      const groupId = String(requestUrl.searchParams.get("groupId") || "");
+      if (!["discord", "telegram", "whatsapp"].includes(platform) || !isValidPlatformGroupId(groupId)) {
+        sendJson(response, 400, { error: "Plataforma ou identificador do grupo inválido." });
+        return;
+      }
+
+      try {
+        const data = await getLocalAccountData(central, platform, groupId);
+        const message = getLocalGroupMessage(platform, groupId, data.platformId);
+        const xpEnabled = xp.load(message)?.enabled === true;
+        const activityData = activity.ranking(message);
+        const activityUser = activityData?.users?.find(user => String(user.userId) === data.platformId);
+        const activityEnabled = activityData?.enabled === true;
+        const challenge = data.localProfile.september;
+        const participant = challenge?.participant;
+        let nofapPosition = null;
+        if (challenge && participant?.active) {
+          nofapPosition = nofapGroupHelper.getGroupRankings(platform, groupId)
+            .find(member => String(member.centralId) === central.id)?.position || null;
+        }
+
+        let groupType = platform === "discord" ? "server" : "group";
+        if (platform === "telegram") {
+          const bot = global.telegramBot;
+          if (!bot?.telegram) throw new Error("O Telegram está offline no momento.");
+          const chat = await bot.telegram.getChat(groupId);
+          if (chat.is_forum) groupType = "forum";
+        }
+
+        const backgroundDefinition = data.profileBackground
+          ? economy.PROFILE_BACKGROUNDS[data.profileBackground]
+          : null;
+        const outlineDefinition = data.profileOutline
+          ? economy.PROFILE_OUTLINES[data.profileOutline]
+          : null;
+        const circleDefinition = data.profileCircle
+          ? economy.PROFILE_CIRCLES[data.profileCircle]
+          : null;
+        const effectDefinition = data.profileEffect
+          ? economy.PROFILE_EFFECTS[data.profileEffect]
+          : null;
+        const cosmetics = {
+          enabled: true,
+          applied: Boolean(backgroundDefinition || outlineDefinition || circleDefinition || effectDefinition),
+          background: backgroundDefinition ? {
+            key: data.profileBackground,
+            label: backgroundDefinition.label,
+            stops: backgroundDefinition.stops,
+            accent: backgroundDefinition.accent,
+            rainbow: Boolean(backgroundDefinition.rainbow)
+          } : null,
+          outline: outlineDefinition ? {
+            key: data.profileOutline,
+            label: outlineDefinition.label,
+            color: outlineDefinition.color,
+            rainbow: Boolean(outlineDefinition.rainbow),
+            frozen: Boolean(outlineDefinition.frozen)
+          } : null,
+          circle: circleDefinition ? {
+            key: data.profileCircle,
+            label: circleDefinition.label,
+            color: circleDefinition.color,
+            rainbow: Boolean(circleDefinition.rainbow),
+            frozen: Boolean(circleDefinition.frozen)
+          } : null,
+          effect: effectDefinition ? {
+            key: data.profileEffect,
+            label: effectDefinition.label,
+            snowflakes: Boolean(effectDefinition.snowflakes)
+          } : null
+        };
+        const groupTypeLabels = {
+          server: "Servidor",
+          group: "Grupo",
+          forum: "Grupo com tópicos"
+        };
+        const platformNames = {
+          discord: "Discord",
+          telegram: "Telegram",
+          whatsapp: "WhatsApp"
+        };
+
+        sendJson(response, 200, {
+          user: {
+            id: data.platformId,
+            name: data.userName,
+            avatarUrl: data.avatarUrl
+          },
+          group: {
+            id: data.groupId,
+            name: data.groupName,
+            type: groupType,
+            typeLabel: groupTypeLabels[groupType]
+          },
+          platform,
+          platformName: platformNames[platform],
+          warnings: {
+            enabled: true,
+            count: data.warnings,
+            maximum: data.maxWarnings
+          },
+          xp: {
+            enabled: xpEnabled,
+            value: xpEnabled ? data.localProfile.xp.value : 0,
+            level: xpEnabled ? data.localProfile.xp.level : 0,
+            position: xpEnabled ? data.localProfile.xp.position : null
+          },
+          activity: {
+            enabled: activityEnabled,
+            total: activityEnabled ? data.localProfile.activity.total : 0,
+            byType: {
+              messages: activityEnabled ? data.localProfile.activity.messages : 0,
+              commands: activityEnabled ? data.localProfile.activity.commands : 0,
+              stickers: activityEnabled ? data.localProfile.activity.stickers : 0,
+              files: activityEnabled ? data.localProfile.activity.files : 0
+            },
+            today: {
+              total: activityEnabled ? Number(activityUser?.dailyTotal) || 0 : 0,
+              byType: {
+                messages: activityEnabled ? Number(activityUser?.dailyMessages) || 0 : 0,
+                commands: activityEnabled ? Number(activityUser?.dailyCommands) || 0 : 0,
+                stickers: activityEnabled ? Number(activityUser?.dailyStickers) || 0 : 0,
+                files: activityEnabled ? Number(activityUser?.dailyFiles) || 0 : 0
+              }
+            },
+            position: activityEnabled ? data.localProfile.activity.position : null
+          },
+          economy: {
+            enabled: data.economyEnabled,
+            walletBalance: data.economyEnabled ? data.account.balance : 0,
+            vaultBalance: data.economyEnabled ? data.account.vaultBalance : 0,
+            position: data.economyEnabled ? data.ranks.balance : null
+          },
+          nofap: {
+            enabled: Boolean(challenge),
+            active: Boolean(challenge && participant?.active),
+            currentDays: challenge && participant?.active ? participant.currentDays : 0,
+            resets: challenge && participant?.active ? participant.resetCount : 0,
+            position: challenge && participant?.active ? nofapPosition : null
+          },
+          cosmetics
+        });
+      } catch (error) {
+        const reason = String(error?.message || "");
+        const statusCode = /não participa|não está vinculada/i.test(reason) ? 403
+          : /offline/i.test(reason) ? 503
+            : /inválido/i.test(reason) ? 400 : 500;
+        if (statusCode === 500 || statusCode === 503) {
+          console.error("[WEB] Falha ao carregar o painel local do app:", error.message || error);
+        }
+        const errorMessage = statusCode === 400 || statusCode === 403
+          ? reason
+          : statusCode === 503
+            ? "A plataforma está indisponível no momento."
+            : "Não foi possível carregar o painel deste grupo.";
+        sendJson(response, statusCode, { error: errorMessage });
+      }
       return;
     }
 

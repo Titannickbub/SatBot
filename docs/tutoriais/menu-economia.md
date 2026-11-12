@@ -135,7 +135,7 @@ Para configurar a modalidade Local, consulte
 
 ## 🎨 Cosméticos do perfil e escudo
 
-### `!cosmeticos` — consultar e equipar fundos e linhas
+### `!cosmeticos` — consultar e equipar cosméticos de perfil
 
 Abra a loja de cosméticos e confira o que está equipado:
 
@@ -143,6 +143,8 @@ Abra a loja de cosméticos e confira o que está equipado:
 !cosmeticos
 !cosmeticos fundo
 !cosmeticos linha
+!cosmeticos circulo
+!cosmeticos efeito
 ```
 
 Para ver uma prévia, informe a cor listada no catálogo. Para equipar, é
@@ -151,17 +153,24 @@ necessário já possuir o item:
 ```text
 !cosmeticos previa fundo azul
 !cosmeticos previa linha azul
+!cosmeticos previa circulo azul
+!cosmeticos previa efeito congelado
 !cosmeticos fundo azul
 !cosmeticos linha azul
+!cosmeticos circulo azul
+!cosmeticos efeito congelado
 ```
 
-Compre um fundo ou uma linha pelo nome com `!comprar fundo <cor>` ou
-`!comprar linha <cor>`. O catálogo também mostra IDs, preços e itens que você
-já possui. Para voltar ao fundo original ou à linha que acompanha o fundo:
+Compre um cosmético pelo nome com `!comprar fundo <cor>`,
+`!comprar linha <cor>`, `!comprar circulo <cor>` ou `!comprar efeito congelado`.
+O catálogo também mostra IDs, preços e itens que você já possui. Para remover
+um cosmético equipado sem perder os itens comprados:
 
 ```text
 !cosmeticos fundo padrao
 !cosmeticos linha padrao
+!cosmeticos circulo padrao
+!cosmeticos efeito padrao
 ```
 
 Aliases do comando: `!cosmetico`, `!cosmético`, `!cosméticos` e `!cosmetics`.

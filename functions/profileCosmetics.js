@@ -2,6 +2,8 @@ const itemRarity = require("./itemRarity");
 
 const PROFILE_BACKGROUND_PRICE = 100000;
 const PROFILE_OUTLINE_PRICE = 100000;
+const PROFILE_CIRCLE_PRICE = 100000;
+const PROFILE_EFFECT_PRICE = 400000;
 
 const PROFILE_BACKGROUNDS = Object.freeze({
     azul: Object.freeze({
@@ -78,7 +80,8 @@ const PROFILE_BACKGROUNDS = Object.freeze({
     })
 });
 
-const PROFILE_OUTLINES = Object.freeze(Object.fromEntries(
+const PROFILE_OUTLINES = Object.freeze({
+    ...Object.fromEntries(
     Object.entries(PROFILE_BACKGROUNDS).map(([key, background]) => [
         key,
         Object.freeze({
@@ -89,8 +92,52 @@ const PROFILE_OUTLINES = Object.freeze(Object.fromEntries(
             color: background.accent,
             rainbow: Boolean(background.rainbow)
         })
+    ])),
+    congelado_branco: Object.freeze({
+        id: 3010,
+        label: "Congelado Branco",
+        rarity: itemRarity.EPIC,
+        price: PROFILE_EFFECT_PRICE,
+        color: "#eaf7ff",
+        frozen: true
+    }),
+    congelado_azul: Object.freeze({
+        id: 3011,
+        label: "Congelado Azul",
+        rarity: itemRarity.EPIC,
+        price: PROFILE_EFFECT_PRICE,
+        color: "#91dcff",
+        frozen: true
+    }),
+    congelado_verde: Object.freeze({
+        id: 3012,
+        label: "Congelado Verde",
+        rarity: itemRarity.EPIC,
+        price: PROFILE_EFFECT_PRICE,
+        color: "#a9f3c1",
+        frozen: true
+    })
+});
+
+const PROFILE_CIRCLES = Object.freeze(Object.fromEntries(
+    Object.entries(PROFILE_OUTLINES).map(([key, outline]) => [
+        key,
+        Object.freeze({
+            ...outline,
+            id: outline.id + 1000
+        })
     ])
 ));
+
+const PROFILE_EFFECTS = Object.freeze({
+    congelado: Object.freeze({
+        id: 5000,
+        label: "Congelado",
+        rarity: itemRarity.EPIC,
+        price: PROFILE_EFFECT_PRICE,
+        snowflakes: true
+    })
+});
 
 function getProfileBackgroundPrice(value) {
     return PROFILE_BACKGROUNDS[normalizeProfileBackground(value)]?.price || PROFILE_BACKGROUND_PRICE;
@@ -98,6 +145,15 @@ function getProfileBackgroundPrice(value) {
 
 function getProfileOutlinePrice(value) {
     return PROFILE_OUTLINES[normalizeProfileOutline(value)]?.price || PROFILE_OUTLINE_PRICE;
+}
+
+function getProfileCirclePrice(value) {
+    const circle = PROFILE_CIRCLES[normalizeProfileCircle(value)];
+    return circle?.price || (circle?.rarity === itemRarity.EPIC ? PROFILE_EFFECT_PRICE : PROFILE_CIRCLE_PRICE);
+}
+
+function getProfileEffectPrice(value) {
+    return PROFILE_EFFECTS[normalizeProfileEffect(value)]?.price || PROFILE_EFFECT_PRICE;
 }
 
 function normalizeProfileBackground(value) {
@@ -169,13 +225,79 @@ function resolveProfileOutline(value) {
         : getProfileOutline(selection);
 }
 
+function normalizeProfileCircle(value) {
+    const key = String(value || "").trim().normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+    return Object.prototype.hasOwnProperty.call(PROFILE_CIRCLES, key) ? key : null;
+}
+
+function getProfileCircle(value) {
+    const key = normalizeProfileCircle(value);
+    return key ? { key, ...PROFILE_CIRCLES[key] } : null;
+}
+
+function getProfileCircleById(id) {
+    const numericId = Number(id);
+    const entry = Object.entries(PROFILE_CIRCLES)
+        .find(([, circle]) => circle.id === numericId);
+    return entry ? { key: entry[0], ...entry[1] } : null;
+}
+
+function resolveProfileCircle(value) {
+    const normalized = String(value || "").trim().normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+    const categoryPrefix = normalized.match(/^(?:circulo|circulos|anel|aneis|circle|circles)\s+(.+)$/);
+    const selection = categoryPrefix ? categoryPrefix[1] : normalized;
+    return /^\d+$/.test(selection)
+        ? getProfileCircleById(selection)
+        : getProfileCircle(selection);
+}
+
+function normalizeProfileEffect(value) {
+    const key = String(value || "").trim().normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+    return Object.prototype.hasOwnProperty.call(PROFILE_EFFECTS, key) ? key : null;
+}
+
+function getProfileEffect(value) {
+    const key = normalizeProfileEffect(value);
+    return key ? { key, ...PROFILE_EFFECTS[key] } : null;
+}
+
+function getProfileEffectById(id) {
+    const numericId = Number(id);
+    const entry = Object.entries(PROFILE_EFFECTS)
+        .find(([, effect]) => effect.id === numericId);
+    return entry ? { key: entry[0], ...entry[1] } : null;
+}
+
+function resolveProfileEffect(value) {
+    const normalized = String(value || "").trim().normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+    const categoryPrefix = normalized.match(/^(?:efeito|efeitos|effect|effects)\s+(.+)$/);
+    const selection = categoryPrefix ? categoryPrefix[1] : normalized;
+    return /^\d+$/.test(selection)
+        ? getProfileEffectById(selection)
+        : getProfileEffect(selection);
+}
+
 module.exports = {
     PROFILE_BACKGROUND_PRICE,
     PROFILE_OUTLINE_PRICE,
+    PROFILE_CIRCLE_PRICE,
+    PROFILE_EFFECT_PRICE,
     PROFILE_BACKGROUNDS,
     PROFILE_OUTLINES,
+    PROFILE_CIRCLES,
+    PROFILE_EFFECTS,
     getProfileBackgroundPrice,
     getProfileOutlinePrice,
+    getProfileCirclePrice,
+    getProfileEffectPrice,
     getProfileBackground,
     getProfileBackgroundById,
     getProfileBackgroundCss,
@@ -184,5 +306,13 @@ module.exports = {
     getProfileOutline,
     getProfileOutlineById,
     normalizeProfileOutline,
-    resolveProfileOutline
+    resolveProfileOutline,
+    getProfileCircle,
+    getProfileCircleById,
+    normalizeProfileCircle,
+    resolveProfileCircle,
+    getProfileEffect,
+    getProfileEffectById,
+    normalizeProfileEffect,
+    resolveProfileEffect
 };

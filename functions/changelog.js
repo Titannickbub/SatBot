@@ -2,7 +2,11 @@ const packageInfo = require("../package.json");
 
 const releaseNotes = Object.freeze({
     features: Object.freeze([
-        "O suporte oficial agora pode ser ativado ou revogado por um superusuário local com aviso no chat; os comandos estão documentados no menu."
+        "O suporte oficial agora pode ser ativado ou revogado por um superusuário local com aviso no chat; os comandos estão documentados no menu.",
+        "Novas outlines congeladas em branco, azul-claro e verde-claro, além de uma categoria separada para círculos de perfil. Itens congelados são épicos.",
+        "Nova categoria de efeitos de perfil com o efeito Congelado: flocos de neve translúcidos aparecem nos perfis e rankings.",
+        "Temas de perfil aparecem nas páginas, rankings e banners compatíveis; páginas de administração de grupo agora mantêm o tema administrativo padrão.",
+        "Destaques da Busca de Sinais: Resetar todos na Recruta e Pacote Congelado Azul épico na Especializada; o pacote não é comprável e duplicatas rendem 250,00 SatCoins."
     ]),
     fixes: Object.freeze([
         "As configurações de Antilink, Antipalavras, Antimídia, Antiraid e Bloqueio de comandos agora ficam em páginas próprias, com os escopos compatíveis com cada plataforma.",

@@ -1,0 +1,251 @@
+APIs DO APP — CONTA CENTRAL E PAINEL DO USUÁRIO
+==============================================
+
+As duas rotas abaixo retornam JSON para o app. As páginas HTML do site não
+precisam ser usadas para montar as telas nativas.
+
+Autenticação comum
+------------------
+- Primeiro, faça login em POST /api/login.
+- Guarde o cookie satbot_session recebido em Set-Cookie e envie-o em todas as
+  chamadas autenticadas.
+- As rotas GET deste documento não exigem cabeçalho Origin.
+- As respostas usam application/json e Cache-Control: no-store.
+- Erros têm o formato {"error":"mensagem"}.
+
+
+1. API da home da Conta Central
+===============================
+
+Rota
+----
+GET /api/account/me
+
+Uso
+---
+Chame depois do login, enviando o cookie satbot_session. A conta é identificada
+exclusivamente pela sessão; não envie ID central no caminho ou na query string.
+Esta resposta fornece os dados da home e as plataformas vinculadas para que o
+app possa permitir a escolha de um grupo na tela seguinte.
+
+Exemplo de resposta (HTTP 200)
+------------------------------
+{
+  "account": {
+    "id": "8e2c70c1-8c76-4f4a-a43f-7c143d17e23f",
+    "username": "ana.silva",
+    "name": "Ana Silva",
+    "createdAt": "2026-03-14T12:30:00.000Z",
+    "lastActivityAt": "2026-11-12T21:10:00.000Z",
+    "platformAccounts": [
+      {
+        "platform": "discord",
+        "platformId": "123456789012345678",
+        "displayName": "Ana",
+        "username": "ana_discord",
+        "linkedAt": "2026-03-14T12:30:00.000Z"
+      },
+      {
+        "platform": "telegram",
+        "platformId": "987654321",
+        "displayName": "Ana Silva",
+        "username": "ana_silva",
+        "linkedAt": "2026-04-02T09:15:00.000Z"
+      }
+    ],
+    "vip": {
+      "active": true,
+      "permanent": false,
+      "startedAt": "2026-11-01T18:20:00.000Z",
+      "expiresAt": "2026-11-17T23:20:00.000Z",
+      "remainingText": "5 dias, 2 horas (expira em 17/11/2026 20:20)"
+    },
+    "nofap": {
+      "active": true,
+      "startedAt": "2026-11-05T18:20:00.000Z",
+      "currentDays": 7,
+      "recordDays": 12,
+      "totalResets": 2,
+      "lastResetAt": "2026-11-05T18:20:00.000Z",
+      "title": "🌱 Iniciante"
+    }
+  }
+}
+
+Campos retornados
+-----------------
+- account.id: ID da Conta Central.
+- account.username: usuário usado para entrar no painel web; não é o username
+  de uma plataforma.
+- account.name: nome configurado para a Conta Central.
+- createdAt e lastActivityAt: datas ISO 8601 em UTC; podem ser null se não
+  estiverem disponíveis.
+- platformAccounts: plataformas vinculadas. Cada item informa platform
+  ("discord", "telegram" ou "whatsapp"), platformId, displayName, username e
+  linkedAt. username/displayName/linkedAt podem ser null.
+- vip: active indica se o VIP está ativo; permanent informa se é permanente.
+  startedAt e expiresAt são datas ISO 8601 ou null; remainingText é um texto
+  pronto para exibição.
+- nofap: situação pessoal, início da sequência, dias atuais, recorde, resets,
+  último reset e título. Sem sequência, active é false, startedAt e lastResetAt
+  podem ser null e os contadores são 0.
+
+Sem sessão válida, a rota responde HTTP 401:
+{"error":"Sua sessão expirou. Entre novamente para continuar."}
+Falhas inesperadas ao validar a sessão ou carregar os dados respondem HTTP 500
+com um objeto JSON contendo error.
+
+
+2. API do painel do usuário
+===========================
+
+Rota
+----
+GET /api/account/local/home?platform=discord&groupId=ID_DO_GRUPO
+
+Como selecionar o grupo e chamar a rota
+---------------------------------------
+1. Use GET /api/account/me para consultar as plataformas vinculadas.
+2. Para listar os grupos disponíveis da plataforma escolhida, chame
+   POST /api/account/platform-groups com um corpo como
+   {"platform":"discord"}. Essa chamada exige o cookie de sessão e Origin do
+   mesmo host da API.
+3. Use o id do grupo escolhido como groupId e a plataforma como platform na
+   rota acima. Codifique os valores ao montar a URL e envie satbot_session.
+4. A API encontra o platformId pela Conta Central da sessão e verifica se essa
+   conta ainda participa do grupo. Não envie userId ou platformId: não são
+   aceitos para selecionar outro usuário.
+
+A resposta contém somente os dados do usuário autenticado naquele grupo. Não é
+necessário abrir /painel-local em um WebView.
+
+Exemplo de resposta (HTTP 200)
+------------------------------
+{
+  "user": {
+    "id": "987654321012345678",
+    "name": "Ana Silva",
+    "avatarUrl": "https://cdn.discordapp.com/avatars/987654321012345678/avatar.png"
+  },
+  "group": {
+    "id": "123456789012345678",
+    "name": "Comunidade Exemplo",
+    "type": "server",
+    "typeLabel": "Servidor"
+  },
+  "platform": "discord",
+  "platformName": "Discord",
+  "warnings": {
+    "enabled": true,
+    "count": 1,
+    "maximum": 3
+  },
+  "xp": {
+    "enabled": true,
+    "value": 840,
+    "level": 4,
+    "position": 12
+  },
+  "activity": {
+    "enabled": true,
+    "total": 90,
+    "byType": {
+      "messages": 60,
+      "commands": 20,
+      "stickers": 5,
+      "files": 5
+    },
+    "today": {
+      "total": 8,
+      "byType": {
+        "messages": 5,
+        "commands": 2,
+        "stickers": 1,
+        "files": 0
+      }
+    },
+    "position": 12
+  },
+  "economy": {
+    "enabled": true,
+    "walletBalance": 1250,
+    "vaultBalance": 300,
+    "position": 4
+  },
+  "nofap": {
+    "enabled": true,
+    "active": true,
+    "currentDays": 12,
+    "resets": 2,
+    "position": 4
+  },
+  "cosmetics": {
+    "enabled": true,
+    "applied": true,
+    "background": {
+      "key": "azul",
+      "label": "Azul",
+      "stops": ["#354f82", "#1c2a43", "#101722"],
+      "accent": "#8fb5ff",
+      "rainbow": false
+    },
+    "outline": {
+      "key": "verde",
+      "label": "Verde",
+      "color": "#9be7b2",
+      "rainbow": false,
+      "frozen": false
+    },
+    "circle": null,
+    "effect": null
+  }
+}
+
+Dados e renderização
+--------------------
+- user.id é o ID na plataforma; user.name é o nome exibido no grupo.
+  avatarUrl pode ser null ou um caminho relativo, como /avatar?...; para
+  caminhos relativos, use o domínio da API como base e mostre uma imagem
+  substituta se o carregamento falhar.
+- group.type é "server" no Discord, "group" no WhatsApp e "group" ou "forum"
+  no Telegram. "forum" identifica um grupo com tópicos; typeLabel é o texto
+  pronto para exibição. Os dados são do grupo inteiro, não de um tópico.
+- platform contém o identificador ("discord", "telegram" ou "whatsapp") e
+  platformName contém o nome para exibição.
+- warnings traz a quantidade atual e o máximo configurado. enabled é true
+  porque advertências não têm uma opção de desativação por grupo.
+- xp.enabled, activity.enabled e economy.enabled indicam se cada sistema está
+  ativo no grupo. Se estiver desativado, os números são 0 e a posição é null.
+- activity.byType contém os totais históricos por tipo. activity.today contém
+  os totais do dia por tipo e o total diário. "Hoje" usa a data local do
+  servidor do bot. A coleta diária por tipo começa com esta versão; eventos
+  antigos não permitem reconstruir essa divisão e podem aparecer como 0,
+  mesmo quando activity.today.total já tiver valor.
+- economy.walletBalance e vaultBalance são os saldos da carteira e do cofre;
+  position é a colocação no ranking de economia.
+- nofap representa o desafio NoFap do grupo. enabled indica que o desafio está
+  configurado e ativo; active indica que o usuário participa. currentDays é a
+  sequência pessoal atual, resets é a contagem de resets no desafio e
+  position é sua colocação. Sem desafio ou participação, dias e resets são 0
+  e position é null.
+- cosmetics.enabled indica que os metadados de cosméticos estão disponíveis;
+  applied informa se há algum item aplicado. Itens sem seleção são null.
+  Use background.stops e accent para compor o gradiente; se rainbow for true,
+  aplique cores animadas. outline.color e circle.color definem as cores dos
+  elementos; rainbow indica efeito arco-íris e frozen, estilo congelado.
+  effect.snowflakes indica que o app pode renderizar flocos de neve.
+
+Quando não houver dados, contadores e saldos retornam 0; posições e itens
+visuais ausentes retornam null. As propriedades enabled permitem ocultar ou
+marcar como indisponíveis as seções desativadas.
+
+Erros
+-----
+- HTTP 400: platform ou groupId inválidos.
+- HTTP 401: sessão ausente, expirada ou inválida; solicite login novamente.
+- HTTP 403: plataforma não vinculada ou usuário não participa mais do grupo.
+- HTTP 503: integração da plataforma indisponível; ofereça nova tentativa.
+- HTTP 500: falha inesperada ao carregar o painel.
+
+Exemplo de erro:
+{"error":"mensagem explicando o problema"}

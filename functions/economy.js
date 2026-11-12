@@ -55,6 +55,19 @@ const SIGNAL_SEARCH_LEVELS = Object.freeze({
         weights: Object.freeze({ money: 55, reset: 20, cosmetic: 25 })
     })
 });
+const SIGNAL_SEARCH_BUNDLES = Object.freeze({
+    congelado_azul: Object.freeze({
+        key: "congelado_azul",
+        label: "Pacote Congelado Azul",
+        rarity: itemRarity.EPIC,
+        duplicateReward: 25000,
+        contentsLabel: "Fundo Grafite + outline e círculo Congelado Azul + efeito Congelado",
+        backgrounds: Object.freeze(["grafite"]),
+        outlines: Object.freeze(["congelado_azul"]),
+        circles: Object.freeze(["congelado_azul"]),
+        effects: Object.freeze(["congelado"])
+    })
+});
 const LOCAL_SIGNAL_RARITIES = Object.freeze([
     itemRarity.COMMON,
     itemRarity.UNCOMMON,
@@ -743,7 +756,12 @@ function getAccountByUser(message, userId) {
 function getProfileCosmetics(message, userId = message?.userId) {
     const scope = getScope(message);
     if (!scope || userId === null || userId === undefined) {
-        return { background: null, ownedBackgrounds: [], outline: null, ownedOutlines: [] };
+        return {
+            background: null, ownedBackgrounds: [],
+            outline: null, ownedOutlines: [],
+            circle: null, ownedCircles: [],
+            effect: null, ownedEffects: []
+        };
     }
     const account = loadScope(scope).accounts[String(userId)];
     const cosmetics = account?.cosmetics;
@@ -755,11 +773,23 @@ function getProfileCosmetics(message, userId = message?.userId) {
         ? [...new Set(cosmetics.outlines.map(profileCosmetics.normalizeProfileOutline).filter(Boolean))]
         : [];
     const selectedOutline = profileCosmetics.normalizeProfileOutline(cosmetics?.outline);
+    const ownedCircles = Array.isArray(cosmetics?.circles)
+        ? [...new Set(cosmetics.circles.map(profileCosmetics.normalizeProfileCircle).filter(Boolean))]
+        : [];
+    const selectedCircle = profileCosmetics.normalizeProfileCircle(cosmetics?.circle);
+    const ownedEffects = Array.isArray(cosmetics?.effects)
+        ? [...new Set(cosmetics.effects.map(profileCosmetics.normalizeProfileEffect).filter(Boolean))]
+        : [];
+    const selectedEffect = profileCosmetics.normalizeProfileEffect(cosmetics?.effect);
     return {
         background: selected && ownedBackgrounds.includes(selected) ? selected : null,
         ownedBackgrounds,
         outline: selectedOutline && ownedOutlines.includes(selectedOutline) ? selectedOutline : null,
-        ownedOutlines
+        ownedOutlines,
+        circle: selectedCircle && ownedCircles.includes(selectedCircle) ? selectedCircle : null,
+        ownedCircles,
+        effect: selectedEffect && ownedEffects.includes(selectedEffect) ? selectedEffect : null,
+        ownedEffects
     };
 }
 
@@ -841,20 +871,84 @@ function setProfileOutline(message, outline) {
     };
 }
 
+function setProfileCircle(message, circle) {
+    const circleKey = profileCosmetics.normalizeProfileCircle(circle);
+    if (!circleKey) return { purchased: false, reason: "invalid-circle" };
+    const { account, scope } = getAccount(message);
+    const cosmetics = account.cosmetics && typeof account.cosmetics === "object" ? account.cosmetics : {};
+    const ownedCircles = Array.isArray(cosmetics.circles)
+        ? cosmetics.circles.map(profileCosmetics.normalizeProfileCircle).filter(Boolean)
+        : [];
+    const alreadyOwned = ownedCircles.includes(circleKey);
+    const price = profileCosmetics.getProfileCirclePrice(circleKey);
+    if (!alreadyOwned && account.balance < price) {
+        return { purchased: false, reason: "insufficient-balance", price, balance: account.balance };
+    }
+    if (!alreadyOwned) {
+        account.balance -= price;
+        ownedCircles.push(circleKey);
+    }
+    account.cosmetics = {
+        ...cosmetics,
+        circles: [...new Set(ownedCircles)],
+        circle: circleKey
+    };
+    saveScope(scope, loadScope(scope));
+    return { purchased: true, boughtNow: !alreadyOwned, circle: circleKey, price, balance: account.balance };
+}
+
+function setProfileEffect(message, effect) {
+    const effectKey = profileCosmetics.normalizeProfileEffect(effect);
+    if (!effectKey) return { purchased: false, reason: "invalid-effect" };
+    const { account, scope } = getAccount(message);
+    const cosmetics = account.cosmetics && typeof account.cosmetics === "object" ? account.cosmetics : {};
+    const ownedEffects = Array.isArray(cosmetics.effects)
+        ? cosmetics.effects.map(profileCosmetics.normalizeProfileEffect).filter(Boolean)
+        : [];
+    const alreadyOwned = ownedEffects.includes(effectKey);
+    const price = profileCosmetics.getProfileEffectPrice(effectKey);
+    if (!alreadyOwned && account.balance < price) {
+        return { purchased: false, reason: "insufficient-balance", price, balance: account.balance };
+    }
+    if (!alreadyOwned) {
+        account.balance -= price;
+        ownedEffects.push(effectKey);
+    }
+    account.cosmetics = {
+        ...cosmetics,
+        effects: [...new Set(ownedEffects)],
+        effect: effectKey
+    };
+    saveScope(scope, loadScope(scope));
+    return { purchased: true, boughtNow: !alreadyOwned, effect: effectKey, price, balance: account.balance };
+}
+
 function buyProfileCosmetic(message, selection) {
     const value = String(selection || "").trim().normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
         .toLowerCase();
     const outlinePrefix = /^(?:linha|linhas|outline|contorno|contornos)\s+/.test(value);
     const backgroundPrefix = /^(?:fundo|fundos|background|backgrounds)\s+/.test(value);
+    const circlePrefix = /^(?:circulo|circulos|anel|aneis|circle|circles)\s+/.test(value);
+    const effectPrefix = /^(?:efeito|efeitos|effect|effects)\s+/.test(value);
     const numericId = /^\d+$/.test(value) ? Number(value) : null;
     const isCosmeticId = Number.isSafeInteger(numericId) && numericId >= 2000;
-    if (!outlinePrefix && !backgroundPrefix && !isCosmeticId) return { matched: false };
+    if (!outlinePrefix && !backgroundPrefix && !circlePrefix && !effectPrefix && !isCosmeticId) return { matched: false };
 
-    const type = outlinePrefix || (numericId !== null && numericId >= 3000) ? "outline" : "background";
-    const item = type === "outline"
-        ? profileCosmetics.resolveProfileOutline(value)
-        : profileCosmetics.resolveProfileBackground(value);
+    const type = effectPrefix || (numericId !== null && numericId >= 5000)
+        ? "effect"
+        : circlePrefix || (numericId !== null && numericId >= 4000 && numericId < 5000)
+            ? "circle"
+            : outlinePrefix || (numericId !== null && numericId >= 3000 && numericId < 4000)
+                ? "outline"
+                : "background";
+    const item = type === "effect"
+        ? profileCosmetics.resolveProfileEffect(value)
+        : type === "circle"
+            ? profileCosmetics.resolveProfileCircle(value)
+            : type === "outline"
+                ? profileCosmetics.resolveProfileOutline(value)
+                : profileCosmetics.resolveProfileBackground(value);
     if (!item) {
         return { matched: true, type, purchased: false, reason: "invalid-cosmetic" };
     }
@@ -862,13 +956,21 @@ function buyProfileCosmetic(message, selection) {
     return {
         matched: true,
         type,
-        ...(type === "outline"
-            ? setProfileOutline(message, item.key)
-            : setProfileBackground(message, item.key)),
+        ...(type === "effect"
+            ? setProfileEffect(message, item.key)
+            : type === "circle"
+                ? setProfileCircle(message, item.key)
+                : type === "outline"
+                    ? setProfileOutline(message, item.key)
+                    : setProfileBackground(message, item.key)),
         item,
-        price: type === "outline"
-            ? profileCosmetics.getProfileOutlinePrice(item.key)
-            : profileCosmetics.getProfileBackgroundPrice(item.key)
+        price: type === "effect"
+            ? profileCosmetics.getProfileEffectPrice(item.key)
+            : type === "circle"
+                ? profileCosmetics.getProfileCirclePrice(item.key)
+                : type === "outline"
+                    ? profileCosmetics.getProfileOutlinePrice(item.key)
+                    : profileCosmetics.getProfileBackgroundPrice(item.key)
     };
 }
 
@@ -896,6 +998,26 @@ function resetProfileOutline(message) {
     }
     const changed = Boolean(cosmetics.outline);
     cosmetics.outline = null;
+    saveScope(scope, loadScope(scope));
+    return { changed };
+}
+
+function resetProfileCircle(message) {
+    const { account, scope } = getAccount(message);
+    const cosmetics = account.cosmetics;
+    if (!cosmetics || typeof cosmetics !== "object") return { changed: false };
+    const changed = Boolean(cosmetics.circle);
+    cosmetics.circle = null;
+    saveScope(scope, loadScope(scope));
+    return { changed };
+}
+
+function resetProfileEffect(message) {
+    const { account, scope } = getAccount(message);
+    const cosmetics = account.cosmetics;
+    if (!cosmetics || typeof cosmetics !== "object") return { changed: false };
+    const changed = Boolean(cosmetics.effect);
+    cosmetics.effect = null;
     saveScope(scope, loadScope(scope));
     return { changed };
 }
@@ -2185,7 +2307,9 @@ function getSignalSearchEpicItems(level) {
             .filter(([, item]) => item.rarity === itemRarity.EPIC)
             .map(([key, item]) => ({ type: "cosmetic", cosmeticType: "outline", key, item, rarity: item.rarity }))
     ];
-    return [...resetItems, ...cosmetics];
+    const bundles = Object.values(SIGNAL_SEARCH_BUNDLES)
+        .map(item => ({ type: "bundle", key: item.key, item, rarity: item.rarity }));
+    return [...resetItems, ...cosmetics, ...bundles];
 }
 
 function chooseSignalSearchReward(level, config, guarantee) {
@@ -2220,7 +2344,9 @@ function chooseSignalSearchReward(level, config, guarantee) {
             ...Object.entries(profileCosmetics.PROFILE_OUTLINES)
                 .map(([key, item]) => ({ type: "cosmetic", cosmeticType: "outline", key, item, rarity: item.rarity }))
         ];
-        return pickRandom(cosmeticItems);
+        const bundleItems = Object.values(SIGNAL_SEARCH_BUNDLES)
+            .map(item => ({ type: "bundle", key: item.key, item, rarity: item.rarity }));
+        return pickRandom([...cosmeticItems, ...bundleItems]);
     }
     throw new Error(`A tabela de prêmios da busca ${level} está inválida.`);
 }
@@ -2234,6 +2360,29 @@ function grantSignalCosmetic(account, prize) {
     const owned = Array.isArray(current[field]) ? current[field].map(normalizer).filter(Boolean) : [];
     if (owned.includes(prize.key)) return false;
     account.cosmetics = { ...current, [field]: [...new Set([...owned, prize.key])] };
+    return true;
+}
+
+function grantSignalSearchBundle(account, bundle) {
+    const current = account.cosmetics && typeof account.cosmetics === "object" ? account.cosmetics : {};
+    const fields = [
+        { field: "backgrounds", keys: bundle.backgrounds, normalize: profileCosmetics.normalizeProfileBackground },
+        { field: "outlines", keys: bundle.outlines, normalize: profileCosmetics.normalizeProfileOutline },
+        { field: "circles", keys: bundle.circles, normalize: profileCosmetics.normalizeProfileCircle },
+        { field: "effects", keys: bundle.effects, normalize: profileCosmetics.normalizeProfileEffect }
+    ];
+    const updated = {};
+    let granted = false;
+    for (const { field, keys, normalize } of fields) {
+        const owned = Array.isArray(current[field])
+            ? current[field].map(normalize).filter(Boolean)
+            : [];
+        const additions = keys.map(normalize).filter(key => key && !owned.includes(key));
+        if (additions.length) granted = true;
+        updated[field] = [...new Set([...owned, ...additions])];
+    }
+    if (!granted) return false;
+    account.cosmetics = { ...current, ...updated };
     return true;
 }
 
@@ -2292,6 +2441,32 @@ function awardSignalSearchPrize(account, prize, today) {
             cosmeticKey: prize.key,
             rarity: prize.rarity,
             isNew: true
+        };
+    }
+    if (prize.type === "bundle") {
+        const bundle = prize.item;
+        if (!grantSignalSearchBundle(account, bundle)) {
+            const amount = bundle.duplicateReward;
+            account.balance += amount;
+            recordDailyProfit(account, "busca", amount);
+            return {
+                type: "money",
+                name: `${bundle.label} (repetido)`,
+                amount,
+                rarity: bundle.rarity,
+                isNew: false,
+                duplicateBundle: true,
+                guarantee: prize.guarantee || null
+            };
+        }
+        return {
+            type: "bundle",
+            name: bundle.label,
+            bundleKey: bundle.key,
+            contentsLabel: bundle.contentsLabel,
+            rarity: bundle.rarity,
+            isNew: true,
+            guarantee: prize.guarantee || null
         };
     }
     throw new Error("Tipo de prêmio da busca inválido.");
@@ -2691,17 +2866,27 @@ module.exports = {
     getProfileCosmetics,
     setProfileBackground,
     setProfileOutline,
+    setProfileCircle,
+    setProfileEffect,
     resetProfileOutline,
+    resetProfileCircle,
+    resetProfileEffect,
     buyProfileBackground,
     buyProfileCosmetic,
     resetProfileBackground,
     ITEM_RARITY: itemRarity,
     PROFILE_BACKGROUNDS: profileCosmetics.PROFILE_BACKGROUNDS,
     PROFILE_OUTLINES: profileCosmetics.PROFILE_OUTLINES,
+    PROFILE_CIRCLES: profileCosmetics.PROFILE_CIRCLES,
+    PROFILE_EFFECTS: profileCosmetics.PROFILE_EFFECTS,
     PROFILE_BACKGROUND_PRICE: profileCosmetics.PROFILE_BACKGROUND_PRICE,
     PROFILE_OUTLINE_PRICE: profileCosmetics.PROFILE_OUTLINE_PRICE,
+    PROFILE_CIRCLE_PRICE: profileCosmetics.PROFILE_CIRCLE_PRICE,
+    PROFILE_EFFECT_PRICE: profileCosmetics.PROFILE_EFFECT_PRICE,
     getProfileBackgroundPrice: profileCosmetics.getProfileBackgroundPrice,
     getProfileOutlinePrice: profileCosmetics.getProfileOutlinePrice,
+    getProfileCirclePrice: profileCosmetics.getProfileCirclePrice,
+    getProfileEffectPrice: profileCosmetics.getProfileEffectPrice,
     resetBalance,
     resetAllBalances,
     getBalancePosition,
@@ -2740,6 +2925,7 @@ module.exports = {
     getStoreItems,
     buyStoreItem,
     SIGNAL_SEARCH_LEVELS,
+    SIGNAL_SEARCH_BUNDLES,
     LOCAL_SIGNAL_RARITIES,
     getSignalSearchState,
     searchSignals,
