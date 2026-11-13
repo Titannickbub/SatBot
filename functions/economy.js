@@ -58,10 +58,10 @@ const SIGNAL_SEARCH_LEVELS = Object.freeze({
 const SIGNAL_SEARCH_BUNDLES = Object.freeze({
     congelado_azul: Object.freeze({
         key: "congelado_azul",
-        label: "Pacote Congelado Azul",
+        label: "Pacote Congelado Azul-claro",
         rarity: itemRarity.EPIC,
         duplicateReward: 25000,
-        contentsLabel: "Fundo Grafite + outline e círculo Congelado Azul + efeito Congelado",
+        contentsLabel: "Fundo Grafite + outline e círculo Congelado Azul-claro + efeito Congelado",
         backgrounds: Object.freeze(["grafite"]),
         outlines: Object.freeze(["congelado_azul"]),
         circles: Object.freeze(["congelado_azul"]),

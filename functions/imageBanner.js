@@ -35,13 +35,11 @@ function text(value, x, y, size, color = "#f5f7fb", weight = 400, anchor = "star
 }
 
 function snowflakeOverlay(width, height, spacing = 115, opacity = 0.12) {
-    const flakes = [];
-    for (let y = spacing / 2; y < height; y += spacing) {
-        for (let x = spacing / 2; x < width; x += spacing) {
-            flakes.push(`<text x="${x}" y="${y}" fill="#eaf7ff" font-size="18" opacity="${opacity}" text-anchor="middle">❄</text>`);
-        }
-    }
-    return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">${flakes.join("")}</svg>`;
+    const firstX = Math.round(spacing * 0.22);
+    const firstY = Math.round(spacing * 0.22);
+    const secondX = Math.round(spacing * 0.72);
+    const secondY = Math.round(spacing * 0.68);
+    return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="frost-pattern" width="${spacing}" height="${spacing}" patternUnits="userSpaceOnUse"><g opacity="${opacity}" fill="none" stroke="#e8f8ff" stroke-width="2" stroke-linecap="round"><path d="M${firstX} ${firstY - 9}v18m-8-13 16 8m0-8-16 8"/><path d="M${secondX} ${secondY - 10}v20m-9-15 18 10m0-10-18 10"/></g><g opacity="${opacity}" fill="#e8f8ff"><circle cx="${Math.round(spacing * 0.55)}" cy="${Math.round(spacing * 0.22)}" r="2"/><circle cx="${Math.round(spacing * 0.4)}" cy="${Math.round(spacing * 0.75)}" r="1.5"/><circle cx="${Math.round(spacing * 0.86)}" cy="${Math.round(spacing * 0.33)}" r="1.5"/></g></pattern></defs><rect width="${width}" height="${height}" fill="url(#frost-pattern)"/></svg>`;
 }
 
 function snowflakeMarks(cx, cy, radius, count = 8, size = 14, opacity = 0.95) {
@@ -61,7 +59,7 @@ function profileCircleFrame(cx, cy, radius, circle, strokeWidth = 3) {
     return `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${circle.rainbow ? "url(#rainbow)" : circle.color}" stroke-width="${strokeWidth}"/>`;
 }
 
-function frozenProfileLinesOverlay() {
+function frozenProfileLinesOverlay(color = "#83dfff") {
     const flakes = [];
     const iceLines = [];
     const rectangles = [
@@ -73,14 +71,13 @@ function frozenProfileLinesOverlay() {
         [600, 445, 530, 130, 18]
     ];
     for (const [x, y, width, height, radius] of rectangles) {
-        iceLines.push(`<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" fill="none" stroke="#83dfff" stroke-width="7" opacity=".38"/><rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" fill="none" stroke="#f5fcff" stroke-width="2" opacity=".82"/>`);
-        for (let position = x + 48; position < x + width - 25; position += 90) {
-            flakes.push(`<text x="${position}" y="${y + 13}" fill="#eaf7ff" font-size="16" text-anchor="middle">❄</text>`);
-            flakes.push(`<text x="${position}" y="${y + height - 2}" fill="#eaf7ff" font-size="16" text-anchor="middle">❄</text>`);
-        }
-        for (let position = y + 34; position < y + height - 15; position += 75) {
-            flakes.push(`<text x="${x + 8}" y="${position}" fill="#eaf7ff" font-size="16" text-anchor="middle">❄</text>`);
-            flakes.push(`<text x="${x + width - 8}" y="${position}" fill="#eaf7ff" font-size="16" text-anchor="middle">❄</text>`);
+        iceLines.push(`<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" fill="none" stroke="${color}" stroke-width="7" opacity=".42"/><rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" fill="none" stroke="#f5fcff" stroke-width="2" opacity=".9"/>`);
+        for (const [markX, markY] of [
+            [x + width * 0.32, y + 12],
+            [x + width * 0.68, y + 12],
+            [x + width / 2, y + height - 2]
+        ]) {
+            flakes.push(`<text x="${markX}" y="${markY}" fill="#f5fcff" stroke="${color}" stroke-width="1" paint-order="stroke fill" font-size="18" text-anchor="middle">❄</text>`);
         }
     }
     return `<svg width="1200" height="650" xmlns="http://www.w3.org/2000/svg">${iceLines.join("")}${flakes.join("")}</svg>`;
@@ -343,8 +340,8 @@ async function renderProfile(message) {
             input: Buffer.from('<svg width="1200" height="650" xmlns="http://www.w3.org/2000/svg"><text x="700" y="458" fill="#eaf7ff" font-size="16">❄</text><text x="800" y="458" fill="#eaf7ff" font-size="16">❄</text><text x="900" y="458" fill="#eaf7ff" font-size="16">❄</text><text x="1000" y="458" fill="#eaf7ff" font-size="16">❄</text><text x="700" y="572" fill="#eaf7ff" font-size="16">❄</text><text x="800" y="572" fill="#eaf7ff" font-size="16">❄</text><text x="900" y="572" fill="#eaf7ff" font-size="16">❄</text><text x="1000" y="572" fill="#eaf7ff" font-size="16">❄</text></svg>')
         });
     }
-    if (profileOutline?.frozen) composites.push({ input: Buffer.from(frozenProfileLinesOverlay()) });
-    if (profileEffect?.snowflakes) composites.push({ input: Buffer.from(snowflakeOverlay(1200, 650)) });
+    if (profileOutline?.frozen) composites.push({ input: Buffer.from(frozenProfileLinesOverlay(profileOutline.color)) });
+    if (profileEffect?.snowflakes) composites.push({ input: Buffer.from(snowflakeOverlay(1200, 650, 210, 0.04)) });
     if (composites.length) image.composite(composites);
     return {
         buffer: await image.png().toBuffer(),
@@ -455,7 +452,7 @@ async function renderProfileEffectPreview(effectKey) {
         "Prévia do efeito • não altera seu perfil",
         body
     )));
-    image.composite([{ input: Buffer.from(snowflakeOverlay(1200, 650, 78, 0.12)) }]);
+    image.composite([{ input: Buffer.from(snowflakeOverlay(1200, 650, 180, 0.05)) }]);
     const buffer = await image.png().toBuffer();
     return {
         buffer,
@@ -514,7 +511,7 @@ async function renderMarriageBanner(message, currentMarriage = marriage.getMarri
 <defs>
   <linearGradient id="wedding-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${leftStops[0]}"/><stop offset=".5" stop-color="${leftStops[1]}"/><stop offset=".5001" stop-color="${rightStops[1]}"/><stop offset="1" stop-color="${rightStops[2]}"/></linearGradient>
   <radialGradient id="wedding-glow"><stop offset="0" stop-color="${weddingGlow}" stop-opacity=".32"/><stop offset="1" stop-color="${weddingGlow}" stop-opacity="0"/></radialGradient>
-  <linearGradient id="wedding-rainbow"><stop offset="0" stop-color="#ff1744"/><stop offset=".17" stop-color="#ff9100"/><stop offset=".34" stop-color="#ffea00"/><stop offset=".51" stop-color="#00e676"/><stop offset=".68" stop-color="#00b0ff"/><stop offset=".85" stop-color="#651fff"/><stop offset="1" stop-color="#ff1744"/></linearGradient>
+  <linearGradient id="rainbow"><stop offset="0" stop-color="#ff1744"/><stop offset=".17" stop-color="#ff9100"/><stop offset=".34" stop-color="#ffea00"/><stop offset=".51" stop-color="#00e676"/><stop offset=".68" stop-color="#00b0ff"/><stop offset=".85" stop-color="#651fff"/><stop offset="1" stop-color="#ff1744"/></linearGradient>
 </defs>
 <rect width="1200" height="680" fill="url(#wedding-bg)"/>
 <circle cx="190" cy="250" r="280" fill="url(#wedding-glow)"/><circle cx="1010" cy="360" r="300" fill="url(#wedding-glow)"/>
@@ -522,10 +519,10 @@ async function renderMarriageBanner(message, currentMarriage = marriage.getMarri
 ${text(botName, 600, 76, 20, "#e4a9c6", 800, "middle")}
 ${text("CASAMENTO", 600, 130, 38, "#fff2f8", 800, "middle")}
 ${text(subtitle, 600, 166, 18, "#d1b1c4", 400, "middle")}
-<circle cx="300" cy="310" r="119" fill="#352338" ${people[0].circle ? `stroke="${people[0].circle.rainbow ? "url(#wedding-rainbow)" : people[0].circle.color}" stroke-width="6"` : 'stroke="none" stroke-width="0"'}/>
-<circle cx="900" cy="310" r="119" fill="#352338" ${people[1].circle ? `stroke="${people[1].circle.rainbow ? "url(#wedding-rainbow)" : people[1].circle.color}" stroke-width="6"` : 'stroke="none" stroke-width="0"'}/>
-${people[0].circle?.frozen ? `<text x="300" y="195" fill="#eaf7ff" font-size="24" text-anchor="middle">❄</text><text x="415" y="318" fill="#eaf7ff" font-size="24" text-anchor="middle">❄</text><text x="300" y="433" fill="#eaf7ff" font-size="24" text-anchor="middle">❄</text><text x="185" y="318" fill="#eaf7ff" font-size="24" text-anchor="middle">❄</text>` : ""}
-${people[1].circle?.frozen ? `<text x="900" y="195" fill="#eaf7ff" font-size="24" text-anchor="middle">❄</text><text x="1015" y="318" fill="#eaf7ff" font-size="24" text-anchor="middle">❄</text><text x="900" y="433" fill="#eaf7ff" font-size="24" text-anchor="middle">❄</text><text x="785" y="318" fill="#eaf7ff" font-size="24" text-anchor="middle">❄</text>` : ""}
+<circle cx="300" cy="310" r="119" fill="#352338" stroke="none"/>
+<circle cx="900" cy="310" r="119" fill="#352338" stroke="none"/>
+${people[0].circle ? profileCircleFrame(300, 310, 119, people[0].circle, 6) : ""}
+${people[1].circle ? profileCircleFrame(900, 310, 119, people[1].circle, 6) : ""}
 ${text(selfMarriage ? "♥" : "♡", 600, 326, 64, "#f08db7", 800, "middle")}
 ${text(fitCoupleName(people[0].name, 22), 300, 472, coupleNameFont(people[0].name, 42), "#fff3f8", 800, "middle")}
 ${text(selfMarriage ? "UMA ESCOLHA DE AMOR-PRÓPRIO" : "JUNTOS DESDE", 600, 469, 16, "#e6a8c4", 700, "middle")}
@@ -544,7 +541,7 @@ ${text(`${botName} • ${message.platform}`, 600, 628, 13, "#a8829a", 600, "midd
         } : null)
         .filter(Boolean);
     if (people.some(person => person.effect?.snowflakes)) {
-        composites.push({ input: Buffer.from(snowflakeOverlay(1200, 680, 105, 0.12)) });
+        composites.push({ input: Buffer.from(snowflakeOverlay(1200, 680, 210, 0.04)) });
     }
 
     return {
@@ -670,7 +667,7 @@ async function renderRanking(message, type, order = "rich") {
             cardOverlays.push(profileCircleFrame(x + cardWidth / 2, cardY + 91, 68, profileCircle, profileCircle.rainbow ? 8 : 4));
         }
         if (profileOutline?.frozen) {
-            cardOverlays.push(`<rect x="${x}" y="${cardY}" width="${cardWidth}" height="${cardHeight}" rx="22" fill="none" stroke="#83dfff" stroke-width="9" opacity=".34"/><rect x="${x}" y="${cardY}" width="${cardWidth}" height="${cardHeight}" rx="22" fill="none" stroke="#f5fcff" stroke-width="2" opacity=".88"/>`);
+            cardOverlays.push(`<rect x="${x}" y="${cardY}" width="${cardWidth}" height="${cardHeight}" rx="22" fill="none" stroke="${profileOutline.color}" stroke-width="9" opacity=".4"/><rect x="${x}" y="${cardY}" width="${cardWidth}" height="${cardHeight}" rx="22" fill="none" stroke="#f5fcff" stroke-width="2" opacity=".92"/>`);
             for (let mark = 1; mark <= 4; mark++) {
                 const markX = x + cardWidth * mark / 5;
                 cardOverlays.push(`<text x="${markX}" y="${cardY + 15}" fill="#f5fcff" font-size="14" text-anchor="middle">❄</text><text x="${markX}" y="${cardY + cardHeight - 3}" fill="#f5fcff" font-size="14" text-anchor="middle">❄</text>`);

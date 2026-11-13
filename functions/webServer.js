@@ -2652,6 +2652,9 @@ function renderLocalAccount(data) {
     profileCircle?.rainbow ? "rainbow-profile-circle" : ""
   ].filter(Boolean).join(" ");
   const avatarFrameStyle = profileCircle ? `style="--profile-circle-color:${profileCircle.color};"` : "";
+  const avatarFrostMarks = profileCircle?.frozen
+    ? `<span class="local-avatar-frost-marks" aria-hidden="true">${["top", "upper-right", "right", "lower-right", "bottom", "lower-left", "left", "upper-left"].map(position => `<span class="local-avatar-frost-mark local-avatar-frost-${position}">❄</span>`).join("")}</span>`
+    : "";
   const pageClass = data.profileEffect ? "profile-frozen" : "";
   const groupType = data.platform === "discord" ? "Servidor" : "Grupo";
   const currency = amount => economy.formatMoney(Number(amount) || 0);
@@ -2710,11 +2713,20 @@ function renderLocalAccount(data) {
     .local-avatar{width:76px;height:76px;border-radius:18px;object-fit:cover;background:#171d2b}
     .local-avatar-frame.has-profile-circle{position:relative;border:4px solid var(--profile-circle-color);border-radius:50%;box-shadow:0 0 0 2px var(--profile-circle-color),0 0 15px var(--profile-circle-color)}
     .local-avatar-frame.has-profile-circle .local-avatar{border-radius:50%}
-    .local-avatar-frame.frozen-profile-circle{border:4px double #f5fcff;outline:2px solid var(--profile-circle-color);box-shadow:0 0 0 3px var(--profile-circle-color),0 0 18px var(--profile-circle-color),inset 0 0 12px #c9f2ff88}
-    .local-avatar-frame.frozen-profile-circle:after{content:"❄";position:absolute;top:-7px;right:1px;color:#f5fcff;font-size:15px;text-shadow:0 0 8px var(--profile-circle-color);pointer-events:none}
+    .local-avatar-frame.frozen-profile-circle{border:4px double #f5fcff;outline:2px solid var(--profile-circle-color);outline-offset:2px;box-shadow:0 0 0 5px var(--profile-circle-color),0 0 20px var(--profile-circle-color),inset 0 0 12px #c9f2ff88}
+    .local-avatar-frost-marks{position:absolute;inset:0;z-index:4;pointer-events:none}
+    .local-avatar-frost-mark{position:absolute;color:#f5fcff;font-size:13px;line-height:1;text-shadow:0 0 4px #fff,0 0 9px var(--profile-circle-color)}
+    .local-avatar-frost-top{top:-4px;left:50%;transform:translateX(-50%)}
+    .local-avatar-frost-upper-right{top:9%;right:9%}
+    .local-avatar-frost-right{top:50%;right:-5px;transform:translateY(-50%)}
+    .local-avatar-frost-lower-right{right:9%;bottom:9%}
+    .local-avatar-frost-bottom{bottom:-4px;left:50%;transform:translateX(-50%)}
+    .local-avatar-frost-lower-left{bottom:9%;left:9%}
+    .local-avatar-frost-left{top:50%;left:-5px;transform:translateY(-50%)}
+    .local-avatar-frost-upper-left{top:9%;left:9%}
     .local-avatar-frame.rainbow-profile-circle{border:5px solid transparent;border-radius:50%;background:linear-gradient(#171d2b,#171d2b) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:local-circle-rainbow 5s linear infinite}
     @keyframes local-circle-rainbow{to{background-position:0 0,100% 50%}}
-    body.profile-frozen:after{content:"";position:fixed;inset:0;z-index:3;pointer-events:none;opacity:.12;background-image:url("${profileSnowPattern(0.8)}");background-size:120px 120px}
+    body.profile-frozen:after{content:"";position:fixed;inset:0;z-index:3;pointer-events:none;opacity:.015;background-image:url("${profileSnowPattern(0.5)}");background-size:180px 180px}
     body.profile-frozen .local-page{position:relative;z-index:2}
     .local-hero h1{margin:0;font-size:clamp(25px,4vw,38px);overflow-wrap:anywhere}
     .local-hero p{margin:7px 0 0;color:#c1c9df}
@@ -2778,7 +2790,7 @@ function renderLocalAccount(data) {
     ${cosmeticThemeStyles}
   </style></head><body class="${pageClass}"><main class="local-page">
     <nav class="local-topbar"><a href="/dashboard">← Conta Central</a><span>${safeBotName} · Painel local</span></nav>
-    <header class="local-hero"><div class="local-hero-main"><span class="${avatarFrameClasses}" ${avatarFrameStyle}><img class="local-avatar" src="${escapeHtml(data.avatarUrl || "/semfoto.jpg")}" alt="Foto de perfil de ${escapeHtml(data.userName)}" onerror="this.onerror=null;this.src='/semfoto.jpg'"></span><div><div class="eyebrow">Painel da conta local</div><h1>${escapeHtml(data.userName)}</h1><p>${groupType}: ${escapeHtml(data.groupName)} · ${escapeHtml(data.platform)}</p></div></div><div class="local-hero-actions"><div class="local-hero-action-links">${data.canManage ? `<a class="admin-panel-button" href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">⚙ Painel de administração</a>` : ""}</div></div></header>
+    <header class="local-hero"><div class="local-hero-main"><span class="${avatarFrameClasses}" ${avatarFrameStyle}><img class="local-avatar" src="${escapeHtml(data.avatarUrl || "/semfoto.jpg")}" alt="Foto de perfil de ${escapeHtml(data.userName)}" onerror="this.onerror=null;this.src='/semfoto.jpg'">${avatarFrostMarks}</span><div><div class="eyebrow">Painel da conta local</div><h1>${escapeHtml(data.userName)}</h1><p>${groupType}: ${escapeHtml(data.groupName)} · ${escapeHtml(data.platform)}</p></div></div><div class="local-hero-actions"><div class="local-hero-action-links">${data.canManage ? `<a class="admin-panel-button" href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">⚙ Painel de administração</a>` : ""}</div></div></header>
     <section class="local-section" aria-labelledby="displaySectionTitle">
       <header class="local-section-heading"><div><h2 id="displaySectionTitle">Exibição</h2><p>Consulte seus dados e posições neste grupo ou servidor.</p></div></header>
       <div class="local-layout">
@@ -4152,7 +4164,7 @@ function getCosmeticPanelStyles(backgroundKey, panelType, outlineKey) {
       ? `.local-hero,.local-panel,.catalog-hero{border:6px solid transparent;background:${heroBackground} padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 5s linear infinite}.local-panel,.catalog-category{background:${panelBackground} padding-box,${rainbowGradient} border-box}.local-stat,.rank-link,.catalog-item{border:6px solid transparent;background:linear-gradient(${middle},${middle}) padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%;animation:cosmetic-rainbow-cycle 5s linear infinite}.local-avatar-frame{border:6px solid transparent;background:linear-gradient(#171d2b,#171d2b) padding-box,${rainbowGradient} border-box;background-size:100% 100%,300% 100%}`
       : outline
         ? outline.frozen
-          ? `.local-hero,.local-panel,.local-stat,.rank-link,.local-avatar-frame,.catalog-hero,.catalog-category,.catalog-item{border:3px double #f5fcff;outline:1px solid ${borderColor};box-shadow:0 0 0 2px ${borderColor}66,0 0 14px ${borderColor}44}.local-hero,.local-panel,.catalog-hero,.catalog-category{position:relative}.local-hero:after,.local-panel:after,.catalog-hero:after,.catalog-category:after{content:"❄";position:absolute;top:-11px;right:18px;z-index:2;color:#f5fcff;font-size:15px;text-shadow:0 0 7px ${borderColor};pointer-events:none}`
+          ? `.local-hero,.local-panel,.local-stat,.rank-link,.local-avatar-frame,.catalog-hero,.catalog-category,.catalog-item{border:3px double #f5fcff;outline:1px solid ${borderColor};box-shadow:0 0 0 2px ${borderColor}66,0 0 14px ${borderColor}44}.local-hero,.local-panel,.catalog-hero,.catalog-category,.local-stat,.rank-link,.catalog-item{position:relative}.local-hero:before,.local-panel:before,.catalog-hero:before,.catalog-category:before,.local-hero:after,.local-panel:after,.catalog-hero:after,.catalog-category:after{content:"❄";position:absolute;top:-11px;z-index:2;color:#f5fcff;font-size:17px;line-height:1;text-shadow:0 0 4px #fff,0 0 10px ${borderColor};pointer-events:none}.local-hero:before,.local-panel:before,.catalog-hero:before,.catalog-category:before{left:18px}.local-hero:after,.local-panel:after,.catalog-hero:after,.catalog-category:after{right:18px}.local-stat:after,.rank-link:after,.catalog-item:after{content:"❄";position:absolute;top:-9px;right:10px;z-index:2;color:#f5fcff;font-size:14px;line-height:1;text-shadow:0 0 4px #fff,0 0 9px ${borderColor};pointer-events:none}`
           : `.local-hero,.local-panel,.local-stat,.rank-link,.local-avatar-frame,.catalog-hero,.catalog-category,.catalog-item{border:3px solid ${borderColor}}`
         : "";
     return `${rainbowAnimation}body{background:${pageBackground};${background?.rainbow ? "background-size:300% 300%;animation:cosmetic-rainbow-cycle 7s linear infinite" : ""}}.local-hero,.catalog-hero{border-color:${accent}88;background:${heroBackground}}.local-panel,.catalog-category{border-color:${accent}66;background:${panelBackground}}.local-stat,.rank-link,.catalog-item{border-color:${borderColor}88;background:${middle}88}.local-topbar a,.local-section-heading h2,.rank-link span,.catalog-category h2{color:${accent}}.rank-link:hover,.catalog-item:hover{border-color:${borderColor};background:${start}88}.catalog-buy{border-color:${accent}99;background:${accent}22;color:#f5f7fb}.catalog-buy:hover{border-color:${accent};background:${accent}44}${outlineStyles}`;
@@ -7523,6 +7535,12 @@ function renderProfile(profile) {
     profileCircle?.frozen ? "frozen-circle" : "",
     profileEffect?.snowflakes ? "profile-frozen" : ""
   ].filter(Boolean).join(" ");
+  const circleFrostMarks = profileCircle?.frozen
+    ? `<span class="frozen-circle-marks" aria-hidden="true">${["top", "upper-right", "right", "lower-right", "bottom", "lower-left", "left", "upper-left"].map(position => `<span class="frozen-circle-mark frozen-circle-${position}">❄</span>`).join("")}</span>`
+    : "";
+  const outlineFrostMarks = profileOutline?.frozen
+    ? `<span class="frozen-outline-marks" aria-hidden="true">${["top-left", "top-center", "top-right", "left-mid", "right-mid"].map(position => `<span class="frozen-outline-mark frozen-outline-${position}">❄</span>`).join("")}</span>`
+    : "";
   const profileAnimationStyles = profileClasses
     ? `<style>
       @keyframes profile-rainbow-background{to{background-position:100% 50%}}
@@ -7535,17 +7553,29 @@ function renderProfile(profile) {
       .card.rainbow-outline .grid article{border:8px solid transparent;background:linear-gradient(var(--profile-surface,#202a40),var(--profile-surface,#202a40)) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:profile-rainbow-outline 5s linear infinite}
       .card.profile-circle .avatar{border:3px solid var(--profile-circle);border-radius:50%}
       .card.rainbow-circle .avatar{border:5px solid transparent;border-radius:50%;background:linear-gradient(var(--profile-surface,#202a40),var(--profile-surface,#202a40)) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:profile-rainbow-outline 5s linear infinite}
-      .card.frozen-circle .avatar{position:relative;border:4px double #f5fcff;background:linear-gradient(var(--profile-surface,#202a40),var(--profile-surface,#202a40)) padding-box,linear-gradient(145deg,#fff,var(--profile-circle),#dff8ff,var(--profile-circle),#fff) border-box;box-shadow:0 0 0 2px var(--profile-circle),0 0 18px var(--profile-circle),inset 0 0 12px #c9f2ff88}
-      .card.frozen-circle .avatar:before{content:"❄";position:absolute;bottom:0;left:1px;z-index:2;color:#eaf7ff;font-size:13px;text-shadow:0 0 5px #83dfff}
-      .card.frozen-circle .avatar:after{content:"❄";position:absolute;top:0;right:2px;z-index:2;color:#eaf7ff;font-size:13px;text-shadow:0 0 5px #83dfff}
-      body.profile-frozen:after,.rank-row.profile-frozen:after{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.12;background-image:url("${profileSnowPattern()}");background-size:120px 120px}
+      .card.frozen-circle .avatar{position:relative;border:4px double #f5fcff;background:linear-gradient(var(--profile-surface,#202a40),var(--profile-surface,#202a40)) padding-box,linear-gradient(145deg,#fff,var(--profile-circle),#dff8ff,var(--profile-circle),#fff) border-box;box-shadow:0 0 0 2px var(--profile-circle),0 0 0 5px #f5fcff88,0 0 20px var(--profile-circle),inset 0 0 12px #c9f2ff88}
+      .frozen-circle-marks{position:absolute;inset:0;z-index:3;pointer-events:none}
+      .frozen-circle-mark{position:absolute;color:#f5fcff;font-size:13px;line-height:1;text-shadow:0 0 4px #fff,0 0 9px var(--profile-circle)}
+      .frozen-circle-top{top:1px;left:50%;transform:translateX(-50%)}
+      .frozen-circle-upper-right{top:8px;right:8px}
+      .frozen-circle-right{top:50%;right:1px;transform:translateY(-50%)}
+      .frozen-circle-lower-right{right:8px;bottom:8px}
+      .frozen-circle-bottom{bottom:1px;left:50%;transform:translateX(-50%)}
+      .frozen-circle-lower-left{bottom:8px;left:8px}
+      .frozen-circle-left{top:50%;left:1px;transform:translateY(-50%)}
+      .frozen-circle-upper-left{top:8px;left:8px}
+      body.profile-frozen:after,.rank-row.profile-frozen:after{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.015;background-image:url("${profileSnowPattern()}");background-size:180px 180px}
       body.profile-frozen>*{position:relative;z-index:1}
       .rank-row.profile-frozen{position:relative;isolation:isolate;overflow:hidden}
       .rank-row.profile-frozen:after{position:absolute}
-      .card.profile-outline.frozen-outline{border:5px double #f5fcff;box-shadow:0 0 0 2px var(--profile-outline),0 0 18px var(--profile-outline),inset 0 0 16px #c9f2ff33}
-      .card.profile-outline.frozen-outline .grid article{border:3px double #eaf7ff;box-shadow:0 0 0 1px var(--profile-outline),0 0 12px var(--profile-outline)}
+      .card.profile-outline.frozen-outline{border:5px double #f5fcff;box-shadow:0 0 0 2px var(--profile-outline),0 0 20px var(--profile-outline),inset 0 0 16px #c9f2ff33}
+      .card.profile-outline.frozen-outline .grid article{position:relative;border:3px double #eaf7ff;box-shadow:0 0 0 1px var(--profile-outline),0 0 14px var(--profile-outline)}
+      .card.profile-outline.frozen-outline .grid article:after{content:"❄";position:absolute;top:-9px;right:18px;color:#f5fcff;font-size:14px;line-height:1;text-shadow:0 0 4px #fff,0 0 9px var(--profile-outline);pointer-events:none}
       .card.frozen-outline{position:relative;isolation:isolate}
-      .card.frozen-outline:before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:.22;background-image:url("${profileSnowPattern()}");background-size:80px 80px}
+      .frozen-outline-marks{position:absolute;inset:0;z-index:4;pointer-events:none}
+      .frozen-outline-mark{position:absolute;color:#f5fcff;font-size:16px;line-height:1;text-shadow:0 0 4px #fff,0 0 10px var(--profile-outline)}
+      .frozen-outline-top-left{top:-9px;left:24%}.frozen-outline-top-center{top:-9px;left:50%;transform:translateX(-50%)}.frozen-outline-top-right{top:-9px;left:76%}
+      .frozen-outline-left-mid{top:50%;left:-9px;transform:translateY(-50%)}.frozen-outline-right-mid{top:50%;right:-9px;transform:translateY(-50%)}
       @media(prefers-reduced-motion:reduce){.card.rainbow-background,.card.rainbow-outline,.card.rainbow-outline .grid article,.card.rainbow-circle .avatar{animation:none}}
     </style>`
     : "";
@@ -7557,8 +7587,9 @@ function renderProfile(profile) {
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Perfil de ${escapeHtml(profile.name)} - ${escapeHtml(botName)}</title><style>${styles()}</style>${profileAnimationStyles}</head>
 <body class="${profileEffect?.snowflakes ? "profile-frozen" : ""}" ${pageBackground}>
   <main class="card${profileClasses ? ` ${profileClasses}` : ""}" ${profileStyle ? `style="${profileStyle}"` : ""}>
+    ${outlineFrostMarks}
     <div class="brand">${escapeHtml(botName)} <span>PERFIL</span></div>
-    <header><div class="avatar">${escapeHtml(profile.name.charAt(0).toUpperCase())}${avatarContent}</div><div><h1>${escapeHtml(profile.name)}</h1><p class="muted">ID: ${escapeHtml(profile.userId)}</p></div></header>
+    <header>    <div class="avatar">${escapeHtml(profile.name.charAt(0).toUpperCase())}${avatarContent}${circleFrostMarks}</div><div><h1>${escapeHtml(profile.name)}</h1><p class="muted">ID: ${escapeHtml(profile.userId)}</p></div></header>
     <div class="scope">Plataforma: ${escapeHtml(profile.platform)} <span>•</span> ${escapeHtml(profile.groupName)} <span>•</span> ID: ${escapeHtml(profile.groupId)}</div>
     <section class="grid">
       <article><div class="label">PATRIMÔNIO TOTAL</div><div class="value money">${formatMoney(profile.economy.balance)}</div><div class="meta">Carteira: ${formatMoney(profile.economy.walletBalance)}<br>Cofre protegido: ${formatMoney(profile.economy.vaultBalance)}<br>Posição no ranking: ${economyPosition}</div></article>
@@ -7596,12 +7627,13 @@ async function readRanking(url, type, order = "rich") {
       platform,
       groupId,
       groupName,
-      entries: selectedUsers.map(user => {
+      entries: await Promise.all(selectedUsers.map(async user => {
         const cosmetics = economy.getProfileCosmetics(message, user.userId);
         return {
           position: users.findIndex(item => String(item.userId) === String(user.userId)) + 1,
           name: user.displayName || user.username || user.userId,
           userId: user.userId,
+          avatarUrl: await getProfileAvatar(platform, groupId, user.userId),
           xp: Number(user.xp) || 0,
           level: xp.levelForXp(user.xp).level,
           background: cosmetics.background,
@@ -7609,7 +7641,7 @@ async function readRanking(url, type, order = "rich") {
           circle: cosmetics.circle,
           effect: cosmetics.effect
         };
-      })
+      }))
     };
   }
 
@@ -7620,12 +7652,13 @@ async function readRanking(url, type, order = "rich") {
     groupId,
     groupName,
     includesVault: economy.getIncludeVaultInRanking(message),
-    entries: economy.getRanking(message, order === "poor" ? "poor" : "rich").map((account, index) => {
+    entries: await Promise.all(economy.getRanking(message, order === "poor" ? "poor" : "rich").map(async (account, index) => {
       const cosmetics = economy.getProfileCosmetics(message, account.userId);
       return {
         position: index + 1,
         name: account.name || account.username || account.userId,
         userId: account.userId,
+        avatarUrl: await getProfileAvatar(platform, groupId, account.userId),
         balance: Number(account.balance) || 0,
         walletBalance: Number(account.walletBalance) || 0,
         vaultBalance: Number(account.vaultBalance) || 0,
@@ -7635,7 +7668,7 @@ async function readRanking(url, type, order = "rich") {
         circle: cosmetics.circle,
         effect: cosmetics.effect
       };
-    })
+    }))
   };
 }
 
@@ -7697,34 +7730,37 @@ async function readActivityRanking(url, includeAll = false, order = "rich") {
     });
   }
 
+  const selectedUsers = includeAll
+    ? users
+    : order === "poor"
+      ? users.slice().sort((a, b) => a.total - b.total || String(a.userId).localeCompare(String(b.userId))).slice(0, 5)
+      : users.slice(0, 5);
+  const entries = await Promise.all(selectedUsers.map(async (user, index) => {
+    const cosmetics = economy.getProfileCosmetics(message, user.userId);
+    return {
+      position: index + 1,
+      name: user.displayName || user.username || user.userId,
+      userId: user.userId,
+      avatarUrl: includeAll ? null : await getProfileAvatar(platform, groupId, user.userId),
+      total: user.total,
+      dailyTotal: user.dailyTotal,
+      messages: user.messages,
+      commands: user.commands,
+      stickers: user.stickers,
+      files: user.files,
+      background: cosmetics.background,
+      outline: cosmetics.outline,
+      circle: cosmetics.circle,
+      effect: cosmetics.effect,
+      profileAvailable: user.profileAvailable !== false
+    };
+  }));
   return {
     type: "activity",
     platform,
     groupId,
     groupName,
-    entries: (includeAll
-      ? users
-      : order === "poor"
-        ? users.slice().sort((a, b) => a.total - b.total || String(a.userId).localeCompare(String(b.userId))).slice(0, 5)
-        : users.slice(0, 5)).map((user, index) => {
-      const cosmetics = economy.getProfileCosmetics(message, user.userId);
-      return {
-        position: index + 1,
-        name: user.displayName || user.username || user.userId,
-        userId: user.userId,
-        total: user.total,
-        dailyTotal: user.dailyTotal,
-        messages: user.messages,
-        commands: user.commands,
-        stickers: user.stickers,
-        files: user.files,
-        background: cosmetics.background,
-        outline: cosmetics.outline,
-        circle: cosmetics.circle,
-        effect: cosmetics.effect,
-        profileAvailable: user.profileAvailable !== false
-      };
-    }).sort((a, b) => (order === "poor" ? a.total - b.total : b.total - a.total) ||
+    entries: entries.sort((a, b) => (order === "poor" ? a.total - b.total : b.total - a.total) ||
       String(a.name).localeCompare(String(b.name)))
       .map((entry, index) => ({ ...entry, position: index + 1 }))
   };
@@ -7748,8 +7784,8 @@ function renderRanking(ranking) {
     ).join("")
     : `<p class="muted">Ainda não há usuários neste ranking.</p>`;
 
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)} - ${escapeHtml(botName)}</title><style>${styles()} @keyframes rank-rainbow-cycle{to{background-position:100% 50%,100% 50%}}.ranking{margin-top:22px;display:grid;gap:10px}.rank-row{display:grid;grid-template-columns:60px 42px 1fr auto auto;align-items:center;gap:14px;padding:17px 18px;border:1px solid #334566;border-radius:14px;background:var(--rank-background,#202a40);color:inherit;text-decoration:none;transition:transform .15s ease,border-color .15s ease,filter .15s ease}.rank-row.rainbow-background{background-size:300% 300%;animation:rank-rainbow-cycle 5s linear infinite}.rank-row.rainbow-outline{border:6px solid transparent;background:var(--rank-background,linear-gradient(#202a40,#202a40)) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:rank-rainbow-cycle 5s linear infinite}.rank-row.rainbow-outline.rainbow-background{background-size:300% 300%,300% 100%}.rank-row:hover,.rank-row:focus-visible{transform:translateY(-2px);border-color:#7ea7ff;filter:brightness(1.12);outline:none}.rank-row.rainbow-outline:hover,.rank-row.rainbow-outline:focus-visible{border-color:transparent}.rank-row strong{font-size:22px;color:#8eaaff}.rank-row span{font-weight:700}.rank-avatar{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#111827;color:#dcecff!important;font-size:16px}.rank-avatar.has-circle{border:3px solid var(--rank-circle)}.rank-avatar.rainbow-circle{border:4px solid transparent;background:linear-gradient(#111827,#111827) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:rank-rainbow-cycle 5s linear infinite}      .rank-avatar.frozen-circle{position:relative;border:3px double #f5fcff;box-shadow:0 0 0 2px var(--rank-circle),0 0 14px var(--rank-circle)}.rank-avatar.frozen-circle:before,.rank-avatar.frozen-circle:after{position:absolute;color:#eaf7ff;font-size:12px;text-shadow:0 0 5px #83dfff}.rank-avatar.frozen-circle:before{content:"❄";bottom:-5px;left:-5px}.rank-avatar.frozen-circle:after{content:"❄";top:-5px;right:-5px}.rank-row.profile-frozen{position:relative;isolation:isolate;overflow:hidden}.rank-row.profile-frozen:after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:.12;background-image:url("${profileSnowPattern()}");background-size:120px 120px}    .rank-row.frozen-outline{position:relative;isolation:isolate;overflow:hidden;border:4px double #f5fcff;box-shadow:0 0 0 2px var(--rank-outline),0 0 18px var(--rank-outline)}
-  .rank-row.frozen-outline:before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:.22;background-image:url("${profileSnowPattern()}");background-size:80px 80px}.rank-row small{display:block;color:#8998b3;font-weight:400;font-size:11px;margin-top:4px}.rank-row b{white-space:nowrap}.rank-row em{font-style:normal;color:#b8c3d9;font-size:13px}@media(prefers-reduced-motion:reduce){.rank-row.rainbow-background,.rank-row.rainbow-outline,.rank-avatar.rainbow-circle{animation:none}}@media(max-width:600px){.rank-row{grid-template-columns:42px 36px 1fr auto}.rank-row em{grid-column:3}.rank-row b{font-size:13px}}</style></head><body><main class="card"><div class="brand">${escapeHtml(botName)} <span>RANKING</span></div><header><div><h1>${escapeHtml(title)}</h1><p class="muted">${escapeHtml(ranking.groupName)}</p></div></header><div class="scope">Plataforma: ${escapeHtml(ranking.platform)} <span>•</span> ID: ${escapeHtml(ranking.groupId)}</div><section class="ranking">${rows}</section><footer>Ranking local do grupo/servidor • ${escapeHtml(botName)}</footer></main></body></html>`;
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)} - ${escapeHtml(botName)}</title><style>${styles()} @keyframes rank-rainbow-cycle{to{background-position:100% 50%,100% 50%}}.ranking{margin-top:22px;display:grid;gap:10px}.rank-row{display:grid;grid-template-columns:60px 42px 1fr auto auto;align-items:center;gap:14px;padding:17px 18px;border:1px solid #334566;border-radius:14px;background:var(--rank-background,#202a40);color:inherit;text-decoration:none;transition:transform .15s ease,border-color .15s ease,filter .15s ease}.rank-row.rainbow-background{background-size:300% 300%;animation:rank-rainbow-cycle 5s linear infinite}.rank-row.rainbow-outline{border:6px solid transparent;background:var(--rank-background,linear-gradient(#202a40,#202a40)) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:rank-rainbow-cycle 5s linear infinite}.rank-row.rainbow-outline.rainbow-background{background-size:300% 300%,300% 100%}.rank-row:hover,.rank-row:focus-visible{transform:translateY(-2px);border-color:#7ea7ff;filter:brightness(1.12);outline:none}.rank-row.rainbow-outline:hover,.rank-row.rainbow-outline:focus-visible{border-color:transparent}.rank-row strong{font-size:22px;color:#8eaaff}.rank-row span{font-weight:700}.rank-avatar{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#111827;color:#dcecff!important;font-size:16px}.rank-avatar.has-circle{border:3px solid var(--rank-circle)}.rank-avatar.rainbow-circle{border:4px solid transparent;background:linear-gradient(#111827,#111827) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:rank-rainbow-cycle 5s linear infinite}      .rank-avatar.frozen-circle{position:relative;border:3px double #f5fcff;box-shadow:0 0 0 2px var(--rank-circle),0 0 14px var(--rank-circle)}.rank-avatar.frozen-circle:before,.rank-avatar.frozen-circle:after{position:absolute;color:#eaf7ff;font-size:12px;text-shadow:0 0 5px #83dfff}.rank-avatar.frozen-circle:before{content:"❄";bottom:-5px;left:-5px}.rank-avatar.frozen-circle:after{content:"❄";top:-5px;right:-5px}.rank-row.profile-frozen{position:relative;isolation:isolate;overflow:hidden}.rank-row.profile-frozen:after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:.015;background-image:url("${profileSnowPattern()}");background-size:180px 180px}    .rank-row.frozen-outline{position:relative;isolation:isolate;overflow:hidden;border:4px double #f5fcff;box-shadow:0 0 0 2px var(--rank-outline),0 0 18px var(--rank-outline)}
+  .rank-row.frozen-outline:before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:.03;background-image:url("${profileSnowPattern()}");background-size:180px 180px}.rank-row small{display:block;color:#8998b3;font-weight:400;font-size:11px;margin-top:4px}.rank-row b{white-space:nowrap}.rank-row em{font-style:normal;color:#b8c3d9;font-size:13px}@media(prefers-reduced-motion:reduce){.rank-row.rainbow-background,.rank-row.rainbow-outline,.rank-avatar.rainbow-circle{animation:none}}@media(max-width:600px){.rank-row{grid-template-columns:42px 36px 1fr auto}.rank-row em{grid-column:3}.rank-row b{font-size:13px}}</style></head><body><main class="card"><div class="brand">${escapeHtml(botName)} <span>RANKING</span></div><header><div><h1>${escapeHtml(title)}</h1><p class="muted">${escapeHtml(ranking.groupName)}</p></div></header><div class="scope">Plataforma: ${escapeHtml(ranking.platform)} <span>•</span> ID: ${escapeHtml(ranking.groupId)}</div><section class="ranking">${rows}</section><footer>Ranking local do grupo/servidor • ${escapeHtml(botName)}</footer></main></body></html>`;
 }
 
 function renderRankingEntry(ranking, entry, metrics) {
@@ -7778,7 +7814,17 @@ function renderRankingEntry(ranking, entry, metrics) {
     circle?.frozen ? "frozen-circle" : ""
   ].filter(Boolean).join(" ");
   const initial = Array.from(String(entry.name || "?"))[0] || "?";
-  const row = `<strong>#${entry.position}</strong><span class="${avatarClasses}">${escapeHtml(initial)}</span><span>${escapeHtml(entry.name)}<small>ID: ${escapeHtml(entry.userId)}</small></span>${metrics}`;
+  const outlineFrostMarks = outline?.frozen
+    ? `<span aria-hidden="true" style="position:absolute;inset:0;z-index:2;pointer-events:none"><span style="position:absolute;top:0;left:16%;color:#f5fcff;font-size:14px;line-height:1;text-shadow:0 0 3px #fff,0 0 8px var(--rank-outline)">❄</span><span style="position:absolute;top:0;left:50%;color:#f5fcff;font-size:14px;line-height:1;transform:translateX(-50%);text-shadow:0 0 3px #fff,0 0 8px var(--rank-outline)">❄</span><span style="position:absolute;top:0;left:84%;color:#f5fcff;font-size:14px;line-height:1;text-shadow:0 0 3px #fff,0 0 8px var(--rank-outline)">❄</span><span style="position:absolute;bottom:0;left:32%;color:#f5fcff;font-size:14px;line-height:1;text-shadow:0 0 3px #fff,0 0 8px var(--rank-outline)">❄</span><span style="position:absolute;bottom:0;left:68%;color:#f5fcff;font-size:14px;line-height:1;text-shadow:0 0 3px #fff,0 0 8px var(--rank-outline)">❄</span></span>`
+    : "";
+  const circleFrostMarks = circle?.frozen
+    ? `<span aria-hidden="true" style="position:absolute;inset:0;z-index:2;pointer-events:none"><span style="position:absolute;top:-5px;left:-5px;color:#f5fcff;font-size:11px;line-height:1;text-shadow:0 0 3px #fff,0 0 7px var(--rank-circle)">❄</span><span style="position:absolute;right:-5px;bottom:-5px;color:#f5fcff;font-size:11px;line-height:1;text-shadow:0 0 3px #fff,0 0 7px var(--rank-circle)">❄</span></span>`
+    : "";
+  const avatarStyle = entry.avatarUrl ? `style="position:relative"` : "";
+  const avatarImage = entry.avatarUrl
+    ? `<img src="${escapeHtml(entry.avatarUrl)}" alt="" aria-hidden="true" referrerpolicy="no-referrer" style="position:absolute;inset:0;width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.remove()">`
+    : "";
+  const row = `${outlineFrostMarks}<strong>#${entry.position}</strong><span class="${avatarClasses}" ${avatarStyle}>${escapeHtml(initial)}${avatarImage}${circleFrostMarks}</span><span>${escapeHtml(entry.name)}<small>ID: ${escapeHtml(entry.userId)}</small></span>${metrics}`;
   return entry.profileAvailable === false
     ? `<div class="${classes}" ${style}>${row}</div>`
     : `<a class="${classes}" ${style} href="${profileUrl}" aria-label="Abrir perfil de ${escapeHtml(entry.name)}">${row}</a>`;

@@ -103,7 +103,7 @@ const PROFILE_OUTLINES = Object.freeze({
     }),
     congelado_azul: Object.freeze({
         id: 3011,
-        label: "Congelado Azul",
+        label: "Congelado Azul-claro",
         rarity: itemRarity.EPIC,
         price: PROFILE_EFFECT_PRICE,
         color: "#91dcff",
@@ -111,10 +111,66 @@ const PROFILE_OUTLINES = Object.freeze({
     }),
     congelado_verde: Object.freeze({
         id: 3012,
-        label: "Congelado Verde",
+        label: "Congelado Verde-claro",
         rarity: itemRarity.EPIC,
         price: PROFILE_EFFECT_PRICE,
         color: "#a9f3c1",
+        frozen: true
+    }),
+    congelado_roxo: Object.freeze({
+        id: 3013,
+        label: "Congelado Roxo",
+        rarity: itemRarity.EPIC,
+        price: PROFILE_EFFECT_PRICE,
+        color: "#a855f7",
+        frozen: true
+    }),
+    congelado_azul_normal: Object.freeze({
+        id: 3014,
+        label: "Congelado Azul",
+        rarity: itemRarity.EPIC,
+        price: PROFILE_EFFECT_PRICE,
+        color: "#168bff",
+        frozen: true
+    }),
+    congelado_verde_normal: Object.freeze({
+        id: 3015,
+        label: "Congelado Verde",
+        rarity: itemRarity.EPIC,
+        price: PROFILE_EFFECT_PRICE,
+        color: "#16a34a",
+        frozen: true
+    }),
+    congelado_vermelho: Object.freeze({
+        id: 3016,
+        label: "Congelado Vermelho",
+        rarity: itemRarity.EPIC,
+        price: PROFILE_EFFECT_PRICE,
+        color: "#ef4444",
+        frozen: true
+    }),
+    congelado_rosa: Object.freeze({
+        id: 3017,
+        label: "Congelado Rosa",
+        rarity: itemRarity.EPIC,
+        price: PROFILE_EFFECT_PRICE,
+        color: "#ec4899",
+        frozen: true
+    }),
+    congelado_amarelo: Object.freeze({
+        id: 3018,
+        label: "Congelado Amarelo",
+        rarity: itemRarity.EPIC,
+        price: PROFILE_EFFECT_PRICE,
+        color: "#facc15",
+        frozen: true
+    }),
+    congelado_laranja: Object.freeze({
+        id: 3019,
+        label: "Congelado Laranja",
+        rarity: itemRarity.EPIC,
+        price: PROFILE_EFFECT_PRICE,
+        color: "#f97316",
         frozen: true
     })
 });
