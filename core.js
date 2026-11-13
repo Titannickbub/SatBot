@@ -469,6 +469,20 @@ console.log(
         message.sender.canManageMessages = true;
     }
 
+    if (!message.isPrivate &&
+        !message.sender.isAdmin &&
+        !message.sender.canManageMessages &&
+        !message.sender.isOwner) {
+        try {
+            if (functions.soAdmHelper?.isEnabled(message)) {
+                return;
+            }
+        } catch (error) {
+            console.error(`${_ts()} ❌[CORE] Falha ao verificar o modo somente administradores:`, error);
+            return;
+        }
+    }
+
     if (!isSensitiveCommand) {
         for (const middleware of middlewares) {
             if (middleware.runOn === "all" || !middleware.runOn) {

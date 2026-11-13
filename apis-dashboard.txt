@@ -541,3 +541,549 @@ Busca de Sinais Local
   raridade estiver devida, a de maior raridade tem prioridade. Para saber as
   porcentagens e garantias efetivas, os administradores podem consultar
   `{prefix}configbuscasinais status`; elas podem diferir entre grupos.
+
+APIs públicas dos rankings web
+------------------------------
+Os rankings web possuem rotas JSON públicas, sem login, cookie ou token. São
+somente leitura. Use o domínio do painel e informe plataforma e ID do grupo:
+
+GET /api/rankxp?plataforma=discord&grupo=ID_DO_GRUPO
+GET /api/rankrico?plataforma=discord&grupo=ID_DO_GRUPO
+GET /api/rankatividade?plataforma=discord&grupo=ID_DO_GRUPO
+GET /api/rankatividade-all?plataforma=discord&grupo=ID_DO_GRUPO
+
+Também são aceitos os nomes de parâmetros platform e group no lugar de
+plataforma e grupo. A plataforma pode ser discord, telegram ou whatsapp. Os
+valores devem ser codificados como parâmetros de URL. Exemplo:
+GET https://painel.exemplo.com/api/rankxp?platform=discord&group=123456789
+
+Tipos disponíveis
+-----------------
+- /api/rankxp: cinco maiores pontuações de XP, ordenadas da maior para a menor.
+- /api/rankrico: cinco maiores saldos do ranking de riqueza. A configuração do
+  grupo define se o cofre entra no valor usado para ordenar.
+- /api/rankatividade: cinco usuários mais ativos, ordenados pelo total de
+  atividades.
+- /api/rankatividade-all: todos os registros do ranking de atividade. No
+  WhatsApp, busca também os participantes atuais do grupo e inclui com zero os
+  que ainda não têm atividade registrada. No Discord e Telegram, retorna todos
+  os usuários que já têm registro de atividade, sem buscar a lista de membros.
+
+Cada endpoint também tem uma página web HTML correspondente, sem o prefixo
+/api: /rankxp, /rankrico, /rankatividade e /rankatividade-all. Os aliases
+/api/rankativos e /rankativos equivalem ao ranking de atividade Top 5.
+
+Exemplos de resposta (HTTP 200)
+------------------------------
+XP:
+{
+  "type": "xp",
+  "platform": "discord",
+  "groupId": "123456789012345678",
+  "groupName": "Comunidade Exemplo",
+  "entries": [
+    {
+      "position": 1,
+      "name": "Ana Silva",
+      "userId": "987654321012345678",
+      "avatarUrl": "https://cdn.discordapp.com/avatars/987654321012345678/avatar.png",
+      "xp": 15400,
+      "level": 12,
+      "background": "grafite",
+      "outline": null,
+      "circle": null,
+      "effect": null
+    }
+  ]
+}
+
+Riqueza:
+{
+  "type": "rich",
+  "platform": "discord",
+  "groupId": "123456789012345678",
+  "groupName": "Comunidade Exemplo",
+  "includesVault": true,
+  "entries": [
+    {
+      "position": 1,
+      "name": "Ana Silva",
+      "userId": "987654321012345678",
+      "avatarUrl": "https://cdn.discordapp.com/avatars/987654321012345678/avatar.png",
+      "balance": 155000,
+      "walletBalance": 125000,
+      "vaultBalance": 30000,
+      "includesVault": true,
+      "background": "grafite",
+      "outline": null,
+      "circle": null,
+      "effect": null
+    }
+  ]
+}
+
+Atividade (Top 5 e resposta de /api/rankatividade-all):
+{
+  "type": "activity",
+  "platform": "discord",
+  "groupId": "123456789012345678",
+  "groupName": "Comunidade Exemplo",
+  "entries": [
+    {
+      "position": 1,
+      "name": "Ana Silva",
+      "userId": "987654321012345678",
+      "avatarUrl": "https://cdn.discordapp.com/avatars/987654321012345678/avatar.png",
+      "total": 850,
+      "dailyTotal": 12,
+      "messages": 700,
+      "commands": 80,
+      "stickers": 40,
+      "files": 30,
+      "background": "grafite",
+      "outline": null,
+      "circle": null,
+      "effect": null,
+      "profileAvailable": true
+    }
+  ]
+}
+
+No resultado de /api/rankatividade-all, avatarUrl será null. No WhatsApp,
+profileAvailable indica se a pessoa tem dados de atividade salvos; os membros
+sem registro recebem contadores zerados. A lista completa pode ser bem maior
+que o Top 5.
+
+Como interpretar
+----------------
+- entries é a lista a ser exibida no app. position é a colocação iniciando em
+  1; name é o nome para mostrar e userId é o identificador do membro naquela
+  plataforma.
+- xp é a pontuação total e level o nível calculado. balance, walletBalance e
+  vaultBalance são valores numéricos em centésimos de SatCoin (100 = 1 SatCoin);
+  balance é o valor usado no ranking, e includesVault informa se inclui o cofre.
+- total é o total histórico de atividades; dailyTotal e messages, commands,
+  stickers e files são contadores do dia local do bot e os tipos de atividade.
+- background, outline, circle e effect são chaves cosméticas já aplicadas ao
+  perfil, ou null quando não há item aplicado. O app pode usar essas chaves
+  para mapear a aparência usando seu catálogo de cosméticos.
+- avatarUrl pode ser null ou uma URL; trate falhas de carregamento usando uma
+  imagem padrão. Os exemplos mostram um item da lista: a resposta real pode
+  conter até cinco entradas nos rankings normais ou todas as entradas no
+  ranking de atividade completo.
+- Se entries vier vazio, mostre que ainda não há participantes registrados.
+
+Erros
+-----
+As rotas retornam HTTP 404 e JSON {"error":"mensagem"} se faltar plataforma
+ou grupo, se o grupo não for encontrado ou se o sistema daquele ranking
+estiver desativado. Trate erros HTTP antes de tentar ler entries. Por exemplo:
+{"error":"O sistema de XP está desativado neste grupo/servidor."}
+
+Os rankings públicos disponíveis são XP, riqueza e atividade (Top 5 e lista
+completa). Não há atualmente rotas web públicas JSON para menores saldos/XP ou
+menor atividade; esses tipos estão disponíveis apenas nos comandos do bot.
+
+Loja Local e Loja do Bot no app
+-------------------------------
+O painel web tem uma página HTML para cada loja, mas o app deve usar as rotas
+JSON abaixo em vez de analisar o HTML. A Loja Local é o Mercado Local criado
+pelos administradores do grupo; a Loja do Bot contém resets e itens de
+proteção.
+
+Ler catálogo e saldo
+--------------------
+GET /api/account/local/shop?platform=discord&groupId=ID_DO_GRUPO&shop=market
+GET /api/account/local/shop?platform=discord&groupId=ID_DO_GRUPO&shop=bot
+
+Use o cookie satbot_session da sessão autenticada da Conta Central. A plataforma
+precisa estar vinculada à conta e o usuário precisa continuar participando do
+grupo. Esta leitura não exige Origin. shop é obrigatório e aceita:
+- market: Mercado Local, com título, aviso e catálogo configurado pelo grupo.
+- bot: catálogo fixo da Loja do Bot.
+Em WebView/navegador, envie a sessão com credentials: "include". Em app nativo,
+reutilize o cookie satbot_session recebido no login; não envie senha junto a
+cada requisição nem grave-a no lugar do cookie.
+
+O exemplo de resposta do Mercado Local:
+{
+  "shop": "market",
+  "platform": "discord",
+  "group": {"id":"123456789012345678","name":"Comunidade Exemplo"},
+  "user": {"id":"987654321012345678","name":"Ana Silva"},
+  "economyEnabled": true,
+  "balanceMinorUnits": 125000,
+  "balanceFormatted": "1 250.00💷",
+  "title": "Mercado da Comunidade",
+  "notice": "Itens especiais disponíveis neste grupo.",
+  "shieldCharges": 0,
+  "items": [
+    {
+      "id": 1001,
+      "name": "Caneca da Comunidade",
+      "category": "Colecionáveis",
+      "priceMinorUnits": 25000,
+      "priceFormatted": "250.00💷",
+      "quantity": 4,
+      "rarity": "rare",
+      "inStock": true,
+      "affordable": true,
+      "available": true,
+      "availabilityReason": null
+    }
+  ]
+}
+
+No item do Mercado Local, quantity é null para estoque ilimitado ou um inteiro
+para unidades restantes; inStock indica se ainda há unidade, affordable compara
+o preço com a carteira e available só é true quando há estoque e saldo
+suficiente e a economia está ativa. availabilityReason é null, "out_of_stock",
+"insufficient_balance" ou "economy_disabled".
+
+O exemplo de resposta da Loja do Bot:
+{
+  "shop": "bot",
+  "platform": "discord",
+  "group": {"id":"123456789012345678","name":"Comunidade Exemplo"},
+  "user": {"id":"987654321012345678","name":"Ana Silva"},
+  "economyEnabled": true,
+  "balanceMinorUnits": 125000,
+  "balanceFormatted": "1 250.00💷",
+  "title": "Loja do Bot",
+  "notice": "Resets só podem ser comprados quando o limite diário da atividade acabar.",
+  "shieldCharges": 0,
+  "items": [
+    {
+      "key": "work",
+      "name": "resetar trabalho",
+      "position": 1,
+      "priceMinorUnits": 10000,
+      "priceFormatted": "100.00💷",
+      "rarity": "common",
+      "product": false,
+      "available": false,
+      "availabilityReason": "not_ready"
+    },
+    {
+      "key": "shield",
+      "name": "escudo anti-roubo",
+      "position": 8,
+      "priceMinorUnits": 20000,
+      "priceFormatted": "200.00💷",
+      "rarity": "rare",
+      "product": true,
+      "available": true,
+      "availabilityReason": null
+    }
+  ]
+}
+
+Os exemplos mostram apenas alguns itens; a resposta real contém o catálogo
+completo. Na Loja do Bot, key é o identificador a enviar na compra e position
+é a posição no catálogo. available e availabilityReason já consideram saldo,
+limite diário dos resets, pré-requisitos do reset geral e estado do escudo.
+Possíveis motivos: "not_ready", "all_not_ready", "shield_active",
+"shield_min_balance", "insufficient_balance" e "economy_disabled". O servidor
+valida tudo de novo no momento da compra; não use o estado em cache como
+autorização.
+
+Detalhes dos resets da Loja do Bot
+----------------------------------
+Os preços abaixo são em SatCoins. Os limites são o máximo de usos por dia;
+o reset só fica disponível depois que o usuário atinge o limite da atividade.
+O dia é contado pela data local do servidor do bot.
+
+| key | Item | Preço | Limite diário | Quando fica disponível |
+| --- | --- | ---: | ---: | --- |
+| work | Resetar trabalho | 100.00 | 2 | Depois de usar os 2 trabalhos do dia |
+| fishing | Resetar pesca | 80.00 | 2 | Depois de usar as 2 pescarias do dia |
+| mining | Resetar mineração | 90.00 | 2 | Depois de usar as 2 minerações do dia |
+| casino | Resetar cassino | 50.00 | 5 | Depois de usar as 5 jogadas do dia |
+| transfer | Resetar transferência | 100.00 | 3 | Depois de fazer as 3 transferências do dia |
+| robbery | Resetar roubo | 200.00 | 3 | Depois de fazer as 3 tentativas de roubo do dia |
+| all | Resetar todos | 620.00 | — | Depois que trabalho, pesca, mineração e roubo atingirem seus limites |
+
+Um reset individual zera o contador daquela atividade para o dia atual,
+permitindo usá-la novamente. Não é uma compra limitada a uma por dia: após
+comprar e esgotar de novo o limite, o item pode voltar a ficar disponível. O
+reset all zera trabalho, pesca, mineração, cassino, transferência e roubo. Para
+comprar all, os requisitos são apenas os limites de trabalho, pesca, mineração
+e roubo; cassino ou transferência não precisam estar no limite. Depois do
+reset, os quatro requisitos precisam ser atingidos novamente antes de outra
+compra all.
+
+O escudo é o item de proteção da Loja do Bot, não um reset: custa 200.00,
+exige saldo de carteira de pelo menos 500.00 e concede 5 cargas anti-roubo. Só
+pode comprar outro quando as cargas atuais chegarem a zero. Sua entrada tem
+product: true; os resets têm product: false.
+
+Em ambas as lojas, os campos MinorUnits são inteiros em centésimos de SatCoin
+(100 = 1.00 SatCoin); Formatted é texto pronto para exibição. balance considera
+somente a carteira, que é de onde sai o pagamento; o cofre não pode ser usado.
+Se items vier vazio, exiba o estado de catálogo vazio.
+
+Comprar item
+------------
+POST /api/account/local/shop-purchase
+
+Envie cookie satbot_session, Origin do mesmo host e JSON:
+{
+  "platform": "discord",
+  "groupId": "123456789012345678",
+  "shop": "market",
+  "selection": "1001"
+}
+
+shop aceita "market" ou "bot". Para market, selection deve ser o ID do item
+(recomendado) ou o nome. Para bot, envie o key, como "work" ou "shield"; o
+servidor também aceita aliases, nome ou posição. A compra usa a carteira do
+usuário autenticado, não um userId arbitrário. O usuário precisa estar
+vinculado à plataforma e pertencer ao grupo.
+
+Sucesso (HTTP 200) no Mercado Local:
+{
+  "success": true,
+  "balance": "1 000.00💷",
+  "balanceValue": 100000,
+  "itemId": 1001,
+  "itemName": "Caneca da Comunidade",
+  "orderId": 42,
+  "quantity": 3
+}
+
+A compra do Mercado Local desconta o preço e cria um pedido pendente para
+entrega manual pela equipe. Guarde orderId para referência e quantity para
+atualizar o estoque. Um cancelamento pelo grupo reembolsa o comprador e repõe
+uma unidade, se o item tiver estoque limitado.
+
+Sucesso (HTTP 200) na Loja do Bot:
+{
+  "success": true,
+  "balance": "1 150.00💷",
+  "balanceValue": 115000,
+  "itemName": "resetar trabalho",
+  "itemKey": "work",
+  "price": "100.00💷",
+  "shieldCharges": 0
+}
+
+Um reset só pode ser comprado depois de esgotado o limite diário correspondente.
+O reset "all" exige que trabalho, pesca, mineração e roubo tenham atingido o
+limite. O escudo exige saldo mínimo de 500.00💷, custa 200.00💷 e não pode ser
+comprado novamente enquanto houver cargas ativas. A compra é aplicada
+imediatamente; shieldCharges indica as cargas do escudo (5 ao comprar).
+
+Após comprar, use balanceValue como novo saldo em centésimos e balance como
+texto de exibição. Para obter catálogo, disponibilidade e saldo atualizados,
+faça novamente o GET da loja selecionada.
+
+Erros da API de loja
+--------------------
+- HTTP 400: loja ou item inválido, item inexistente, estoque esgotado, saldo
+  insuficiente, economia desativada, limite de reset ainda disponível ou
+  escudo/pré-requisito incompatível. O corpo contém {"error":"mensagem"}.
+- HTTP 401: sessão ausente, expirada ou inválida.
+- HTTP 403: Origin inválido no POST ou usuário não participa do grupo.
+- HTTP 404: plataforma não vinculada à Conta Central.
+- HTTP 503: integração ou loja indisponível.
+- HTTP 500: erro inesperado; exiba uma mensagem genérica e permita tentar de
+  novo.
+
+Contrato da API da Loja de Resets
+---------------------------------
+A Loja de Resets é a modalidade "bot" da Loja do Bot. O app usa o mesmo GET
+de catálogo e POST de compra descritos acima, selecionando shop="bot":
+
+1. Carregue o catálogo e o estado atual do usuário:
+   GET /api/account/local/shop?platform=discord&groupId=ID_DO_GRUPO&shop=bot
+2. Mostre os itens de response.items. Use key como ID estável do produto,
+   priceFormatted para exibição e available para habilitar/desabilitar Comprar.
+3. Ao tocar em Comprar, envie POST /api/account/local/shop-purchase com
+   platform, groupId, shop="bot" e selection igual ao key.
+4. Em HTTP 200, atualize o saldo com balance/balanceValue e mostre o resultado.
+   Recarregue o GET para obter as disponibilidades e os contadores atualizados.
+
+A lista da Loja do Bot contém estes identificadores estáveis:
+work, fishing, mining, casino, transfer, robbery, all e shield. Os seis
+primeiros resets individuais e "all" têm product=false; shield é proteção e
+tem product=true. position é apenas a posição atual do item na lista, então
+prefira key para chamadas de compra.
+
+Para cada item, available é uma indicação de interface, não uma autorização:
+- true: economia ativa, saldo suficiente e condições atuais satisfeitas.
+- false: consulte availabilityReason. Os valores possíveis são
+  "economy_disabled", "insufficient_balance", "not_ready",
+  "all_not_ready", "shield_min_balance" e "shield_active".
+O servidor recalcula saldo, limites e estado do escudo na compra; pode recusar
+com HTTP 400 se o estado mudar depois do GET.
+
+Exemplo de compra de reset de trabalho:
+POST /api/account/local/shop-purchase
+Headers: Cookie: satbot_session=...; Origin: https://painel.exemplo.com
+Content-Type: application/json
+{
+  "platform": "discord",
+  "groupId": "123456789012345678",
+  "shop": "bot",
+  "selection": "work"
+}
+
+O POST usa sempre o usuário da sessão e sua conta de plataforma vinculada; não
+envie userId ou saldo no corpo. A resposta de sucesso contém success, balance
+(texto formatado), balanceValue (centésimos de SatCoin), itemName, itemKey,
+price e shieldCharges. Para o shield, shieldCharges será 5 após a compra; para
+os resets será 0. Não considere o reset concluído até receber HTTP 200.
+
+Para navegador ou WebView, inclua credentials: "include" no fetch para enviar
+o cookie automaticamente. No app nativo, armazene e envie o cookie de sessão
+recebido no login. POST exige Origin do mesmo host. Os erros de sessão,
+participação no grupo, economia desativada e compra recusada seguem os códigos
+descritos em "Erros da API de loja" acima.
+
+API de cosméticos de perfil
+---------------------------
+A loja de cosméticos tem um GET para carregar o catálogo e os cosméticos do
+usuário e um POST, no mesmo caminho, para comprar/equipar ou remover um item.
+Os cosméticos e o saldo pertencem ao usuário naquela plataforma e naquele
+grupo/servidor.
+
+Carregar catálogo, saldo e aparência atual:
+GET /api/account/local/cosmetics?platform=discord&groupId=ID_DO_GRUPO
+
+Envie o cookie satbot_session. O usuário precisa ter a plataforma vinculada à
+Conta Central e participar do grupo. O GET não exige Origin. Em WebView, use
+credentials: "include"; em app nativo, reutilize o cookie recebido no login.
+
+Exemplo de resposta (HTTP 200):
+{
+  "platform": "discord",
+  "group": {"id":"123456789012345678","name":"Comunidade Exemplo"},
+  "user": {
+    "id": "987654321012345678",
+    "name": "Ana Silva",
+    "avatarUrl": "https://cdn.discordapp.com/avatars/987654321012345678/avatar.png"
+  },
+  "economyEnabled": true,
+  "balanceMinorUnits": 125000,
+  "balanceFormatted": "1 250.00💷",
+  "cosmetics": {
+    "backgrounds": [
+      {
+        "key": "azul",
+        "id": 2000,
+        "label": "Azul",
+        "rarity": "rare",
+        "priceMinorUnits": 100000,
+        "priceFormatted": "1 000.00💷",
+        "owned": true,
+        "applied": true,
+        "stops": ["#354f82","#1c2a43","#101722"],
+        "accent": "#8fb5ff",
+        "rainbow": false
+      }
+    ],
+    "outlines": [
+      {
+        "key": "congelado_azul",
+        "id": 3011,
+        "label": "Congelado Azul-claro",
+        "rarity": "epic",
+        "priceMinorUnits": 400000,
+        "priceFormatted": "4 000.00💷",
+        "owned": false,
+        "applied": false,
+        "color": "#91dcff",
+        "rainbow": false,
+        "frozen": true
+      }
+    ],
+    "circles": [
+      {
+        "key": "azul",
+        "id": 4000,
+        "label": "Azul",
+        "rarity": "rare",
+        "priceMinorUnits": 100000,
+        "priceFormatted": "1 000.00💷",
+        "owned": false,
+        "applied": false,
+        "color": "#8fb5ff",
+        "rainbow": false,
+        "frozen": false
+      }
+    ],
+    "effects": [
+      {
+        "key": "congelado",
+        "id": 5000,
+        "label": "Congelado",
+        "rarity": "epic",
+        "priceMinorUnits": 400000,
+        "priceFormatted": "4 000.00💷",
+        "owned": false,
+        "applied": false,
+        "snowflakes": true
+      }
+    ]
+  }
+}
+
+cosmetics contém quatro listas: backgrounds, outlines, circles e effects.
+Cada item tem key (identificador para ações), id, label, rarity, preço,
+owned (já pertence ao usuário) e applied (está equipado). O catálogo real
+contém todos os itens; o exemplo mostra apenas um de cada categoria.
+- Fundos: stops são as três cores do gradiente, accent é a cor de destaque e
+  rainbow indica um fundo animado.
+- Outlines e circles: color é a cor da linha; rainbow indica o estilo animado
+  e frozen indica o acabamento congelado.
+- Efeitos: snowflakes informa se o efeito desenha flocos de neve.
+- Os campos MinorUnits são centésimos de SatCoin (100 = 1.00 SatCoin);
+  Formatted já pode ser exibido. balanceMinorUnits é o saldo da carteira.
+- Itens já owned podem ser equipados sem custo; para item ainda não owned, a
+  ação de equipar compra e aplica o cosmético. Remover um item aplicado não o
+  remove da coleção.
+
+Comprar e equipar ou trocar o cosmético aplicado:
+POST /api/account/local/cosmetics
+Headers: Cookie: satbot_session=...; Origin: https://painel.exemplo.com
+Content-Type: application/json
+
+Envie a plataforma e o grupo selecionado, mais uma ação e a key da categoria:
+{
+  "platform": "discord",
+  "groupId": "123456789012345678",
+  "action": "set",
+  "background": "azul"
+}
+
+Ações e campos aceitos:
+- action "set" com background: aplicar um fundo.
+- action "setOutline" com outline: aplicar um outline.
+- action "setCircle" com circle: aplicar um círculo ao avatar.
+- action "setEffect" com effect: aplicar um efeito visual.
+- action "reset", "resetOutline", "resetCircle" ou "resetEffect": remover o
+  cosmético atualmente aplicado naquela categoria; não apaga itens owned.
+
+As ações set/setOutline/setCircle/setEffect compram automaticamente quando o
+item ainda não é owned e equipam sem cobrar se o usuário já o possui. Exemplo
+de sucesso ao aplicar um fundo:
+{
+  "success": true,
+  "background": "azul",
+  "boughtNow": true,
+  "balance": "250.00💷"
+}
+
+boughtNow true significa que houve compra e desconto; false significa que o
+item já era do usuário e apenas foi equipado. O campo específico retornado é
+background, outline, circle ou effect. As ações reset retornam success,
+changed e balance; changed false significa que a categoria já estava sem item
+aplicado. Após qualquer alteração, faça novamente o GET para sincronizar todo o
+catálogo, saldo e estado aplicado.
+
+O POST usa o usuário identificado pela sessão, não aceite um userId vindo do
+app. Exige cookie, Origin do mesmo host e participação no grupo. HTTP 400 pode
+indicar cosmético ou ação inválida, ou saldo insuficiente; HTTP 401 indica
+sessão inválida; HTTP 403 indica Origin inválido ou falta de participação;
+HTTP 404 indica plataforma não vinculada; HTTP 503/500 indicam indisponibilidade
+da plataforma ou falha inesperada. O corpo de erro é {"error":"mensagem"}.

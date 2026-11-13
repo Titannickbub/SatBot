@@ -46,6 +46,7 @@ categoria e abra o guia desejado:
   <a href="./monitorclima.md"><img src="https://img.shields.io/badge/Monitor%20do%20clima-guia-673AB7?style=for-the-badge" alt="Monitor do clima"></a><br>
   <a href="./rclima.md"><img src="https://img.shields.io/badge/Previs%C3%A3o%20aleat%C3%B3ria%20do%20tempo-guia-673AB7?style=for-the-badge" alt="Previsão aleatória do tempo"></a><br>
   <a href="./setgroup_c.md"><img src="https://img.shields.io/badge/Canal%20de%20avisos%20no%20WhatsApp-guia-673AB7?style=for-the-badge" alt="Canal de avisos da comunidade WhatsApp com !setgroup_c"></a><br>
+  <a href="./soadm.md"><img src="https://img.shields.io/badge/Modo%20somente%20administradores-guia-673AB7?style=for-the-badge" alt="Restringir respostas do bot a administradores com !soadm"></a><br>
   <a href="./setimg_chat.md"><img src="https://img.shields.io/badge/Alterar%20foto%20do%20chat%20ou%20servidor-guia-673AB7?style=for-the-badge" alt="Alterar foto do chat ou servidor"></a><br>
   <a href="./setname.md"><img src="https://img.shields.io/badge/Renomear%20chat%20ou%20servidor-guia-673AB7?style=for-the-badge" alt="Renomear servidor, categoria ou chat"></a><br>
   <a href="./autotranscrever.md"><img src="https://img.shields.io/badge/Transcrever%20%C3%A1udios-guia-673AB7?style=for-the-badge" alt="Transcrição automática de áudios"></a><br>
