@@ -5,11 +5,12 @@ const autorepoHelper = require("./autorepoHelper");
 const COMMANDS_DIR = path.join(__dirname, "..", "commands", "diversao");
 const SETTINGS_DIR = path.join(__dirname, "..", "settings");
 
-function getPaths(message, scope = "group") {
+function getPaths(message, scope = "group", catalog = "normal") {
+    const catalogName = catalog === "adult" ? "act18" : "act";
     if (scope === "global") {
         return {
-            actionsFile: path.join(COMMANDS_DIR, "act.json"),
-            mediaDir: path.join(COMMANDS_DIR, "act_media")
+            actionsFile: path.join(COMMANDS_DIR, `${catalogName}.json`),
+            mediaDir: path.join(COMMANDS_DIR, `${catalogName}_media`)
         };
     }
 
@@ -18,8 +19,8 @@ function getPaths(message, scope = "group") {
 
     const fileName = chatKey.replace(/\.json$/i, "");
     return {
-        actionsFile: path.join(SETTINGS_DIR, "act", chatKey),
-        mediaDir: path.join(SETTINGS_DIR, "act_media", fileName)
+        actionsFile: path.join(SETTINGS_DIR, catalogName, chatKey),
+        mediaDir: path.join(SETTINGS_DIR, `${catalogName}_media`, fileName)
     };
 }
 
@@ -32,10 +33,10 @@ function readFile(filePath) {
     return parsed;
 }
 
-function loadActionSets(message) {
-    const globalPaths = getPaths(message, "global");
+function loadActionSets(message, catalog = "normal") {
+    const globalPaths = getPaths(message, "global", catalog);
     const globalActions = readFile(globalPaths.actionsFile);
-    const localPaths = getPaths(message, "group");
+    const localPaths = getPaths(message, "group", catalog);
     const localActions = localPaths ? readFile(localPaths.actionsFile) : {};
     return { globalActions, localActions };
 }

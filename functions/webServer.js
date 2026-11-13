@@ -42,6 +42,7 @@ const { executeTelegramPromotion, executeTelegramDemotion, LEVELS: telegramAdmin
 const baileysPkg = require("@whiskeysockets/baileys");
 const chatControl = require("./chatControl");
 const profileCosmetics = require("./profileCosmetics");
+const soAdmHelper = require("./soAdmHelper");
 
 const DEFAULT_PORT = 32013;
 const WEB_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -74,7 +75,8 @@ const ADMIN_SYSTEM_SETTINGS = [
   { key: "monitorRandomWeather", label: "Previsão aleatória", description: "Sorteia uma cidade cadastrada e envia a previsão nos horários configurados.", category: "Monitores", scopes: { whatsapp: ["chat"], discord: ["chat"], telegram: ["server", "topic"] } },
   { key: "activity", label: "Registro de atividade", description: "Contabiliza mensagens, comandos, figurinhas e arquivos para os rankings.", category: "Sistemas", scopes: { whatsapp: ["chat"], discord: ["server"], telegram: ["server"] } },
   { key: "xp", label: "Sistema de XP", description: "Concede experiência e mantém o progresso dos membros.", category: "Sistemas", scopes: { whatsapp: ["chat"], discord: ["server"], telegram: ["server"] } },
-  { key: "economy", label: "Economia", description: "Ativa os comandos econômicos sem apagar os saldos existentes.", category: "Sistemas", scopes: { whatsapp: ["chat"], discord: ["server"], telegram: ["server"] } }
+  { key: "economy", label: "Economia", description: "Ativa os comandos econômicos sem apagar os saldos existentes.", category: "Sistemas", scopes: { whatsapp: ["chat"], discord: ["server"], telegram: ["server"] } },
+  { key: "soadm", label: "Somente administradores", description: "Restringe as respostas e comandos do bot a administradores e pessoas com permissão para gerenciar mensagens.", category: "Acesso", scopes: { whatsapp: ["chat"], discord: ["server"], telegram: ["server"] } }
 ];
 const ADMIN_SETTINGS_GEAR_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="m19.4 13.5 1.1.8-1.1 1.9-1.3-.5a7.8 7.8 0 0 1-1.5.9l-.2 1.4h-2.2l-.4-1.3a7.8 7.8 0 0 1-1.7 0l-.7 1.2-1.9-1.1.5-1.3a7.8 7.8 0 0 1-.9-1.5l-1.4-.2v-2.2l1.3-.4a7.8 7.8 0 0 1 0-1.7L6.7 8.8l1.1-1.9 1.3.5a7.8 7.8 0 0 1 1.5-.9l.2-1.4H13l.4 1.3a7.8 7.8 0 0 1 1.7 0l.7-1.2 1.9 1.1-.5 1.3a7.8 7.8 0 0 1 .9 1.5l1.4.2v2.2l-1.3.4a7.8 7.8 0 0 1 0 1.6Z"/></svg>';
 const ADMIN_SYSTEM_SETTING_KEYS = new Set(ADMIN_SYSTEM_SETTINGS.map(setting => setting.key));
@@ -1304,6 +1306,7 @@ function getAdminMonitorConfig(message, setting) {
 
 function getAdminSettingValue(message, setting, level) {
   const helperLevel = level === "topic" ? "chat" : level;
+  if (setting === "soadm") return soAdmHelper.isEnabled(message);
   if (setting === "activity") return activity.load(message)?.enabled === true;
   if (setting === "xp") return xp.load(message)?.enabled === true;
   if (setting === "economy") return economy.isEnabled(message);
@@ -2349,7 +2352,9 @@ async function saveAdminMonitorConfig(message, scope, setting, input) {
 
 async function setAdminSystemSetting(message, setting, enabled, level) {
   const config = { enabled };
-  if (setting === "antilink") {
+  if (setting === "soadm") {
+    soAdmHelper.setEnabled(message, enabled);
+  } else if (setting === "antilink") {
     antilinkHelper.getSetAntilink(message, level === "topic" ? "chat" : level, config);
   } else if (setting === "antimedia") {
     antimediaHelper.getSetAntimedia(message, level === "topic" ? "chat" : level, config);
@@ -9129,6 +9134,10 @@ function start() {
           }
           const message = getLocalGroupMessage(platform, groupId, String(platformAccount.platformId));
           message.displayName = platformAccount.displayName || platformAccount.username || platformAccount.platformId;
+          if (!economy.isEnabled(message)) {
+            sendJson(response, 400, { error: "A economia está desativada neste grupo ou servidor." });
+            return;
+          }
 
           if (shop === "bot") {
             const result = economy.buyStoreItem(message, selection);
@@ -9936,6 +9945,338 @@ function start() {
           : statusCode === 503
             ? "A plataforma está indisponível no momento."
             : "Não foi possível carregar o painel deste grupo.";
+        sendJson(response, statusCode, { error: errorMessage });
+      }
+      return;
+    }
+
+    if (request.method === "GET" && requestUrl.pathname === "/api/account/local/signal-search") {
+      let central;
+      try {
+        central = await getSessionCentral(request);
+      } catch (error) {
+        console.error("[WEB] Falha ao validar sessão para a Busca de Sinais do app:", error.message || error);
+        sendJson(response, 500, { error: "Não foi possível validar sua sessão agora." });
+        return;
+      }
+      if (!central) {
+        sendJson(response, 401, { error: "Sua sessão expirou. Entre novamente para continuar." });
+        return;
+      }
+
+      const platform = String(requestUrl.searchParams.get("platform") || "").toLowerCase();
+      const groupId = String(requestUrl.searchParams.get("groupId") || "");
+      if (!["discord", "telegram", "whatsapp"].includes(platform) || !isValidPlatformGroupId(groupId)) {
+        sendJson(response, 400, { error: "Plataforma ou identificador do grupo inválido." });
+        return;
+      }
+      if (!central.platformAccounts.some(account =>
+        account.platform === platform && account.platformId
+      )) {
+        sendJson(response, 404, { error: "Esta plataforma não está vinculada à sua Conta Central." });
+        return;
+      }
+
+      try {
+        const data = await getLocalAccountData(central, platform, groupId);
+        const message = getLocalGroupMessage(platform, groupId, data.platformId);
+        const searchState = economy.getSignalSearchState(message, data.platformId);
+        const localSearch = economy.getLocalSignalSearch(message);
+        sendJson(response, 200, {
+          platform,
+          group: { id: data.groupId, name: data.groupName },
+          user: { id: data.platformId, name: data.userName },
+          economyEnabled: data.economyEnabled,
+          balanceMinorUnits: searchState.balance,
+          balanceFormatted: economy.formatMoney(searchState.balance),
+          levels: Object.fromEntries(Object.entries(searchState.levels).map(([key, level]) => [
+            key,
+            {
+              label: level.label,
+              priceMinorUnits: level.price,
+              priceFormatted: economy.formatMoney(level.price),
+              pullsUntilEpic: level.pullsUntilEpic,
+              pullsUntilWorkReset: level.pullsUntilWorkReset
+            }
+          ])),
+          local: {
+            enabled: localSearch.enabled,
+            priceMinorUnits: localSearch.price,
+            priceFormatted: economy.formatMoney(localSearch.price),
+            tiers: localSearch.tiers,
+            featured: localSearch.featured,
+            pullsUntilGuarantee: localSearch.pullsUntilGuarantee,
+            marketItems: localSearch.marketItems,
+            botItems: localSearch.botItems,
+            backgrounds: localSearch.backgrounds,
+            outlines: localSearch.outlines
+          }
+        });
+      } catch (error) {
+        const reason = String(error?.message || "");
+        const statusCode = /não participa|não está vinculada/i.test(reason) ? 403
+          : /offline|não está disponível/i.test(reason) ? 503
+            : /inválido/i.test(reason) ? 400 : 500;
+        if (statusCode === 500 || statusCode === 503) {
+          console.error("[WEB] Falha ao carregar Busca de Sinais do app:", error.message || error);
+        }
+        const errorMessage = statusCode === 400 || statusCode === 403
+          ? reason
+          : statusCode === 503
+            ? "A plataforma está indisponível no momento."
+            : "Não foi possível carregar a Busca de Sinais deste grupo.";
+        sendJson(response, statusCode, { error: errorMessage });
+      }
+      return;
+    }
+
+    if (request.method === "GET" && requestUrl.pathname === "/api/account/local/cosmetics") {
+      let central;
+      try {
+        central = await getSessionCentral(request);
+      } catch (error) {
+        console.error("[WEB] Falha ao validar sessão para cosméticos do app:", error.message || error);
+        sendJson(response, 500, { error: "Não foi possível validar sua sessão agora." });
+        return;
+      }
+      if (!central) {
+        sendJson(response, 401, { error: "Sua sessão expirou. Entre novamente para continuar." });
+        return;
+      }
+
+      const platform = String(requestUrl.searchParams.get("platform") || "").toLowerCase();
+      const groupId = String(requestUrl.searchParams.get("groupId") || "");
+      if (!["discord", "telegram", "whatsapp"].includes(platform) || !isValidPlatformGroupId(groupId)) {
+        sendJson(response, 400, { error: "Plataforma ou identificador do grupo inválido." });
+        return;
+      }
+      if (!central.platformAccounts.some(account =>
+        account.platform === platform && account.platformId
+      )) {
+        sendJson(response, 404, { error: "Esta plataforma não está vinculada à sua Conta Central." });
+        return;
+      }
+
+      try {
+        const data = await getLocalAccountData(central, platform, groupId);
+        const balance = Number(data.account.balance) || 0;
+        const cosmetics = economy.getProfileCosmetics(
+          getLocalGroupMessage(platform, groupId, data.platformId),
+          data.platformId
+        );
+        const buildCatalog = (catalog, owned, applied, getPrice, getDetails) =>
+          Object.entries(catalog).map(([key, item]) => {
+            const price = getPrice(key);
+            return {
+              key,
+              id: item.id,
+              label: item.label,
+              rarity: item.rarity,
+              priceMinorUnits: price,
+              priceFormatted: economy.formatMoney(price),
+              owned: owned.includes(key),
+              applied: applied === key,
+              ...getDetails(item)
+            };
+          });
+        sendJson(response, 200, {
+          platform,
+          group: { id: data.groupId, name: data.groupName },
+          user: {
+            id: data.platformId,
+            name: data.userName,
+            avatarUrl: data.avatarUrl
+          },
+          economyEnabled: data.economyEnabled,
+          balanceMinorUnits: balance,
+          balanceFormatted: economy.formatMoney(balance),
+          cosmetics: {
+            backgrounds: buildCatalog(
+              economy.PROFILE_BACKGROUNDS,
+              cosmetics.ownedBackgrounds,
+              cosmetics.background,
+              economy.getProfileBackgroundPrice,
+              item => ({
+                stops: item.stops,
+                accent: item.accent,
+                rainbow: Boolean(item.rainbow)
+              })
+            ),
+            outlines: buildCatalog(
+              economy.PROFILE_OUTLINES,
+              cosmetics.ownedOutlines,
+              cosmetics.outline,
+              economy.getProfileOutlinePrice,
+              item => ({
+                color: item.color,
+                rainbow: Boolean(item.rainbow),
+                frozen: Boolean(item.frozen)
+              })
+            ),
+            circles: buildCatalog(
+              economy.PROFILE_CIRCLES,
+              cosmetics.ownedCircles,
+              cosmetics.circle,
+              economy.getProfileCirclePrice,
+              item => ({
+                color: item.color,
+                rainbow: Boolean(item.rainbow),
+                frozen: Boolean(item.frozen)
+              })
+            ),
+            effects: buildCatalog(
+              economy.PROFILE_EFFECTS,
+              cosmetics.ownedEffects,
+              cosmetics.effect,
+              economy.getProfileEffectPrice,
+              item => ({ snowflakes: Boolean(item.snowflakes) })
+            )
+          }
+        });
+      } catch (error) {
+        const reason = String(error?.message || "");
+        const statusCode = /não participa|não está vinculada/i.test(reason) ? 403
+          : /offline|não está disponível/i.test(reason) ? 503
+            : /inválido/i.test(reason) ? 400 : 500;
+        if (statusCode === 500 || statusCode === 503) {
+          console.error("[WEB] Falha ao carregar cosméticos do app:", error.message || error);
+        }
+        const errorMessage = statusCode === 400 || statusCode === 403
+          ? reason
+          : statusCode === 503
+            ? "A plataforma está indisponível no momento."
+            : "Não foi possível carregar os cosméticos deste grupo.";
+        sendJson(response, statusCode, { error: errorMessage });
+      }
+      return;
+    }
+
+    if (request.method === "GET" && requestUrl.pathname === "/api/account/local/shop") {
+      let central;
+      try {
+        central = await getSessionCentral(request);
+      } catch (error) {
+        console.error("[WEB] Falha ao validar sessão para a loja do app:", error.message || error);
+        sendJson(response, 500, { error: "Não foi possível validar sua sessão agora." });
+        return;
+      }
+      if (!central) {
+        sendJson(response, 401, { error: "Sua sessão expirou. Entre novamente para continuar." });
+        return;
+      }
+
+      const platform = String(requestUrl.searchParams.get("platform") || "").toLowerCase();
+      const groupId = String(requestUrl.searchParams.get("groupId") || "");
+      const shop = String(requestUrl.searchParams.get("shop") || "");
+      if (!["discord", "telegram", "whatsapp"].includes(platform) ||
+          !isValidPlatformGroupId(groupId) || !["bot", "market"].includes(shop)) {
+        sendJson(response, 400, { error: "Plataforma, grupo ou loja inválidos." });
+        return;
+      }
+      if (!central.platformAccounts.some(account =>
+        account.platform === platform && account.platformId
+      )) {
+        sendJson(response, 404, { error: "Esta plataforma não está vinculada à sua Conta Central." });
+        return;
+      }
+
+      try {
+        const data = await getLocalAccountData(central, platform, groupId);
+        const message = getLocalGroupMessage(platform, groupId, data.platformId);
+        const balance = Number(data.account.balance) || 0;
+        const formatItem = item => ({
+          id: item.id,
+          name: item.name,
+          category: item.category,
+          priceMinorUnits: Number(item.price) || 0,
+          priceFormatted: economy.formatMoney(Number(item.price) || 0),
+          quantity: item.quantity,
+          rarity: item.rarity || null,
+          inStock: item.quantity !== 0,
+          affordable: balance >= (Number(item.price) || 0),
+          available: data.economyEnabled && item.quantity !== 0 && balance >= (Number(item.price) || 0),
+          availabilityReason: !data.economyEnabled
+            ? "economy_disabled"
+            : item.quantity === 0
+              ? "out_of_stock"
+              : balance < (Number(item.price) || 0) ? "insufficient_balance" : null
+        });
+        let title;
+        let notice;
+        let items;
+        if (shop === "market") {
+          const store = economy.getCommunityStore(message);
+          if (!store) {
+            sendJson(response, 503, { error: "O Mercado Local está indisponível neste grupo ou servidor." });
+            return;
+          }
+          title = store.title;
+          notice = store.notice;
+          items = store.items.map(formatItem);
+        } else {
+          title = "Loja do Bot";
+          notice = "Resets só podem ser comprados quando o limite diário da atividade acabar.";
+          const account = data.account;
+          const botItems = economy.getStoreItems();
+          const resetKeys = new Set(["work", "fishing", "mining", "robbery"]);
+          const isAtLimit = item => Number(account[item.count]) >= Number(item.max);
+          items = botItems.map(item => {
+            let availabilityReason = data.economyEnabled ? null : "economy_disabled";
+            if (data.economyEnabled && item.key === "shield") {
+              if (Number(account.shieldCharges) > 0) availabilityReason = "shield_active";
+              else if (balance < economy.MIN_SHIELD_BALANCE) availabilityReason = "shield_min_balance";
+            } else if (data.economyEnabled && item.key === "all" &&
+                ![...resetKeys].every(key => {
+                  const resetItem = botItems.find(candidate => candidate.key === key);
+                  return resetItem && isAtLimit(resetItem);
+                })) {
+              availabilityReason = "all_not_ready";
+            } else if (data.economyEnabled && item.date && item.count && item.max && !isAtLimit(item)) {
+              availabilityReason = "not_ready";
+            }
+            if (!availabilityReason && balance < Number(item.price)) {
+              availabilityReason = "insufficient_balance";
+            }
+            return {
+              key: item.key,
+              name: item.name,
+              position: item.position,
+              priceMinorUnits: Number(item.price) || 0,
+              priceFormatted: economy.formatMoney(Number(item.price) || 0),
+              rarity: item.rarity,
+              product: Boolean(item.product),
+              available: !availabilityReason,
+              availabilityReason
+            };
+          });
+        }
+
+        sendJson(response, 200, {
+          shop,
+          platform,
+          group: { id: data.groupId, name: data.groupName },
+          user: { id: data.platformId, name: data.userName },
+          economyEnabled: data.economyEnabled,
+          balanceMinorUnits: balance,
+          balanceFormatted: economy.formatMoney(balance),
+          title,
+          notice,
+          shieldCharges: Number(data.account.shieldCharges) || 0,
+          items
+        });
+      } catch (error) {
+        const reason = String(error?.message || "");
+        const statusCode = /não participa|não está vinculada/i.test(reason) ? 403
+          : /offline|não está disponível/i.test(reason) ? 503
+            : /inválido/i.test(reason) ? 400 : 500;
+        if (statusCode === 500 || statusCode === 503) {
+          console.error("[WEB] Falha ao carregar a loja do app:", error.message || error);
+        }
+        const errorMessage = statusCode === 400 || statusCode === 403
+          ? reason
+          : statusCode === 503
+            ? "A plataforma ou loja está indisponível no momento."
+            : "Não foi possível carregar os itens da loja.";
         sendJson(response, statusCode, { error: errorMessage });
       }
       return;

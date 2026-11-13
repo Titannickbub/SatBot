@@ -469,6 +469,20 @@ console.log(
         message.sender.canManageMessages = true;
     }
 
+    if (!message.isPrivate &&
+        !message.sender.isAdmin &&
+        !message.sender.canManageMessages &&
+        !message.sender.isOwner) {
+        try {
+            if (functions.soAdmHelper?.isEnabled(message)) {
+                return;
+            }
+        } catch (error) {
+            console.error(`${_ts()} ❌[CORE] Falha ao verificar o modo somente administradores:`, error);
+            return;
+        }
+    }
+
     if (!isSensitiveCommand) {
         for (const middleware of middlewares) {
             if (middleware.runOn === "all" || !middleware.runOn) {
@@ -707,6 +721,16 @@ async function start() {
         setTimeout(() => {
             console.log(`${_ts()} ✅[CORE] Restrição de inicialização finalizada. Mensagens serão processadas normalmente.`);
         }, ignoreInitialSeconds * 1000);
+    }
+
+    try {
+        const act18Loader = require("./functions/act18Loader");
+        const result = act18Loader.loadFromZip();
+        if (result.status === "loaded") {
+            console.log(`${_ts()} ✅[CORE] Pacote MOD_ADULTO importado: ${result.importedActions} ações, ${result.importedMedia} mídias.`);
+        }
+    } catch (error) {
+        console.error(`${_ts()} ❌[CORE] Falha ao carregar settings/MOD_ADULTO.zip:`, error.message || error);
     }
 
     loadCommands();

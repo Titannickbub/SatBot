@@ -14,6 +14,7 @@
 !/platforms/**
 
 !/core.js
+!/criarmodatulto.js
 !/index.js
 !/package.json
 !/publicar.bat
@@ -27,3 +28,6 @@
 !/update.sh
 !/update_beta.bat
 !/update_beta.sh
+
+/commands/diversao/act18.json
+/commands/diversao/act18_media/

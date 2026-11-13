@@ -13,6 +13,32 @@ O prefixo nos exemplos é `!`. Se o prefixo do bot foi alterado, substitua-o pel
 - **`!act_edit` (Ações locais):** As ações criadas ficam salvas exclusivamente no grupo ou servidor onde o comando foi executado. Se uma ação local tiver o mesmo nome ou atalho de uma ação global do bot, **a versão local terá prioridade** naquele chat.
 - **`!actG_edit` (Ações globais):** Compartilhado por todos os chats do bot. Este comando é restrito apenas a **superusuários** (donos do bot).
 
+## Ações adultas (`!act18`)
+
+O catálogo adulto é separado das ações normais. Use `!act18` para executar ações e `!act18_edit` para editar as ações locais; `!act18G_edit` edita o catálogo global e é restrito a superusuários. Ações locais têm prioridade sobre ações globais com o mesmo nome ou alias.
+
+Todos os comandos do catálogo adulto e seus aliases só funcionam quando o chat atende ao controle da plataforma:
+
+- **Discord:** o canal (ou canal-pai de uma thread) precisa ter a restrição de idade ativada.
+- **WhatsApp:** um administrador do grupo ativa a configuração com `!modo_adulto on`; use `!modo_adulto off` para desativá-la e `!modo_adulto status` para consultar.
+- **Telegram:** o grupo precisa estar com a proteção de conteúdo ativada, restringindo salvar e encaminhar mídias.
+
+Esses controles do WhatsApp e Telegram não verificam a idade dos participantes. No Telegram, a proteção de conteúdo só restringe salvar/encaminhar; não é uma confirmação de que o grupo seja 18+.
+
+As mídias adicionadas pelos editores adultos ficam codificadas em base64 no catálogo, sem arquivos separados. Ao importar um pacote global, o loader grava os binários referenciados em `commands\diversao\act18_media\`. Os demais comandos e catálogos `act` permanecem inalterados.
+
+### Pacotes globais +18
+
+O bot importa `settings\MOD_ADULTO.zip` durante a inicialização. O ZIP deve conter `act18.json` na raiz e os arquivos referenciados por `media[].file` dentro de `act18_media/`. A importação mescla as ações ao catálogo global, substituindo as ações com o mesmo nome; ações globais existentes com outros nomes são preservadas. O mesmo pacote não é reaplicado em reinicializações se o conteúdo do ZIP não mudou, então edições globais posteriores permanecem.
+
+Para criar ou editar um pacote no navegador, execute separadamente, na raiz do bot:
+
+```text
+node criarmodatulto.js
+```
+
+Abra o endereço local mostrado no terminal e exporte `MOD_ADULTO.zip`. O editor não inicia junto com o bot; copie o ZIP exportado para `settings\MOD_ADULTO.zip` na instalação de destino.
+
 ---
 
 ## Permissões e onde funciona

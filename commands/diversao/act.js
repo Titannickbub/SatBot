@@ -43,8 +43,8 @@ Se o grupo tiver uma ação local com o mesmo nome ou alias de uma ação global
 
 O bot escolhe aleatoriamente uma frase e uma mídia (GIF, vídeo ou imagem) cadastrada para a ação selecionada.`,
     usage: "{prefix}act help",
-    getMenuUsage(message) {
-        const actionSets = actStorage.loadActionSets(message);
+    getMenuUsage(message, catalog = "normal") {
+        const actionSets = actStorage.loadActionSets(message, catalog);
         const actions = actStorage.mergeActions(actionSets.globalActions, actionSets.localActions);
         const directActions = Object.entries(actions)
             .filter(([, action]) => action && action.enabled !== false)
@@ -55,21 +55,21 @@ O bot escolhe aleatoriamente uma frase e uma mídia (GIF, vídeo ou imagem) cada
             directActions.map(action => [normalizeActionName(action), action])
         ).values()];
         return [
-            "{prefix}act <ação> [@membro]",
+            `{prefix}${catalog === "adult" ? "act18" : "act"} <ação> [@membro]`,
             ...uniqueActions.map(action => `{prefix}${action} [@membro]`)
         ].join("\n");
     },
-    resolveAlias(commandName, message) {
-        return resolveActionAlias(commandName, message);
+    resolveAlias(commandName, message, catalog = "normal") {
+        return resolveActionAlias(commandName, message, catalog);
     },
-    info(message) {
-        return help(message);
+    info(message, catalog = "normal") {
+        return help(message, null, catalog);
     },
 
-    async execute(message) {
+    async execute(message, catalog = "normal") {
         let actionSets;
         try {
-            actionSets = actStorage.loadActionSets(message);
+            actionSets = actStorage.loadActionSets(message, catalog);
         } catch (error) {
             console.error("[ACT] Não foi possível ler o catálogo de ações:", error);
             return message.reply({ text: "❌ O sistema de ações está temporariamente indisponível." });
@@ -80,14 +80,14 @@ O bot escolhe aleatoriamente uma frase e uma mídia (GIF, vídeo ou imagem) cada
 
         // Se não informou ação ou pediu ajuda
         if (!actionName || actionName === "help" || actionName === "ajuda") {
-            return message.reply({ text: help(message, actions) });
+            return message.reply({ text: help(message, actions, catalog) });
         }
 
         const localAction = findActionIn(actionSets.localActions, actionName);
         const action = findAction(actionSets, actionName);
         if (!action || action.enabled === false) {
             return message.reply({
-                text: `❌ Ação *"${actionName}"* não encontrada ou desativada.\n\n${help(message, actions)}`
+                text: `❌ Ação *"${actionName}"* não encontrada ou desativada.\n\n${help(message, actions, catalog)}`
             });
         }
 
@@ -114,7 +114,7 @@ O bot escolhe aleatoriamente uma frase e uma mídia (GIF, vídeo ou imagem) cada
         }
 
         try {
-            return await sendMedia(message, media, text, replyOptions.mentions, localAction ? "group" : "global");
+            return await sendMedia(message, media, text, replyOptions.mentions, localAction ? "group" : "global", catalog);
         } catch (error) {
             console.error("[ACT] Falha ao enviar mídia; usando fallback de texto:", error);
             try {
@@ -153,8 +153,8 @@ function normalizeActionName(value) {
         .trim();
 }
 
-function resolveActionAlias(commandName, message) {
-    const actionSets = actStorage.loadActionSets(message);
+function resolveActionAlias(commandName, message, catalog = "normal") {
+    const actionSets = actStorage.loadActionSets(message, catalog);
     const normalizedName = normalizeActionName(commandName);
     if (!normalizedName) return null;
 
@@ -322,9 +322,9 @@ function formatMention(message, id, name) {
     return String(name || id || "usuário");
 }
 
-async function resolveMediaBuffer(media, message, scope) {
+async function resolveMediaBuffer(media, message, scope, catalog = "normal") {
     if (!media) throw new Error("Mídia não especificada.");
-    const paths = actStorage.getPaths(message, scope);
+    const paths = actStorage.getPaths(message, scope, catalog);
     if (!paths) throw new Error("Não foi possível localizar a pasta de mídias desta ação.");
 
     // 1. Arquivo salvo na pasta do comando (act_media/)
@@ -415,13 +415,13 @@ function convertMp4ToGif(mp4Buffer) {
     });
 }
 
-async function sendMedia(message, media, caption, mentions, scope = "global") {
+async function sendMedia(message, media, caption, mentions, scope = "global", catalog = "normal") {
     const type = String(media.type || "photo").toLowerCase();
     if (!ALLOWED_MEDIA_TYPES.has(type)) {
         throw new Error("Mídia de ação inválida.");
     }
 
-    let buffer = await resolveMediaBuffer(media, message, scope);
+    let buffer = await resolveMediaBuffer(media, message, scope, catalog);
     const detected = detectBufferFormat(buffer);
     let fileName = media.fileName || `action.${detected.ext !== "bin" ? detected.ext : (type === "gif" ? "gif" : "png")}`;
 
@@ -522,27 +522,30 @@ function escapeHtml(value) {
         .replace(/'/g, "&#39;");
 }
 
-function help(message, actions = null) {
+function help(message, actions = null, catalog = "normal") {
     const p = message?.prefix || "!";
+    const commandName = catalog === "adult" ? "act18" : "act";
     let activeActions = [];
     if (actions && typeof actions === "object") {
         activeActions = Object.keys(actions).filter(k => actions[k]?.enabled !== false);
     }
     const actionsList = activeActions.length
-        ? activeActions.map(a => `  • \`${p}act ${a}\``).join("\n")
-        : ["kiss", "hug", "slap", "highfive"]
-            .map(a => `  • \`${p}act ${a}\``)
-            .join("\n");
+        ? activeActions.map(a => `  • \`${p}${commandName} ${a}\``).join("\n")
+        : catalog === "adult"
+            ? "  • Nenhuma ação adulta cadastrada."
+            : ["kiss", "hug", "slap", "highfive"]
+                .map(a => `  • \`${p}${commandName} ${a}\``)
+                .join("\n");
 
     const lines = [
-        "🎭 *AÇÕES INTERATIVAS (ACT)*",
+        `🎭 *AÇÕES INTERATIVAS (${commandName.toUpperCase()})*`,
         "",
         "Execute uma ação interativa com outro membro ou consigo mesmo.",
         "",
         "📋 *COMO USAR:*",
-        `  • \`${p}act <ação> @membro\` — Executa a ação marcando um membro.`,
-        `  • \`${p}act <ação>\` *(respondendo)* — Executa a ação respondendo à mensagem de alguém.`,
-        `  • \`${p}act <ação>\` — Executa a ação sem marcação (sobre si mesmo).`,
+        `  • \`${p}${commandName} <ação> @membro\` — Executa a ação marcando um membro.`,
+        `  • \`${p}${commandName} <ação>\` *(respondendo)* — Executa a ação respondendo à mensagem de alguém.`,
+        `  • \`${p}${commandName} <ação>\` — Executa a ação sem marcação (sobre si mesmo).`,
         `  • \`${p}<ação ou alias> [@membro]\` — Também é possível chamar cada ação diretamente.`,
         "",
         "✨ *AÇÕES DISPONÍVEIS:*",

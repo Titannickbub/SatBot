@@ -4,6 +4,7 @@ const axios = require("axios");
 const { isOwner } = require("../../functions/owners");
 const { fetchBuffer } = require("../../functions/api");
 const actStorage = require("../../functions/actStorage");
+const act18Permissions = require("../../functions/act18Permissions");
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const MAX_ACTIONS = 100;
@@ -97,8 +98,12 @@ const command = {
         return help(message);
     },
 
-    async execute(message, scope = "group") {
+    async execute(message, scope = "group", catalog = "normal") {
         message._actScope = scope;
+        message._actCatalog = catalog;
+        if (catalog === "adult" && !act18Permissions.isAllowed(message)) {
+            return message.reply({ text: act18Permissions.denialText(message) });
+        }
         if (scope === "global") {
             if (!(message.sender?.isOwner || isOwner(message))) {
                 return message.reply({ text: "❌ Apenas Super Usuários podem administrar as ações globais." });
@@ -163,7 +168,11 @@ const command = {
 };
 
 function getPaths(message) {
-    return actStorage.getPaths(message, message?._actScope || "group");
+    return actStorage.getPaths(
+        message,
+        message?._actScope || "group",
+        message?._actCatalog || "normal"
+    );
 }
 
 function getMediaDir(message) {
@@ -312,7 +321,7 @@ function resolveAction(actions, value) {
 }
 
 function ensureAction(actions, value, message) {
-    const commandName = message?._actScope === "global" ? "actG_edit" : "act_edit";
+    const commandName = editorCommandName(message);
     if (!value || !String(value).trim()) throw new Error(`Informe o nome da ação. Exemplo: !${commandName} show kiss`);
     const resolved = resolveAction(actions, value);
     if (!resolved) throw new Error(`Ação "${value}" não encontrada. Use !${commandName} list para ver as ações cadastradas.`);
@@ -445,7 +454,7 @@ async function inspectActionMedia(message, actions, value) {
 
     if (!buffer || !Buffer.isBuffer(buffer)) {
         return message.reply({
-            text: `🔍 *INSPEÇÃO DE MÍDIA*\n\nUse:\n• \`!${message._actScope === "global" ? "actG_edit" : "act_edit"} inspect <ação>\` para inspecionar as mídias salvas de uma ação.\n• \`!${message._actScope === "global" ? "actG_edit" : "act_edit"} inspect\` respondendo a uma mensagem com mídia ou link para analisar o arquivo antes de salvar.`
+            text: `🔍 *INSPEÇÃO DE MÍDIA*\n\nUse:\n• \`!${editorCommandName(message)} inspect <ação>\` para inspecionar as mídias salvas de uma ação.\n• \`!${editorCommandName(message)} inspect\` respondendo a uma mensagem com mídia ou link para analisar o arquivo antes de salvar.`
         });
     }
 
@@ -462,7 +471,7 @@ async function inspectActionMedia(message, actions, value) {
         `• *Tamanho:* ${sizeKb} KB`,
         `• *Magic Bytes (HEX):* \`${headerHex}\``,
         "",
-        `• *Sugestão de uso:* \`!${message._actScope === "global" ? "actG_edit" : "act_edit"} image <ação>\``
+        `• *Sugestão de uso:* \`!${editorCommandName(message)} image <ação>\``
     ];
 
     return message.reply({ text: lines.join("\n") });
@@ -555,21 +564,35 @@ async function addMedia(message, actions, value, url, explicitType) {
     const ext = `.${detectedFormat.ext !== "bin" ? detectedFormat.ext : (type === "gif" ? "gif" : (type === "video" ? "mp4" : "png"))}`;
     const safeFileName = `${key}_${Date.now()}_${Math.floor(Math.random() * 1000)}${ext}`;
 
-    const mediaDir = getMediaDir(message);
-    if (!fs.existsSync(mediaDir)) {
-        fs.mkdirSync(mediaDir, { recursive: true });
+    let mediaObj;
+    if (message._actCatalog === "adult") {
+        if (buffer.length > MAX_FILE_SIZE * 0.75) {
+            throw new Error("A mídia é grande demais para ser armazenada no buffer do catálogo adulto.");
+        }
+        mediaObj = {
+            type,
+            base64: buffer.toString("base64"),
+            mimeType,
+            fileName: detectedFileName || safeFileName
+        };
+    } else {
+        const mediaDir = getMediaDir(message);
+        if (!fs.existsSync(mediaDir)) {
+            fs.mkdirSync(mediaDir, { recursive: true });
+        }
+        const targetFilePath = path.join(mediaDir, safeFileName);
+        fs.writeFileSync(targetFilePath, buffer);
+        mediaObj = {
+            type,
+            file: safeFileName
+        };
     }
 
-    const targetFilePath = path.join(mediaDir, safeFileName);
-    fs.writeFileSync(targetFilePath, buffer);
-
-    const mediaObj = {
-        type,
-        file: safeFileName
-    };
-
     action.media.push(mediaObj);
-    return persist(message, actions, `Mídia salva em "act_media/${safeFileName}" para "${key}". Formato detectado: ${detectedFormat.name} (${(buffer.length / 1024).toFixed(1)} KB).`);
+    const storageText = message._actCatalog === "adult"
+        ? "Mídia armazenada no buffer do catálogo adulto, sem arquivo separado"
+        : `Mídia salva em "act_media/${safeFileName}"`;
+    return persist(message, actions, `${storageText} para "${key}". Formato detectado: ${detectedFormat.name} (${(buffer.length / 1024).toFixed(1)} KB).`);
 }
 
 function addAlias(message, actions, value, aliasValue) {
@@ -648,11 +671,29 @@ function isReservedName(value) {
 }
 
 function help(message) {
-    const commandName = message?._actScope === "global" ? "actG_edit" : "act_edit";
+    const commandName = editorCommandName(message);
     let description = DESCRIPTION.replaceAll("{prefix}", message.prefix || "!")
         .replaceAll("act_edit", commandName);
+    if (message?._actCatalog === "adult") {
+        description = description
+            .replace(
+                "🔐 Disponível para administradores deste grupo/servidor e superusuários.",
+                "🔞 Disponível somente em chats com permissão adulta; a mídia fica armazenada em buffer no catálogo."
+            )
+            .replace(
+                "O arquivo será salvo permanentemente no disco local.",
+                "A mídia é armazenada em base64 no catálogo, sem arquivo de mídia separado."
+            )
+            .replace(
+                "Exclui a ação do banco e remove todos os arquivos de mídia associados do disco local.",
+                "Exclui a ação e remove suas mídias codificadas do catálogo."
+            );
+    }
     if (message?._actScope === "global") {
         description = description.replace(
+            "🔞 Disponível somente em chats com permissão adulta; a mídia fica armazenada em buffer no catálogo.",
+            "🔞 Disponível somente em chats com permissão adulta e apenas para superusuários; a mídia fica armazenada em buffer no catálogo."
+        ).replace(
             "🔐 Disponível para administradores deste grupo/servidor e superusuários.",
             "🔐 Disponível apenas para superusuários / donos do bot."
         ).replace(
@@ -661,6 +702,13 @@ function help(message) {
         );
     }
     return description;
+}
+
+function editorCommandName(message) {
+    if (message?._actCatalog === "adult") {
+        return message?._actScope === "global" ? "act18G_edit" : "act18_edit";
+    }
+    return message?._actScope === "global" ? "actG_edit" : "act_edit";
 }
 
 command._internals = {
