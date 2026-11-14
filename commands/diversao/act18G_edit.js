@@ -12,8 +12,8 @@ module.exports = {
             "As ações são compartilhadas por todos os grupos/servidores. Uma ação local com o mesmo nome ou alias tem prioridade naquele grupo."
         )
         .replace(
-            "🔞 Disponível somente em chats com permissão adulta; a mídia fica armazenada em buffer no catálogo.",
-            "🔞 Disponível somente em chats com permissão adulta e apenas para superusuários; a mídia fica armazenada em buffer no catálogo."
+            "🔞 Disponível somente em chats com permissão adulta; as mídias ficam salvas como arquivos .bin.",
+            "🔞 Disponível somente em chats com permissão adulta e apenas para superusuários; as mídias ficam salvas como arquivos .bin."
         ),
     usage: "{prefix}act18G_edit help",
     examples: localEditor.examples.map(example => example.replaceAll("act18_edit", "act18G_edit")),

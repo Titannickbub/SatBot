@@ -5,6 +5,7 @@ const { isOwner } = require("../../functions/owners");
 const { fetchBuffer } = require("../../functions/api");
 const actStorage = require("../../functions/actStorage");
 const act18Permissions = require("../../functions/act18Permissions");
+const act18Media = require("../../functions/act18Media");
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const MAX_ACTIONS = 100;
@@ -184,6 +185,9 @@ function getMediaDir(message) {
 function readActions(message) {
     const paths = getPaths(message);
     if (!paths) throw new Error("Não foi possível identificar o grupo/servidor para carregar as ações.");
+    if (message?._actCatalog === "adult") {
+        act18Media.migrateFile(paths.actionsFile, paths.mediaDir);
+    }
     if (!fs.existsSync(paths.actionsFile)) {
         fs.mkdirSync(path.dirname(paths.actionsFile), { recursive: true });
         fs.writeFileSync(paths.actionsFile, JSON.stringify({}, null, 2), "utf8");
@@ -566,14 +570,12 @@ async function addMedia(message, actions, value, url, explicitType) {
 
     let mediaObj;
     if (message._actCatalog === "adult") {
-        if (buffer.length > MAX_FILE_SIZE * 0.75) {
-            throw new Error("A mídia é grande demais para ser armazenada no buffer do catálogo adulto.");
-        }
+        const mediaDir = getMediaDir(message);
+        const storedFile = act18Media.storeBuffer(buffer, mediaDir);
         mediaObj = {
             type,
-            base64: buffer.toString("base64"),
-            mimeType,
-            fileName: detectedFileName || safeFileName
+            file: storedFile,
+            mimeType
         };
     } else {
         const mediaDir = getMediaDir(message);
@@ -590,7 +592,7 @@ async function addMedia(message, actions, value, url, explicitType) {
 
     action.media.push(mediaObj);
     const storageText = message._actCatalog === "adult"
-        ? "Mídia armazenada no buffer do catálogo adulto, sem arquivo separado"
+        ? `Mídia salva como arquivo binário act18_media/${mediaObj.file}`
         : `Mídia salva em "act_media/${safeFileName}"`;
     return persist(message, actions, `${storageText} para "${key}". Formato detectado: ${detectedFormat.name} (${(buffer.length / 1024).toFixed(1)} KB).`);
 }
@@ -614,7 +616,7 @@ function removeItem(message, actions, value, indexValue, field) {
 
     if (field === "media" && removed) {
         const fileToDelete = removed.file || (removed.url && !/^https?:\/\//i.test(removed.url) ? path.basename(removed.url) : null);
-        if (fileToDelete) {
+        if (fileToDelete && !isMediaReferenced(actions, fileToDelete)) {
             const filePath = path.join(getMediaDir(message), path.basename(fileToDelete));
             if (fs.existsSync(filePath)) {
                 try { fs.unlinkSync(filePath); } catch (_) {}
@@ -636,7 +638,7 @@ function deleteAction(message, actions, value) {
     if (Array.isArray(action.media)) {
         action.media.forEach(media => {
             const fileToDelete = media.file || (media.url && !/^https?:\/\//i.test(media.url) ? path.basename(media.url) : null);
-            if (fileToDelete) {
+            if (fileToDelete && !isMediaReferenced(actions, fileToDelete, key)) {
                 const filePath = path.join(getMediaDir(message), path.basename(fileToDelete));
                 if (fs.existsSync(filePath)) {
                     try { fs.unlinkSync(filePath); } catch (_) {}
@@ -646,6 +648,14 @@ function deleteAction(message, actions, value) {
     }
     delete actions[key];
     return persist(message, actions, `Ação "${key}" excluída.`);
+}
+
+function isMediaReferenced(actions, fileName, ignoredActionName = null) {
+    return Object.entries(actions).some(([actionName, action]) =>
+        actionName !== ignoredActionName &&
+        Array.isArray(action.media) &&
+        action.media.some(media => media.file === fileName)
+    );
 }
 
 function normalizeName(value) {
@@ -678,21 +688,21 @@ function help(message) {
         description = description
             .replace(
                 "🔐 Disponível para administradores deste grupo/servidor e superusuários.",
-                "🔞 Disponível somente em chats com permissão adulta; a mídia fica armazenada em buffer no catálogo."
+                "🔞 Disponível somente em chats com permissão adulta; as mídias ficam salvas como arquivos .bin."
             )
             .replace(
                 "O arquivo será salvo permanentemente no disco local.",
-                "A mídia é armazenada em base64 no catálogo, sem arquivo de mídia separado."
+                "A mídia é salva como arquivo binário .bin; o catálogo guarda apenas sua referência."
             )
             .replace(
                 "Exclui a ação do banco e remove todos os arquivos de mídia associados do disco local.",
-                "Exclui a ação e remove suas mídias codificadas do catálogo."
+                "Exclui a ação e remove as mídias binárias que não forem usadas por outras ações."
             );
     }
     if (message?._actScope === "global") {
         description = description.replace(
-            "🔞 Disponível somente em chats com permissão adulta; a mídia fica armazenada em buffer no catálogo.",
-            "🔞 Disponível somente em chats com permissão adulta e apenas para superusuários; a mídia fica armazenada em buffer no catálogo."
+            "🔞 Disponível somente em chats com permissão adulta; as mídias ficam salvas como arquivos .bin.",
+            "🔞 Disponível somente em chats com permissão adulta e apenas para superusuários; as mídias ficam salvas como arquivos .bin."
         ).replace(
             "🔐 Disponível para administradores deste grupo/servidor e superusuários.",
             "🔐 Disponível apenas para superusuários / donos do bot."

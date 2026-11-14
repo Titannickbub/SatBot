@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const { unzipSync } = require("fflate");
 const actStorage = require("./actStorage");
+const act18Media = require("./act18Media");
 const editor = require("../commands/diversao/act_edit");
 
 const SETTINGS_DIR = path.join(__dirname, "..", "settings");
@@ -12,10 +13,6 @@ const MAX_TOTAL_UNCOMPRESSED_SIZE = 300 * 1024 * 1024;
 const MAX_MEDIA_SIZE = 50 * 1024 * 1024;
 const MAX_ENTRIES = 5000;
 const DEFAULT_HASH_PATH = path.join(SETTINGS_DIR, "MOD_ADULTO.sha256");
-const MEDIA_EXTENSIONS = new Set([
-    ".3gp", ".avi", ".bmp", ".gif", ".heic", ".heif", ".jpeg", ".jpg",
-    ".mkv", ".mov", ".mp4", ".png", ".tif", ".tiff", ".webm", ".webp"
-]);
 
 function inspectZipDirectory(buffer) {
     let endOffset = -1;
@@ -110,32 +107,6 @@ function readActions(filePath) {
     return actions;
 }
 
-function getMediaExtension(media) {
-    const candidate = path.extname(String(media.fileName || "")).toLowerCase();
-    if (MEDIA_EXTENSIONS.has(candidate)) return candidate;
-    const mimeTypes = {
-        "image/gif": ".gif",
-        "image/jpeg": ".jpg",
-        "image/png": ".png",
-        "image/webp": ".webp",
-        "video/mp4": ".mp4",
-        "video/webm": ".webm"
-    };
-    return mimeTypes[String(media.mimeType || "").toLowerCase()] || ".bin";
-}
-
-function decodeBase64(value) {
-    const text = String(value || "").replace(/^data:[^,]*;base64,/i, "").replace(/\s/g, "");
-    if (!text || !/^[A-Za-z0-9+/]*={0,2}$/.test(text)) {
-        throw new Error("Uma mídia contém dados base64 inválidos.");
-    }
-    const buffer = Buffer.from(text, "base64");
-    if (!buffer.length || buffer.length > MAX_MEDIA_SIZE) {
-        throw new Error("Uma mídia está vazia ou excede o limite de 50 MB.");
-    }
-    return buffer;
-}
-
 function renamePackagedMedia(actions, archiveEntries, hash) {
     const mediaBuffers = new Map();
     const importedNames = new Map();
@@ -146,9 +117,11 @@ function renamePackagedMedia(actions, archiveEntries, hash) {
             let sourceName = null;
             let buffer = null;
             if (typeof media.base64 === "string" && media.base64.trim()) {
-                buffer = decodeBase64(media.base64);
+                buffer = act18Media.decodeBase64(media.base64);
             } else if (typeof media.data === "string" && media.data.trim()) {
-                buffer = decodeBase64(media.data);
+                buffer = act18Media.decodeBase64(media.data);
+            } else if (typeof media.url === "string" && media.url.startsWith("data:")) {
+                buffer = act18Media.decodeBase64(media.url);
             } else if (typeof media.file === "string" && media.file.trim()) {
                 sourceName = media.file;
                 if (path.posix.basename(sourceName) !== sourceName || sourceName.includes("\\")) {
@@ -162,7 +135,7 @@ function renamePackagedMedia(actions, archiveEntries, hash) {
             const importKey = sourceName || `${actionName}:${index}`;
             let targetName = importedNames.get(importKey);
             if (!targetName) {
-                targetName = `mod_${hash.slice(0, 16)}_${index}${getMediaExtension(media)}`;
+                targetName = `mod_${hash.slice(0, 16)}_${index}.bin`;
                 importedNames.set(importKey, targetName);
                 mediaBuffers.set(targetName, buffer);
                 index++;
@@ -276,7 +249,7 @@ function readArchive(buffer) {
 
     for (const [actionName, action] of Object.entries(importedActions)) {
         for (const media of action.media) {
-            if (media.base64 || media.data) continue;
+            if (media.base64 || media.data || (typeof media.url === "string" && media.url.startsWith("data:"))) continue;
             if (typeof media.file === "string") {
                 if (!archiveMedia.has(media.file) || path.posix.basename(media.file) !== media.file) {
                     throw new Error(`A mídia "${media.file}" da ação "${actionName}" não está no ZIP.`);
@@ -317,8 +290,14 @@ function loadFromZip(options = {}) {
     return { status: "loaded", zipPath, ...result };
 }
 
+function migrateGlobalCatalog(options = {}) {
+    const paths = options.paths || actStorage.getPaths(null, "global", "adult");
+    return act18Media.migrateFile(paths.actionsFile, paths.mediaDir);
+}
+
 module.exports = {
     loadFromZip,
+    migrateGlobalCatalog,
     importArchive,
     readArchive,
     inspectZipDirectory

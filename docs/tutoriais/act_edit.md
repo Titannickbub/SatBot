@@ -25,7 +25,9 @@ Todos os comandos do catálogo adulto e seus aliases só funcionam quando o chat
 
 Esses controles do WhatsApp e Telegram não verificam a idade dos participantes. No Telegram, a proteção de conteúdo só restringe salvar/encaminhar; não é uma confirmação de que o grupo seja 18+.
 
-As mídias adicionadas pelos editores adultos ficam codificadas em base64 no catálogo, sem arquivos separados. Ao importar um pacote global, o loader grava os binários referenciados em `commands\diversao\act18_media\`. Os demais comandos e catálogos `act` permanecem inalterados.
+As mídias adicionadas por `act18_edit` e `act18G_edit` são salvas como arquivos `.bin` em `settings\act18_media\<chatKey>\` (locais) ou `commands\diversao\act18_media\` (globais). O JSON guarda apenas a referência ao binário. Base64 de catálogos antigos é migrado para `.bin` ao carregar o catálogo; mídias do catálogo local são migradas na primeira leitura.
+
+Ao importar um pacote global, o loader grava os binários referenciados em `commands\diversao\act18_media\`. Os demais comandos e catálogos `act` permanecem inalterados.
 
 ### Pacotes globais +18
 

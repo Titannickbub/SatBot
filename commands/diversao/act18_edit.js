@@ -5,15 +5,15 @@ const DESCRIPTION = localEditor.description
     .replaceAll("act_edit", "act18_edit")
     .replace(
         "O arquivo será salvo permanentemente no disco local.",
-        "A mídia é armazenada em base64 no catálogo, sem arquivo de mídia separado."
+        "A mídia é salva como arquivo binário .bin; o catálogo guarda apenas sua referência."
     )
     .replace(
         "Exclui a ação do banco e remove todos os arquivos de mídia associados do disco local.",
-        "Exclui a ação e remove suas mídias codificadas do catálogo."
+        "Exclui a ação e remove as mídias binárias que não forem usadas por outras ações."
     )
     .replace(
         "🔐 Disponível para administradores deste grupo/servidor e superusuários.",
-        "🔞 Disponível somente em chats com permissão adulta; a mídia fica armazenada em buffer no catálogo."
+        "🔞 Disponível somente em chats com permissão adulta; as mídias ficam salvas como arquivos .bin."
     );
 
 module.exports = {

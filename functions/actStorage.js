@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const autorepoHelper = require("./autorepoHelper");
+const act18Media = require("./act18Media");
 
 const COMMANDS_DIR = path.join(__dirname, "..", "commands", "diversao");
 const SETTINGS_DIR = path.join(__dirname, "..", "settings");
@@ -33,11 +34,19 @@ function readFile(filePath) {
     return parsed;
 }
 
+function readCatalogFile(paths, catalog) {
+    if (!paths || !fs.existsSync(paths.actionsFile)) return {};
+    if (catalog === "adult") {
+        act18Media.migrateFile(paths.actionsFile, paths.mediaDir);
+    }
+    return readFile(paths.actionsFile);
+}
+
 function loadActionSets(message, catalog = "normal") {
     const globalPaths = getPaths(message, "global", catalog);
-    const globalActions = readFile(globalPaths.actionsFile);
+    const globalActions = readCatalogFile(globalPaths, catalog);
     const localPaths = getPaths(message, "group", catalog);
-    const localActions = localPaths ? readFile(localPaths.actionsFile) : {};
+    const localActions = readCatalogFile(localPaths, catalog);
     return { globalActions, localActions };
 }
 
@@ -62,6 +71,7 @@ function normalizeName(value) {
 
 module.exports = {
     getPaths,
+    readCatalogFile,
     loadActionSets,
     mergeActions,
     normalizeName

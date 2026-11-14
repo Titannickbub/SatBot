@@ -729,6 +729,9 @@ async function start() {
         if (result.status === "loaded") {
             console.log(`${_ts()} ✅[CORE] Pacote MOD_ADULTO importado: ${result.importedActions} ações, ${result.importedMedia} mídias.`);
         }
+        if (act18Loader.migrateGlobalCatalog()) {
+            console.log(`${_ts()} ✅[CORE] Mídias base64 antigas do catálogo adulto convertidas para arquivos .bin.`);
+        }
     } catch (error) {
         console.error(`${_ts()} ❌[CORE] Falha ao carregar settings/MOD_ADULTO.zip:`, error.message || error);
     }
