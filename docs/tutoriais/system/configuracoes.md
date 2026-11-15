@@ -232,8 +232,8 @@ Libere exceções específicas de comando ou usuário:
 ```
 
 Também é possível responder à mensagem de alguém com `!antipv allowuser add`.
-Disponível apenas para SU. VIPs podem ter bypass por plataforma configurado
-separadamente em `!set_vip pv on|off <plataforma>`.
+Disponível apenas para SU. VIPG pode ter bypass por plataforma configurado
+separadamente em `!set_vipg pv on|off <plataforma>`.
 
 ## 🛡️ `!antispam` — limitar frequência de comandos
 

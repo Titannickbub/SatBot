@@ -175,15 +175,25 @@ const PROFILE_OUTLINES = Object.freeze({
     })
 });
 
-const PROFILE_CIRCLES = Object.freeze(Object.fromEntries(
-    Object.entries(PROFILE_OUTLINES).map(([key, outline]) => [
-        key,
-        Object.freeze({
-            ...outline,
-            id: outline.id + 1000
-        })
-    ])
-));
+const PROFILE_CIRCLES = Object.freeze({
+    ...Object.fromEntries(
+        Object.entries(PROFILE_OUTLINES).map(([key, outline]) => [
+            key,
+            Object.freeze({
+                ...outline,
+                id: outline.id + 1000
+            })
+        ])
+    ),
+    saturno: Object.freeze({
+        id: 4020,
+        label: "Saturno",
+        rarity: itemRarity.LEGENDARY,
+        price: 1000000,
+        color: "#e8bd67",
+        saturn: true
+    })
+});
 
 const PROFILE_EFFECTS = Object.freeze({
     congelado: Object.freeze({

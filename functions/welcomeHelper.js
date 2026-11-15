@@ -2,6 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const { loadSettings, saveSettings } = require("./groupSettings");
 const config = require("./config");
+const rentalHelper = require("./rentalHelper");
 const { detectBufferFormat, convertGifToMp4 } = require("./gifAdapter");
 
 const axios = require("axios");
@@ -672,7 +673,10 @@ async function handleTelegramMemberJoin(ctx) {
                 : (newMember.username ? `@${newMember.username}` : `Usuário ${newMember.id}`);
             console.log(`📥[telegram] ${name} (${newMember.id}) entrou em ${ctx.chat.title || chatId} (${chatId})`);
 
-            if (newMember.is_bot && global.telegramBot?.botInfo?.id === newMember.id) continue;
+            if (newMember.is_bot && String(global.telegramBot?.botInfo?.id || "") === String(newMember.id)) {
+                await rentalHelper.handleBotAdded("telegram", chatId, chatId, ctx.chat.title || "Grupo", threadId);
+                continue;
+            }
 
             const { config } = getWelcomeConfig("telegram", null, chatId, threadId);
             if (!config || !config.enabled) continue;
@@ -739,6 +743,15 @@ async function handleWhatsAppMemberJoin(sock, update) {
 
             const userNum = participantJid.split("@")[0];
             console.log(`📥[whatsapp] +${userNum} entrou em ${groupName} (${groupId})`);
+
+            const participantIdentity = participantJid.split("@")[0].split(":")[0];
+            const isBot = [sock.user?.id, sock.user?.lid].filter(Boolean).some(botId =>
+                String(botId).split("@")[0].split(":")[0] === participantIdentity
+            );
+            if (isBot) {
+                await rentalHelper.handleBotAdded("whatsapp", String(groupId), String(groupId), groupName);
+                continue;
+            }
 
             if (!config || !config.enabled) continue;
 

@@ -15,6 +15,7 @@ const {
 } = require("discord.js");
 const groupSettings = require("../functions/groupSettings");
 const welcomeHelper = require("../functions/welcomeHelper");
+const rentalHelper = require("../functions/rentalHelper");
 const authFlow = require("../functions/authFlow");
 const { detectBufferFormat } = require("../functions/gifAdapter");
 
@@ -305,6 +306,25 @@ async function start(onMessage) {
         }
     });
 
+    client.on("guildCreate", async guild => {
+        try {
+            const botMember = guild.members.me || await guild.members.fetchMe();
+            const canSend = item =>
+                item?.isTextBased() &&
+                item.permissionsFor(botMember)?.has(PermissionFlagsBits.SendMessages);
+            const channel = canSend(guild.systemChannel)
+                ? guild.systemChannel
+                : guild.channels.cache.find(canSend);
+            if (!channel) {
+                console.warn(`[ALUGUEL] Não há canal disponível para apresentar os planos no servidor ${guild.id}.`);
+                return;
+            }
+            await rentalHelper.handleBotAdded("discord", String(guild.id), String(channel.id), guild.name);
+        } catch (error) {
+            console.error(`[ALUGUEL] Falha ao processar entrada no servidor Discord ${guild.id}:`, error.message || error);
+        }
+    });
+
     client.on("guildMemberAdd", async (member) => {
         try {
             await welcomeHelper.handleDiscordMemberJoin(member);
@@ -339,6 +359,7 @@ async function start(onMessage) {
 
         const isAdmin = isPrivate ? true : (interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) || false);
         const canManageMessages = isPrivate ? true : (interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages) || false);
+        const canManageRoles = isPrivate ? true : (interaction.memberPermissions?.has(PermissionFlagsBits.ManageRoles) || false);
 
         const config = require("../functions/config").getConfig();
         const prefix = config.prefix || "!";
@@ -374,7 +395,8 @@ async function start(onMessage) {
             mentionedChannelIds: [],
             sender: {
                 isAdmin,
-                canManageMessages
+                canManageMessages,
+                canManageRoles
             },
             quoted: null,
             delete: async function () {
@@ -599,6 +621,7 @@ async function start(onMessage) {
 
         const isAdmin = isPrivate ? true : (msg.member?.permissions.has(PermissionFlagsBits.Administrator) || false);
         const canManageMessages = isPrivate ? true : (msg.member?.permissions.has(PermissionFlagsBits.ManageMessages) || false);
+        const canManageRoles = isPrivate ? true : (msg.member?.permissions.has(PermissionFlagsBits.ManageRoles) || false);
 
         let quoted = null;
         if (msg.reference && msg.reference.messageId) {
@@ -690,7 +713,8 @@ async function start(onMessage) {
 
             sender: {
                 isAdmin,
-                canManageMessages
+                canManageMessages,
+                canManageRoles
             },
 
             quoted,

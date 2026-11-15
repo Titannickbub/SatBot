@@ -1,6 +1,6 @@
-const { getVipConfig } = require("../functions/config");
 const { isOwner } = require("../functions/owners");
-const vipHelper = require("../functions/vipHelper");
+const economy = require("../functions/economy");
+const communityVip = require("../functions/communityVip");
 
 module.exports = {
     name: "vip",
@@ -8,39 +8,29 @@ module.exports = {
     runOn: "all",
 
     async execute(message) {
-        const vipConfig = getVipConfig();
-        const vipOnly = vipConfig.vipOnly || {};
-        if (!vipOnly.enabled) {
-            return true;
-        }
+        const vipConfig = economy.getCommunityVip(message);
+        if (!vipConfig) return true;
 
-        const isSuperUser = message.sender?.isOwner || isOwner(message);
-        if (isSuperUser) {
-            return true;
-        }
-
-        const store = (message.functions && message.functions.centralAccounts) || global.centralAccounts;
-        const central = store && typeof store.findByPlatform === 'function' ? store.findByPlatform(message.platform, message.userId) : null;
-        const hasVip = central ? vipHelper.hasVip(central.id) : false;
-        if (hasVip) {
-            return true;
+        if (message.platform === "discord" && vipConfig.discordRoleId) {
+            try {
+                await communityVip.syncMessageVipRole(message);
+            } catch (error) {
+                console.error("[VIP_LOCAL] Falha ao sincronizar cargo VIP:", error.message || error);
+            }
         }
 
         const text = message.text ? String(message.text).trim() : "";
         const prefix = message.prefix || "!";
-        const commandName = text.startsWith(prefix) ? text.split(/\s+/)[0].replace(prefix, "").toLowerCase() : "";
-        const vipCommandList = Array.isArray(vipConfig.vipCommands) ? vipConfig.vipCommands.map(c => String(c).toLowerCase()) : [];
-        if (commandName && (commandName === "vip" || vipCommandList.includes(commandName))) {
-            console.log(`[VIP] ⛔ Comando VIP bloqueado para usuário não VIP | user: ${message.userId} | command: ${commandName}`);
-            if (vipOnly.mode === "reply" && typeof message.reply === "function") {
-                await message.reply({ text: vipOnly.message || "⚠️ Este chat é exclusivo para membros VIP." }).catch(() => {});
-            }
-            return false;
-        }
+        const commandName = text.startsWith(prefix)
+            ? text.slice(prefix.length).split(/\s+/)[0].toLowerCase()
+            : "";
+        if (!commandName || !vipConfig.vipCommands.includes(commandName)) return true;
+        if (isOwner(message) || message.sender?.isOwner ||
+            economy.isCommunityVipActive(message, String(message.userId))) return true;
 
-        console.log(`[VIP] ⛔ Acesso bloqueado em chat VIP-only | user: ${message.userId} | chatId: ${message.chatId || message.target?.chatId || "unknown"}`);
-        if (vipOnly.mode === "reply" && typeof message.reply === "function") {
-            await message.reply({ text: vipOnly.message || "⚠️ Este chat é exclusivo para membros VIP." }).catch(() => {});
+        console.log(`[VIP_LOCAL] Comando VIP bloqueado | user: ${message.userId} | command: ${commandName}`);
+        if (typeof message.reply === "function") {
+            await message.reply({ text: "⚠️ Este comando está disponível apenas para membros VIP deste grupo ou servidor." });
         }
         return false;
     }

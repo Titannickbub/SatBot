@@ -31,7 +31,8 @@ plataformas e só podem ser usados por superusuários (SU/donos do bot).
 
 | Categoria no menu | Comandos |
 | --- | --- |
-| `system` | `ping`, `botname`, `discordemoji`, `set_vip`, `actG_edit` |
+| `system` | `ping`, `botname`, `discordemoji`, `actG_edit` |
+| `system/vip` | `set_vipg` |
 | `system/configurações` | `su`, `su-token` (`su token`), `config`, `fuso`, `antispam`, `antipv`, `onlychats`, `blockcmd_su`, `autoupdate`, `autorepo_G`, `setai`, `setbotinfo`, `set_dominio`, `set_teste` |
 | `system/ações imediatas` | `seradm`, `sermb`, `sercargo`, `delcargo` |
 | `system/info` | `botstatus` |
