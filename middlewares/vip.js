@@ -11,7 +11,7 @@ module.exports = {
         const vipConfig = economy.getCommunityVip(message);
         if (!vipConfig) return true;
 
-        if (message.platform === "discord" && vipConfig.discordRoleId) {
+        if (!message.isComponentInteraction && message.platform === "discord" && vipConfig.discordRoleId) {
             try {
                 await communityVip.syncMessageVipRole(message);
             } catch (error) {

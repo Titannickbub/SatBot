@@ -41,10 +41,36 @@ module.exports = {
             return true;
         }
 
-        await rentalHelper.processPendingDeletionNotices(message.platform, message);
+        if (!message.isComponentInteraction) {
+            await rentalHelper.processPendingDeletionNotices(message.platform, message);
+        }
 
         if (isOnlyChatsContextWhitelisted(message)) {
             return true;
+        }
+
+        const rentalEnabled = rentalHelper.getSettings(message.platform).enabled;
+        if (rentalEnabled && rentalHelper.isRentalManagementCommand(message)) {
+            return true;
+        }
+
+        if (rentalEnabled && !message.isComponentInteraction) {
+            const scopeId = rentalHelper.getScopeId(message);
+            const chatId = rentalHelper.getChatId(message);
+            if (scopeId && chatId) {
+                try {
+                    await rentalHelper.handleBotAdded(
+                        message.platform,
+                        scopeId,
+                        chatId,
+                        message.chatName || message.groupName || "",
+                        message.threadId || message.topicId || null,
+                        message.categoryId || null
+                    );
+                } catch (error) {
+                    console.error(`[ALUGUEL] Falha ao apresentar os planos em ${message.platform}/${scopeId}:`, error.message || error);
+                }
+            }
         }
 
         const rentalAccess = rentalHelper.getAccessDecision(message);

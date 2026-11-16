@@ -46,12 +46,15 @@ function buildChain(message) {
     if (platform === "discord" && message.raw?.guild) {
         const guildId = message.raw.guild.id;
         const channel = message.raw.channel;
+        const categoryId = message.categoryId || (channel?.isThread?.()
+            ? channel.parent?.parentId || channel.parent?.parent?.id
+            : channel?.parent?.id || channel?.parentId);
 
         const serverData = loadSettings("discord", guildId, "server");
         chain.push({ level: "server", config: readBlockcmd(serverData.settings) });
 
-        if (channel.parent) {
-            const catData = loadSettings("discord", channel.parent.id, "categoria");
+        if (categoryId) {
+            const catData = loadSettings("discord", categoryId, "categoria");
             chain.push({ level: "categoria", config: readBlockcmd(catData.settings) });
         }
 
@@ -169,6 +172,9 @@ function getSetBlockcmd(message, level, newConfig = null) {
     if (platform === "discord" && message.raw?.guild) {
         const guildId = message.raw.guild.id;
         const channel = message.raw.channel;
+        const categoryId = message.categoryId || (channel?.isThread?.()
+            ? channel.parent?.parentId || channel.parent?.parent?.id
+            : channel?.parent?.id || channel?.parentId);
 
         if (level === "server") {
             const serverData = loadSettings("discord", guildId, "server");
@@ -179,11 +185,11 @@ function getSetBlockcmd(message, level, newConfig = null) {
             return readBlockcmd(serverData.settings);
         }
 
-        if (level === "categoria" && channel.parent) {
-            const catData = loadSettings("discord", channel.parent.id, "categoria");
+        if (level === "categoria" && categoryId) {
+            const catData = loadSettings("discord", categoryId, "categoria");
             if (newConfig) {
                 catData.settings.blockcmd = { ...readBlockcmd(catData.settings), ...newConfig };
-                saveSettings("discord", channel.parent.id, "categoria", catData);
+                saveSettings("discord", categoryId, "categoria", catData);
             }
             return readBlockcmd(catData.settings);
         }

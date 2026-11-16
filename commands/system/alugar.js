@@ -24,7 +24,7 @@ function platformOf(message) {
 }
 
 function formatOrder(order) {
-    return `${order.id} · ${order.type === "renewal" ? "renovação" : "contratação"} · ${order.planName} · ${rental.formatPrice(order.priceCents)} · ${rental.formatDuration(order.durationMs)} · ${order.status}`;
+    return `${rental.displayId(order.id, "AL")} · ${order.type === "renewal" ? "renovação" : "contratação"} · ${order.planName} · ${rental.formatPrice(order.priceCents)} · ${rental.formatDuration(order.durationMs)} · ${order.status}`;
 }
 
 function formatSubscription(subscription) {
@@ -38,6 +38,63 @@ function formatSubscription(subscription) {
 
 async function reply(message, text) {
     return message.reply({ text });
+}
+
+function escapeHtml(text) {
+    return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+}
+
+function escapeDiscordMarkdown(text) {
+    return String(text).replace(/([\\_*~|`])/g, "\\$1");
+}
+
+function replyPlanCatalog(message, plans, { title, footer, emptyText }) {
+    const items = plans.map(plan => ({
+        title: `${rental.displayId(plan.id, "PL")} · ${plan.name}`,
+        details: [
+            `💰 ${rental.formatPrice(plan.priceCents)} · ⏱ ${rental.formatDuration(plan.durationMs)}`,
+            ...(plan.active === false ? ["🔴 Inativo"] : [])
+        ].join("\n")
+    }));
+
+    if (!items.length) items.push({ title: emptyText, details: "" });
+
+    if (message.platform === "discord") {
+        const description = items.map(item =>
+            `**${escapeDiscordMarkdown(item.title)}**${item.details ? `\n${escapeDiscordMarkdown(item.details)}` : ""}`
+        ).join("\n\n");
+        return message.reply({
+            embed: {
+                color: 0xF1C40F,
+                title: `💎 ${title}`,
+                description,
+                ...(footer ? { footer: { text: footer } } : {})
+            }
+        });
+    }
+
+    if (message.platform === "telegram") {
+        const body = items.map(item =>
+            `<b>${escapeHtml(item.title)}</b>${item.details ? `\n${escapeHtml(item.details)}` : ""}`
+        ).join("\n\n");
+        const safeFooter = footer
+            ? `\n\n${escapeHtml(footer)}`
+                .replace(escapeHtml(`${message.prefix || "!"}alugar contratar <ID>`), `<code>${escapeHtml(`${message.prefix || "!"}alugar contratar <ID>`)}</code>`)
+                .replace(escapeHtml(`${message.prefix || "!"}dono`), `<code>${escapeHtml(`${message.prefix || "!"}dono`)}</code>`)
+            : "";
+        return message.reply({
+            text: `<b>💎 ${escapeHtml(title)}</b>\n\n${body}${safeFooter}`,
+            parse_mode: "HTML"
+        });
+    }
+
+    const body = items.map(item =>
+        `*${item.title}*${item.details ? `\n${item.details}` : ""}`
+    ).join("\n\n");
+    return message.reply({ text: `*💎 ${title}*\n\n${body}${footer ? `\n\n${footer}` : ""}` });
 }
 
 async function runSuperUserCommand(message, args, isModeAlias) {
@@ -98,7 +155,7 @@ async function runSuperUserCommand(message, args, isModeAlias) {
         }
         if (setting === "mensagem") {
             const text = value.join(" ").trim();
-            if (!text) return reply(message, `Uso: ${prefix}alugar mensagem <texto>\nPlaceholders disponíveis: {plans}, {prefix}, {bot}`);
+            if (!text) return reply(message, `Uso: ${prefix}alugar mensagem <texto>\nPlaceholders disponíveis: {plans}, {prefix}, {bot}, {presence}`);
             rental.setSettings(platform, { welcomeMessage: text });
             return reply(message, "✅ Mensagem de apresentação do aluguel atualizada.");
         }
@@ -110,9 +167,10 @@ async function runSuperUserCommand(message, args, isModeAlias) {
         const values = action === "planos" ? [] : rest.slice(1);
         if (operation === "listar" || operation === "list") {
             const plans = rental.getPlans(platform);
-            return reply(message, plans.length
-                ? plans.map(plan => `${plan.id} · ${plan.name} · ${rental.formatPrice(plan.priceCents)} · ${rental.formatDuration(plan.durationMs)}${plan.active === false ? " · inativo" : ""}`).join("\n")
-                : "Nenhum plano cadastrado. Use !alugar plano criar <nome> <preço> <duração>.");
+            return replyPlanCatalog(message, plans, {
+                title: "Planos cadastrados",
+                emptyText: `Nenhum plano cadastrado. Use ${prefix}alugar plano criar <nome> <preço> <duração>.`
+            });
         }
         if (operation === "criar" || operation === "create") {
             if (values.length < 3) return reply(message, `Uso: ${prefix}alugar plano criar <nome> <preço> <duração>`);
@@ -120,7 +178,7 @@ async function runSuperUserCommand(message, args, isModeAlias) {
             const priceCents = parsePrice(values[values.length - 2]);
             const name = values.slice(0, -2).join(" ");
             const plan = rental.createPlan(platform, { name, priceCents, durationMs });
-            return reply(message, `✅ Plano ${plan.id} criado: ${plan.name}, ${rental.formatPrice(plan.priceCents)} por ${rental.formatDuration(plan.durationMs)}.`);
+            return reply(message, `✅ Plano ${rental.displayId(plan.id, "PL")} criado: ${plan.name}, ${rental.formatPrice(plan.priceCents)} por ${rental.formatDuration(plan.durationMs)}.`);
         }
         if (operation === "editar" || operation === "edit") {
             if (values.length < 4) return reply(message, `Uso: ${prefix}alugar plano editar <ID> <nome> <preço> <duração>`);
@@ -128,7 +186,7 @@ async function runSuperUserCommand(message, args, isModeAlias) {
             const priceCents = parsePrice(values[values.length - 2]);
             const name = values.slice(1, -2).join(" ");
             const plan = rental.editPlan(platform, values[0], { name, priceCents, durationMs });
-            return reply(message, `✅ Plano ${plan.id} atualizado.`);
+            return reply(message, `✅ Plano ${rental.displayId(plan.id, "PL")} atualizado.`);
         }
         if (operation === "apagar" || operation === "delete") {
             if (!values[0]) return reply(message, `Uso: ${prefix}alugar plano apagar <ID>`);
@@ -147,22 +205,22 @@ async function runSuperUserCommand(message, args, isModeAlias) {
     if (action === "aceitar" || action === "aprovar") {
         if (!rest[0]) return reply(message, `Uso: ${prefix}alugar aceitar <ID-do-pedido>`);
         const result = await rental.approveOrder(platform, rest[0], actorId);
-        return reply(message, `✅ Pedido ${result.order.id} aprovado. A assinatura termina em ${new Date(result.subscription.expiresAt).toLocaleString("pt-BR")}.${result.warning ? `\n⚠️ ${result.warning}` : ""}`);
+        return reply(message, `✅ Pedido ${rental.displayId(result.order.id, "AL")} aprovado. A assinatura termina em ${new Date(result.subscription.expiresAt).toLocaleString("pt-BR")}.${result.warning ? `\n⚠️ ${result.warning}` : ""}`);
     }
     if (action === "recusar") {
         if (!rest[0]) return reply(message, `Uso: ${prefix}alugar recusar <ID-do-pedido>`);
         const order = await rental.rejectOrder(platform, rest[0], actorId);
-        return reply(message, `Pedido ${order.id} recusado.${order.warning ? `\n⚠️ ${order.warning}` : ""}`);
+        return reply(message, `Pedido ${rental.displayId(order.id, "AL")} recusado.${order.warning ? `\n⚠️ ${order.warning}` : ""}`);
     }
     if (action === "editarpedido") {
         if (!rest[0] || !rest[1]) return reply(message, `Uso: ${prefix}alugar editarpedido <ID-do-pedido> <ID-do-plano>`);
         const order = rental.editOrder(platform, rest[0], rest[1]);
-        return reply(message, `✅ Pedido ${order.id} atualizado para o plano ${order.planName}.`);
+        return reply(message, `✅ Pedido ${rental.displayId(order.id, "AL")} atualizado para o plano ${order.planName}.`);
     }
     if (action === "apagarpedido") {
         if (!rest[0]) return reply(message, `Uso: ${prefix}alugar apagarpedido <ID-do-pedido>`);
         const order = rental.deleteOrder(platform, rest[0]);
-        return reply(message, `✅ Pedido ${order.id} apagado.`);
+        return reply(message, `✅ Pedido ${rental.displayId(order.id, "AL")} apagado.`);
     }
     if (action === "assinaturas") {
         const subscriptions = rental.listSubscriptions(platform);
@@ -211,7 +269,7 @@ async function runSuperUserCommand(message, args, isModeAlias) {
         if (rest[0]) {
             const order = rental.getOrder(platform, rest[0]);
             if (!order) return reply(message, "Pedido não encontrado.");
-            return reply(message, `Status do pedido ${order.id}: ${order.status}\nPlano: ${order.planName} · ${rental.formatDuration(order.durationMs)}\nCriado em: ${new Date(order.createdAt).toLocaleString("pt-BR")}`);
+            return reply(message, `Status do pedido ${rental.displayId(order.id, "AL")}: ${order.status}\nPlano: ${order.planName} · ${rental.formatDuration(order.durationMs)}\nCriado em: ${new Date(order.createdAt).toLocaleString("pt-BR")}`);
         }
         const settings = rental.getSettings(platform);
         const pendingOrders = rental.listOrders(platform, "pending").length;
@@ -259,7 +317,7 @@ module.exports = {
             if (!isSuperUser(message) && String(order.creatorId) !== String(message.userId)) {
                 return reply(message, "Você só pode consultar pedidos criados pela sua conta.");
             }
-            return reply(message, `Status do pedido ${order.id}: ${order.status}\nPlano: ${order.planName} · ${rental.formatDuration(order.durationMs)}\nCriado em: ${new Date(order.createdAt).toLocaleString("pt-BR")}`);
+            return reply(message, `Status do pedido ${rental.displayId(order.id, "AL")}: ${order.status}\nPlano: ${order.planName} · ${rental.formatDuration(order.durationMs)}\nCriado em: ${new Date(order.createdAt).toLocaleString("pt-BR")}`);
         }
 
         if (publicAction === "contratar" || publicAction === "comprar" || publicAction === "renovar") {
@@ -288,6 +346,12 @@ module.exports = {
             }
         }
 
-        return reply(message, `Planos de aluguel:\n${rental.formatPlanList(platform)}\n\nPara contratar, use ${message.prefix || "!"}alugar contratar <ID-do-plano> no grupo/servidor depois de adicionar o bot.\nContato do dono: ${message.prefix || "!"}dono.`);
+        const prefix = message.prefix || "!";
+        const plans = rental.getPlans(platform).filter(plan => plan.active !== false);
+        return replyPlanCatalog(message, plans, {
+            title: "Planos de aluguel",
+            emptyText: "Nenhum plano de aluguel está disponível no momento.",
+            footer: `Para contratar: ${prefix}alugar contratar <ID> no grupo/servidor depois de adicionar o bot.\nContato do dono: ${prefix}dono.`
+        });
     }
 };

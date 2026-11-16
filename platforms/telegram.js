@@ -84,7 +84,7 @@ const TELEGRAM_SEND_PERMISSIONS = [
     "can_add_web_page_previews"
 ];
 
-async function start(onMessage) {
+async function start(onMessage, onComponentInteraction) {
     require("dotenv").config({ path: path.join(__dirname, "..", "settings", ".env"), override: true });
 
     const token = authFlow.getEnvValue("TELEGRAM_TOKEN");
@@ -120,6 +120,20 @@ async function start(onMessage) {
             await welcomeHelper.handleTelegramMemberLeave(ctx);
         } catch (err) {
             console.error("❌[TELEGRAM] Erro ao processar left_chat_member para goodbye:", err);
+        }
+    });
+
+    bot.on("callback_query", async (ctx) => {
+        try {
+            const handled = typeof onComponentInteraction === "function"
+                ? await onComponentInteraction(ctx)
+                : false;
+            if (!handled) {
+                await ctx.answerCbQuery("Esta ação não está mais disponível.", { show_alert: true });
+            }
+        } catch (error) {
+            console.error("❌[TELEGRAM] Erro ao encaminhar interação de componente:", error);
+            await ctx.answerCbQuery("Não foi possível processar essa interação agora.", { show_alert: true }).catch(() => {});
         }
     });
 
@@ -413,6 +427,9 @@ async function start(onMessage) {
                 if (data && typeof data === "object" && data.parse_mode) {
                     options.parse_mode = data.parse_mode;
                 }
+                if (data && typeof data === "object" && data.reply_markup) {
+                    options.reply_markup = data.reply_markup;
+                }
 
                 if (typeof data === "object" && data !== null && (data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url)) {
                     const image = data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url;
@@ -469,6 +486,9 @@ async function start(onMessage) {
                 }
                 if (data.parse_mode) {
                     options.parse_mode = data.parse_mode;
+                }
+                if (data.reply_markup) {
+                    options.reply_markup = data.reply_markup;
                 }
 
                 const photo = data.url || data.photo || data.image || data.file;

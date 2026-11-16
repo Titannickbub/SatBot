@@ -1,4 +1,8 @@
 const economy = require("../../functions/economy");
+const {
+    ActionRowBuilder,
+    StringSelectMenuBuilder
+} = require("discord.js");
 
 const ITEM_EMOJIS = {
     work: "💼",
@@ -64,7 +68,8 @@ O bot lista todos os resets (trabalho, pesca, mineração, roubo, cassino) e ite
                         {
                             name: "🧾 Como comprar",
                             value: [
-                                `\`${prefix}comprar <número|nome>\``,
+                                "Selecione um item abaixo para abrir uma confirmação privada.",
+                                `Também é possível usar \`${prefix}comprar <número|nome>\`.`,
                                 `Ex.: \`${prefix}comprar 1\` ou \`${prefix}comprar resetar trabalho\``
                             ].join("\n")
                         },
@@ -74,7 +79,8 @@ O bot lista todos os resets (trabalho, pesca, mineração, roubo, cassino) e ite
                         }
                     ],
                     footer: { text: "Preços e saldo são locais deste servidor" }
-                }
+                },
+                components: createDiscordStoreComponents(items)
             });
         }
 
@@ -87,7 +93,7 @@ O bot lista todos os resets (trabalho, pesca, mineração, roubo, cassino) e ite
             "",
             message.platform === "telegram" ? "🧾 <b>COMO COMPRAR</b>" : "*🧾 COMO COMPRAR*",
             message.platform === "telegram"
-                ? `<code>${escapeHtml(prefix)}comprar &lt;número|nome&gt;</code>`
+                ? `Toque em um item abaixo para confirmar a compra no grupo.\n<code>${escapeHtml(prefix)}comprar &lt;número|nome&gt;</code>`
                 : `\`${escapeMarkdown(prefix)}comprar <número|nome>\``,
             message.platform === "telegram"
                 ? `🔢 Número: <code>${escapeHtml(prefix)}comprar 1</code>`
@@ -102,10 +108,56 @@ O bot lista todos os resets (trabalho, pesca, mineração, roubo, cassino) e ite
 
         return message.reply({
             text: lines.join("\n"),
-            ...(message.platform === "telegram" ? { parse_mode: "HTML" } : {})
+            ...(message.platform === "telegram"
+                ? {
+                    parse_mode: "HTML",
+                    reply_markup: createTelegramStoreKeyboard(items)
+                }
+                : {})
         });
+    },
+
+    async handleInteraction(interaction) {
+        const commandId = interaction.customId || interaction.callbackQuery?.data || "";
+        const [commandName, action, itemKey] = String(commandId).split(":");
+        if (commandName !== "loja") return false;
+
+        const isDiscordSelection = interaction.isStringSelectMenu?.() &&
+            interaction.customId === "loja:select";
+        const isTelegramSelection = Boolean(interaction.callbackQuery) &&
+            action === "choose";
+        if (!isDiscordSelection && !isTelegramSelection) return false;
+
+        const selectedItemKey = isDiscordSelection
+            ? interaction.values[0]
+            : itemKey;
+        const buyCommand = require("./comprar");
+        await buyCommand.beginPurchase(interaction, selectedItemKey);
+        return true;
     }
 };
+
+function createDiscordStoreComponents(items) {
+    const menu = new StringSelectMenuBuilder()
+        .setCustomId("loja:select")
+        .setPlaceholder("Selecione um item para comprar")
+        .addOptions(items.map(item => ({
+            label: item.name,
+            description: `Preço: ${economy.formatMoney(item.price)}`,
+            value: item.key
+        })));
+
+    return [new ActionRowBuilder().addComponents(menu)];
+}
+
+function createTelegramStoreKeyboard(items) {
+    return {
+        inline_keyboard: items.map(item => [{
+            text: `${ITEM_EMOJIS[item.key] || "🔹"} ${item.name} — ${economy.formatMoney(item.price)}`,
+            callback_data: `loja:choose:${item.key}`
+        }])
+    };
+}
 
 function escapeHtml(value) {
     return String(value)

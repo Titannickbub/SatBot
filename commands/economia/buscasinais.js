@@ -1,5 +1,10 @@
 const economy = require("../../functions/economy");
 const signalSearchBanner = require("../../functions/signalSearchBanner");
+const {
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle
+} = require("discord.js");
 
 const LEVEL_ALIASES = new Map([
     ["recruta", "recruta"],
@@ -44,7 +49,7 @@ module.exports = {
         "busca_sinal"
     ],
     category: "economia",
-    description: "Faça buscas de sinais para obter SatCoins, itens, resets e cosméticos.",
+    description: "Faça buscas de sinais para obter SatCoins, itens, resets e cosméticos. No Discord e no Telegram, use os botões para escolher e confirmar.",
     usage: "{prefix}buscasinais help",
 
     async execute(message) {
@@ -96,6 +101,74 @@ module.exports = {
             return message.reply({ text: "❌ Não foi possível fazer esta busca. Verifique o nível e a quantidade." });
         }
         return replyResults(message, result);
+    },
+
+    async handleInteraction(interaction) {
+        const componentId = interaction.customId || interaction.callbackQuery?.data || "";
+        const parts = String(componentId).split(":");
+        const [commandName, action] = parts;
+        if (commandName !== "buscasinais") return false;
+
+        const isTelegram = Boolean(interaction.callbackQuery);
+        const isDiscord = !isTelegram &&
+            (interaction.isButton?.() || interaction.isStringSelectMenu?.());
+        if (!isTelegram && !isDiscord) return false;
+
+        if (action === "choose") {
+            const level = parts[2];
+            const quantity = Number(parts[3]);
+            await beginSignalPurchase(interaction, level, quantity);
+            return true;
+        }
+
+        const message = createSignalInteractionMessage(interaction);
+        if (action === "details") {
+            const level = parts[2];
+            if (!["recruta", "especializada", "local"].includes(level)) return false;
+            if (!economy.getScope(message)) {
+                return isTelegram
+                    ? interaction.answerCbQuery("A busca de sinais só funciona em grupos ou servidores.", { show_alert: true })
+                    : interaction.reply({ content: "❌ A busca de sinais só funciona em grupos ou servidores.", ephemeral: true });
+            }
+            await replySignalDetails(interaction, message, level);
+            return true;
+        }
+
+        if (action === "back") {
+            const ownerId = parts[3];
+            if (message.userId !== ownerId) {
+                if (isTelegram) {
+                    await interaction.answerCbQuery("Esta navegação pertence a outra pessoa.", { show_alert: true });
+                } else {
+                    await interaction.reply({ content: "❌ Esta navegação pertence a outra pessoa.", ephemeral: true });
+                }
+                return true;
+            }
+            await updateSignalSelection(interaction, message, null, false);
+            return true;
+        }
+
+        if (action !== "confirm" && action !== "cancel") return false;
+        const ownerId = parts[2];
+        const level = parts[3];
+        const quantity = Number(parts[4]);
+        const expectedPrice = action === "confirm"
+            ? Number.parseInt(parts[5], 36)
+            : null;
+        if (message.userId !== ownerId) {
+            if (isTelegram) {
+                await interaction.answerCbQuery("Esta confirmação pertence a outra pessoa.", { show_alert: true });
+            } else {
+                await interaction.reply({ content: "❌ Esta confirmação pertence a outra pessoa.", ephemeral: true });
+            }
+            return true;
+        }
+        if (action === "cancel") {
+            await updateSignalSelection(interaction, message, "Busca cancelada.", false);
+            return true;
+        }
+        await completeSignalPurchase(interaction, message, level, quantity, expectedPrice);
+        return true;
     }
 };
 
@@ -414,14 +487,27 @@ async function replyHighlights(message) {
         const image = await signalSearchBanner.renderHighlightsBanner(cosmetics);
         const prefix = message.prefix || "!";
         const localSearch = economy.getLocalSignalSearch(message);
+        const levels = getSignalChoiceLevels(message);
+        const controls = message.platform === "discord"
+            ? { components: createDiscordSignalChoices(message, levels) }
+            : message.platform === "telegram"
+                ? { reply_markup: createTelegramSignalChoices(message, levels) }
+                : {};
         return await message.replyImg({
             image,
             caption: highlightsCaption(message.platform, prefix, localSearch.price),
             parse_mode: message.platform === "telegram" ? "HTML" : undefined,
-            fileName: "busca-sinais-destaques.png"
+            fileName: "busca-sinais-destaques.png",
+            ...controls
         });
     } catch (error) {
         console.error("[BUSCA-SINAIS] Falha ao gerar ou enviar os destaques:", error.message || error);
+        if (["discord", "telegram"].includes(message.platform)) {
+            return message.reply(createSignalChoicesPayload(
+                message,
+                "O banner não pôde ser exibido agora; você ainda pode escolher uma busca."
+            ));
+        }
         return replyNativeText(
             message,
             "✦ Destaques da Busca de Sinais",
@@ -486,6 +572,375 @@ function highlightsCaption(platform, prefix, localPrice) {
         "*Comando*",
         examples.map(formatExample).join("\n\n")
     ].join("\n");
+}
+
+function createSignalChoicesPayload(message, status = null) {
+    const levels = getSignalChoiceLevels(message);
+    const description = [
+        status,
+        "Escolha a modalidade e a quantidade. Antes de cobrar, o bot mostrará quem está comprando e o custo total.",
+        "",
+        ...levels.map(level =>
+            `• ${getSignalLevelLabel(level)} — ${economy.formatMoney(getSignalUnitPrice(message, level))} por busca`
+        ),
+        message.platform === "discord" || message.platform === "telegram"
+            ? "Os comandos de texto continuam disponíveis."
+            : null
+    ].filter(Boolean).join("\n");
+
+    if (message.platform === "discord") {
+        return {
+            embed: {
+                color: 0xb68bff,
+                title: "✦ Escolha uma busca",
+                description
+            },
+            components: createDiscordSignalChoices(message, levels)
+        };
+    }
+    if (message.platform === "telegram") {
+        return {
+            text: `✦ Escolha uma busca\n\n${description}`,
+            reply_markup: createTelegramSignalChoices(message, levels)
+        };
+    }
+    return { text: description };
+}
+
+function getSignalChoiceLevels(message) {
+    const levels = ["recruta", "especializada"];
+    if (economy.getLocalSignalSearch(message).enabled) levels.push("local");
+    return levels;
+}
+
+function getSignalUnitPrice(message, level) {
+    return level === "local"
+        ? economy.getLocalSignalSearch(message).price
+        : economy.SIGNAL_SEARCH_LEVELS[level].price;
+}
+
+function getSignalLevelLabel(level) {
+    return level === "local" ? "Busca Local" : economy.SIGNAL_SEARCH_LEVELS[level].label;
+}
+
+function getSignalRewardSummary(level) {
+    if (level === "recruta") return "Prêmios possíveis: SatCoins ou resets da Loja do Bot.";
+    if (level === "especializada") return "Prêmios possíveis: SatCoins, resets ou cosméticos.";
+    return "Prêmios, chances e garantias definidos pelos administradores desta comunidade.";
+}
+
+function createDiscordSignalChoices(message, levels = getSignalChoiceLevels(message)) {
+    return levels.map(level => {
+        const unitPrice = getSignalUnitPrice(message, level);
+        const row = new ActionRowBuilder();
+        for (const quantity of [1, 10]) {
+            row.addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`buscasinais:choose:${level}:${quantity}`)
+                    .setLabel(`${getSignalLevelLabel(level)} x${quantity} · ${formatSignalSearchPrice(unitPrice * quantity)}`)
+                    .setStyle(ButtonStyle.Primary)
+            );
+        }
+        row.addComponents(
+            new ButtonBuilder()
+                .setCustomId(`buscasinais:details:${level}`)
+                .setLabel("Detalhes")
+                .setStyle(ButtonStyle.Secondary)
+        );
+        return row;
+    });
+}
+
+function createTelegramSignalChoices(message, levels = getSignalChoiceLevels(message)) {
+    return {
+        inline_keyboard: levels.map(level => {
+            const unitPrice = getSignalUnitPrice(message, level);
+            const buttons = [1, 10].map(quantity => ({
+                text: `${getSignalLevelLabel(level)} x${quantity} · ${formatSignalSearchPrice(unitPrice * quantity)}`,
+                callback_data: `buscasinais:choose:${level}:${quantity}`
+            }));
+            buttons.push({
+                text: "ℹ️ Detalhes",
+                callback_data: `buscasinais:details:${level}`
+            });
+            return buttons;
+        })
+    };
+}
+
+async function replySignalDetails(interaction, message, level) {
+    const state = economy.getSignalSearchState(message);
+    const local = economy.getLocalSignalSearch(message);
+    const sections = getPrizeCatalogSection(level, state, local);
+    const chunks = chunkLines(sections, 3200);
+    const ownerId = message.userId;
+    const backId = `buscasinais:back:select:${ownerId}`;
+    if (message.platform === "telegram") {
+        await interaction.answerCbQuery("Detalhes enviados.");
+    }
+
+    for (let index = 0; index < chunks.length; index++) {
+        const title = chunks.length > 1
+            ? `✦ Detalhes da ${getSignalLevelLabel(level)} (${index + 1}/${chunks.length})`
+            : `✦ Detalhes da ${getSignalLevelLabel(level)}`;
+        const body = formatPrizeCatalogBody(chunks[index], message.platform);
+        if (message.platform === "discord") {
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(backId)
+                    .setLabel("Voltar às buscas")
+                    .setStyle(ButtonStyle.Secondary)
+            );
+            const response = {
+                embeds: [{ color: 0xb68bff, title, description: body }],
+                components: [row],
+                ephemeral: true
+            };
+            if (index === 0) await interaction.reply(response);
+            else await interaction.followUp(response);
+            continue;
+        }
+
+        await interaction.reply(
+            `<b>${escapeHtml(title)}</b>\n${body}`,
+            {
+                parse_mode: "HTML",
+                reply_markup: {
+                    inline_keyboard: [[{
+                        text: "⬅️ Voltar às buscas",
+                        callback_data: backId
+                    }]]
+                },
+                ...(message.threadId ? { message_thread_id: Number(message.threadId) } : {})
+            }
+        );
+    }
+}
+
+async function beginSignalPurchase(interaction, level, quantity) {
+    const isTelegram = Boolean(interaction.callbackQuery);
+    const message = createSignalInteractionMessage(interaction);
+    if (!["recruta", "especializada", "local"].includes(level) ||
+        (quantity !== 1 && quantity !== 10)) {
+        return isTelegram
+            ? interaction.answerCbQuery("Modalidade ou quantidade inválida.", { show_alert: true })
+            : interaction.reply({ content: "❌ Modalidade ou quantidade inválida.", ephemeral: true });
+    }
+    if (!economy.getScope(message)) {
+        return isTelegram
+            ? interaction.answerCbQuery("A busca de sinais só funciona em grupos ou servidores.", { show_alert: true })
+            : interaction.reply({ content: "❌ A busca de sinais só funciona em grupos ou servidores.", ephemeral: true });
+    }
+    if (level === "local" && !economy.getLocalSignalSearch(message).enabled) {
+        return isTelegram
+            ? interaction.answerCbQuery("A Busca Local está desativada neste grupo.", { show_alert: true })
+            : interaction.reply({ content: "❌ A Busca Local está desativada neste servidor.", ephemeral: true });
+    }
+
+    const unitPrice = getSignalUnitPrice(message, level);
+    const totalPrice = unitPrice * quantity;
+    if (!Number.isSafeInteger(totalPrice)) {
+        return isTelegram
+            ? interaction.answerCbQuery("O custo desta busca está inválido. Avise os administradores.", { show_alert: true })
+            : interaction.reply({ content: "❌ O custo desta busca está inválido. Avise os administradores.", ephemeral: true });
+    }
+    const ownerId = String(message.userId);
+    const priceCode = unitPrice.toString(36);
+    const confirmation = [
+        "✦ Confirmar busca de sinais",
+        `👤 Comprador: ${getSignalBuyer(message)}`,
+        `🔎 Modalidade: ${getSignalLevelLabel(level)}`,
+        `🔢 Quantidade: ${quantity} busca${quantity === 1 ? "" : "s"}`,
+        `💰 Custo total: ${formatSignalSearchPrice(totalPrice)}`,
+        getSignalRewardSummary(level),
+        `O pagamento será descontado da carteira. Use ${message.prefix}buscasinais itens ${level} para ver a lista completa de prêmios.`
+    ].join("\n");
+    const confirmData = `buscasinais:confirm:${ownerId}:${level}:${quantity}:${priceCode}`;
+    const cancelData = `buscasinais:cancel:${ownerId}:${level}:${quantity}`;
+    const backData = `buscasinais:back:select:${ownerId}`;
+
+    if (isTelegram) {
+        await interaction.answerCbQuery("Confirmação enviada.");
+        return interaction.reply(confirmation, {
+            reply_markup: {
+                inline_keyboard: [[
+                    { text: "✅ Confirmar busca", callback_data: confirmData },
+                    { text: "Cancelar", callback_data: cancelData },
+                    { text: "⬅️ Voltar", callback_data: backData }
+                ]]
+            },
+            ...(message.threadId ? { message_thread_id: Number(message.threadId) } : {})
+        });
+    }
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(confirmData)
+            .setLabel("Confirmar busca")
+            .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+            .setCustomId(cancelData)
+            .setLabel("Cancelar")
+            .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId(backData)
+            .setLabel("Voltar")
+            .setStyle(ButtonStyle.Secondary)
+    );
+    return interaction.reply({
+        content: confirmation,
+        components: [row],
+        ephemeral: true
+    });
+}
+
+async function updateSignalSelection(interaction, message, status, acknowledged) {
+    const payload = createSignalChoicesPayload(message, status);
+    if (message.platform === "discord") {
+        const interactionPayload = {
+            embeds: [payload.embed],
+            components: payload.components
+        };
+        return acknowledged
+            ? interaction.editReply(interactionPayload)
+            : interaction.update(interactionPayload);
+    }
+
+    if (!acknowledged) await interaction.answerCbQuery();
+    return interaction.editMessageText(payload.text, {
+        reply_markup: payload.reply_markup
+    });
+}
+
+async function completeSignalPurchase(interaction, message, level, quantity, expectedPrice) {
+    if (!["recruta", "especializada", "local"].includes(level) ||
+        (quantity !== 1 && quantity !== 10)) {
+        await updateSignalSelection(interaction, message, "Modalidade ou quantidade inválida.", false);
+        return;
+    }
+    if (level === "local" && !economy.getLocalSignalSearch(message).enabled) {
+        await updateSignalSelection(interaction, message, "A Busca Local foi desativada. Escolha outra modalidade.", false);
+        return;
+    }
+
+    const unitPrice = getSignalUnitPrice(message, level);
+    if (!Number.isSafeInteger(expectedPrice) || unitPrice !== expectedPrice) {
+        await updateSignalSelection(
+            interaction,
+            message,
+            "⚠️ O preço desta modalidade mudou. Confira o valor atualizado antes de tentar novamente.",
+            false
+        );
+        return;
+    }
+
+    if (message.platform === "telegram") {
+        await interaction.answerCbQuery("Busca iniciada.");
+        await interaction.editMessageText("🔎 Busca em andamento...", { reply_markup: { inline_keyboard: [] } });
+    } else {
+        await interaction.update({ content: "🔎 Busca em andamento...", components: [] });
+    }
+
+    const result = level === "local"
+        ? economy.searchLocalSignals(message, quantity)
+        : economy.searchSignals(message, level, quantity);
+    if (!result.searched) {
+        await updateSignalSelection(
+            interaction,
+            message,
+            getSignalSearchError(result, message, level),
+            true
+        );
+        return;
+    }
+
+    await replyResults(message, result);
+    const resultText = `✅ ${quantity} busca${quantity === 1 ? "" : "s"} concluída${quantity === 1 ? "" : "s"}. O resultado foi enviado abaixo.`;
+    await updateSignalSelection(interaction, message, resultText, true);
+}
+
+function getSignalSearchError(result, message, level) {
+    if (result.reason === "disabled") {
+        return "❌ A Busca Local foi desativada. Escolha outra modalidade.";
+    }
+    if (result.reason === "unavailable-prizes") {
+        return "❌ A Busca Local está sem prêmios disponíveis. Avise os administradores.";
+    }
+    if (result.reason === "missing-account") {
+        return "❌ Não foi possível localizar sua conta nesta comunidade.";
+    }
+    if (result.reason === "insufficient-balance") {
+        return `❌ Saldo insuficiente. Esta busca custa ${formatSignalSearchPrice(result.price)} e sua carteira tem ${formatSignalSearchPrice(result.balance)}.`;
+    }
+    return `❌ Não foi possível fazer esta busca. Confira a modalidade com ${message.prefix}buscasinais ${level}.`;
+}
+
+function getSignalBuyer(message) {
+    return message.username && message.username !== message.displayName
+        ? `${message.displayName || message.username} (@${message.username})`
+        : message.displayName || message.username || message.userId;
+}
+
+function createSignalInteractionMessage(interaction) {
+    const prefix = require("../../functions/config").getConfig().prefix || "!";
+    if (interaction.callbackQuery) {
+        const sourceMessage = interaction.callbackQuery.message;
+        const chat = sourceMessage.chat;
+        const threadId = sourceMessage.message_thread_id ? Number(sourceMessage.message_thread_id) : null;
+        return {
+            platform: "telegram",
+            chatId: String(chat.id),
+            chatName: chat.title || null,
+            chatType: chat.type,
+            isPrivate: chat.type === "private",
+            threadId: threadId ? String(threadId) : null,
+            userId: String(interaction.from.id),
+            username: interaction.from.username || null,
+            displayName: [interaction.from.first_name, interaction.from.last_name]
+                .filter(Boolean).join(" ") || interaction.from.username || String(interaction.from.id),
+            prefix,
+            raw: { chat },
+            reply: payload => interaction.reply(payload.text || "", {
+                ...(payload.parse_mode ? { parse_mode: payload.parse_mode } : {}),
+                ...(payload.reply_markup ? { reply_markup: payload.reply_markup } : {}),
+                ...(threadId ? { message_thread_id: threadId } : {})
+            }),
+            replyImg: data => interaction.replyWithPhoto({ source: data.image }, {
+                caption: data.caption || data.text || "",
+                ...(data.parse_mode ? { parse_mode: data.parse_mode } : {}),
+                ...(threadId ? { message_thread_id: threadId } : {})
+            })
+        };
+    }
+
+    return {
+        platform: "discord",
+        chatId: String(interaction.channelId),
+        guildId: interaction.guildId ? String(interaction.guildId) : null,
+        chatType: interaction.guildId ? "group" : "private",
+        isPrivate: !interaction.guildId,
+        userId: String(interaction.user.id),
+        username: interaction.user.username,
+        displayName: interaction.member?.displayName || interaction.user.globalName || interaction.user.username,
+        prefix,
+        raw: { guild: interaction.guild, guildId: interaction.guildId },
+        reply: payload => interaction.followUp({
+            ...(payload.embed ? { embeds: [payload.embed] } : {}),
+            ...(payload.text ? { content: payload.text } : {}),
+            ephemeral: false
+        }),
+        replyImg: data => {
+            const fileName = data.fileName || "busca-sinais-resultado.png";
+            return interaction.followUp({
+                embeds: [{
+                    description: data.caption || "",
+                    image: { url: `attachment://${fileName}` }
+                }],
+                files: [{ attachment: data.image, name: fileName }],
+                ephemeral: false
+            });
+        }
+    };
 }
 
 function formatSignalSearchPrice(amount) {

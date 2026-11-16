@@ -1,13 +1,15 @@
 const fs = require("fs");
 const path = require("path");
 const config = require("./config");
+const { ChannelType } = require("discord.js");
 
 const DATA_FILE = path.join(__dirname, "..", "settings", "rental.json");
 const PLATFORMS = new Set(["whatsapp", "telegram", "discord"]);
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_PRESENCE_MS = DAY_MS;
 const DEFAULT_NOTICE_DAYS = 3;
-const DEFAULT_WELCOME_MESSAGE = "👋 Olá! O aluguel do bot está disponível neste grupo/servidor.\n\n{plans}\n\nPara consultar os planos no privado, use {prefix}alugar. Para falar com o dono, use {prefix}dono.";
+const DEFAULT_WELCOME_MESSAGE = "👋 Olá! Este grupo/servidor ainda não tem uma assinatura do bot.\n\n{plans}\n\nPara contratar, escolha um plano e use {prefix}alugar contratar <ID> neste grupo/servidor. A permanência inicial é de {presence}; sem um pedido de aluguel até o fim desse prazo, o bot sairá daqui. Para consultar os planos no privado ou falar com o dono, use {prefix}alugar ou {prefix}dono.";
+const LEGACY_DEFAULT_WELCOME_MESSAGE = "👋 Olá! O aluguel do bot está disponível neste grupo/servidor.\n\n{plans}\n\nPara consultar os planos no privado, use {prefix}alugar. Para falar com o dono, use {prefix}dono.";
 const MAX_DURATION_MS = 10 * 365 * DAY_MS;
 
 function assertPlatform(platform) {
@@ -19,57 +21,118 @@ function assertPlatform(platform) {
 }
 
 function emptyStore() {
-    return { version: 1, platforms: {} };
+    return {
+        version: 2,
+        settings: defaultSettings(),
+        enabledPlatforms: Object.fromEntries([...PLATFORMS].map(platform => [platform, false])),
+        nextIds: { plan: 1, order: 1, subscription: 1 },
+        plans: [],
+        platforms: {}
+    };
+}
+
+function defaultSettings() {
+    return {
+        presenceDurationMs: DEFAULT_PRESENCE_MS,
+        noticeDays: DEFAULT_NOTICE_DAYS,
+        expiryAction: "block",
+        welcomeMessage: DEFAULT_WELCOME_MESSAGE
+    };
 }
 
 function defaultPlatformData() {
     return {
-        settings: {
-            enabled: false,
-            presenceDurationMs: DEFAULT_PRESENCE_MS,
-            noticeDays: DEFAULT_NOTICE_DAYS,
-            expiryAction: "block",
-            welcomeMessage: DEFAULT_WELCOME_MESSAGE
-        },
-        nextIds: { plan: 1, order: 1, subscription: 1 },
-        plans: [],
         orders: [],
         subscriptions: [],
-        presence: []
+        presence: [],
+        inviterNotices: []
     };
 }
 
 function normalizePlatformData(value) {
-    const defaults = defaultPlatformData();
     const source = value && typeof value === "object" ? value : {};
-    const settings = source.settings && typeof source.settings === "object" ? source.settings : {};
-    const nextIds = source.nextIds && typeof source.nextIds === "object" ? source.nextIds : {};
     return {
-        settings: {
-            ...defaults.settings,
-            ...settings,
-            enabled: settings.enabled === true,
-            presenceDurationMs: Number.isSafeInteger(settings.presenceDurationMs) && settings.presenceDurationMs >= 60_000
-                ? settings.presenceDurationMs
-                : defaults.settings.presenceDurationMs,
-            noticeDays: Number.isSafeInteger(settings.noticeDays) && settings.noticeDays >= 0
-                ? settings.noticeDays
-                : defaults.settings.noticeDays,
-            expiryAction: settings.expiryAction === "leave" ? "leave" : "block",
-            welcomeMessage: typeof settings.welcomeMessage === "string"
-                ? settings.welcomeMessage.slice(0, 4000)
-                : defaults.settings.welcomeMessage
-        },
-        nextIds: {
-            plan: Number.isSafeInteger(nextIds.plan) && nextIds.plan > 0 ? nextIds.plan : 1,
-            order: Number.isSafeInteger(nextIds.order) && nextIds.order > 0 ? nextIds.order : 1,
-            subscription: Number.isSafeInteger(nextIds.subscription) && nextIds.subscription > 0 ? nextIds.subscription : 1
-        },
-        plans: Array.isArray(source.plans) ? source.plans : [],
+        ...defaultPlatformData(),
         orders: Array.isArray(source.orders) ? source.orders : [],
         subscriptions: Array.isArray(source.subscriptions) ? source.subscriptions : [],
-        presence: Array.isArray(source.presence) ? source.presence : []
+        presence: Array.isArray(source.presence) ? source.presence : [],
+        inviterNotices: Array.isArray(source.inviterNotices) ? source.inviterNotices : []
     };
+}
+
+function normalizeSettings(value) {
+    const source = value && typeof value === "object" ? value : {};
+    return {
+        presenceDurationMs: Number.isSafeInteger(source.presenceDurationMs) && source.presenceDurationMs >= 60_000
+            ? source.presenceDurationMs
+            : DEFAULT_PRESENCE_MS,
+        noticeDays: Number.isSafeInteger(source.noticeDays) && source.noticeDays >= 0
+            ? source.noticeDays
+            : DEFAULT_NOTICE_DAYS,
+        expiryAction: source.expiryAction === "leave" ? "leave" : "block",
+        welcomeMessage: typeof source.welcomeMessage !== "string" ||
+            source.welcomeMessage === LEGACY_DEFAULT_WELCOME_MESSAGE
+            ? DEFAULT_WELCOME_MESSAGE
+            : source.welcomeMessage.slice(0, 4000)
+    };
+}
+
+function migrateLegacyStore(parsed) {
+    const store = emptyStore();
+    const sourcePlatforms = parsed.platforms && typeof parsed.platforms === "object" ? parsed.platforms : {};
+    const legacy = [...PLATFORMS]
+        .filter(platform => sourcePlatforms[platform])
+        .map(platform => ({
+            platform,
+            data: normalizePlatformData(sourcePlatforms[platform]),
+            settings: sourcePlatforms[platform]?.settings || {}
+        }));
+    const preferred = legacy.slice().sort((a, b) =>
+        Number(b.settings.enabled === true) - Number(a.settings.enabled === true) ||
+        ((sourcePlatforms[b.platform].plans?.length || 0) + b.data.orders.length + b.data.subscriptions.length + b.data.presence.length) -
+        ((sourcePlatforms[a.platform].plans?.length || 0) + a.data.orders.length + a.data.subscriptions.length + a.data.presence.length)
+    )[0];
+    if (preferred) store.settings = normalizeSettings(preferred.settings);
+
+    for (const { platform, data, settings } of legacy) {
+        store.enabledPlatforms[platform] = settings.enabled === true;
+        store.platforms[platform] = data;
+        const legacyNextIds = sourcePlatforms[platform].nextIds || {};
+        for (const type of ["plan", "order", "subscription"]) {
+            if (Number.isSafeInteger(legacyNextIds[type]) && legacyNextIds[type] > 0) {
+                store.nextIds[type] = Math.max(store.nextIds[type], legacyNextIds[type]);
+            }
+        }
+        const planIds = new Map();
+        for (const plan of Array.isArray(sourcePlatforms[platform].plans) ? sourcePlatforms[platform].plans : []) {
+            const originalId = String(plan.id);
+            let id = originalId;
+            while (store.plans.some(existing => String(existing.id) === id)) {
+                id = String(Math.max(1, ...store.plans.map(existing => Number(existing.id) || 0)) + 1).padStart(4, "0");
+            }
+            planIds.set(originalId, id);
+            store.plans.push({ ...plan, id });
+        }
+        for (const order of data.orders) {
+            order.platform = platform;
+            if (planIds.has(String(order.planId))) order.planId = planIds.get(String(order.planId));
+        }
+        for (const subscription of data.subscriptions) {
+            subscription.platform = platform;
+            if (planIds.has(String(subscription.planId))) subscription.planId = planIds.get(String(subscription.planId));
+        }
+        for (const [type, records] of [
+            ["plan", store.plans],
+            ["order", data.orders],
+            ["subscription", data.subscriptions]
+        ]) {
+            for (const record of records) {
+                const match = String(record.id || "").match(/(\d+)$/);
+                if (match) store.nextIds[type] = Math.max(store.nextIds[type], Number(match[1]) + 1);
+            }
+        }
+    }
+    return store;
 }
 
 function loadStore() {
@@ -83,10 +146,22 @@ function loadStore() {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
         throw new Error("O arquivo settings/rental.json possui um formato inválido.");
     }
-    return {
-        version: 1,
-        platforms: parsed.platforms && typeof parsed.platforms === "object" ? parsed.platforms : {}
+    if (parsed.version !== 2) return migrateLegacyStore(parsed);
+    const store = emptyStore();
+    store.settings = normalizeSettings(parsed.settings);
+    store.enabledPlatforms = Object.fromEntries([...PLATFORMS].map(platform =>
+        [platform, parsed.enabledPlatforms?.[platform] === true]
+    ));
+    store.nextIds = {
+        plan: Number.isSafeInteger(parsed.nextIds?.plan) && parsed.nextIds.plan > 0 ? parsed.nextIds.plan : 1,
+        order: Number.isSafeInteger(parsed.nextIds?.order) && parsed.nextIds.order > 0 ? parsed.nextIds.order : 1,
+        subscription: Number.isSafeInteger(parsed.nextIds?.subscription) && parsed.nextIds.subscription > 0 ? parsed.nextIds.subscription : 1
     };
+    store.plans = Array.isArray(parsed.plans) ? parsed.plans : [];
+    for (const platform of PLATFORMS) {
+        store.platforms[platform] = normalizePlatformData(parsed.platforms?.[platform]);
+    }
+    return store;
 }
 
 function saveStore(store) {
@@ -99,15 +174,36 @@ function saveStore(store) {
 function readPlatform(platform) {
     const normalized = assertPlatform(platform);
     const store = loadStore();
-    return normalizePlatformData(store.platforms[normalized]);
+    return {
+        ...normalizePlatformData(store.platforms[normalized]),
+        settings: {
+            ...store.settings,
+            enabled: store.enabledPlatforms[normalized],
+            enabledPlatforms: { ...store.enabledPlatforms }
+        },
+        nextIds: { ...store.nextIds },
+        plans: store.plans
+    };
 }
 
 function updatePlatform(platform, callback) {
     const normalized = assertPlatform(platform);
     const store = loadStore();
-    const data = normalizePlatformData(store.platforms[normalized]);
+    const data = readPlatform(normalized);
     const result = callback(data);
-    store.platforms[normalized] = data;
+    store.settings = normalizeSettings(data.settings);
+    store.enabledPlatforms = Object.fromEntries([...PLATFORMS].map(name =>
+        [name, data.settings.enabledPlatforms?.[name] === true]
+    ));
+    store.enabledPlatforms[normalized] = data.settings.enabled === true;
+    store.nextIds = { ...data.nextIds };
+    store.plans = data.plans;
+    store.platforms[normalized] = {
+        orders: data.orders,
+        subscriptions: data.subscriptions,
+        presence: data.presence,
+        inviterNotices: data.inviterNotices
+    };
     saveStore(store);
     return result;
 }
@@ -121,14 +217,25 @@ function getSettings(platform) {
 }
 
 function setSettings(platform, updates = {}) {
-    const allowedKeys = new Set(["enabled", "presenceDurationMs", "noticeDays", "expiryAction", "welcomeMessage"]);
-    return updatePlatform(platform, data => {
-        const wasEnabled = data.settings.enabled;
+    const normalized = assertPlatform(platform);
+    const previousEnabled = getSettings(normalized).enabledPlatforms;
+    updatePlatform(normalized, data => {
+        const allowedKeys = new Set(["enabled", "enabledPlatforms", "presenceDurationMs", "noticeDays", "expiryAction", "welcomeMessage"]);
         for (const [key, value] of Object.entries(updates)) {
             if (!allowedKeys.has(key)) continue;
             if (key === "enabled") {
                 if (typeof value !== "boolean") throw new Error("O estado do modo aluguel deve ser ligado ou desligado.");
                 data.settings.enabled = value;
+            } else if (key === "enabledPlatforms") {
+                if (!value || typeof value !== "object" || Array.isArray(value)) {
+                    throw new Error("Informe o estado do modo aluguel para cada plataforma.");
+                }
+                for (const [name, enabled] of Object.entries(value)) {
+                    if (!PLATFORMS.has(name) || typeof enabled !== "boolean") {
+                        throw new Error("O estado do modo aluguel deve ser ligado ou desligado em cada plataforma.");
+                    }
+                    data.settings.enabledPlatforms[name] = enabled;
+                }
             } else if (key === "presenceDurationMs") {
                 const duration = Number(value);
                 if (!Number.isSafeInteger(duration) || duration < 60_000 || duration > MAX_DURATION_MS) {
@@ -153,25 +260,57 @@ function setSettings(platform, updates = {}) {
                 data.settings.welcomeMessage = value.trim();
             }
         }
-        if (!wasEnabled && data.settings.enabled) {
-            const now = Date.now();
-            for (const subscription of data.subscriptions) {
-                if (!subscription.permanent && Number(subscription.expiresAt) <= now && subscription.status !== "deleted") {
-                    subscription.graceStartedAt = now;
-                    subscription.graceEndsAt = now + data.settings.presenceDurationMs;
-                    subscription.lastExpiredNoticeDate = null;
-                    subscription.onlyChatsNoticeSentAt = null;
-                    subscription.status = "expired";
-                }
-            }
+        if (Object.prototype.hasOwnProperty.call(updates, "enabledPlatforms")) {
+            data.settings.enabled = data.settings.enabledPlatforms[normalized];
         }
-        return clone(data.settings);
     });
+    const enabledPlatforms = getSettings(normalized).enabledPlatforms;
+    for (const name of PLATFORMS) {
+        if (!previousEnabled[name] && enabledPlatforms[name]) {
+            updatePlatform(name, data => {
+                const now = Date.now();
+                for (const subscription of data.subscriptions) {
+                    if (!subscription.permanent && Number(subscription.expiresAt) <= now && subscription.status !== "deleted") {
+                        subscription.graceStartedAt = now;
+                        subscription.graceEndsAt = now + data.settings.presenceDurationMs;
+                        subscription.lastExpiredNoticeDate = null;
+                        subscription.onlyChatsNoticeSentAt = null;
+                        subscription.status = "expired";
+                    }
+                }
+            });
+        }
+    }
+    return getSettings(normalized);
+}
+
+function displayId(id, legacyPrefix) {
+    const value = String(id);
+    const legacy = legacyPrefix ? value.match(new RegExp(`^${legacyPrefix}-(\\d+)$`, "i")) : null;
+    return legacy ? legacy[1] : value;
+}
+
+function findById(records, id, legacyPrefix) {
+    const query = String(id || "").trim();
+    return records.find(record => String(record.id) === query) ||
+        records.find(record => displayId(record.id, legacyPrefix) === query);
 }
 
 function nextId(data, type, prefix, width) {
-    const number = data.nextIds[type]++;
-    return `${prefix}-${String(number).padStart(width, "0")}`;
+    const records = type === "plan" ? data.plans
+        : type === "order" ? data.orders
+            : data.subscriptions;
+    const legacyPrefix = type === "plan" ? "PL" : type === "order" ? "AL" : prefix;
+    let id;
+    do {
+        const number = data.nextIds[type]++;
+        id = prefix
+            ? `${prefix}-${String(number).padStart(width, "0")}`
+            : String(number).padStart(width, "0");
+    } while (records.some(record =>
+        String(record.id) === id || displayId(record.id, legacyPrefix) === id
+    ));
+    return id;
 }
 
 function normalizePriceCents(value) {
@@ -225,7 +364,7 @@ function createPlan(platform, input = {}) {
             throw new Error("Já existe um plano com esse nome nesta plataforma.");
         }
         const plan = {
-            id: nextId(data, "plan", "PL", 4),
+            id: nextId(data, "plan", "", 4),
             ...values,
             active: true,
             createdAt: Date.now(),
@@ -238,10 +377,11 @@ function createPlan(platform, input = {}) {
 
 function editPlan(platform, planId, input = {}) {
     return updatePlatform(platform, data => {
-        const plan = data.plans.find(item => item.id === String(planId));
+        const plan = findById(data.plans, planId, "PL");
         if (!plan) throw new Error("Plano não encontrado.");
         const values = normalizePlanInput(input, plan);
-        if (data.plans.some(item => item.id !== plan.id && String(item.name).toLowerCase() === values.name.toLowerCase())) {
+        if (values.name.toLowerCase() !== String(plan.name).toLowerCase() &&
+            data.plans.some(item => item.id !== plan.id && String(item.name).toLowerCase() === values.name.toLowerCase())) {
             throw new Error("Já existe outro plano com esse nome nesta plataforma.");
         }
         Object.assign(plan, values, { updatedAt: Date.now() });
@@ -251,7 +391,7 @@ function editPlan(platform, planId, input = {}) {
 
 function deletePlan(platform, planId) {
     return updatePlatform(platform, data => {
-        const index = data.plans.findIndex(item => item.id === String(planId));
+        const index = data.plans.findIndex(item => item.id === findById(data.plans, planId, "PL")?.id);
         if (index < 0) throw new Error("Plano não encontrado.");
         data.plans.splice(index, 1);
         return true;
@@ -261,7 +401,9 @@ function deletePlan(platform, planId) {
 function findPlan(data, planId) {
     const query = String(planId || "").trim().toLowerCase();
     return data.plans.find(plan => plan.active !== false &&
-        (String(plan.id).toLowerCase() === query || String(plan.name).toLowerCase() === query));
+        (String(plan.id).toLowerCase() === query ||
+            displayId(plan.id, "PL").toLowerCase() === query ||
+            String(plan.name).toLowerCase() === query));
 }
 
 function getScopeId(message) {
@@ -306,7 +448,7 @@ function formatPlanList(platform) {
     const plans = getPlans(platform).filter(plan => plan.active !== false);
     if (!plans.length) return "Nenhum plano de aluguel está disponível no momento.";
     return plans.map(plan =>
-        `• ${plan.id} — ${plan.name}: ${formatPrice(plan.priceCents)} por ${formatDuration(plan.durationMs)}`
+        `• ${displayId(plan.id, "PL")} — ${plan.name}: ${formatPrice(plan.priceCents)} por ${formatDuration(plan.durationMs)}`
     ).join("\n");
 }
 
@@ -360,7 +502,53 @@ function interpolateWelcomeMessage(template, platform) {
     return String(template || DEFAULT_WELCOME_MESSAGE)
         .replace(/\{plans\}/g, plans)
         .replace(/\{prefix\}/g, prefix)
+        .replace(/\{presence\}/g, formatDuration(getSettings(platform).presenceDurationMs))
         .replace(/\{bot\}/g, config.getBotName());
+}
+
+function escapeHtml(text) {
+    return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+}
+
+function formatRentalWelcome(platform, displayName, message) {
+    const heading = displayName
+        ? `👋 Bem-vindos a ${displayName}!`
+        : "👋 Informações sobre o aluguel";
+
+    if (platform === "discord") {
+        return {
+            text: "",
+            options: {
+                disableMentions: true,
+                embed: {
+                    title: heading,
+                    description: message,
+                    color: 0xF1C40F,
+                    footer: { text: "Aluguel do bot" }
+                }
+            }
+        };
+    }
+
+    if (platform === "telegram") {
+        const body = String(message).split("\n").map(line => {
+            const escaped = escapeHtml(line);
+            const plan = escaped.match(/^• (\S+) — (.*)$/);
+            return plan
+                ? `• <code>${plan[1]}</code> — <b>${plan[2]}</b>`
+                : escaped;
+        }).join("\n");
+        return {
+            text: `<b>${escapeHtml(heading)}</b>\n\n${body}`,
+            options: { parse_mode: "HTML" }
+        };
+    }
+
+    const body = String(message).replace(/^• (\S+) — (.*)$/gm, "*$1* — $2");
+    return { text: `*${heading}*\n\n${body}`, options: undefined };
 }
 
 async function sendPlatformText(platform, chatId, text, options, threadId = null) {
@@ -384,8 +572,8 @@ async function getWhatsAppAdminMentions(chatId) {
         .map(String);
 }
 
-async function sendGroupNotice(platform, chatId, text, threadId = null) {
-    if (platform !== "whatsapp") return sendPlatformText(platform, chatId, text, undefined, threadId);
+async function sendGroupNotice(platform, chatId, text, threadId = null, sendOptions = undefined) {
+    if (platform !== "whatsapp") return sendPlatformText(platform, chatId, text, sendOptions, threadId);
     const mentions = await getWhatsAppAdminMentions(chatId);
     const tags = mentions.map(id => `@${id.split("@")[0]}`).join(" ");
     const formatted = tags ? `${tags}\n${text}` : text;
@@ -419,14 +607,85 @@ async function notifySubscription(platform, subscription, text, includeCreator =
     return failures;
 }
 
-async function handleBotAdded(platform, scopeId, chatId, displayName = "", threadId = null) {
+async function notifyDiscordGuildInviter(scopeId, inviterId, inviterName, guildName, joinedAt) {
+    const normalized = assertPlatform("discord");
+    const settings = getSettings(normalized);
+    if (!settings.enabled || !scopeId || !inviterId) return false;
+    const context = {
+        platform: normalized,
+        serverId: String(scopeId),
+        chatId: String(scopeId),
+        isPrivate: false
+    };
+    if (config.isOnlyChatsContextWhitelisted(context)) return false;
+    const access = getAccessDecision(context);
+    if (access?.allowed && ["active", "permanent"].includes(access.state)) return false;
+
+    const joinedTimestamp = Number(joinedAt);
+    if (!Number.isFinite(joinedTimestamp) || joinedTimestamp <= 0) {
+        throw new Error("Não foi possível determinar quando o bot entrou no servidor.");
+    }
+
+    const claimed = updatePlatform(normalized, data => {
+        data.inviterNotices = data.inviterNotices.filter(notice =>
+            Number(notice.joinedAt) > Date.now() - 180 * DAY_MS
+        ).slice(-4999);
+        if (data.inviterNotices.some(notice =>
+            notice.scopeId === String(scopeId) &&
+            Number(notice.joinedAt) === joinedTimestamp
+        )) return false;
+        data.inviterNotices.push({
+            scopeId: String(scopeId),
+            inviterId: String(inviterId),
+            inviterName: String(inviterName || inviterId).slice(0, 100),
+            joinedAt: joinedTimestamp,
+            claimedAt: Date.now()
+        });
+        return true;
+    });
+    if (!claimed) return false;
+
+    const text = [
+        `👋 Olá${inviterName ? `, ${inviterName}` : ""}! Obrigado por adicionar o ${config.getBotName()} ao servidor ${guildName || scopeId}.`,
+        "",
+        "O aluguel está disponível nestes planos:",
+        formatPlanList(normalized),
+        "",
+        `Para contratar, escolha um ID acima e use ${config.getPrefix()}alugar contratar <ID> em um canal de texto do servidor.`,
+        `A permanência inicial é de ${formatDuration(settings.presenceDurationMs)}; se nenhum pedido for criado nesse período, o bot sairá do servidor.`,
+        `Para falar com o dono, use ${config.getPrefix()}dono.`
+    ].join("\n");
+
+    try {
+        await sendPlatformText(normalized, String(inviterId), text, { disableMentions: true });
+        console.info(`[ALUGUEL] Informações enviadas por PV ao responsável ${inviterId} após entrada no servidor ${scopeId}.`);
+        return true;
+    } catch (error) {
+        console.warn(`[ALUGUEL] Não foi possível enviar por PV as informações de aluguel ao responsável ${inviterId} do servidor ${scopeId}:`, error.message || error);
+        return false;
+    }
+}
+
+async function handleBotAdded(platform, scopeId, chatId, displayName = "", threadId = null, categoryId = null) {
     const normalized = assertPlatform(platform);
+    const presentationThreadId = normalized === "telegram" ? null : threadId;
     const settings = getSettings(normalized);
     if (!settings.enabled) return false;
+    if (normalized === "discord") {
+        const channel = global.discordClient?.channels?.cache?.get(String(chatId || ""));
+        if (!channel || ![
+            ChannelType.GuildText,
+            ChannelType.GuildAnnouncement
+        ].includes(channel.type)) {
+            console.warn(`[ALUGUEL] Ignorando canal que não é de texto no Discord: ${chatId || "desconhecido"}.`);
+            return false;
+        }
+    }
     const context = {
         platform: normalized,
         chatId: String(chatId || scopeId),
         serverId: normalized === "discord" ? String(scopeId) : undefined,
+        categoryId: categoryId ? String(categoryId) : undefined,
         isPrivate: false
     };
     if (config.isOnlyChatsContextWhitelisted(context)) return false;
@@ -446,7 +705,25 @@ async function handleBotAdded(platform, scopeId, chatId, displayName = "", threa
         });
         return false;
     }
-    const state = ensurePresence(normalized, scopeId, chatId, threadId);
+    let state = ensurePresence(normalized, scopeId, chatId, threadId);
+    if (state.state === "trial" && state.leftAt) {
+        const now = Date.now();
+        state = updatePlatform(normalized, data => {
+            const presence = getPresence(data, scopeId);
+            if (!presence) return state;
+            Object.assign(presence, {
+                joinedAt: now,
+                deadlineAt: now + data.settings.presenceDurationMs,
+                state: "trial",
+                leftAt: null,
+                welcomeSentAt: null,
+                welcomeVersion: null,
+                leaveNoticeSentAt: null,
+                onlyChatsNoticeSentAt: null
+            });
+            return clone(presence);
+        });
+    }
     if (state.state === "active") {
         updatePlatform(normalized, data => {
             const subscription = data.subscriptions.find(item => item.scopeId === String(scopeId));
@@ -460,19 +737,31 @@ async function handleBotAdded(platform, scopeId, chatId, displayName = "", threa
         });
         return false;
     }
-    if (state.state !== "trial" || state.welcomeSentAt) return false;
+    if (state.state !== "trial" || (state.welcomeSentAt && state.welcomeVersion >= 2)) return false;
     const greeting = interpolateWelcomeMessage(settings.welcomeMessage, normalized);
-    const text = `${displayName ? `Bem-vindos a ${displayName}!\n\n` : ""}${greeting}`;
+    const presentation = formatRentalWelcome(normalized, displayName, greeting);
     try {
-        await sendGroupNotice(normalized, chatId || scopeId, text, threadId);
+        await sendGroupNotice(
+            normalized,
+            chatId || scopeId,
+            presentation.text,
+            presentationThreadId,
+            presentation.options
+        );
     } catch (error) {
         console.error(`[ALUGUEL] Não foi possível enviar a apresentação em ${normalized}/${scopeId}:`, error.message || error);
         return false;
     }
     updatePlatform(normalized, data => {
         const presence = getPresence(data, scopeId);
-        if (presence) presence.welcomeSentAt = Date.now();
+        if (presence) {
+            presence.welcomeSentAt = Date.now();
+            presence.welcomeVersion = 2;
+            presence.chatId = String(chatId || scopeId);
+            presence.threadId = presentationThreadId ? String(presentationThreadId) : null;
+        }
     });
+    console.info(`[ALUGUEL] Apresentação enviada para ${normalized}/${scopeId} no canal ${chatId || scopeId}.`);
     return true;
 }
 
@@ -533,7 +822,7 @@ function createOrder(platform, { scopeId, chatId, threadId, categoryId, creatorI
         }
 
         const order = {
-            id: nextId(data, "order", "AL", 6),
+            id: nextId(data, "order", "", 4),
             type: orderType,
             scopeId: String(scopeId),
             chatId: String(chatId || scopeId),
@@ -570,12 +859,12 @@ function listOrders(platform, filter = "all") {
 }
 
 function getOrder(platform, orderId) {
-    return clone(readPlatform(platform).orders.find(order => order.id === String(orderId)) || null);
+    return clone(findById(readPlatform(platform).orders, orderId, "AL") || null);
 }
 
 function editOrder(platform, orderId, planId) {
     return updatePlatform(platform, data => {
-        const order = data.orders.find(item => item.id === String(orderId));
+        const order = findById(data.orders, orderId, "AL");
         if (!order) throw new Error("Pedido não encontrado.");
         if (order.status !== "pending") throw new Error("Somente pedidos pendentes podem ser editados.");
         const plan = findPlan(data, planId);
@@ -593,7 +882,7 @@ function editOrder(platform, orderId, planId) {
 
 function deleteOrder(platform, orderId) {
     return updatePlatform(platform, data => {
-        const index = data.orders.findIndex(order => order.id === String(orderId));
+        const index = data.orders.findIndex(order => order.id === findById(data.orders, orderId, "AL")?.id);
         if (index < 0) throw new Error("Pedido não encontrado.");
         const [order] = data.orders.splice(index, 1);
         if (order.type === "initial") {
@@ -641,7 +930,7 @@ async function leaveChat(platform, scopeId) {
 async function approveOrder(platform, orderId, actorId) {
     const normalized = assertPlatform(platform);
     const result = updatePlatform(normalized, data => {
-        const order = data.orders.find(item => item.id === String(orderId));
+        const order = findById(data.orders, orderId, "AL");
         if (!order) throw new Error("Pedido não encontrado.");
         if (order.status !== "pending") throw new Error("Este pedido já foi decidido.");
         const now = Date.now();
@@ -1169,19 +1458,36 @@ function stopMaintenance() {
 }
 
 function getDashboardData(platform) {
-    const data = readPlatform(platform);
+    const normalized = assertPlatform(platform);
+    const data = readPlatform(normalized);
+    const allPlatforms = [...PLATFORMS].map(name => ({
+        platform: name,
+        data: readPlatform(name)
+    }));
     return {
         settings: clone(data.settings),
         plans: clone(data.plans),
-        orders: clone(data.orders.sort((a, b) => b.createdAt - a.createdAt)),
-        subscriptions: clone(data.subscriptions.sort((a, b) => b.createdAt - a.createdAt)),
-        presence: clone(data.presence)
+        orders: clone(allPlatforms.flatMap(item => item.data.orders.map(order => ({
+            ...order,
+            platform: item.platform
+        }))).sort((a, b) => b.createdAt - a.createdAt)),
+        subscriptions: clone(allPlatforms.flatMap(item =>
+            item.data.subscriptions.map(subscription => ({
+            ...subscription,
+            platform: item.platform
+            }))
+        ).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))),
+        presence: clone(allPlatforms.flatMap(item => item.data.presence.map(presence => ({
+            ...presence,
+            platform: item.platform
+        }))))
     };
 }
 
 module.exports = {
     DAY_MS,
     assertPlatform,
+    displayId,
     getSettings,
     setSettings,
     getPlans,
@@ -1192,6 +1498,7 @@ module.exports = {
     formatDuration,
     parseDuration,
     formatPlanList,
+    formatRentalWelcome,
     getScopeId,
     getChatId,
     ensurePresence,
@@ -1212,6 +1519,7 @@ module.exports = {
     notifyBlockedAccessOnce,
     sendGroupNotice,
     notifySubscription,
+    notifyDiscordGuildInviter,
     processPendingDeletionNotices,
     leaveChat,
     runMaintenance,

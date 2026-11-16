@@ -169,6 +169,21 @@ async function getGroupName(platform, groupId, scope) {
   return settings.serverName || settings.groupName || settings.chatName || scope?.name || `${scope?.type || "Grupo"} ${groupId}`;
 }
 
+function getTelegramApiErrorCode(error) {
+  const responseCode = Number(error?.response?.error_code);
+  if (Number.isFinite(responseCode)) return responseCode;
+
+  const statusCode = Number(error?.statusCode || error?.status || error?.code);
+  if (Number.isFinite(statusCode)) return statusCode;
+
+  const messageCode = String(error?.message || "").match(/^\s*(\d{3})\s*:/);
+  return messageCode ? Number(messageCode[1]) : NaN;
+}
+
+function isTelegramGroupUnavailableError(error) {
+  return [400, 403].includes(getTelegramApiErrorCode(error));
+}
+
 async function getLinkedPlatformGroups(platform, platformId) {
   if (platform === "discord") {
     const client = global.discordClient;
@@ -247,16 +262,20 @@ async function getLinkedPlatformGroups(platform, platformId) {
     const groups = [];
     for (const groupId of groupIds) {
       let member;
+      let chat;
       try {
         member = await bot.telegram.getChatMember(groupId, telegramUserId);
+        if (!["creator", "administrator", "member"].includes(member.status) &&
+            !(member.status === "restricted" && member.is_member)) continue;
+        chat = await bot.telegram.getChat(groupId);
       } catch (error) {
-        if (Number(error?.response?.error_code) === 400) continue;
+        if (getTelegramApiErrorCode(error) === 400) continue;
+        if (getTelegramApiErrorCode(error) === 403) {
+          console.warn(`[WEB] Ignorando grupo Telegram ${groupId} sem acesso ao bot durante a listagem:`, error.message || error);
+          continue;
+        }
         throw error;
       }
-      if (!["creator", "administrator", "member"].includes(member.status) &&
-          !(member.status === "restricted" && member.is_member)) continue;
-
-      const chat = await bot.telegram.getChat(groupId);
       const settings = groupSettings.loadSettings("telegram", groupId, "group");
       groups.push({
         id: String(groupId),
@@ -314,7 +333,7 @@ async function isPlatformGroupMember(platform, groupId, platformId) {
       return ["creator", "administrator", "member"].includes(member.status) ||
         (member.status === "restricted" && member.is_member === true);
     } catch (error) {
-      if (Number(error?.response?.error_code) === 400) return false;
+      if (isTelegramGroupUnavailableError(error)) return false;
       throw error;
     }
   }
@@ -1408,8 +1427,13 @@ async function getAdminSystemsOptions(platform, groupId) {
   if (platform === "telegram") {
     const bot = global.telegramBot;
     if (!bot?.telegram) throw new Error("O Telegram está offline no momento.");
-    const chat = await bot.telegram.getChat(String(groupId));
-    if (!chat.is_forum) return { categories: [], topics: [], isForum: false };
+    let chat = null;
+    try {
+      chat = await bot.telegram.getChat(String(groupId));
+    } catch (error) {
+      if (!isTelegramGroupUnavailableError(error)) throw error;
+      console.warn(`[WEB] O bot não consegue consultar o grupo Telegram ${groupId}; usando os tópicos salvos localmente.`, error.message || error);
+    }
     const data = groupSettings.loadSettings("telegram", String(groupId), "group");
     const topicsById = new Map();
     for (const topic of Array.isArray(data.topico) ? data.topico : []) {
@@ -1423,7 +1447,7 @@ async function getAdminSystemsOptions(platform, groupId) {
     return {
       categories: [],
       topics: [...topicsById.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
-      isForum: true
+      isForum: chat ? Boolean(chat.is_forum) : topicsById.size > 0
     };
   }
   return { categories: [], topics: [], isForum: false };
@@ -6874,6 +6898,14 @@ function isDashboardAccount(central) {
 }
 
 function getPlatformSuperUserAccount(central, platform) {
+  const platformAccount = getLinkedPlatformAccount(central, platform);
+  if (!owners.isOwner({ platform: platformAccount.platform, userId: platformAccount.platformId })) {
+    throw new Error("Acesso restrito ao superusuário desta plataforma.");
+  }
+  return platformAccount;
+}
+
+function getLinkedPlatformAccount(central, platform) {
   const normalizedPlatform = String(platform || "").toLowerCase();
   if (!["discord", "telegram", "whatsapp"].includes(normalizedPlatform)) {
     throw new Error("Plataforma inválida.");
@@ -6883,9 +6915,6 @@ function getPlatformSuperUserAccount(central, platform) {
   );
   if (!platformAccount) {
     throw new Error("Esta plataforma não está vinculada à sua Conta Central.");
-  }
-  if (!owners.isOwner({ platform: normalizedPlatform, userId: platformAccount.platformId })) {
-    throw new Error("Acesso restrito ao superusuário desta plataforma.");
   }
   return platformAccount;
 }
@@ -8290,6 +8319,16 @@ function start() {
 
         try {
           const action = String(payload?.action || "");
+          const platformScopedActions = new Set([
+            "order.edit", "order.approve", "order.reject", "order.delete",
+            "subscription.create", "subscription.edit", "subscription.delete"
+          ]);
+          const targetPlatform = platformScopedActions.has(action)
+            ? String(payload?.targetPlatform || platform).toLowerCase()
+            : platform;
+          const targetAccount = targetPlatform === platform
+            ? platformAccount
+            : getLinkedPlatformAccount(central, targetPlatform);
           let result = {};
           if (action === "settings.update") {
             if (!payload.settings || typeof payload.settings !== "object" || Array.isArray(payload.settings)) {
@@ -8297,26 +8336,37 @@ function start() {
             }
             const previous = rentalHelper.getSettings(platform);
             const settings = rentalHelper.setSettings(platform, payload.settings || {});
-            let message = "Configurações salvas.";
-            if (!previous.enabled && settings.enabled) {
+            const enabled = settings.enabledPlatforms;
+            const activated = Object.keys(enabled).some(name => !previous.enabledPlatforms[name] && enabled[name]);
+            if (activated) {
               await rentalHelper.runMaintenance();
-              message = "Aluguel ativado; assinaturas e permanências foram verificadas.";
-            } else if (previous.enabled && !settings.enabled) {
-              const active = rentalHelper.listSubscriptions(platform).filter(subscription =>
+            }
+            const deactivated = Object.keys(enabled).filter(name =>
+              previous.enabledPlatforms[name] && !enabled[name]
+            );
+            for (const name of deactivated) {
+              const account = central.platformAccounts.find(item =>
+                item.platform === name && item.platformId &&
+                owners.isOwner({ platform: name, userId: item.platformId })
+              );
+              if (!account) continue;
+              const active = rentalHelper.listSubscriptions(name).filter(subscription =>
                 subscription.permanent || Number(subscription.expiresAt) > Date.now()
               );
               const lines = active.slice(0, 20).map(subscription =>
                 `${subscription.id} · ${subscription.scopeId} · ${subscription.permanent ? "permanente" : new Date(subscription.expiresAt).toLocaleString("pt-BR")}`
               );
-              message = `Aluguel desativado. ${active.length} assinatura(s) ativa(s) mantida(s):\n${lines.join("\n") || "Nenhuma."}${active.length > lines.length ? `\n… e mais ${active.length - lines.length}.` : ""}`;
+              const message = `Aluguel desativado. ${active.length} assinatura(s) ativa(s) mantida(s):\n${lines.join("\n") || "Nenhuma."}${active.length > lines.length ? `\n… e mais ${active.length - lines.length}.` : ""}`;
               try {
-                await send.text(platform, String(platformAccount.platformId), null,
-                  `ℹ️ O modo de aluguel foi desligado em ${platform}.\n${message}`);
+                await send.text(name, String(account.platformId), null,
+                  `ℹ️ O modo de aluguel foi desligado em ${name}.\n${message}`);
               } catch (error) {
-                console.error(`[WEB] Não foi possível avisar o SU ${platform} sobre o aluguel desativado:`, error.message || error);
-                message += "\n⚠️ Não consegui enviar este resumo no privado; confira-o nesta página.";
+                console.error(`[WEB] Não foi possível avisar o SU ${name} sobre o aluguel desativado:`, error.message || error);
               }
             }
+            const message = activated
+              ? "Configurações salvas; as plataformas ativadas foram verificadas."
+              : "Configurações compartilhadas salvas.";
             result = { settings, message };
           } else if (action === "plan.create") {
             result = { plan: rentalHelper.createPlan(platform, payload) };
@@ -8325,9 +8375,9 @@ function start() {
           } else if (action === "plan.delete") {
             result = { plan: rentalHelper.deletePlan(platform, payload.id) };
           } else if (action === "order.edit") {
-            result = { order: rentalHelper.editOrder(platform, payload.id, payload.planId) };
+            result = { order: rentalHelper.editOrder(targetPlatform, payload.id, payload.planId) };
           } else if (action === "order.approve") {
-            const approved = await rentalHelper.approveOrder(platform, payload.id, platformAccount.platformId);
+            const approved = await rentalHelper.approveOrder(targetPlatform, payload.id, targetAccount.platformId);
             result = {
               order: approved.order,
               subscription: approved.subscription,
@@ -8335,27 +8385,27 @@ function start() {
               message: `Pedido ${approved.order.id} aprovado.${approved.warning ? ` Aviso: ${approved.warning}` : ""}`
             };
           } else if (action === "order.reject") {
-            const rejected = await rentalHelper.rejectOrder(platform, payload.id, platformAccount.platformId);
+            const rejected = await rentalHelper.rejectOrder(targetPlatform, payload.id, targetAccount.platformId);
             result = {
               order: rejected,
               warning: rejected.warning,
               message: `Pedido ${rejected.id} recusado.${rejected.warning ? ` Aviso: ${rejected.warning}` : ""}`
             };
           } else if (action === "order.delete") {
-            result = { order: rentalHelper.deleteOrder(platform, payload.id) };
+            result = { order: rentalHelper.deleteOrder(targetPlatform, payload.id) };
           } else if (action === "subscription.create") {
             if (!String(payload.chatId || "").trim()) {
               throw new Error("Informe o ID do grupo/canal que receberá os avisos da assinatura.");
             }
-            const subscription = rentalHelper.createSubscription(platform, {
+            const subscription = rentalHelper.createSubscription(targetPlatform, {
                 scopeId: payload.scopeId,
                 chatId: payload.chatId,
-                creatorId: payload.creatorId || platformAccount.platformId,
+                creatorId: payload.creatorId || targetAccount.platformId,
                 planId: payload.planId,
-                createdBy: platformAccount.platformId
+                createdBy: targetAccount.platformId
               });
             const failures = await rentalHelper.notifySubscription(
-              platform,
+              targetPlatform,
               subscription,
               `✅ A assinatura ${subscription.id} foi ativada.${subscription.permanent ? " Acesso permanente." : ` Válida até ${new Date(subscription.expiresAt).toLocaleString("pt-BR")}.`}`
             );
@@ -8370,13 +8420,13 @@ function start() {
             }
             result = {
               subscription: rentalHelper.editSubscription(
-                platform,
+                targetPlatform,
                 payload.id,
                 payload.permanent ? { permanent: true } : { expiresAt: payload.expiresAt }
               )
             };
           } else if (action === "subscription.delete") {
-            const deleted = await rentalHelper.deleteSubscription(platform, payload.id, platformAccount.platformId);
+            const deleted = await rentalHelper.deleteSubscription(targetPlatform, payload.id, targetAccount.platformId);
             result = {
               subscription: deleted,
               warning: deleted.warning,
@@ -8413,7 +8463,7 @@ function start() {
             sendJson(response, 500, { error: reason });
             return;
           }
-          sendJson(response, 400, { error: reason });
+          sendJson(response, /restrito|não está vinculada/i.test(reason) ? 403 : 400, { error: reason });
         }
         return;
       }
@@ -10372,8 +10422,13 @@ function start() {
         if (platform === "telegram") {
           const bot = global.telegramBot;
           if (!bot?.telegram) throw new Error("O Telegram está offline no momento.");
-          const chat = await bot.telegram.getChat(groupId);
-          if (chat.is_forum) groupType = "forum";
+          try {
+            const chat = await bot.telegram.getChat(groupId);
+            if (chat.is_forum) groupType = "forum";
+          } catch (error) {
+            if (!isTelegramGroupUnavailableError(error)) throw error;
+            console.warn(`[WEB] O bot não consegue consultar o grupo Telegram ${groupId}; carregando a dashboard com o tipo padrão.`, error.message || error);
+          }
         }
 
         const backgroundDefinition = data.profileBackground
