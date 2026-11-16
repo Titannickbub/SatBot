@@ -14,16 +14,17 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+echo "[INFO] Instalando @img/sharp-wasm32..."
+npm install @img/sharp-wasm32
+if [ $? -ne 0 ]; then
+    echo "[ERRO] Não foi possível instalar @img/sharp-wasm32."
+    exit 1
+fi
+
 echo "[INFO] Instalando o sharp para Android..."
 npm install --cpu=wasm32 sharp
 if [ $? -ne 0 ]; then
     echo "[ERRO] Não foi possível instalar o sharp para Android."
-    exit 1
-fi
-
-npm install @img/sharp-wasm32
-if [ $? -ne 0 ]; then
-    echo "[ERRO] Não foi possível instalar @img/sharp-wasm32."
     exit 1
 fi
 
