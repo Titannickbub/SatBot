@@ -317,14 +317,21 @@ async function start(onMessage) {
                     PermissionFlagsBits.ViewChannel,
                     PermissionFlagsBits.SendMessages
                 ]);
+            const visibleToEveryone = item =>
+                item.permissionsFor(guild.roles.everyone)?.has([
+                    PermissionFlagsBits.ViewChannel,
+                    PermissionFlagsBits.ReadMessageHistory
+                ]);
             const channels = [
                 guild.systemChannel,
                 ...guild.channels.cache.values()
             ].filter((channel, index, list) =>
-                canSend(channel) && list.findIndex(item => item?.id === channel.id) === index
+                canSend(channel) &&
+                visibleToEveryone(channel) &&
+                list.findIndex(item => item?.id === channel.id) === index
             );
             if (!channels.length) {
-                console.warn(`[ALUGUEL] Não há canal disponível para apresentar os planos no servidor ${guild.id}.`);
+                console.warn(`[ALUGUEL] Não há canal público de texto acessível para apresentar os planos no servidor ${guild.id}; a apresentação será tentada no primeiro canal em que o bot receber uma mensagem.`);
                 return;
             }
             for (const channel of channels) {

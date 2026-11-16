@@ -476,7 +476,25 @@ async function handleBotAdded(platform, scopeId, chatId, displayName = "", threa
         });
         return false;
     }
-    const state = ensurePresence(normalized, scopeId, chatId, threadId);
+    let state = ensurePresence(normalized, scopeId, chatId, threadId);
+    if (state.state === "trial" && state.leftAt) {
+        const now = Date.now();
+        state = updatePlatform(normalized, data => {
+            const presence = getPresence(data, scopeId);
+            if (!presence) return state;
+            Object.assign(presence, {
+                joinedAt: now,
+                deadlineAt: now + data.settings.presenceDurationMs,
+                state: "trial",
+                leftAt: null,
+                welcomeSentAt: null,
+                welcomeVersion: null,
+                leaveNoticeSentAt: null,
+                onlyChatsNoticeSentAt: null
+            });
+            return clone(presence);
+        });
+    }
     if (state.state === "active") {
         updatePlatform(normalized, data => {
             const subscription = data.subscriptions.find(item => item.scopeId === String(scopeId));
@@ -490,7 +508,7 @@ async function handleBotAdded(platform, scopeId, chatId, displayName = "", threa
         });
         return false;
     }
-    if (state.state !== "trial" || state.welcomeSentAt) return false;
+    if (state.state !== "trial" || (state.welcomeSentAt && state.welcomeVersion >= 2)) return false;
     const greeting = interpolateWelcomeMessage(settings.welcomeMessage, normalized);
     const text = `${displayName ? `Bem-vindos a ${displayName}!\n\n` : ""}${greeting}`;
     try {
@@ -503,10 +521,12 @@ async function handleBotAdded(platform, scopeId, chatId, displayName = "", threa
         const presence = getPresence(data, scopeId);
         if (presence) {
             presence.welcomeSentAt = Date.now();
+            presence.welcomeVersion = 2;
             presence.chatId = String(chatId || scopeId);
             presence.threadId = threadId ? String(threadId) : null;
         }
     });
+    console.info(`[ALUGUEL] Apresentação enviada para ${normalized}/${scopeId} no canal ${chatId || scopeId}.`);
     return true;
 }
 
