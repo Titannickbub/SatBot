@@ -11,6 +11,7 @@ const {
     EmbedBuilder,
     PermissionFlagsBits,
     ChannelType,
+    AuditLogEvent,
     ActivityType
 } = require("discord.js");
 const groupSettings = require("../functions/groupSettings");
@@ -21,6 +22,43 @@ const { detectBufferFormat } = require("../functions/gifAdapter");
 
 let reconnectAttempts = 0;
 let reconnectTimer = null;
+
+function wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function findDiscordGuildInviter(guild, botMember) {
+    if (!botMember.permissions.has(PermissionFlagsBits.ViewAuditLog)) {
+        console.warn(`[ALUGUEL] Sem a permissão Ver registro de auditoria no servidor ${guild.id}; não foi possível identificar quem adicionou o bot.`);
+        return null;
+    }
+
+    const botUserId = String(global.discordClient?.user?.id || "");
+    const joinedAt = Number(botMember.joinedTimestamp);
+    if (!botUserId || !Number.isFinite(joinedAt) || joinedAt <= 0) return null;
+
+    for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+            const auditLogs = await guild.fetchAuditLogs({
+                type: AuditLogEvent.BotAdd,
+                limit: 25
+            });
+            const entry = auditLogs.entries.find(item => {
+                const targetId = item.target?.id || item.targetId;
+                return String(targetId || "") === botUserId &&
+                    Math.abs(Number(item.createdTimestamp) - joinedAt) <= 120_000;
+            });
+            if (entry?.executor) return entry.executor;
+        } catch (error) {
+            console.warn(`[ALUGUEL] Não foi possível consultar quem adicionou o bot ao servidor ${guild.id}:`, error.message || error);
+            return null;
+        }
+
+        if (attempt < 3) await wait(750 * (attempt + 1));
+    }
+    console.warn(`[ALUGUEL] Nenhuma entrada recente de adição do bot encontrada no registro de auditoria do servidor ${guild.id}.`);
+    return null;
+}
 
 function isInvalidDiscordToken(error) {
     return error?.code === "TokenInvalid" ||
@@ -311,8 +349,11 @@ async function start(onMessage) {
             if (!rentalHelper.getSettings("discord").enabled) return;
             const botMember = guild.members.me || await guild.members.fetchMe();
             const canSend = item =>
-                item?.isTextBased() &&
-                !item.isThread?.() &&
+                item &&
+                [
+                    ChannelType.GuildText,
+                    ChannelType.GuildAnnouncement
+                ].includes(item.type) &&
                 item.permissionsFor(botMember)?.has([
                     PermissionFlagsBits.ViewChannel,
                     PermissionFlagsBits.SendMessages
@@ -332,19 +373,30 @@ async function start(onMessage) {
             );
             if (!channels.length) {
                 console.warn(`[ALUGUEL] Não há canal público de texto acessível para apresentar os planos no servidor ${guild.id}; a apresentação será tentada no primeiro canal em que o bot receber uma mensagem.`);
-                return;
-            }
-            for (const channel of channels) {
-                if (await rentalHelper.handleBotAdded(
-                    "discord",
-                    String(guild.id),
-                    String(channel.id),
-                    guild.name,
-                    null,
-                    channel.parentId
-                )) {
-                    return;
+            } else {
+                for (const channel of channels) {
+                    if (await rentalHelper.handleBotAdded(
+                        "discord",
+                        String(guild.id),
+                        String(channel.id),
+                        guild.name,
+                        null,
+                        channel.parentId
+                    )) {
+                        break;
+                    }
                 }
+            }
+
+            const inviter = await findDiscordGuildInviter(guild, botMember);
+            if (inviter && !inviter.bot) {
+                await rentalHelper.notifyDiscordGuildInviter(
+                    String(guild.id),
+                    String(inviter.id),
+                    inviter.globalName || inviter.username,
+                    guild.name,
+                    botMember.joinedTimestamp
+                );
             }
         } catch (error) {
             console.error(`[ALUGUEL] Falha ao processar entrada no servidor Discord ${guild.id}:`, error.message || error);
@@ -1346,6 +1398,7 @@ module.exports = {
     name: "discord",
 
     start,
+    findDiscordGuildInviter,
 
     sendText,
 

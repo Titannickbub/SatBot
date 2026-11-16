@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const config = require("./config");
+const { ChannelType } = require("discord.js");
 
 const DATA_FILE = path.join(__dirname, "..", "settings", "rental.json");
 const PLATFORMS = new Set(["whatsapp", "telegram", "discord"]);
@@ -36,7 +37,8 @@ function defaultPlatformData() {
         plans: [],
         orders: [],
         subscriptions: [],
-        presence: []
+        presence: [],
+        inviterNotices: []
     };
 }
 
@@ -70,7 +72,8 @@ function normalizePlatformData(value) {
         plans: Array.isArray(source.plans) ? source.plans : [],
         orders: Array.isArray(source.orders) ? source.orders : [],
         subscriptions: Array.isArray(source.subscriptions) ? source.subscriptions : [],
-        presence: Array.isArray(source.presence) ? source.presence : []
+        presence: Array.isArray(source.presence) ? source.presence : [],
+        inviterNotices: Array.isArray(source.inviterNotices) ? source.inviterNotices : []
     };
 }
 
@@ -448,10 +451,79 @@ async function notifySubscription(platform, subscription, text, includeCreator =
     return failures;
 }
 
+async function notifyDiscordGuildInviter(scopeId, inviterId, inviterName, guildName, joinedAt) {
+    const normalized = assertPlatform("discord");
+    const settings = getSettings(normalized);
+    if (!settings.enabled || !scopeId || !inviterId) return false;
+    const context = {
+        platform: normalized,
+        serverId: String(scopeId),
+        chatId: String(scopeId),
+        isPrivate: false
+    };
+    if (config.isOnlyChatsContextWhitelisted(context)) return false;
+    const access = getAccessDecision(context);
+    if (access?.allowed && ["active", "permanent"].includes(access.state)) return false;
+
+    const joinedTimestamp = Number(joinedAt);
+    if (!Number.isFinite(joinedTimestamp) || joinedTimestamp <= 0) {
+        throw new Error("Não foi possível determinar quando o bot entrou no servidor.");
+    }
+
+    const claimed = updatePlatform(normalized, data => {
+        data.inviterNotices = data.inviterNotices.filter(notice =>
+            Number(notice.joinedAt) > Date.now() - 180 * DAY_MS
+        ).slice(-4999);
+        if (data.inviterNotices.some(notice =>
+            notice.scopeId === String(scopeId) &&
+            Number(notice.joinedAt) === joinedTimestamp
+        )) return false;
+        data.inviterNotices.push({
+            scopeId: String(scopeId),
+            inviterId: String(inviterId),
+            inviterName: String(inviterName || inviterId).slice(0, 100),
+            joinedAt: joinedTimestamp,
+            claimedAt: Date.now()
+        });
+        return true;
+    });
+    if (!claimed) return false;
+
+    const text = [
+        `👋 Olá${inviterName ? `, ${inviterName}` : ""}! Obrigado por adicionar o ${config.getBotName()} ao servidor ${guildName || scopeId}.`,
+        "",
+        "O aluguel está disponível nestes planos:",
+        formatPlanList(normalized),
+        "",
+        `Para contratar, escolha um ID acima e use ${config.getPrefix()}alugar contratar <ID> em um canal de texto do servidor.`,
+        `A permanência inicial é de ${formatDuration(settings.presenceDurationMs)}; se nenhum pedido for criado nesse período, o bot sairá do servidor.`,
+        `Para falar com o dono, use ${config.getPrefix()}dono.`
+    ].join("\n");
+
+    try {
+        await sendPlatformText(normalized, String(inviterId), text, { disableMentions: true });
+        console.info(`[ALUGUEL] Informações enviadas por PV ao responsável ${inviterId} após entrada no servidor ${scopeId}.`);
+        return true;
+    } catch (error) {
+        console.warn(`[ALUGUEL] Não foi possível enviar por PV as informações de aluguel ao responsável ${inviterId} do servidor ${scopeId}:`, error.message || error);
+        return false;
+    }
+}
+
 async function handleBotAdded(platform, scopeId, chatId, displayName = "", threadId = null, categoryId = null) {
     const normalized = assertPlatform(platform);
     const settings = getSettings(normalized);
     if (!settings.enabled) return false;
+    if (normalized === "discord") {
+        const channel = global.discordClient?.channels?.cache?.get(String(chatId || ""));
+        if (!channel || ![
+            ChannelType.GuildText,
+            ChannelType.GuildAnnouncement
+        ].includes(channel.type)) {
+            console.warn(`[ALUGUEL] Ignorando canal que não é de texto no Discord: ${chatId || "desconhecido"}.`);
+            return false;
+        }
+    }
     const context = {
         platform: normalized,
         chatId: String(chatId || scopeId),
@@ -1267,6 +1339,7 @@ module.exports = {
     notifyBlockedAccessOnce,
     sendGroupNotice,
     notifySubscription,
+    notifyDiscordGuildInviter,
     processPendingDeletionNotices,
     leaveChat,
     runMaintenance,
