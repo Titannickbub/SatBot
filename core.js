@@ -797,6 +797,12 @@ async function start() {
     } catch (err) {
         console.error(`${_ts()} ❌[CORE] Falha ao iniciar o monitor do café:`, err.message || err);
     }
+
+    try {
+        require("./functions/rentalHelper").startMaintenance();
+    } catch (err) {
+        console.error(`${_ts()} ❌[CORE] Falha ao iniciar o controle de aluguéis:`, err.message || err);
+    }
 }
 
 function getCommands() {

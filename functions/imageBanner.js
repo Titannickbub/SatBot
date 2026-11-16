@@ -56,6 +56,15 @@ function profileCircleFrame(cx, cy, radius, circle, strokeWidth = 3) {
         const color = circle.color;
         return `<circle cx="${cx}" cy="${cy}" r="${radius + 4}" fill="none" stroke="${color}" stroke-width="${strokeWidth + 5}" opacity=".55"/><circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="#f5fcff" stroke-width="${strokeWidth + 2}"/><circle cx="${cx}" cy="${cy}" r="${radius - 4}" fill="none" stroke="${color}" stroke-width="2"/>${snowflakeMarks(cx, cy, radius + 1, 8, Math.max(12, strokeWidth * 3))}`;
     }
+    if (circle.saturn) {
+        return [
+            `<defs><mask id="saturn-ring-mask-${cx}-${cy}-${radius}" maskUnits="userSpaceOnUse" x="${cx - radius * 2}" y="${cy - radius * 2}" width="${radius * 4}" height="${radius * 4}"><rect x="${cx - radius * 2}" y="${cy - radius * 2}" width="${radius * 4}" height="${radius * 4}" fill="white"/><circle cx="${cx}" cy="${cy}" r="${radius + strokeWidth}" fill="black"/></mask><clipPath id="saturn-front-circle-${cx}-${cy}-${radius}"><circle cx="${cx}" cy="${cy}" r="${Math.max(1, radius - strokeWidth)}"/></clipPath><clipPath id="saturn-front-lower-${cx}-${cy}-${radius}"><rect x="${cx - radius * 2}" y="${cy}" width="${radius * 4}" height="${radius * 2}"/></clipPath></defs>`,
+            `<g mask="url(#saturn-ring-mask-${cx}-${cy}-${radius})"><ellipse cx="${cx}" cy="${cy}" rx="${(radius * 1.65).toFixed(1)}" ry="${(radius * 0.58).toFixed(1)}" transform="rotate(-25 ${cx} ${cy})" fill="none" stroke="#a66b2b" stroke-width="${Math.max(2, strokeWidth * 0.8)}" opacity=".92"/>`,
+            `<ellipse cx="${cx}" cy="${cy}" rx="${(radius * 1.4).toFixed(1)}" ry="${(radius * 0.44).toFixed(1)}" transform="rotate(-25 ${cx} ${cy})" fill="none" stroke="#f4d889" stroke-width="${Math.max(1.5, strokeWidth * 0.55)}" opacity=".95"/></g>`,
+            `<g clip-path="url(#saturn-front-circle-${cx}-${cy}-${radius})"><g clip-path="url(#saturn-front-lower-${cx}-${cy}-${radius})"><ellipse cx="${cx}" cy="${cy}" rx="${(radius * 1.65).toFixed(1)}" ry="${(radius * 0.58).toFixed(1)}" transform="rotate(-25 ${cx} ${cy})" fill="none" stroke="#a66b2b" stroke-width="${Math.max(1.5, strokeWidth * 0.6)}" opacity=".75"/><ellipse cx="${cx}" cy="${cy}" rx="${(radius * 1.4).toFixed(1)}" ry="${(radius * 0.44).toFixed(1)}" transform="rotate(-25 ${cx} ${cy})" fill="none" stroke="#f4d889" stroke-width="${Math.max(1, strokeWidth * 0.4)}" opacity=".9"/></g></g>`,
+            `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="#e8bd67" stroke-width="${strokeWidth}"/>`
+        ].join("");
+    }
     return `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${circle.rainbow ? "url(#rainbow)" : circle.color}" stroke-width="${strokeWidth}"/>`;
 }
 
@@ -258,6 +267,10 @@ async function renderProfile(message) {
         ? partnerOutline
         : profileOutline;
     const marriageOutlineColor = marriageOutline?.rainbow ? "url(#rainbow)" : marriageOutline?.color;
+    const communityVipLabel = !profile.communityVip?.active
+        ? "SEM VIP LOCAL"
+        : profile.communityVip.permanent ? "VIP LOCAL PERMANENTE" : "VIP LOCAL ATIVO";
+    const communityVipColor = profile.communityVip?.active ? "#ffd37f" : "#9da8bd";
     const marriageCard = marriages.length > 1
         ? [
             `<rect x="600" y="445" width="530" height="130" rx="18" fill="${backgroundTheme?.stops[1] || "#202a40"}" stroke="${outlineColor || backgroundTheme?.accent || "#334566"}" stroke-width="${outlineColor === "url(#rainbow)" ? 8 : outlineColor ? 4 : 2}"/>`,
@@ -273,6 +286,8 @@ async function renderProfile(message) {
             ].join("")
             : card(600, 445, 530, "CASAMENTO", marriageValue, marriageDetail, "#f5f7fb", backgroundTheme, outlineColor);
     const body = [
+        `<rect x="850" y="106" width="280" height="46" rx="14" fill="#ffffff0b" stroke="${communityVipColor}66" stroke-width="2"/>`,
+        text(communityVipLabel, 990, 135, 14, communityVipColor, 800, "middle"),
         `<rect x="70" y="205" width="1060" height="64" rx="14" fill="${backgroundTheme?.stops[2] || "#0e1422"}" stroke="${outlineColor || "none"}" stroke-width="${outlineColor === "url(#rainbow)" ? 6 : outlineColor ? 4 : 0}"/>`,
         text(`${profile.groupName} • ${profile.platform} • ID ${profile.userId}`, 94, 245, 16, "#b7c5e7"),
         walletCard(70, 295, 510, profile.economy.walletBalance, profile.economy.vaultBalance, profile.economy.position, backgroundTheme, outlineColor),

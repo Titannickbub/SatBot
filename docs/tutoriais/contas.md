@@ -71,17 +71,20 @@ atividade e contas de WhatsApp, Discord e Telegram vinculadas.
 
 Aliases: `!contaglobal` e `!global`.
 
-### `!vip` — consultar assinatura VIP
+### `!vip` — consultar VIP local e VIPG
 
-Consulta seu próprio status VIP, validade restante ou permanência e o resumo
-das contas vinculadas. Não recebe o nome de outra pessoa como argumento.
-Administradores de VIP devem usar `!set_vip`.
+Consulta seu próprio VIP local no grupo atual e o VIPG da Conta Central.
+Também exibe as ofertas locais disponíveis e permite comprar com SatCoins ou
+criar um pedido manual.
 
 ```text
 !vip
 ```
 
 Alias: `!premium`.
+
+Administradores gerenciam o VIP local com `!set_vip`; Super Usuários gerenciam
+o VIPG com `!set_vipg`. Consulte o [guia de VIP local e VIPG](../setvip.md).
 
 ## 🌐 Abrir páginas web
 

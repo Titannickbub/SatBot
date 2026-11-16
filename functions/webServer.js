@@ -9,11 +9,13 @@ const centralAccounts = require("./centralAccounts");
 const nofapHelper = require("./nofapHelper");
 const nofapGroupHelper = require("./nofapGroupHelper");
 const vipHelper = require("./vipHelper");
+const communityVipService = require("./communityVip");
 const marriage = require("./marriageService");
 const groupSettings = require("./groupSettings");
 const auditLogs = require("./auditLogs");
 const { getCurrentChangelog } = require("./changelog");
 const config = require("./config");
+const send = require("./send");
 const activity = require("./activity");
 const antilinkHelper = require("./antilinkHelper");
 const antimediaHelper = require("./antimediaHelper");
@@ -43,6 +45,9 @@ const baileysPkg = require("@whiskeysockets/baileys");
 const chatControl = require("./chatControl");
 const profileCosmetics = require("./profileCosmetics");
 const soAdmHelper = require("./soAdmHelper");
+const owners = require("./owners");
+const rentalHelper = require("./rentalHelper");
+const rentalDashboard = require("./rentalDashboard");
 
 const DEFAULT_PORT = 32013;
 const WEB_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -1552,6 +1557,48 @@ async function getGroupAdminData(central, platform, groupId) {
   };
 }
 
+async function authorizeCommunityVipAdmin(central, platform, groupId) {
+  if (!["discord", "telegram", "whatsapp"].includes(platform) || !isValidPlatformGroupId(groupId)) {
+    throw new Error("Plataforma ou grupo inválido.");
+  }
+  const platformAccount = central.platformAccounts.find(account => account.platform === platform);
+  if (!platformAccount?.platformId) throw new Error("Esta plataforma não está vinculada à sua Conta Central.");
+  const platformId = String(platformAccount.platformId);
+  if (!await isPlatformGroupMember(platform, groupId, platformId)) {
+    throw new Error("Sua conta vinculada não participa mais deste grupo ou servidor.");
+  }
+  const permissionSnapshot = await getPlatformAdminSnapshot(platform, groupId, platformId);
+  const allowed = platform === "discord"
+    ? permissionSnapshot.adminPermissions.some(item =>
+      ["manageGroup", "manageRoles"].includes(item.key) && item.allowed
+    )
+    : permissionSnapshot.canManage;
+  if (!allowed) {
+    throw new Error("Você precisa de permissão para gerenciar membros ou cargos neste grupo ou servidor.");
+  }
+  return { platformAccount, platformId, permissionSnapshot };
+}
+
+async function getCommunityVipAdminData(central, platform, groupId) {
+  const { platformAccount, platformId, permissionSnapshot } =
+    await authorizeCommunityVipAdmin(central, platform, groupId);
+  const message = getLocalGroupMessage(platform, groupId, platformId);
+  const profileUrl = new URL("http://localhost/perfil");
+  profileUrl.searchParams.set("plataforma", platform);
+  profileUrl.searchParams.set("grupo", groupId);
+  profileUrl.searchParams.set("usuario", platformId);
+  const profile = await readProfile(profileUrl, { allowEmpty: true });
+  return {
+    platform,
+    groupId,
+    groupName: profile.groupName || `Grupo ${groupId}`,
+    userName: profile.name || platformAccount.displayName || platformAccount.username || "Sua conta",
+    avatarUrl: await getProfileAvatar(platform, groupId, platformId),
+    permissionSnapshot,
+    communityVip: economy.getCommunityVip(message)
+  };
+}
+
 async function setAdminSetting(message, setting, enabled, scope = {}) {
   const level = scope.level || (message.platform === "whatsapp" ? "chat" : "server");
   const definition = getAdminSystemDefinitions(message.platform, level).find(item => item.key === setting);
@@ -2524,6 +2571,9 @@ async function getLocalAccountData(central, platform, groupId) {
   profileUrl.searchParams.set("usuario", platformId);
   const profile = await readProfile(profileUrl, { allowEmpty: true });
   const account = economy.getAccountByUser(message, platformId);
+  const communityVip = economy.getCommunityVip(message);
+  const localVipMember = communityVip?.members[platformId];
+  const permissionSnapshot = await getPlatformAdminSnapshot(platform, groupId, platformId);
   const cosmetics = economy.getProfileCosmetics(message, platformId);
   const profits = account ? economy.getDailyProfits(message) : null;
   const today = economy.getLocalDate();
@@ -2532,8 +2582,21 @@ async function getLocalAccountData(central, platform, groupId) {
     platform,
     groupId,
     platformId,
+    isSuperUser: owners.isOwner({ platform, userId: platformId }),
     economyEnabled: economy.isEnabled(message),
-    canManage: await canManagePlatformGroup(platform, groupId, platformId),
+    canManage: permissionSnapshot.canManage,
+    canManageVip: platform === "discord"
+      ? permissionSnapshot.adminPermissions.some(item =>
+        ["manageGroup", "manageRoles"].includes(item.key) && item.allowed
+      )
+      : permissionSnapshot.canManage,
+    communityVip: {
+      active: economy.isCommunityVipActive(message, platformId),
+      permanent: Boolean(localVipMember?.permanent),
+      expiresAt: localVipMember?.expiresAt || null,
+      shopOffers: communityVip?.shopOffers || [],
+      manualOffers: communityVip?.manualOffers || []
+    },
     signalSearch: economy.getSignalSearchState(message, platformId),
     localSignalSearch: economy.getLocalSignalSearch(message),
     vaultConfig: economy.getVaultConfig(message),
@@ -2654,7 +2717,8 @@ function renderLocalAccount(data) {
     "local-avatar-frame",
     profileCircle ? "has-profile-circle" : "",
     profileCircle?.frozen ? "frozen-profile-circle" : "",
-    profileCircle?.rainbow ? "rainbow-profile-circle" : ""
+    profileCircle?.rainbow ? "rainbow-profile-circle" : "",
+    profileCircle?.saturn ? "saturn-profile-circle" : ""
   ].filter(Boolean).join(" ");
   const avatarFrameStyle = profileCircle ? `style="--profile-circle-color:${profileCircle.color};"` : "";
   const avatarFrostMarks = profileCircle?.frozen
@@ -2700,6 +2764,27 @@ function renderLocalAccount(data) {
   const localProfileSection = localProfileCards.length || marriageCards.length
     ? `<section class="local-panel"><h2>Seu perfil neste grupo</h2><p class="muted">Dados locais de experiência e atividade${marriageCards.length ? ", além dos recursos pessoais disponíveis" : ""}.</p><div class="local-stats">${localProfileCards.join("")}${marriageCards.join("")}</div></section>`
     : "";
+  const communityVipStatus = !data.communityVip.active
+    ? "Sem VIP local"
+    : data.communityVip.permanent
+      ? "Permanente"
+      : `Ativo até ${escapeHtml(vipHelper.formatDateTimeDetailed(data.communityVip.expiresAt))}`;
+  const vipOfferCards = [
+    ...data.communityVip.shopOffers.map(offer =>
+      `<article class="local-stat"><small>Loja · oferta #${offer.id}</small><strong>${escapeHtml(vipHelper.formatDurationText(offer.durationMs))}</strong><span>${currency(offer.price)}</span><button type="button" class="admin-panel-button" data-local-vip-action="purchase" data-offer-id="${offer.id}">Comprar com SatCoins</button></article>`
+    ),
+    ...data.communityVip.manualOffers.map(offer =>
+      `<article class="local-stat"><small>Pedido manual · oferta #${offer.id}</small><strong>${escapeHtml(vipHelper.formatDurationText(offer.durationMs))}</strong><span>R$ ${(offer.priceCents / 100).toFixed(2).replace(".", ",")}</span><button type="button" class="admin-panel-button" data-local-vip-action="order" data-offer-id="${offer.id}">Criar pedido</button></article>`
+    )
+  ];
+  const localVipSection = `<section class="local-panel local-vip-panel" id="localVipSection"><h2>VIP local</h2><p class="muted">O benefício vale somente neste grupo ou servidor. VIPG global controla apenas o uso do bot no privado.</p><div class="local-vip-status">${communityVipStatus}</div><div class="local-stats">${vipOfferCards.length ? vipOfferCards.join("") : '<p class="muted">Nenhuma oferta VIP está disponível neste grupo.</p>'}</div><p class="local-feedback" id="localVipFeedback" role="status" aria-live="polite"></p></section>`;
+
+  const superUserLink = data.isSuperUser
+    ? `<a class="admin-panel-button" href="/painel-su?plataforma=${encodeURIComponent(data.platform)}">✦ Painel de superusuário</a>`
+    : "";
+  const adminPanelLink = data.canManage
+    ? `<a class="admin-panel-button" href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">⚙ Painel de administração</a>`
+    : "";
 
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${escapeHtml(data.groupName)} · ${safeBotName}</title><style>
     ${homeStyles()}
@@ -2710,6 +2795,13 @@ function renderLocalAccount(data) {
     .local-hero-main{display:flex;align-items:center;gap:20px;min-width:0}
     .local-hero-actions{display:flex;flex:none;align-items:center}
     .local-hero-action-links{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:9px}
+    .local-vip-overview{display:flex;align-items:center;gap:14px;margin:-10px 0 24px;padding:14px 18px;border:1px solid #f1c96a55;border-radius:15px;background:linear-gradient(110deg,#f1c96a18,#d6963510)}
+    .local-vip-overview-icon{font-size:24px}
+    .local-vip-overview-info{display:grid;gap:3px;flex:1}
+    .local-vip-overview-info small{color:#d9c99c;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+    .local-vip-overview-info strong{color:#fff1c4;font-size:15px}
+    .local-vip-overview a{color:#ffe6a1;font-size:12px;font-weight:700;text-decoration:none}
+    .local-vip-overview a:hover,.local-vip-overview a:focus-visible{text-decoration:underline}
     .admin-panel-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:10px 15px;border:1px solid #a99dff66;border-radius:12px;background:linear-gradient(120deg,#8877ff35,#577cff28);color:#e2deff;font-size:13px;font-weight:750;text-decoration:none;box-shadow:0 8px 22px #635bff1a;transition:transform .16s ease,border-color .16s ease,background .16s ease}
     .admin-panel-button:hover,.admin-panel-button:focus-visible{transform:translateY(-2px);border-color:#b8adff;background:linear-gradient(120deg,#8877ff50,#577cff40);outline:2px solid #a99dff55;outline-offset:2px}
     .cosmetics-store-button{border-color:#f0a8c666;background:linear-gradient(120deg,#f076a535,#bd72ff28);color:#ffe0ef}
@@ -2730,6 +2822,11 @@ function renderLocalAccount(data) {
     .local-avatar-frost-left{top:50%;left:-5px;transform:translateY(-50%)}
     .local-avatar-frost-upper-left{top:9%;left:9%}
     .local-avatar-frame.rainbow-profile-circle{border:5px solid transparent;border-radius:50%;background:linear-gradient(#171d2b,#171d2b) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:local-circle-rainbow 5s linear infinite}
+    .local-avatar-frame.saturn-profile-circle{border:3px solid #e8bd67;box-shadow:0 0 0 2px #a66b2b,0 0 16px #e8bd6770}
+    .local-avatar-frame.saturn-profile-circle:before,.local-avatar-frame.saturn-profile-circle:after{content:"";position:absolute;left:50%;top:50%;width:132%;height:48%;border:2px solid #e8bd67;border-radius:50%;transform:translate(-50%,-50%) rotate(-25deg);pointer-events:none}
+    .local-avatar-frame.saturn-profile-circle:before{border-color:#a66b2b;box-shadow:0 0 5px #e8bd6799}
+    .local-avatar-frame.saturn-profile-circle:after{z-index:2;width:122%;height:42%;border-color:#f4d889;clip-path:inset(48% -15% -15% -15%);opacity:.88}
+    .local-avatar-frame.saturn-profile-circle .local-avatar{position:relative;z-index:1}
     @keyframes local-circle-rainbow{to{background-position:0 0,100% 50%}}
     body.profile-frozen:after{content:"";position:fixed;inset:0;z-index:3;pointer-events:none;opacity:.015;background-image:url("${profileSnowPattern(0.5)}");background-size:180px 180px}
     body.profile-frozen .local-page{position:relative;z-index:2}
@@ -2790,12 +2887,13 @@ function renderLocalAccount(data) {
     .daily-total strong{color:#c6bdff;text-align:right}
     .local-footer{margin-top:20px;color:#71809d;font-size:12px}
     @media(max-width:760px){.local-layout,.local-functions,.local-store-links{grid-template-columns:1fr}}
-    @media(max-width:640px){.local-hero{align-items:flex-start;flex-direction:column}.local-hero-main{align-items:flex-start}.local-hero-actions{width:100%}.local-hero-action-links{width:100%}.admin-panel-button{width:100%}}
+    @media(max-width:640px){.local-hero{align-items:flex-start;flex-direction:column}.local-hero-main{align-items:flex-start}.local-hero-actions{width:100%}.local-hero-action-links{width:100%}.admin-panel-button{width:100%}.local-vip-overview{align-items:flex-start;flex-wrap:wrap}.local-vip-overview-info{min-width:calc(100% - 55px)}.local-vip-overview a{margin-left:38px}}
     @media(max-width:480px){.local-page{padding:20px 0 38px}.local-hero{padding:20px}.local-avatar-frame{width:68px;height:68px;border-radius:21px}.local-avatar{width:56px;height:56px;border-radius:12px}.local-panel{padding:18px}.local-stats{grid-template-columns:1fr}.daily-list{grid-template-columns:1fr}}
     ${cosmeticThemeStyles}
   </style></head><body class="${pageClass}"><main class="local-page">
     <nav class="local-topbar"><a href="/dashboard">← Conta Central</a><span>${safeBotName} · Painel local</span></nav>
-    <header class="local-hero"><div class="local-hero-main"><span class="${avatarFrameClasses}" ${avatarFrameStyle}><img class="local-avatar" src="${escapeHtml(data.avatarUrl || "/semfoto.jpg")}" alt="Foto de perfil de ${escapeHtml(data.userName)}" onerror="this.onerror=null;this.src='/semfoto.jpg'">${avatarFrostMarks}</span><div><div class="eyebrow">Painel da conta local</div><h1>${escapeHtml(data.userName)}</h1><p>${groupType}: ${escapeHtml(data.groupName)} · ${escapeHtml(data.platform)}</p></div></div><div class="local-hero-actions"><div class="local-hero-action-links">${data.canManage ? `<a class="admin-panel-button" href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">⚙ Painel de administração</a>` : ""}</div></div></header>
+    <header class="local-hero"><div class="local-hero-main"><span class="${avatarFrameClasses}" ${avatarFrameStyle}><img class="local-avatar" src="${escapeHtml(data.avatarUrl || "/semfoto.jpg")}" alt="Foto de perfil de ${escapeHtml(data.userName)}" onerror="this.onerror=null;this.src='/semfoto.jpg'">${avatarFrostMarks}</span><div><div class="eyebrow">Painel da conta local</div><h1>${escapeHtml(data.userName)}</h1><p>${groupType}: ${escapeHtml(data.groupName)} · ${escapeHtml(data.platform)}</p></div></div>${data.canManage || data.isSuperUser ? `<div class="local-hero-actions"><div class="local-hero-action-links">${adminPanelLink}${superUserLink}</div></div>` : ""}</header>
+    <aside class="local-vip-overview" aria-label="Status do VIP local"><span class="local-vip-overview-icon" aria-hidden="true">👑</span><div class="local-vip-overview-info"><small>VIP local neste ${groupType.toLowerCase()}</small><strong>${communityVipStatus}</strong></div><a href="#localVipSection">Ver benefícios e ofertas</a></aside>
     <section class="local-section" aria-labelledby="displaySectionTitle">
       <header class="local-section-heading"><div><h2 id="displaySectionTitle">Exibição</h2><p>Consulte seus dados e posições neste grupo ou servidor.</p></div></header>
       <div class="local-layout">
@@ -2805,6 +2903,7 @@ function renderLocalAccount(data) {
           ${localProfileSection}
         </div>
         <div class="local-column">
+          ${localVipSection}
           <section class="local-panel"><h2>Minha economia local</h2><p class="muted">Sua carteira e seu cofre neste grupo ou servidor.</p>${accountStats}<a class="admin-panel-button" href="/painel-banco?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">Abrir meu banco</a></section>
         </div>
       </div>
@@ -2841,6 +2940,15 @@ function renderLocalAccount(data) {
       try{const result=await submitLocalAction("/api/account/local/merge",{code:document.getElementById("mergeCode").value.trim().toUpperCase()});feedback("joinFeedback","Contas unidas. Conta Central: "+result.centralId,false);event.currentTarget.reset();}
       catch(error){feedback("joinFeedback",error.message,true)}finally{button.disabled=false}
     });
+    document.querySelectorAll("[data-local-vip-action]").forEach(button=>button.addEventListener("click",async()=>{
+      const action=button.dataset.localVipAction,offerId=button.dataset.offerId;
+      button.disabled=true;feedback("localVipFeedback","Enviando solicitação...",false);
+      try{
+        const result=await submitLocalAction(action==="purchase"?"/api/account/local/vip-purchase":"/api/account/local/vip-order",{offerId});
+        feedback("localVipFeedback",(result.message||"Solicitação concluída.")+(result.warning?" "+result.warning:""),false);
+        window.setTimeout(()=>window.location.reload(),900);
+      }catch(error){feedback("localVipFeedback",error.message,true);button.disabled=false}
+    }));
   </script></body></html>`;
 }
 
@@ -3701,7 +3809,7 @@ function renderCosmeticsStore(data) {
             .map(position => `<span class="circle-frost-mark circle-frost-${position}">❄</span>`).join("")
           : "";
         return `<article class="color-card${active ? " active" : ""}" data-circle-card="${escapeHtml(circle.key)}">
-          <div class="color-swatch circle-swatch${circle.frozen ? " frozen-circle-swatch" : ""}" aria-hidden="true" style="height:86px;padding:12px;background:#111827;display:grid;place-items:center;position:relative;--frost-color:${circle.color}"><div class="circle-sample${circle.rainbow ? " rainbow-outline-sample" : ""}" style="width:58px;height:58px;border:${circle.rainbow ? "5px solid transparent" : "4px solid " + circle.color};border-radius:50%${circle.rainbow ? ";background:linear-gradient(#111827,#111827) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%" : ""}"></div>${frostMarks}</div>
+          <div class="color-swatch circle-swatch${circle.frozen ? " frozen-circle-swatch" : ""}" aria-hidden="true" style="height:86px;padding:12px;background:#111827;display:grid;place-items:center;position:relative;--frost-color:${circle.color}"><div class="circle-sample${circle.rainbow ? " rainbow-outline-sample" : ""}${circle.saturn ? " saturn-circle-sample" : ""}" style="width:58px;height:58px;border:${circle.rainbow ? "5px solid transparent" : "4px solid " + circle.color};border-radius:50%${circle.rainbow ? ";background:linear-gradient(#111827,#111827) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%" : ""}"></div>${frostMarks}</div>
           <div class="color-card-info"><div><h3>${escapeHtml(circle.label)}</h3><p>${active ? "Em uso" : owned ? "Comprado" : `ID ${circle.id} · ${escapeHtml(rarityLabels[circle.rarity] || circle.rarity)} · ${economy.formatMoney(price)}`}</p></div><button class="color-action" type="button" data-preview-circle="${escapeHtml(circle.key)}">Mostrar prévia</button></div>
         </article>`;
       }).join("")}</div>
@@ -3777,6 +3885,9 @@ function renderCosmeticsStore(data) {
     .frost-mark-bottom-left{bottom:8px;left:25px}.frost-mark-left-mid{top:50%;left:7px;transform:translateY(-50%)}
     .frozen-circle-swatch{background:radial-gradient(circle,#1d3043,#111827)!important}
     .frozen-circle-swatch .circle-sample{border:3px double #f5fcff!important;box-shadow:0 0 0 3px var(--frost-color),0 0 14px var(--frost-color),inset 0 0 10px #c9f2ff88}
+    .saturn-circle-sample{position:relative}
+    .saturn-circle-sample:before,.saturn-circle-sample:after{content:"";position:absolute;left:50%;top:50%;width:170%;height:58%;border:2px solid #a66b2b;border-radius:50%;transform:translate(-50%,-50%) rotate(-25deg);pointer-events:none}
+    .saturn-circle-sample:after{width:140%;height:42%;border-color:#f4d889}
     .circle-frost-top{top:5px;left:50%;transform:translateX(-50%)}.circle-frost-upper-right{top:14px;right:calc(50% - 34px)}
     .circle-frost-right{top:50%;right:calc(50% - 42px);transform:translateY(-50%)}.circle-frost-lower-right{bottom:14px;right:calc(50% - 34px)}
     .circle-frost-bottom{bottom:5px;left:50%;transform:translateX(-50%)}.circle-frost-lower-left{bottom:14px;left:calc(50% - 34px)}
@@ -3801,7 +3912,7 @@ function renderCosmeticsStore(data) {
     <div id="effectCatalog" class="category-catalog" hidden><section class="store-panel"><button id="backFromEffects" class="reset-button" type="button">← Categorias de cosméticos</button><header class="category-heading"><div><h2>Efeitos de perfil</h2><p class="store-muted">Os efeitos aparecem sobre as páginas e bolhas em que seu perfil é exibido.</p></div></header></section>${effectCategories}<section class="store-panel"><div class="store-balance"><span>Seu saldo local</span><strong id="effectStoreBalance">${pageContext.balance}</strong></div><button id="resetEffect" class="reset-button" type="button">Remover efeito de perfil</button><p id="effectFeedback" class="store-feedback" role="status" aria-live="polite"></p></section></div>
     <p class="store-footer">Os cosméticos e o saldo são individuais desta plataforma e deste grupo.</p>
   </main>
-  <dialog id="previewDialog" class="preview-dialog" aria-labelledby="dialogTitle"><div class="dialog-content"><header class="dialog-header"><div><h2 id="dialogTitle">Prévia do fundo</h2><p id="dialogDescription"></p></div><button class="dialog-close" type="button" data-close-dialog aria-label="Fechar">×</button></header><div id="previewCard" class="preview-card"><span class="preview-label">Perfil neste grupo</span><div class="preview-user"><div id="previewAvatar" class="preview-avatar">U</div><div><strong>${escapeHtml(data.userName)}</strong><small>${escapeHtml(data.groupName)}</small></div></div><div id="previewProfile" class="preview-profile"><strong id="previewColorName"></strong><p id="previewProfileDescription">Esta é uma prévia do fundo no perfil local.</p></div></div><p id="dialogFeedback" class="store-feedback" role="status" aria-live="polite"></p><footer class="dialog-actions"><button class="modal-button secondary" type="button" data-close-dialog>Fechar</button><button id="previewAction" class="modal-button" type="button">Comprar e equipar</button></footer></div></dialog>
+  <dialog id="previewDialog" class="preview-dialog" aria-labelledby="dialogTitle"><div class="dialog-content"><header class="dialog-header"><div><h2 id="dialogTitle">Prévia do fundo</h2><p id="dialogDescription"></p></div><button class="dialog-close" type="button" data-close-dialog aria-label="Fechar">×</button></header><div id="previewCard" class="preview-card"><span class="preview-label">Perfil neste grupo</span><div class="preview-user"><div id="previewAvatar" class="preview-avatar"><span>U</span></div><div><strong>${escapeHtml(data.userName)}</strong><small>${escapeHtml(data.groupName)}</small></div></div><div id="previewProfile" class="preview-profile"><strong id="previewColorName"></strong><p id="previewProfileDescription">Esta é uma prévia do fundo no perfil local.</p></div></div><p id="dialogFeedback" class="store-feedback" role="status" aria-live="polite"></p><footer class="dialog-actions"><button class="modal-button secondary" type="button" data-close-dialog>Fechar</button><button id="previewAction" class="modal-button" type="button">Comprar e equipar</button></footer></div></dialog>
   <script>
     const storeContext=${JSON.stringify(pageContext)};
     const backgroundUrl="/api/account/local/cosmetics";
@@ -3814,7 +3925,7 @@ function renderCosmeticsStore(data) {
     const dialog=document.getElementById("previewDialog");
     const dialogFeedback=document.getElementById("dialogFeedback");
     const frostPreviewStyles=document.createElement("style");
-    frostPreviewStyles.textContent=".preview-profile{position:relative;overflow:visible}.preview-profile.profile-outline-preview{border:3px solid var(--preview-outline);box-shadow:0 0 0 1px var(--preview-outline)}.preview-profile.rainbow-outline-preview{border:5px solid #f5fcff;box-shadow:0 0 0 2px #f0a8c6}.preview-profile.frozen-outline-preview{border:3px double #f5fcff;outline:2px solid var(--preview-outline);box-shadow:0 0 0 3px var(--preview-outline),0 0 18px var(--preview-outline),inset 0 0 14px #c9f2ff66}.preview-frost-marks{position:absolute;inset:0;z-index:2;pointer-events:none}.preview-frost-mark{position:absolute;color:#f5fcff;font-size:12px;line-height:1;text-shadow:0 0 6px #fff,0 0 12px var(--preview-outline)}.preview-frost-top-left{left:8px;top:-7px}.preview-frost-top-center{left:50%;top:-7px;transform:translateX(-50%)}.preview-frost-top-right{right:8px;top:-7px}.preview-frost-right-mid{right:-7px;top:50%;transform:translateY(-50%)}.preview-frost-bottom-right{right:8px;bottom:-7px}.preview-frost-bottom-center{left:50%;bottom:-7px;transform:translateX(-50%)}.preview-frost-bottom-left{left:8px;bottom:-7px}.preview-frost-left-mid{left:-7px;top:50%;transform:translateY(-50%)}.preview-profile>*{position:relative;z-index:1}.preview-profile>.preview-frost-marks{position:absolute;z-index:2}.preview-avatar.frozen-circle-preview{position:relative;border:4px double #f5fcff!important;box-shadow:0 0 0 2px var(--preview-circle),0 0 18px var(--preview-circle),inset 0 0 10px #c9f2ff88}.preview-avatar.frozen-circle-preview:after{content:'❄';position:absolute;top:-3px;right:-2px;color:#f5fcff;font-size:13px;text-shadow:0 0 7px var(--preview-circle)}.preview-card.profile-frozen-preview{position:relative;isolation:isolate;overflow:hidden}.preview-card.profile-frozen-preview:after{content:'❄       ❄       ❄       ❄       ❄';position:absolute;inset:0;display:flex;align-items:center;justify-content:space-around;color:#f5fcff;font-size:23px;opacity:.1;text-shadow:0 0 8px #c9f2ff;pointer-events:none;z-index:0}.preview-card>*{position:relative;z-index:1}";
+    frostPreviewStyles.textContent=".preview-profile{position:relative;overflow:visible}.preview-profile.profile-outline-preview{border:3px solid var(--preview-outline);box-shadow:0 0 0 1px var(--preview-outline)}.preview-profile.rainbow-outline-preview{border:5px solid #f5fcff;box-shadow:0 0 0 2px #f0a8c6}.preview-profile.frozen-outline-preview{border:3px double #f5fcff;outline:2px solid var(--preview-outline);box-shadow:0 0 0 3px var(--preview-outline),0 0 18px var(--preview-outline),inset 0 0 14px #c9f2ff66}.preview-frost-marks{position:absolute;inset:0;z-index:2;pointer-events:none}.preview-frost-mark{position:absolute;color:#f5fcff;font-size:12px;line-height:1;text-shadow:0 0 6px #fff,0 0 12px var(--preview-outline)}.preview-frost-top-left{left:8px;top:-7px}.preview-frost-top-center{left:50%;top:-7px;transform:translateX(-50%)}.preview-frost-top-right{right:8px;top:-7px}.preview-frost-right-mid{right:-7px;top:50%;transform:translateY(-50%)}.preview-frost-bottom-right{right:8px;bottom:-7px}.preview-frost-bottom-center{left:50%;bottom:-7px;transform:translateX(-50%)}.preview-frost-bottom-left{left:8px;bottom:-7px}.preview-frost-left-mid{left:-7px;top:50%;transform:translateY(-50%)}.preview-profile>*{position:relative;z-index:1}.preview-profile>.preview-frost-marks{position:absolute;z-index:2}.preview-avatar{position:relative;isolation:isolate;overflow:visible}.preview-avatar>span{position:relative;z-index:1}.preview-avatar.saturn-circle-preview>span{position:absolute;inset:0;display:grid;place-items:center;border-radius:50%;background:#171c2a;z-index:3}.preview-avatar.saturn-circle-preview:before,.preview-avatar.saturn-circle-preview:after{content:'';position:absolute;z-index:0;left:50%;top:50%;width:176%;height:56%;border:2px solid #a66b2b;border-radius:50%;transform:translate(-50%,-50%) rotate(-25deg);pointer-events:none}.preview-avatar.saturn-circle-preview:after{z-index:2;width:122%;height:42%;border-color:#f4d889;clip-path:inset(48% -15% -15% -15%);opacity:.88}.preview-avatar.frozen-circle-preview{position:relative;border:4px double #f5fcff!important;box-shadow:0 0 0 2px var(--preview-circle),0 0 18px var(--preview-circle),inset 0 0 10px #c9f2ff88}.preview-avatar.frozen-circle-preview:after{content:'❄';position:absolute;top:-3px;right:-2px;color:#f5fcff;font-size:13px;text-shadow:0 0 7px var(--preview-circle)}.preview-card.profile-frozen-preview{position:relative;isolation:isolate;overflow:hidden}.preview-card.profile-frozen-preview:after{content:'❄       ❄       ❄       ❄       ❄';position:absolute;inset:0;display:flex;align-items:center;justify-content:space-around;color:#f5fcff;font-size:23px;opacity:.1;text-shadow:0 0 8px #c9f2ff;pointer-events:none;z-index:0}.preview-card>*{position:relative;z-index:1}";
     document.head.appendChild(frostPreviewStyles);
     document.getElementById("showBackgrounds").addEventListener("click",()=>{document.getElementById("cosmeticCategories").hidden=true;document.getElementById("backgroundCatalog").hidden=false});
     document.getElementById("backToCategories").addEventListener("click",()=>{document.getElementById("backgroundCatalog").hidden=true;document.getElementById("cosmeticCategories").hidden=false});
@@ -3863,6 +3974,7 @@ function renderCosmeticsStore(data) {
       card.classList.remove("profile-frozen-preview");
       const avatar=document.getElementById("previewAvatar");
       avatar.classList.remove("frozen-circle-preview");
+      avatar.classList.remove("saturn-circle-preview");
       avatar.style.border="none";
       avatar.style.borderRadius="17px";
       avatar.style.background="#ffffff18";
@@ -3888,6 +4000,7 @@ function renderCosmeticsStore(data) {
       card.classList.remove("profile-frozen-preview");
       const avatar=document.getElementById("previewAvatar");
       avatar.classList.remove("frozen-circle-preview");
+      avatar.classList.remove("saturn-circle-preview");
       avatar.style.border="none";
       avatar.style.borderRadius="17px";
       avatar.style.background="#ffffff18";
@@ -3911,12 +4024,17 @@ function renderCosmeticsStore(data) {
       card.classList.toggle("profile-frozen-preview",type==="effect");
       setPreviewOutline(null);
       avatar.classList.toggle("frozen-circle-preview",type==="circle"&&Boolean(item.frozen));
+      avatar.classList.toggle("saturn-circle-preview",type==="circle"&&Boolean(item.saturn));
       avatar.style.setProperty("--preview-circle",item.color||"transparent");
       avatar.style.border=type==="circle"?(item.frozen?"4px double #f5fcff":item.rainbow?"5px solid transparent":"4px solid "+item.color):"none";
       avatar.style.boxShadow="";
       avatar.style.background=type==="circle"&&item.rainbow?"linear-gradient(#111827,#111827) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box":"#ffffff18";
       avatar.style.borderRadius=type==="circle"?"50%":"17px";
-      document.getElementById("previewProfileDescription").textContent=type==="circle"?"O círculo aparece somente quando um cosmético de contorno está equipado.": "Flocos translúcidos acompanham o perfil em suas exibições.";
+      document.getElementById("previewProfileDescription").textContent=type==="circle"
+        ? item.saturn
+          ? "Os anéis de Saturno contornam a foto sem cobrir o rosto."
+          : "O círculo aparece ao redor da foto, independentemente do outline."
+        : "Flocos translúcidos acompanham o perfil em suas exibições.";
       document.getElementById("previewAction").textContent=actionLabel(key,type);
       document.getElementById("previewAction").disabled=currentForType(type)===key;
       showFeedback(dialogFeedback,"",false);if(!dialog.open)dialog.showModal();
@@ -5035,6 +5153,58 @@ function renderEconomyAdmin(data) {
   </script></body></html>`;
 }
 
+function renderCommunityVipAdmin(data) {
+  const context = JSON.stringify({ platform: data.platform, groupId: data.groupId }).replace(/</g, "\\u003c");
+  const initialCommands = JSON.stringify(data.communityVip.vipCommands).replace(/</g, "\\u003c");
+  const offerRows = (items, type) => items.map(offer => {
+    const price = type === "shop"
+      ? economy.formatMoney(offer.price)
+      : `R$ ${(offer.priceCents / 100).toFixed(2).replace(".", ",")}`;
+    return `<article class="item"><div><strong>#${offer.id} · ${escapeHtml(vipHelper.formatDurationText(offer.durationMs))}</strong><p>${escapeHtml(price)}</p></div><div class="actions"><button type="button" data-edit-offer="${type}" data-id="${offer.id}" data-duration="${offer.durationMs}" data-price="${type === "shop" ? offer.price : offer.priceCents}">Editar</button><button type="button" data-delete-offer="${type}" data-id="${offer.id}">Remover</button></div></article>`;
+  }).join("");
+  const pendingOrders = data.communityVip.orders.filter(order => order.status === "pending").map(order =>
+    `<article class="item"><div><strong>Pedido #${order.id} · ${escapeHtml(order.displayName || order.userId)}</strong><p>${escapeHtml(order.userId)} · ${escapeHtml(vipHelper.formatDurationText(order.durationMs))} · R$ ${(order.priceCents / 100).toFixed(2).replace(".", ",")}</p></div><div class="actions"><button type="button" data-order-action="approved" data-id="${order.id}">Aprovar</button><button type="button" data-order-action="rejected" data-id="${order.id}">Recusar</button></div></article>`
+  ).join("");
+  const memberRows = Object.entries(data.communityVip.members)
+    .filter(([, member]) => member.permanent || new Date(member.expiresAt || 0).getTime() > Date.now())
+    .map(([userId, member]) => `<article class="item"><div><strong>${escapeHtml(userId)}</strong><p>${member.permanent ? "Permanente" : `Expira em ${escapeHtml(vipHelper.formatDateTimeDetailed(member.expiresAt))}`}</p></div><button type="button" data-remove-member="${escapeHtml(userId)}">Remover VIP</button></article>`)
+    .join("");
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>VIP local · ${escapeHtml(data.groupName)}</title><style>
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb;--line:#334366;--muted:#9da8bd}*{box-sizing:border-box}body{margin:0;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}button,input,select{font:inherit}.page{width:min(980px,100%);margin:0 auto}.top{display:flex;justify-content:space-between;gap:12px;padding:8px 0 20px;border-bottom:1px solid var(--line)}a{color:#b9c6ff;text-decoration:none;font-weight:700}.hero,.panel{margin-top:20px;padding:22px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#1c2438,#131925)}h1{margin:7px 0;font-size:clamp(23px,4vw,34px)}h2{margin:0;font-size:17px}.muted,.item p{color:var(--muted);font-size:12px;line-height:1.55}.panel{display:grid;gap:13px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}label{display:grid;gap:6px;color:#dce2f3;font-size:12px;font-weight:700}input,select{width:100%;padding:10px;border:1px solid #485776;border-radius:9px;background:#0e1422;color:#f5f7fb}.item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--line);border-radius:11px;background:#ffffff05}.item p{margin:5px 0 0}.list{display:grid;gap:8px}.actions{display:flex;flex-wrap:wrap;gap:7px}button{padding:8px 11px;border:1px solid #7582a3;border-radius:9px;background:#ffffff0b;color:#f5f7fb;font-weight:700;cursor:pointer}button:hover{border-color:#9b8cff;background:#8b7bff20}button:disabled{opacity:.55;cursor:wait}.primary{border-color:#9b8cff;background:#8b7bff30}.feedback{min-height:18px;margin:0;color:#9cf0cf;font-size:12px}.feedback.error{color:#ff9eaa}.offer-form{display:grid;gap:10px;padding:13px;border:1px solid var(--line);border-radius:11px;background:#ffffff04}.toggle{display:flex;align-items:center;gap:8px}.toggle input{width:auto}.vip-command{display:flex;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px}.vip-command button{padding:5px 8px}@media(max-width:620px){body{padding:14px}.hero,.panel{padding:16px}.grid{grid-template-columns:1fr}.item{align-items:flex-start;flex-direction:column}.actions{width:100%}.actions button{flex:1}}
+  </style></head><body><main class="page">
+    <nav class="top"><a href="/painel-admin?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">← Administração</a><a href="/painel-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">Painel do membro</a></nav>
+    <header class="hero"><small>CONFIGURAÇÃO LOCAL · ${escapeHtml(data.platform)}</small><h1>VIP de ${escapeHtml(data.groupName)}</h1><p class="muted">Gerencie assinaturas, ofertas da loja em SatCoins, pedidos em reais, comandos VIP e o cargo automático do Discord. Estas opções não alteram o VIPG global.</p></header>
+    <section class="panel"><div><h2>Conceder VIP a um membro</h2><p class="muted">A duração é somada ao VIP atual; escolha permanente para remover a expiração.</p></div><form id="memberForm" class="offer-form"><div class="grid"><label>ID ou menção do membro<input name="userId" required maxlength="128" placeholder="ID da plataforma"></label><label>Duração<input name="duration" placeholder="30d, 2h30m"></label></div><label class="toggle"><input name="permanent" type="checkbox"> VIP permanente</label><div class="actions"><button class="primary" type="submit">Conceder VIP</button><button type="button" id="removeVip">Remover VIP</button></div></form><div class="list" id="members">${memberRows || '<p class="muted">Nenhum membro com VIP ativo registrado.</p>'}</div></section>
+    <section class="panel"><div><h2>Ofertas do VIP local</h2><p class="muted">Cadastre quantas durações e preços precisar. O preço manual é exibido em reais, sem cobrança automática.</p></div><form id="offerForm" class="offer-form"><input type="hidden" name="id"><div class="grid"><label>Tipo<select name="type"><option value="shop">Loja · SatCoins</option><option value="manual">Pedido · reais</option></select></label><label>Duração<input name="duration" required placeholder="30d"></label><label id="offerPriceLabel">Preço em SatCoins<input name="price" type="number" min="0" step="1" required></label></div><div class="actions"><button class="primary" type="submit">Salvar oferta</button><button type="button" id="clearOffer">Limpar</button></div></form><div class="grid"><div><h3>Loja local · SatCoins</h3><div class="list" id="shopOffers">${offerRows(data.communityVip.shopOffers, "shop") || '<p class="muted">Nenhuma oferta.</p>'}</div></div><div><h3>Pedido manual · reais</h3><div class="list" id="manualOffers">${offerRows(data.communityVip.manualOffers, "manual") || '<p class="muted">Nenhuma oferta.</p>'}</div></div></div></section>
+    <section class="panel"><div><h2>Pedidos manuais pendentes</h2><p class="muted">A aprovação concede o período salvo no pedido. Confirme o pagamento fora do bot antes de aprovar.</p></div><div class="list" id="orders">${pendingOrders || '<p class="muted">Nenhum pedido pendente.</p>'}</div></section>
+    <section class="panel"><div><h2>Comandos exclusivos para VIP</h2><p class="muted">A restrição usa o VIP local deste grupo/servidor; VIPG não controla estes comandos.</p></div><form id="commandForm" class="grid"><label>Nome do comando<input name="command" maxlength="64" required placeholder="comando"></label><label>Ação<select name="enabled"><option value="true">Adicionar à lista VIP</option><option value="false">Remover da lista VIP</option></select></label><button class="primary" type="submit">Salvar comando</button></form><div class="list" id="commands"></div></section>
+    ${data.platform === "discord" ? `<section class="panel"><div><h2>Cargo automático do Discord</h2><p class="muted">O bot precisa de Gerenciar Cargos e seu cargo mais alto deve estar acima do cargo VIP.</p></div><form id="roleForm" class="grid"><label>ID do cargo<input name="roleId" maxlength="32" value="${escapeHtml(data.communityVip.discordRoleId || "")}" placeholder="ID ou menção"></label><button class="primary" type="submit">Salvar cargo</button><button type="button" id="clearRole">Remover cargo</button></form></section>` : ""}
+    <p class="feedback" id="feedback" role="status" aria-live="polite"></p>
+  </main><script>
+    const context=${context},feedback=document.getElementById("feedback"),offerForm=document.getElementById("offerForm");
+    async function api(action,payload={}){const response=await fetch("/api/account/local/admin-community-vip",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...context,action,...payload})});const result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível atualizar o VIP local.");return result}
+    function show(message,error=false){feedback.textContent=message;feedback.classList.toggle("error",error)}
+    function durationMs(value){const text=String(value||"").toLowerCase(),regex=/(\d+(?:[.,]\d+)?)\\s*(d|dia|dias|h|hora|horas|m|min|minuto|minutos|s|seg|segundo|segundos)/g;let total=0,match;const scale={d:86400000,dia:86400000,dias:86400000,h:3600000,hora:3600000,horas:3600000,m:60000,min:60000,minuto:60000,minutos:60000,s:1000,seg:1000,segundo:1000,segundos:1000};while((match=regex.exec(text)))total+=Number(match[1].replace(",","."))*scale[match[2]];return Math.round(total)}
+    function renderCommands(commands){const root=document.getElementById("commands");root.replaceChildren();if(!commands.length){root.textContent="Nenhum comando VIP configurado.";return}for(const command of commands){const row=document.createElement("div");row.className="vip-command";const name=document.createElement("span");name.textContent=command;const remove=document.createElement("button");remove.type="button";remove.textContent="Remover";remove.addEventListener("click",()=>saveCommand(command,false));row.append(name,remove);root.append(row)}}
+    function renderState(vip){renderCommands(vip.vipCommands||[])}
+    async function run(action,payload){const result=await api(action,payload);renderState(result.communityVip);show(result.message||"VIP local atualizado.");if(action==="member-set"||action==="member-remove"||action==="order-resolve"||action==="offer-upsert"||action==="offer-remove")window.setTimeout(()=>window.location.reload(),500);return result}
+    document.getElementById("memberForm").addEventListener("submit",async event=>{event.preventDefault();const form=event.currentTarget,userId=form.elements.userId.value.trim(),permanent=form.elements.permanent.checked,ms=durationMs(form.elements.duration.value);if(!permanent&&!ms){show("Informe uma duração válida.",true);return}try{await run("member-set",{userId,permanent,durationMs:ms})}catch(error){show(error.message,true)}});
+    async function removeMember(userId){try{await run("member-remove",{userId})}catch(error){show(error.message,true)}}
+    document.getElementById("removeVip").addEventListener("click",()=>{const id=document.querySelector('#memberForm [name="userId"]').value.trim();if(id)removeMember(id);else show("Informe o ID do membro.",true)});
+    document.getElementById("members").addEventListener("click",event=>{const button=event.target.closest("[data-remove-member]");if(button)removeMember(button.dataset.removeMember)});
+    offerForm.elements.type.addEventListener("change",()=>{const manual=offerForm.elements.type.value==="manual";document.getElementById("offerPriceLabel").innerHTML=manual?'Preço em reais<input name="price" type="number" min="0" step="0.01" required>':'Preço em SatCoins<input name="price" type="number" min="0" step="1" required';});
+    document.getElementById("clearOffer").addEventListener("click",()=>{offerForm.reset();offerForm.elements.id.value="";offerForm.elements.type.dispatchEvent(new Event("change"))});
+    document.querySelectorAll("[data-edit-offer]").forEach(button=>button.addEventListener("click",()=>{offerForm.elements.type.value=button.dataset.editOffer;offerForm.elements.type.dispatchEvent(new Event("change"));offerForm.elements.id.value=button.dataset.id;offerForm.elements.duration.value=(Number(button.dataset.duration)/86400000)+"d";offerForm.elements.price.value=button.dataset.editOffer==="manual"?(Number(button.dataset.price)/100).toFixed(2):button.dataset.price;offerForm.scrollIntoView({block:"center"})}));
+    document.querySelectorAll("[data-delete-offer]").forEach(button=>button.addEventListener("click",async()=>{try{await run("offer-remove",{type:button.dataset.deleteOffer,offerId:Number(button.dataset.id)})}catch(error){show(error.message,true)}}));
+    offerForm.addEventListener("submit",async event=>{event.preventDefault();const type=offerForm.elements.type.value,ms=durationMs(offerForm.elements.duration.value),raw=offerForm.elements.price.value,price=type==="manual"?Math.round(Number(raw)*100):Number(raw);if(!ms||!Number.isSafeInteger(price)||price<0){show("Informe duração e preço válidos.",true);return}try{await run("offer-upsert",{type,offerId:offerForm.elements.id.value||null,durationMs:ms,...(type==="manual"?{priceCents:price}:{price})})}catch(error){show(error.message,true)}});
+    document.getElementById("orders").addEventListener("click",async event=>{const button=event.target.closest("[data-order-action]");if(!button)return;try{await run("order-resolve",{orderId:Number(button.dataset.id),status:button.dataset.orderAction})}catch(error){show(error.message,true)}});
+    async function saveCommand(command,enabled){try{await run("command-set",{command,enabled})}catch(error){show(error.message,true)}}
+    document.getElementById("commandForm").addEventListener("submit",async event=>{event.preventDefault();const form=event.currentTarget;await saveCommand(form.elements.command.value.trim(),form.elements.enabled.value==="true");form.reset()});
+    const roleForm=document.getElementById("roleForm");if(roleForm){roleForm.addEventListener("submit",async event=>{event.preventDefault();try{await run("role-set",{roleId:roleForm.elements.roleId.value.trim()})}catch(error){show(error.message,true)}});document.getElementById("clearRole").addEventListener("click",async()=>{try{await run("role-set",{roleId:null})}catch(error){show(error.message,true)}})}
+    renderCommands(${initialCommands});
+  </script></body></html>`;
+}
+
 function renderGroupAdmin(data) {
   const groupType = data.platform === "discord" ? "Servidor" : "Grupo";
   const warningRows = data.moderation.entries.map(item =>
@@ -5240,7 +5410,7 @@ function renderGroupAdmin(data) {
   </style></head><body><main class="admin-page">
     <nav class="topbar"><a href="/painel-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">← Painel do membro</a><span>${escapeHtml(config.getBotName())} · Administração</span></nav>
     <header class="hero"><img class="avatar" src="${escapeHtml(data.avatarUrl || "/semfoto.jpg")}" alt="Foto de ${escapeHtml(data.userName)}" onerror="this.onerror=null;this.src='/semfoto.jpg'"><div><div class="eyebrow">Painel de administração</div><h1>${escapeHtml(data.groupName)}</h1><p>${groupType} · ${escapeHtml(data.platform)} · Acesso verificado para ${escapeHtml(data.userName)}</p></div></header>
-    <nav class="overview-nav" aria-label="Navegação do painel"><a href="#moderation">Moderação</a><a href="#systemSettings">${data.platform === "whatsapp" ? "Sistemas do grupo" : "Sistemas do SatBot"}</a><a href="/painel-agendamentos?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">Agendamentos</a><a href="/painel-monitores?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">Monitores</a></nav>
+    <nav class="overview-nav" aria-label="Navegação do painel"><a href="#moderation">Moderação</a><a href="#systemSettings">${data.platform === "whatsapp" ? "Sistemas do grupo" : "Sistemas do SatBot"}</a><a href="/painel-agendamentos?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">Agendamentos</a><a href="/painel-monitores?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}">Monitores</a>${data.permissionSnapshot.adminPermissions.some(item => ["manageGroup", "manageRoles"].includes(item.key) && item.allowed) ? `<a href="/painel-vip-local?plataforma=${encodeURIComponent(data.platform)}&grupo=${encodeURIComponent(data.groupId)}" style="border-color:#f6c46a66;background:#f6c46a18;color:#ffd37f">👑 VIP local</a>` : ""}</nav>
     <section class="overview-section" id="moderation" aria-labelledby="moderationTitle">
       <h2 class="section-title" id="moderationTitle">Moderação</h2>
       <p class="section-intro">Gerencie advertências e aplique ações compatíveis com esta plataforma. Sua permissão e a do bot são verificadas ao executar cada ação.</p>
@@ -6597,6 +6767,8 @@ async function readProfile(url, { allowEmpty = false } = {}) {
     item.platform === platform && String(item.platformId) === String(userId)
   );
   const cosmetics = economy.getProfileCosmetics(message, userId);
+  const communityVip = economy.getCommunityVip(message);
+  const communityVipMember = communityVip?.members[String(userId)];
   return {
     platform,
     groupId,
@@ -6631,6 +6803,11 @@ async function readProfile(url, { allowEmpty = false } = {}) {
       stickers: Number(activityUser?.stickers) || 0,
       files: Number(activityUser?.files) || 0,
       position: activityPosition
+    },
+    communityVip: {
+      active: economy.isCommunityVipActive(message, userId),
+      permanent: Boolean(communityVipMember?.permanent),
+      expiresAt: communityVipMember?.expiresAt || null
     },
     nofap,
     marriage: marriageStatus,
@@ -6694,6 +6871,23 @@ function isDashboardAccount(central) {
     central.id &&
     Array.isArray(central.platformAccounts)
   );
+}
+
+function getPlatformSuperUserAccount(central, platform) {
+  const normalizedPlatform = String(platform || "").toLowerCase();
+  if (!["discord", "telegram", "whatsapp"].includes(normalizedPlatform)) {
+    throw new Error("Plataforma inválida.");
+  }
+  const platformAccount = central.platformAccounts.find(account =>
+    account.platform === normalizedPlatform && account.platformId
+  );
+  if (!platformAccount) {
+    throw new Error("Esta plataforma não está vinculada à sua Conta Central.");
+  }
+  if (!owners.isOwner({ platform: normalizedPlatform, userId: platformAccount.platformId })) {
+    throw new Error("Acesso restrito ao superusuário desta plataforma.");
+  }
+  return platformAccount;
 }
 
 async function getSessionCentral(request) {
@@ -7538,6 +7732,7 @@ function renderProfile(profile) {
     profileCircle ? "profile-circle" : "",
     profileCircle?.rainbow ? "rainbow-circle" : "",
     profileCircle?.frozen ? "frozen-circle" : "",
+    profileCircle?.saturn ? "saturn-circle" : "",
     profileEffect?.snowflakes ? "profile-frozen" : ""
   ].filter(Boolean).join(" ");
   const circleFrostMarks = profileCircle?.frozen
@@ -7558,6 +7753,10 @@ function renderProfile(profile) {
       .card.rainbow-outline .grid article{border:8px solid transparent;background:linear-gradient(var(--profile-surface,#202a40),var(--profile-surface,#202a40)) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:profile-rainbow-outline 5s linear infinite}
       .card.profile-circle .avatar{border:3px solid var(--profile-circle);border-radius:50%}
       .card.rainbow-circle .avatar{border:5px solid transparent;border-radius:50%;background:linear-gradient(var(--profile-surface,#202a40),var(--profile-surface,#202a40)) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:profile-rainbow-outline 5s linear infinite}
+      .card.saturn-circle .avatar{position:relative;isolation:isolate;overflow:visible;border:3px solid #e8bd67;border-radius:50%;box-shadow:0 0 0 2px #a66b2b,0 0 16px #e8bd6770}
+      .card.saturn-circle .avatar:before,.card.saturn-circle .avatar:after{content:"";position:absolute;left:50%;top:50%;width:170%;height:58%;border:2px solid #a66b2b;border-radius:50%;transform:translate(-50%,-50%) rotate(-25deg);pointer-events:none;z-index:0}
+      .card.saturn-circle .avatar:after{z-index:2;width:122%;height:42%;border-color:#f4d889;clip-path:inset(48% -15% -15% -15%);opacity:.88}
+      .card.saturn-circle .avatar img{z-index:1;border-radius:50%}
       .card.frozen-circle .avatar{position:relative;border:4px double #f5fcff;background:linear-gradient(var(--profile-surface,#202a40),var(--profile-surface,#202a40)) padding-box,linear-gradient(145deg,#fff,var(--profile-circle),#dff8ff,var(--profile-circle),#fff) border-box;box-shadow:0 0 0 2px var(--profile-circle),0 0 0 5px #f5fcff88,0 0 20px var(--profile-circle),inset 0 0 12px #c9f2ff88}
       .frozen-circle-marks{position:absolute;inset:0;z-index:3;pointer-events:none}
       .frozen-circle-mark{position:absolute;color:#f5fcff;font-size:13px;line-height:1;text-shadow:0 0 4px #fff,0 0 9px var(--profile-circle)}
@@ -7789,7 +7988,7 @@ function renderRanking(ranking) {
     ).join("")
     : `<p class="muted">Ainda não há usuários neste ranking.</p>`;
 
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)} - ${escapeHtml(botName)}</title><style>${styles()} @keyframes rank-rainbow-cycle{to{background-position:100% 50%,100% 50%}}.ranking{margin-top:22px;display:grid;gap:10px}.rank-row{display:grid;grid-template-columns:60px 42px 1fr auto auto;align-items:center;gap:14px;padding:17px 18px;border:1px solid #334566;border-radius:14px;background:var(--rank-background,#202a40);color:inherit;text-decoration:none;transition:transform .15s ease,border-color .15s ease,filter .15s ease}.rank-row.rainbow-background{background-size:300% 300%;animation:rank-rainbow-cycle 5s linear infinite}.rank-row.rainbow-outline{border:6px solid transparent;background:var(--rank-background,linear-gradient(#202a40,#202a40)) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:rank-rainbow-cycle 5s linear infinite}.rank-row.rainbow-outline.rainbow-background{background-size:300% 300%,300% 100%}.rank-row:hover,.rank-row:focus-visible{transform:translateY(-2px);border-color:#7ea7ff;filter:brightness(1.12);outline:none}.rank-row.rainbow-outline:hover,.rank-row.rainbow-outline:focus-visible{border-color:transparent}.rank-row strong{font-size:22px;color:#8eaaff}.rank-row span{font-weight:700}.rank-avatar{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#111827;color:#dcecff!important;font-size:16px}.rank-avatar.has-circle{border:3px solid var(--rank-circle)}.rank-avatar.rainbow-circle{border:4px solid transparent;background:linear-gradient(#111827,#111827) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:rank-rainbow-cycle 5s linear infinite}      .rank-avatar.frozen-circle{position:relative;border:3px double #f5fcff;box-shadow:0 0 0 2px var(--rank-circle),0 0 14px var(--rank-circle)}.rank-avatar.frozen-circle:before,.rank-avatar.frozen-circle:after{position:absolute;color:#eaf7ff;font-size:12px;text-shadow:0 0 5px #83dfff}.rank-avatar.frozen-circle:before{content:"❄";bottom:-5px;left:-5px}.rank-avatar.frozen-circle:after{content:"❄";top:-5px;right:-5px}.rank-row.profile-frozen{position:relative;isolation:isolate;overflow:hidden}.rank-row.profile-frozen:after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:.015;background-image:url("${profileSnowPattern()}");background-size:180px 180px}    .rank-row.frozen-outline{position:relative;isolation:isolate;overflow:hidden;border:4px double #f5fcff;box-shadow:0 0 0 2px var(--rank-outline),0 0 18px var(--rank-outline)}
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)} - ${escapeHtml(botName)}</title><style>${styles()} @keyframes rank-rainbow-cycle{to{background-position:100% 50%,100% 50%}}.ranking{margin-top:22px;display:grid;gap:10px}.rank-row{display:grid;grid-template-columns:60px 42px 1fr auto auto;align-items:center;gap:14px;padding:17px 18px;border:1px solid #334566;border-radius:14px;background:var(--rank-background,#202a40);color:inherit;text-decoration:none;transition:transform .15s ease,border-color .15s ease,filter .15s ease}.rank-row.rainbow-background{background-size:300% 300%;animation:rank-rainbow-cycle 5s linear infinite}.rank-row.rainbow-outline{border:6px solid transparent;background:var(--rank-background,linear-gradient(#202a40,#202a40)) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:rank-rainbow-cycle 5s linear infinite}.rank-row.rainbow-outline.rainbow-background{background-size:300% 300%,300% 100%}.rank-row:hover,.rank-row:focus-visible{transform:translateY(-2px);border-color:#7ea7ff;filter:brightness(1.12);outline:none}.rank-row.rainbow-outline:hover,.rank-row.rainbow-outline:focus-visible{border-color:transparent}.rank-row strong{font-size:22px;color:#8eaaff}.rank-row span{font-weight:700}.rank-avatar{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#111827;color:#dcecff!important;font-size:16px}.rank-avatar.has-circle{border:3px solid var(--rank-circle)}.rank-avatar.rainbow-circle{border:4px solid transparent;background:linear-gradient(#111827,#111827) padding-box,linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#651fff,#ff1744) border-box;background-size:100% 100%,300% 100%;animation:rank-rainbow-cycle 5s linear infinite}        .rank-avatar.frozen-circle{position:relative;border:3px double #f5fcff;box-shadow:0 0 0 2px var(--rank-circle),0 0 14px var(--rank-circle)}.rank-avatar.frozen-circle:before,.rank-avatar.frozen-circle:after{position:absolute;color:#eaf7ff;font-size:12px;text-shadow:0 0 5px #83dfff}.rank-avatar.frozen-circle:before{content:"❄";bottom:-5px;left:-5px}.rank-avatar.frozen-circle:after{content:"❄";top:-5px;right:-5px}    .rank-avatar.saturn-circle{position:relative;isolation:isolate;border:3px solid #e8bd67;box-shadow:0 0 0 2px #a66b2b,0 0 14px #e8bd6770}.rank-avatar.saturn-circle:before,.rank-avatar.saturn-circle:after{content:"";position:absolute;left:50%;top:50%;width:170%;height:58%;border:2px solid #a66b2b;border-radius:50%;transform:translate(-50%,-50%) rotate(-25deg);pointer-events:none;z-index:0}.rank-avatar.saturn-circle:after{z-index:2;width:122%;height:42%;border-color:#f4d889;clip-path:inset(48% -15% -15% -15%);opacity:.88}.rank-row.profile-frozen{position:relative;isolation:isolate;overflow:hidden}.rank-row.profile-frozen:after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:.015;background-image:url("${profileSnowPattern()}");background-size:180px 180px}    .rank-row.frozen-outline{position:relative;isolation:isolate;overflow:hidden;border:4px double #f5fcff;box-shadow:0 0 0 2px var(--rank-outline),0 0 18px var(--rank-outline)}
   .rank-row.frozen-outline:before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:.03;background-image:url("${profileSnowPattern()}");background-size:180px 180px}.rank-row small{display:block;color:#8998b3;font-weight:400;font-size:11px;margin-top:4px}.rank-row b{white-space:nowrap}.rank-row em{font-style:normal;color:#b8c3d9;font-size:13px}@media(prefers-reduced-motion:reduce){.rank-row.rainbow-background,.rank-row.rainbow-outline,.rank-avatar.rainbow-circle{animation:none}}@media(max-width:600px){.rank-row{grid-template-columns:42px 36px 1fr auto}.rank-row em{grid-column:3}.rank-row b{font-size:13px}}</style></head><body><main class="card"><div class="brand">${escapeHtml(botName)} <span>RANKING</span></div><header><div><h1>${escapeHtml(title)}</h1><p class="muted">${escapeHtml(ranking.groupName)}</p></div></header><div class="scope">Plataforma: ${escapeHtml(ranking.platform)} <span>•</span> ID: ${escapeHtml(ranking.groupId)}</div><section class="ranking">${rows}</section><footer>Ranking local do grupo/servidor • ${escapeHtml(botName)}</footer></main></body></html>`;
 }
 
@@ -7816,7 +8015,8 @@ function renderRankingEntry(ranking, entry, metrics) {
     "rank-avatar",
     circle ? "has-circle" : "",
     circle?.rainbow ? "rainbow-circle" : "",
-    circle?.frozen ? "frozen-circle" : ""
+    circle?.frozen ? "frozen-circle" : "",
+    circle?.saturn ? "saturn-circle" : ""
   ].filter(Boolean).join(" ");
   const initial = Array.from(String(entry.name || "?"))[0] || "?";
   const outlineFrostMarks = outline?.frozen
@@ -7827,7 +8027,7 @@ function renderRankingEntry(ranking, entry, metrics) {
     : "";
   const avatarStyle = entry.avatarUrl ? `style="position:relative"` : "";
   const avatarImage = entry.avatarUrl
-    ? `<img src="${escapeHtml(entry.avatarUrl)}" alt="" aria-hidden="true" referrerpolicy="no-referrer" style="position:absolute;inset:0;width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.remove()">`
+    ? `<img src="${escapeHtml(entry.avatarUrl)}" alt="" aria-hidden="true" referrerpolicy="no-referrer" style="position:absolute;inset:0;z-index:1;width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.remove()">`
     : "";
   const row = `${outlineFrostMarks}<strong>#${entry.position}</strong><span class="${avatarClasses}" ${avatarStyle}>${escapeHtml(initial)}${avatarImage}${circleFrostMarks}</span><span>${escapeHtml(entry.name)}<small>ID: ${escapeHtml(entry.userId)}</small></span>${metrics}`;
   return entry.profileAvailable === false
@@ -8076,6 +8276,148 @@ function start() {
         return;
       }
 
+      if (requestUrl.pathname === "/api/account/su/rental") {
+        const platform = String(payload?.platform || "").toLowerCase();
+        let platformAccount;
+        try {
+          platformAccount = getPlatformSuperUserAccount(central, platform);
+        } catch (error) {
+          const reason = String(error?.message || "");
+          const statusCode = /restrito|não está vinculada/i.test(reason) ? 403 : 400;
+          sendJson(response, statusCode, { error: reason || "Acesso não autorizado." });
+          return;
+        }
+
+        try {
+          const action = String(payload?.action || "");
+          let result = {};
+          if (action === "settings.update") {
+            if (!payload.settings || typeof payload.settings !== "object" || Array.isArray(payload.settings)) {
+              throw new Error("Configurações de aluguel inválidas.");
+            }
+            const previous = rentalHelper.getSettings(platform);
+            const settings = rentalHelper.setSettings(platform, payload.settings || {});
+            let message = "Configurações salvas.";
+            if (!previous.enabled && settings.enabled) {
+              await rentalHelper.runMaintenance();
+              message = "Aluguel ativado; assinaturas e permanências foram verificadas.";
+            } else if (previous.enabled && !settings.enabled) {
+              const active = rentalHelper.listSubscriptions(platform).filter(subscription =>
+                subscription.permanent || Number(subscription.expiresAt) > Date.now()
+              );
+              const lines = active.slice(0, 20).map(subscription =>
+                `${subscription.id} · ${subscription.scopeId} · ${subscription.permanent ? "permanente" : new Date(subscription.expiresAt).toLocaleString("pt-BR")}`
+              );
+              message = `Aluguel desativado. ${active.length} assinatura(s) ativa(s) mantida(s):\n${lines.join("\n") || "Nenhuma."}${active.length > lines.length ? `\n… e mais ${active.length - lines.length}.` : ""}`;
+              try {
+                await send.text(platform, String(platformAccount.platformId), null,
+                  `ℹ️ O modo de aluguel foi desligado em ${platform}.\n${message}`);
+              } catch (error) {
+                console.error(`[WEB] Não foi possível avisar o SU ${platform} sobre o aluguel desativado:`, error.message || error);
+                message += "\n⚠️ Não consegui enviar este resumo no privado; confira-o nesta página.";
+              }
+            }
+            result = { settings, message };
+          } else if (action === "plan.create") {
+            result = { plan: rentalHelper.createPlan(platform, payload) };
+          } else if (action === "plan.edit") {
+            result = { plan: rentalHelper.editPlan(platform, payload.id, payload) };
+          } else if (action === "plan.delete") {
+            result = { plan: rentalHelper.deletePlan(platform, payload.id) };
+          } else if (action === "order.edit") {
+            result = { order: rentalHelper.editOrder(platform, payload.id, payload.planId) };
+          } else if (action === "order.approve") {
+            const approved = await rentalHelper.approveOrder(platform, payload.id, platformAccount.platformId);
+            result = {
+              order: approved.order,
+              subscription: approved.subscription,
+              warning: approved.warning,
+              message: `Pedido ${approved.order.id} aprovado.${approved.warning ? ` Aviso: ${approved.warning}` : ""}`
+            };
+          } else if (action === "order.reject") {
+            const rejected = await rentalHelper.rejectOrder(platform, payload.id, platformAccount.platformId);
+            result = {
+              order: rejected,
+              warning: rejected.warning,
+              message: `Pedido ${rejected.id} recusado.${rejected.warning ? ` Aviso: ${rejected.warning}` : ""}`
+            };
+          } else if (action === "order.delete") {
+            result = { order: rentalHelper.deleteOrder(platform, payload.id) };
+          } else if (action === "subscription.create") {
+            if (!String(payload.chatId || "").trim()) {
+              throw new Error("Informe o ID do grupo/canal que receberá os avisos da assinatura.");
+            }
+            const subscription = rentalHelper.createSubscription(platform, {
+                scopeId: payload.scopeId,
+                chatId: payload.chatId,
+                creatorId: payload.creatorId || platformAccount.platformId,
+                planId: payload.planId,
+                createdBy: platformAccount.platformId
+              });
+            const failures = await rentalHelper.notifySubscription(
+              platform,
+              subscription,
+              `✅ A assinatura ${subscription.id} foi ativada.${subscription.permanent ? " Acesso permanente." : ` Válida até ${new Date(subscription.expiresAt).toLocaleString("pt-BR")}.`}`
+            );
+            result = {
+              subscription,
+              warning: failures.join(" "),
+              message: `Assinatura ${subscription.id} criada.${failures.length ? ` Aviso: ${failures.join(" ")}` : ""}`
+            };
+          } else if (action === "subscription.edit") {
+            if (typeof payload.permanent !== "boolean") {
+              throw new Error("Informe se a assinatura será permanente.");
+            }
+            result = {
+              subscription: rentalHelper.editSubscription(
+                platform,
+                payload.id,
+                payload.permanent ? { permanent: true } : { expiresAt: payload.expiresAt }
+              )
+            };
+          } else if (action === "subscription.delete") {
+            const deleted = await rentalHelper.deleteSubscription(platform, payload.id, platformAccount.platformId);
+            result = {
+              subscription: deleted,
+              warning: deleted.warning,
+              message: `Assinatura ${deleted.id} removida e bloqueada.${deleted.warning ? ` Aviso: ${deleted.warning}` : ""}`
+            };
+          } else if (action === "onlychats.update") {
+            if (typeof payload.enabled !== "boolean" ||
+                !["ignore", "reply"].includes(payload.mode) ||
+                typeof payload.message !== "string" ||
+                !payload.message.trim() ||
+                payload.message.length > 2000) {
+              throw new Error("Configuração OnlyChats inválida.");
+            }
+            config.setOnlyChatsEnabled(payload.enabled);
+            config.setOnlyChatsMode(payload.mode);
+            config.setOnlyChatsMessage(payload.message);
+            result = { message: "OnlyChats atualizado." };
+          } else if (action === "onlychats.add") {
+            const added = config.addOnlyChatsItem(payload.type, payload.id, payload.name);
+            if (!added) throw new Error("Tipo ou ID de permissão OnlyChats inválido.");
+            result = { message: "Permissão permanente adicionada." };
+          } else if (action === "onlychats.remove") {
+            const removed = config.removeOnlyChatsItem(payload.type, payload.id);
+            if (!removed) throw new Error("Permissão OnlyChats não encontrada.");
+            result = { message: "Permissão removida." };
+          } else {
+            throw new Error("Ação do painel SU inválida.");
+          }
+          sendJson(response, 200, { success: true, ...result });
+        } catch (error) {
+          const reason = String(error?.message || "Não foi possível concluir a ação.");
+          if (error?.code || /indisponível|não foi possível fazer o bot sair/i.test(reason)) {
+            console.error(`[WEB] Falha na ação SU ${platform}/${payload?.action}:`, error.message || error);
+            sendJson(response, 500, { error: reason });
+            return;
+          }
+          sendJson(response, 400, { error: reason });
+        }
+        return;
+      }
+
       if (requestUrl.pathname === "/api/account/platform-groups") {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
         const platformAccount = central.platformAccounts.find(account => account.platform === platform);
@@ -8094,6 +8436,221 @@ function start() {
         } catch (error) {
           console.error(`[WEB] Falha ao listar grupos da plataforma ${platform}:`, error.message || error);
           sendJson(response, 503, { error: "Não foi possível consultar os grupos desta plataforma agora." });
+        }
+        return;
+      }
+
+      if (["/api/account/local/vip-purchase", "/api/account/local/vip-order"].includes(requestUrl.pathname)) {
+        const platform = typeof payload?.platform === "string" ? payload.platform.toLowerCase() : "";
+        const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
+        try {
+          const accountData = await getLocalAccountData(central, platform, groupId);
+          const message = getLocalGroupMessage(platform, groupId, accountData.platformId);
+          if (requestUrl.pathname.endsWith("/vip-order")) {
+            const order = economy.createCommunityVipOrder(message, accountData.platformId, payload?.offerId);
+            if (order?.error === "already_permanent") {
+              sendJson(response, 400, { error: "Você já possui VIP local permanente neste grupo." });
+              return;
+            }
+            if (!order) {
+              sendJson(response, 404, { error: "Oferta de pedido manual não encontrada." });
+              return;
+            }
+            sendJson(response, 200, {
+              success: true,
+              orderId: order.id,
+              message: `Pedido #${order.id} criado. Aguarde o pagamento e a aprovação dos administradores.`
+            });
+            return;
+          }
+
+          const result = economy.buyCommunityVipOffer(message, accountData.platformId, payload?.offerId);
+          if (!result.purchased) {
+            const statusCode = result.reason === "not_found" ? 404 : 400;
+            const errorMessage = result.reason === "insufficient_balance"
+              ? `Saldo insuficiente. Seu saldo é ${economy.formatMoney(result.balance)}.`
+              : result.reason === "not_found" ? "Oferta VIP não encontrada."
+                : result.reason === "already_permanent" ? "Você já possui VIP local permanente neste grupo."
+                  : "Não foi possível concluir a compra.";
+            sendJson(response, statusCode, { error: errorMessage });
+            return;
+          }
+          let warning = null;
+          const vipConfig = economy.getCommunityVip(message);
+          if (platform === "discord" && vipConfig.discordRoleId) {
+            try {
+              await communityVipService.syncDiscordVipRole(groupId, accountData.platformId, vipConfig.discordRoleId, true);
+            } catch (error) {
+              warning = `Compra concluída, mas não foi possível sincronizar o cargo VIP: ${error.message || "erro desconhecido"}`;
+              console.error("[WEB] Compra VIP local sem sincronização do cargo:", error.message || error);
+            }
+          }
+          sendJson(response, 200, {
+            success: true,
+            balanceMinorUnits: result.balance,
+            balanceFormatted: economy.formatMoney(result.balance),
+            message: `VIP adquirido por ${vipHelper.formatDurationText(result.offer.durationMs)}.`,
+            warning
+          });
+        } catch (error) {
+          const reason = String(error?.message || "");
+          const statusCode = /não participa|não está vinculada/i.test(reason) ? 403
+            : /offline/i.test(reason) ? 503 : /inválid|permanente/i.test(reason) ? 400 : 500;
+          if (statusCode === 500 || statusCode === 503) {
+            console.error("[WEB] Falha na compra/pedido de VIP local:", error.message || error);
+          }
+          sendJson(response, statusCode, {
+            error: statusCode === 400 || statusCode === 403 || statusCode === 503
+              ? reason
+              : "Não foi possível concluir a operação de VIP local."
+          });
+        }
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/account/local/admin-community-vip") {
+        const platform = typeof payload?.platform === "string" ? payload.platform.toLowerCase() : "";
+        const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
+        try {
+          const { platformAccount } = await authorizeCommunityVipAdmin(central, platform, groupId);
+          const message = getLocalGroupMessage(platform, groupId, String(platformAccount.platformId));
+          const action = String(payload?.action || "");
+          let messageText = "VIP local atualizado.";
+          let roleWarning = "";
+
+          if (action === "state") {
+            sendJson(response, 200, { communityVip: economy.getCommunityVip(message) });
+            return;
+          }
+          if (action === "member-set") {
+            const userId = String(payload?.userId || "").trim();
+            const permanent = payload?.permanent === true;
+            const durationMs = Number(payload?.durationMs);
+            if (!userId || userId.length > 128 || (!permanent && (!Number.isSafeInteger(durationMs) || durationMs <= 0))) {
+              sendJson(response, 400, { error: "Membro ou duração inválida." });
+              return;
+            }
+            const member = await communityVipService.setMember(message, userId, durationMs, permanent);
+            messageText = permanent
+              ? `VIP permanente concedido a ${userId}.`
+              : `VIP concedido a ${userId} até ${vipHelper.formatDateTimeDetailed(member.expiresAt)}.`;
+            if (member.roleSyncWarning) messageText += ` Aviso: ${member.roleSyncWarning}`;
+          } else if (action === "member-remove") {
+            const userId = String(payload?.userId || "").trim();
+            if (!userId || userId.length > 128) {
+              sendJson(response, 400, { error: "ID de membro inválido." });
+              return;
+            }
+            const result = await communityVipService.removeMember(message, userId);
+            if (!result.removed) {
+              sendJson(response, 404, { error: "Este membro não possui um VIP local registrado." });
+              return;
+            }
+            messageText = `VIP removido de ${userId}.`;
+            if (result.roleSyncWarning) messageText += ` Aviso: ${result.roleSyncWarning}`;
+          } else if (action === "offer-upsert") {
+            const type = payload?.type;
+            const offer = economy.upsertCommunityVipOffer(message, type,
+              type === "manual"
+                ? { durationMs: Number(payload?.durationMs), priceCents: Number(payload?.priceCents) }
+                : { durationMs: Number(payload?.durationMs), price: Number(payload?.price) },
+              payload?.offerId === null || payload?.offerId === undefined || payload?.offerId === ""
+                ? null
+                : Number(payload.offerId));
+            if (!offer) {
+              sendJson(response, 400, { error: "Tipo, duração, preço ou oferta inválida." });
+              return;
+            }
+            messageText = `Oferta #${offer.id} salva.`;
+          } else if (action === "offer-remove") {
+            const removed = economy.removeCommunityVipOffer(message, payload?.type, payload?.offerId);
+            if (!removed) {
+              sendJson(response, 404, { error: "Oferta não encontrada." });
+              return;
+            }
+            messageText = `Oferta #${removed.id} removida.`;
+          } else if (action === "order-resolve") {
+            const status = payload?.status;
+            const order = economy.resolveCommunityVipOrder(message, payload?.orderId, status);
+            if (!order) {
+              sendJson(response, 404, { error: "Pedido pendente não encontrado." });
+              return;
+            }
+            if (status === "approved" && platform === "discord") {
+              const vip = economy.getCommunityVip(message);
+              if (vip.discordRoleId) {
+                try {
+                  await communityVipService.syncDiscordVipRole(groupId, order.userId, vip.discordRoleId, true);
+                } catch (error) {
+                  console.error("[WEB] Pedido aprovado, mas falhou sincronização do cargo:", error.message || error);
+                  roleWarning = ` O VIP foi concedido, mas o cargo não foi sincronizado: ${error.message || "erro desconhecido"}`;
+                }
+              }
+            }
+            messageText = `${status === "approved" ? `Pedido #${order.id} aprovado; VIP concedido.` : `Pedido #${order.id} recusado.`}${roleWarning}`;
+          } else if (action === "command-set") {
+            const result = economy.updateCommunityVipCommand(message, payload?.command, payload?.enabled === true);
+            if (!result) {
+              sendJson(response, 400, { error: "Nome de comando inválido." });
+              return;
+            }
+            messageText = `Comando ${payload.command} ${payload.enabled ? "adicionado à" : "removido da"} lista VIP local.`;
+          } else if (action === "role-set") {
+            if (platform !== "discord") {
+              sendJson(response, 400, { error: "Cargo automático está disponível somente no Discord." });
+              return;
+            }
+            const roleId = payload?.roleId ? String(payload.roleId).replace(/[<@&>]/g, "") : "";
+            if (roleId) {
+              if (!/^\d{15,25}$/.test(roleId)) {
+                sendJson(response, 400, { error: "ID de cargo inválido." });
+                return;
+              }
+              const client = global.discordClient;
+              if (!client || (typeof client.isReady === "function" && !client.isReady())) {
+                throw new Error("O Discord está offline no momento.");
+              }
+              const guild = await client.guilds.fetch(groupId);
+              const [role, botMember, actor] = await Promise.all([
+                guild.roles.fetch(roleId),
+                guild.members.me ? Promise.resolve(guild.members.me) : guild.members.fetchMe(),
+                guild.members.fetch(String(platformAccount.platformId))
+              ]);
+              if (!role || role.managed || role.id === guild.id) {
+                sendJson(response, 400, { error: "Cargo não encontrado ou não pode ser atribuído." });
+                return;
+              }
+              if (!actor.permissions.has(PermissionFlagsBits.Administrator) &&
+                  actor.roles.highest.comparePositionTo(role) <= 0) {
+                sendJson(response, 403, { error: "Você só pode configurar um cargo abaixo do seu maior cargo." });
+                return;
+              }
+              if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles) ||
+                  botMember.roles.highest.comparePositionTo(role) <= 0) {
+                sendJson(response, 400, { error: "O bot precisa de Gerenciar Cargos e de um cargo acima do cargo VIP." });
+                return;
+              }
+            }
+            economy.setCommunityVipRole(message, roleId || null);
+            messageText = roleId ? "Cargo automático do VIP salvo." : "Cargo automático do VIP removido.";
+          } else {
+            sendJson(response, 400, { error: "Ação de VIP local inválida." });
+            return;
+          }
+
+          sendJson(response, 200, { success: true, message: messageText, communityVip: economy.getCommunityVip(message) });
+        } catch (error) {
+          const reason = String(error?.message || "");
+          const statusCode = /não participa|não está vinculada|permissão para gerenciar/i.test(reason) ? 403
+            : /offline/i.test(reason) ? 503 : /inválid|cargo|duração|permanente/i.test(reason) ? 400 : 500;
+          if (statusCode === 500 || statusCode === 503) {
+            console.error("[WEB] Falha ao gerenciar VIP local:", error.message || error);
+          }
+          sendJson(response, statusCode, {
+            error: statusCode === 403 || statusCode === 503 || statusCode === 400
+              ? reason
+              : "Não foi possível gerenciar o VIP local."
+          });
         }
         return;
       }
@@ -9853,7 +10410,8 @@ function start() {
             label: circleDefinition.label,
             color: circleDefinition.color,
             rainbow: Boolean(circleDefinition.rainbow),
-            frozen: Boolean(circleDefinition.frozen)
+            frozen: Boolean(circleDefinition.frozen),
+            saturn: Boolean(circleDefinition.saturn)
           } : null,
           effect: effectDefinition ? {
             key: data.profileEffect,
@@ -9923,6 +10481,24 @@ function start() {
             vaultBalance: data.economyEnabled ? data.account.vaultBalance : 0,
             position: data.economyEnabled ? data.ranks.balance : null
           },
+          communityVip: {
+            active: data.communityVip.active,
+            permanent: data.communityVip.permanent,
+            expiresAt: data.communityVip.expiresAt,
+            shopOffers: data.communityVip.shopOffers.map(offer => ({
+              id: offer.id,
+              durationMs: offer.durationMs,
+              priceMinorUnits: offer.price,
+              priceFormatted: economy.formatMoney(offer.price)
+            })),
+            manualOffers: data.communityVip.manualOffers.map(offer => ({
+              id: offer.id,
+              durationMs: offer.durationMs,
+              priceCents: offer.priceCents,
+              priceFormatted: `R$ ${(offer.priceCents / 100).toFixed(2).replace(".", ",")}`
+            }))
+          },
+          permissions: { canManageVip: data.canManageVip },
           nofap: {
             enabled: Boolean(challenge),
             active: Boolean(challenge && participant?.active),
@@ -10467,6 +11043,55 @@ function start() {
       return;
     }
 
+    const superUserPage = Object.entries(rentalDashboard.PAGES)
+      .find(([, page]) => page.path === requestUrl.pathname);
+    if (request.method === "GET" && superUserPage) {
+      let central;
+      try {
+        central = await getSessionCentral(request);
+      } catch (error) {
+        console.error("[WEB] Falha ao validar sessão do painel SU:", error.message || error);
+        response.writeHead(500, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+        response.end("<!doctype html><html lang=\"pt-BR\"><meta charset=\"utf-8\"><title>Painel indisponível</title><p>Não foi possível validar sua sessão agora.</p></html>");
+        return;
+      }
+      if (!central) {
+        response.writeHead(302, { Location: "/dashboard", "Cache-Control": "no-store" });
+        response.end();
+        return;
+      }
+      const platform = String(requestUrl.searchParams.get("plataforma") || "").toLowerCase();
+      try {
+        getPlatformSuperUserAccount(central, platform);
+        const data = {
+          ...rentalHelper.getDashboardData(platform),
+          platform,
+          onlyChats: config.getOnlyChatsConfig()
+        };
+        response.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Referrer-Policy": "no-referrer",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(rentalDashboard.render(superUserPage[0], data));
+      } catch (error) {
+        const reason = String(error?.message || "");
+        const statusCode = /restrito|não está vinculada/i.test(reason) ? 403
+          : /inválida/i.test(reason) ? 400 : 500;
+        if (statusCode === 500) {
+          console.error("[WEB] Falha ao abrir painel SU:", error.message || error);
+        }
+        response.writeHead(statusCode, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Painel SU indisponível</title><body style="font-family:Segoe UI,Arial;background:#10131c;color:#f5f7fb;padding:40px"><h1>Painel de superusuário indisponível</h1><p>${statusCode === 403 || statusCode === 400 ? escapeHtml(reason) : "Não foi possível carregar o painel agora."}</p><a href="/dashboard" style="color:#b9c6ff">Voltar à Conta Central</a></body></html>`);
+      }
+      return;
+    }
+
     if (request.method === "GET" && ["/painel-local", "/painel-banco", "/busca-sinais"].includes(requestUrl.pathname)) {
       const central = await getSessionCentral(request);
       if (!central) {
@@ -10815,6 +11440,41 @@ function start() {
       return;
     }
 
+    if (request.method === "GET" && requestUrl.pathname === "/painel-vip-local") {
+      const central = await getSessionCentral(request);
+      if (!central) {
+        response.writeHead(302, { Location: "/dashboard", "Cache-Control": "no-store" });
+        response.end();
+        return;
+      }
+      const platform = String(requestUrl.searchParams.get("plataforma") || "").toLowerCase();
+      const groupId = String(requestUrl.searchParams.get("grupo") || "");
+      try {
+        const data = await getCommunityVipAdminData(central, platform, groupId);
+        response.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Referrer-Policy": "no-referrer",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(renderCommunityVipAdmin(data));
+      } catch (error) {
+        const reason = String(error?.message || "");
+        const statusCode = /não participa|não está vinculada|permissão para gerenciar/i.test(reason) ? 403
+          : /offline/i.test(reason) ? 503 : /inválido/i.test(reason) ? 400 : 500;
+        if (statusCode === 500 || statusCode === 503) {
+          console.error("[WEB] Falha ao abrir painel VIP local:", error.message || error);
+        }
+        response.writeHead(statusCode, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Painel VIP indisponível</title><body style="font-family:Segoe UI,Arial;background:#10131c;color:#f5f7fb;padding:40px"><h1>Painel VIP local indisponível</h1><p>${escapeHtml(reason || "Não foi possível carregar o painel.")}</p><a href="/painel-local?plataforma=${encodeURIComponent(platform)}&grupo=${encodeURIComponent(groupId)}" style="color:#b9c6ff">Voltar ao painel do membro</a></body></html>`);
+      }
+      return;
+    }
+
     response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
     response.end("Not found");
   });
@@ -10824,4 +11484,4 @@ function start() {
   return server;
 }
 
-module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking, renderChangelog, renderLocalAccount, renderLocalBank, renderSignalSearch, renderCosmeticsStore, renderShopCatalog, renderGroupAdmin, renderEconomyAdmin, renderAntilinkAdmin, renderAntipalavrasAdmin, renderAntimediaAdmin, renderAntiraidAdmin, renderBlockcmdAdmin, renderWelcomeAdmin, renderAutomationAdmin, renderRpSystemAdmin, renderSchedulesAdmin, renderMonitorsAdmin, canManagePlatformGroup };
+module.exports = { start, readProfile, renderProfile, readRanking, readActivityRanking, renderRanking, renderChangelog, renderLocalAccount, renderLocalBank, renderSignalSearch, renderCosmeticsStore, renderShopCatalog, renderGroupAdmin, renderCommunityVipAdmin, renderEconomyAdmin, renderAntilinkAdmin, renderAntipalavrasAdmin, renderAntimediaAdmin, renderAntiraidAdmin, renderBlockcmdAdmin, renderWelcomeAdmin, renderAutomationAdmin, renderRpSystemAdmin, renderSchedulesAdmin, renderMonitorsAdmin, canManagePlatformGroup };

@@ -75,68 +75,46 @@ adicionar ou remover traduções. Emojis sem tradução podem ser substituídos 
 ⚠️ ou enviados como imagem quando aparecem sozinhos. Aliases:
 `!setemoji` e `!emojidict`.
 
-## 👑 `!set_vip` — assinaturas e acesso VIP
+## 👑 VIP local e VIPG global
 
-Comando exclusivo de superusuários para consultar e administrar assinaturas,
-comandos liberados e áreas em modo VIP-only. O usuário-alvo pode ser indicado
-por ID, menção ou ID da Conta Central, conforme disponível:
+`!vip` consulta o VIP local do grupo/servidor atual e o VIPG da Conta Central.
+O VIP local é gerenciado por administradores ou membros com permissão para
+gerenciar cargos/membros:
 
 ```text
 !set_vip check @usuario
-!set_vip check 123456789
+!set_vip @usuario 30d
+!set_vip @usuario permanente
+!set_vip @usuario remover
+!set_vip loja add 30d 5000
+!set_vip manual add 30d 10,00
+!set_vip pedidos
+!set_vip aprovar 1
 ```
 
-### Duração da assinatura
+As ofertas SatCoins são compradas no grupo; pedidos manuais em reais precisam
+ser pagos fora do bot e aprovados por um administrador. O painel exclusivo do
+VIP local fica no painel do membro/admin. O cargo automático é compatível
+somente com Discord e depende da hierarquia de cargos do bot.
+
+Somente superusuários gerenciam o VIPG global da Conta Central. Ele controla o
+bypass global do Anti-PV, não os comandos VIP locais:
 
 ```text
-!set_vip set @usuario 15d
-!set_vip add @usuario 2h 30m
-!set_vip rem @usuario 5d
-!set_vip date @usuario 31/12/2026 23:59
-!set_vip perm @usuario
-!set_vip reset @usuario
+!set_vipg check @usuario
+!set_vipg set @usuario 15d
+!set_vipg add @usuario 2h 30m
+!set_vipg rem @usuario 5d
+!set_vipg date @usuario 31/12/2026 23:59
+!set_vipg perm @usuario
+!set_vipg reset @usuario
+!set_vipg pv on whatsapp
+!set_vipg pv off telegram
 ```
 
-- `set` substitui a duração existente e começa a contar a partir de agora.
-- `add` acrescenta tempo à assinatura.
-- `rem` desconta tempo restante.
-- `date` define uma expiração exata no formato `dd/mm/aaaa`, com hora
-  opcional `hh:mm`.
-- `perm` concede VIP permanente.
-- `reset` (ou `cancel`) remove o VIP.
-
-Unidades aceitas: `d` (dias), `h` (horas) e `m` (minutos), que podem ser
-combinadas, como `15d 12h 30m`.
-
-### Comandos e áreas exclusivas
-
-```text
-!set_vip listcmd
-!set_vip addcmd play
-!set_vip remcmd play
-```
-
-`addcmd` e `remcmd` incluem ou removem comandos da lista de comandos VIP.
-Para consultar quais estão configurados, use `listcmd`.
-
-O bypass de Anti-PV pode ser controlado por plataforma:
-
-```text
-!set_vip pv on whatsapp
-!set_vip pv off telegram
-```
-
-O modo VIP-only pode ser aplicado ao chat atual, servidor ou categoria atual:
-
-```text
-!set_vip chat on
-!set_vip server on
-!set_vip categorie on
-```
-
-Use `off` no mesmo escopo para desativar. Os comandos de escopo dependem de
-estar no chat, servidor ou categoria que deseja configurar. Alias:
-`!setvip`.
+Unidades aceitas: `d` (dias), `h` (horas), `m` (minutos) e `s` (segundos).
+Consulte [a documentação VIP completa](../../setvip.md) para os subcomandos
+de ofertas, pedidos, comandos e cargo local.
 
 ## 🌐 `!actG_edit` — catálogo global de ações RP
 

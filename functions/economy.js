@@ -123,6 +123,93 @@ function createCommunityStore() {
     };
 }
 
+function createCommunityVip() {
+    return {
+        members: {},
+        shopOffers: [],
+        manualOffers: [],
+        orders: [],
+        vipCommands: [],
+        discordRoleId: null,
+        nextOfferId: 1,
+        nextOrderId: 1
+    };
+}
+
+function normalizeVipOffers(value, currency) {
+    if (!Array.isArray(value)) return [];
+    return value.filter(offer =>
+        offer && typeof offer === "object" &&
+        Number.isSafeInteger(Number(offer.id)) && Number(offer.id) > 0 &&
+        Number.isSafeInteger(Number(offer.durationMs)) && Number(offer.durationMs) > 0 &&
+        Number.isSafeInteger(Number(currency === "satcoins" ? offer.price : offer.priceCents)) &&
+        Number(currency === "satcoins" ? offer.price : offer.priceCents) >= 0
+    ).map(offer => ({
+        id: Number(offer.id),
+        durationMs: Number(offer.durationMs),
+        ...(currency === "satcoins"
+            ? { price: Number(offer.price) }
+            : { priceCents: Number(offer.priceCents) })
+    }));
+}
+
+function normalizeCommunityVip(value) {
+    const defaults = createCommunityVip();
+    if (!value || typeof value !== "object" || Array.isArray(value)) return defaults;
+
+    const legacyShopPrice = Number(value.shop?.price);
+    const legacyManualPrice = Number(value.manualSale?.priceCents);
+    const shopOffers = normalizeVipOffers(value.shopOffers || value.shop?.offers, "satcoins");
+    const manualOffers = normalizeVipOffers(value.manualOffers || value.manualSale?.offers, "reais");
+    if (!shopOffers.length && Number.isSafeInteger(legacyShopPrice) && legacyShopPrice >= 0) {
+        shopOffers.push({ id: 1, durationMs: 30 * 24 * 60 * 60 * 1000, price: legacyShopPrice });
+    }
+    if (!manualOffers.length && Number.isSafeInteger(legacyManualPrice) && legacyManualPrice >= 0) {
+        manualOffers.push({ id: 1, durationMs: 30 * 24 * 60 * 60 * 1000, priceCents: legacyManualPrice });
+    }
+
+    const members = {};
+    if (value.members && typeof value.members === "object" && !Array.isArray(value.members)) {
+        for (const [userId, member] of Object.entries(value.members)) {
+            if (!member || typeof member !== "object") continue;
+            members[String(userId)] = {
+                permanent: member.permanent === true,
+                startedAt: typeof member.startedAt === "string" ? member.startedAt : null,
+                expiresAt: typeof member.expiresAt === "string" ? member.expiresAt : null,
+                updatedAt: typeof member.updatedAt === "string" ? member.updatedAt : null
+            };
+        }
+    }
+    const orders = Array.isArray(value.orders)
+        ? value.orders.filter(order => order && typeof order === "object" &&
+            Number.isSafeInteger(Number(order.id)) &&
+            ["pending", "approved", "rejected"].includes(order.status) &&
+            typeof order.userId === "string"
+        ).map(order => ({
+            ...order,
+            id: Number(order.id),
+            durationMs: Number.isSafeInteger(Number(order.durationMs)) && Number(order.durationMs) > 0
+                ? Number(order.durationMs)
+                : 30 * 24 * 60 * 60 * 1000,
+            priceCents: Math.max(0, Number(order.priceCents) || 0)
+        }))
+        : [];
+    const maxOfferId = [...shopOffers, ...manualOffers].reduce((max, offer) => Math.max(max, offer.id), 0);
+    return {
+        members,
+        shopOffers,
+        manualOffers,
+        orders,
+        vipCommands: Array.isArray(value.vipCommands)
+            ? [...new Set(value.vipCommands.map(command => String(command).trim().toLowerCase())
+                .filter(command => /^[a-z0-9_-]{1,64}$/.test(command)))]
+            : [],
+        discordRoleId: typeof value.discordRoleId === "string" && value.discordRoleId ? value.discordRoleId : null,
+        nextOfferId: Math.max(maxOfferId + 1, Number(value.nextOfferId) || 1),
+        nextOrderId: Math.max(1, Number(value.nextOrderId) || 1, ...orders.map(order => order.id + 1))
+    };
+}
+
 function createVaultConfig() {
     return {
         mode: "secure",
@@ -294,7 +381,8 @@ function loadScope(scope) {
         includeVaultInRanking: false,
         vaultConfig: createVaultConfig(),
         accounts: {},
-        communityStore: createCommunityStore()
+        communityStore: createCommunityStore(),
+        communityVip: createCommunityVip()
     };
 
     if (fs.existsSync(dataFile)) {
@@ -311,7 +399,8 @@ function loadScope(scope) {
                     accounts: parsed.accounts && typeof parsed.accounts === "object" && !Array.isArray(parsed.accounts)
                         ? parsed.accounts
                         : {},
-                    communityStore: normalizeCommunityStore(parsed.communityStore)
+                    communityStore: normalizeCommunityStore(parsed.communityStore),
+                    communityVip: normalizeCommunityVip(parsed.communityVip)
                 };
             }
         } catch (err) {
@@ -921,6 +1010,75 @@ function setProfileEffect(message, effect) {
     };
     saveScope(scope, loadScope(scope));
     return { purchased: true, boughtNow: !alreadyOwned, effect: effectKey, price, balance: account.balance };
+}
+
+function grantProfileCosmetic(message, target, cosmeticId) {
+    const targetId = String(target?.userId || "").trim();
+    const idText = String(cosmeticId || "").trim();
+    if (!targetId || !/^\d+$/.test(idText)) {
+        return { granted: false, reason: "invalid-target-or-id" };
+    }
+
+    const numericId = Number(idText);
+    if (!Number.isSafeInteger(numericId)) return { granted: false, reason: "invalid-cosmetic" };
+
+    const catalogs = [
+        {
+            type: "background",
+            field: "backgrounds",
+            items: profileCosmetics.PROFILE_BACKGROUNDS,
+            normalize: profileCosmetics.normalizeProfileBackground
+        },
+        {
+            type: "outline",
+            field: "outlines",
+            items: profileCosmetics.PROFILE_OUTLINES,
+            normalize: profileCosmetics.normalizeProfileOutline
+        },
+        {
+            type: "circle",
+            field: "circles",
+            items: profileCosmetics.PROFILE_CIRCLES,
+            normalize: profileCosmetics.normalizeProfileCircle
+        },
+        {
+            type: "effect",
+            field: "effects",
+            items: profileCosmetics.PROFILE_EFFECTS,
+            normalize: profileCosmetics.normalizeProfileEffect
+        }
+    ];
+    const match = catalogs
+        .map(catalog => ({
+            ...catalog,
+            entry: Object.entries(catalog.items).find(([, item]) => item.id === numericId)
+        }))
+        .find(catalog => catalog.entry);
+    if (!match) return { granted: false, reason: "invalid-cosmetic" };
+
+    const { account, scope } = getAccount({
+        ...message,
+        userId: targetId,
+        displayName: target.displayName || null,
+        username: target.username || null
+    });
+    const cosmetics = account.cosmetics && typeof account.cosmetics === "object"
+        ? account.cosmetics
+        : {};
+    const owned = Array.isArray(cosmetics[match.field])
+        ? cosmetics[match.field].map(match.normalize).filter(Boolean)
+        : [];
+    const [key, item] = match.entry;
+    if (owned.includes(key)) {
+        return { granted: false, reason: "already-owned", type: match.type, key, item };
+    }
+
+    account.cosmetics = {
+        ...cosmetics,
+        [match.field]: [...new Set([...owned, key])]
+    };
+    saveScope(scope, loadScope(scope));
+    return { granted: true, type: match.type, key, item };
 }
 
 function buyProfileCosmetic(message, selection) {
@@ -1690,6 +1848,224 @@ function getStoreItems() {
         ...item,
         position: index + 1
     }));
+}
+
+function getCommunityVip(message) {
+    const scope = getScope(message);
+    if (!scope) return null;
+    const vip = loadScope(scope).communityVip;
+    return {
+        ...vip,
+        members: Object.fromEntries(Object.entries(vip.members).map(([userId, member]) => [userId, { ...member }])),
+        shopOffers: vip.shopOffers.map(offer => ({ ...offer })),
+        manualOffers: vip.manualOffers.map(offer => ({ ...offer })),
+        orders: vip.orders.map(order => ({ ...order })),
+        vipCommands: [...vip.vipCommands]
+    };
+}
+
+function isCommunityVipActive(message, userId, now = Date.now()) {
+    const member = getCommunityVip(message)?.members[String(userId)];
+    return Boolean(member && (member.permanent ||
+        (member.expiresAt && new Date(member.expiresAt).getTime() > now)));
+}
+
+function grantCommunityVip(vip, userId, durationMs, permanent = false, now = Date.now()) {
+    const id = String(userId || "").trim();
+    if (!id) throw new Error("ID de membro inválido.");
+    if (permanent) {
+        vip.members[id] = {
+            permanent: true,
+            startedAt: new Date(now).toISOString(),
+            expiresAt: null,
+            updatedAt: new Date(now).toISOString()
+        };
+        return vip.members[id];
+    }
+    if (vip.members[id]?.permanent) {
+        throw new Error("O membro já possui VIP permanente.");
+    }
+    if (!Number.isSafeInteger(durationMs) || durationMs <= 0) {
+        throw new Error("A duração do VIP deve ser maior que zero.");
+    }
+    const previous = vip.members[id];
+    const previousExpiry = Math.max(now, new Date(previous?.expiresAt || 0).getTime() || 0);
+    const startedAt = previousExpiry > now && previous?.startedAt
+        ? previous.startedAt
+        : new Date(now).toISOString();
+    vip.members[id] = {
+        permanent: false,
+        startedAt,
+        expiresAt: new Date(previousExpiry + durationMs).toISOString(),
+        updatedAt: new Date(now).toISOString()
+    };
+    return vip.members[id];
+}
+
+function setCommunityVip(message, userId, durationMs, permanent = false) {
+    const scope = getScope(message);
+    if (!scope) return null;
+    const data = loadScope(scope);
+    const member = grantCommunityVip(data.communityVip, userId, durationMs, permanent);
+    saveScope(scope, data);
+    return { ...member };
+}
+
+function removeCommunityVip(message, userId) {
+    const scope = getScope(message);
+    if (!scope) return false;
+    const data = loadScope(scope);
+    const removed = delete data.communityVip.members[String(userId)];
+    if (removed) saveScope(scope, data);
+    return removed;
+}
+
+function removeCommunityVipDuration(message, userId, durationMs) {
+    const scope = getScope(message);
+    if (!scope || !Number.isSafeInteger(durationMs) || durationMs <= 0) return null;
+    const data = loadScope(scope);
+    const id = String(userId);
+    const member = data.communityVip.members[id];
+    if (!member || member.permanent) return { member: member ? { ...member } : null, expired: false, permanent: Boolean(member?.permanent) };
+    const expiresAt = new Date(member.expiresAt || 0).getTime();
+    const nextExpiry = expiresAt - durationMs;
+    if (!Number.isFinite(expiresAt) || nextExpiry <= Date.now()) {
+        delete data.communityVip.members[id];
+        saveScope(scope, data);
+        return { member: null, expired: true, permanent: false };
+    }
+    member.expiresAt = new Date(nextExpiry).toISOString();
+    member.updatedAt = new Date().toISOString();
+    saveScope(scope, data);
+    return { member: { ...member }, expired: false, permanent: false };
+}
+
+function setCommunityVipRole(message, roleId) {
+    const scope = getScope(message);
+    if (!scope) return null;
+    const data = loadScope(scope);
+    data.communityVip.discordRoleId = roleId ? String(roleId) : null;
+    saveScope(scope, data);
+    return data.communityVip.discordRoleId;
+}
+
+function updateCommunityVipCommand(message, command, enabled) {
+    const scope = getScope(message);
+    const name = String(command || "").trim().replace(/^!/, "").toLowerCase();
+    if (!scope || !/^[a-z0-9_-]{1,64}$/.test(name) ||
+        ["vip", "premium", "set_vip", "setvip", "set_vipg", "setvipg"].includes(name)) return null;
+    const data = loadScope(scope);
+    const commands = data.communityVip.vipCommands;
+    const exists = commands.includes(name);
+    if (enabled && !exists) commands.push(name);
+    if (!enabled && exists) commands.splice(commands.indexOf(name), 1);
+    saveScope(scope, data);
+    return { changed: exists !== enabled, commands: [...commands] };
+}
+
+function upsertCommunityVipOffer(message, type, offer, offerId = null) {
+    const scope = getScope(message);
+    if (!scope || !["shop", "manual"].includes(type)) return null;
+    const durationMs = Number(offer?.durationMs);
+    const price = Number(type === "shop" ? offer?.price : offer?.priceCents);
+    if (!Number.isSafeInteger(durationMs) || durationMs <= 0 ||
+        !Number.isSafeInteger(price) || price < 0) return null;
+    const data = loadScope(scope);
+    const key = type === "shop" ? "shopOffers" : "manualOffers";
+    const offers = data.communityVip[key];
+    const existing = offerId === null ? null : offers.find(item => item.id === Number(offerId));
+    if (offerId !== null && !existing) return null;
+    const next = {
+        id: existing?.id || data.communityVip.nextOfferId++,
+        durationMs,
+        ...(type === "shop" ? { price } : { priceCents: price })
+    };
+    if (existing) Object.assign(existing, next);
+    else offers.push(next);
+    saveScope(scope, data);
+    return { ...next };
+}
+
+function removeCommunityVipOffer(message, type, offerId) {
+    const scope = getScope(message);
+    if (!scope || !["shop", "manual"].includes(type)) return null;
+    const data = loadScope(scope);
+    const key = type === "shop" ? "shopOffers" : "manualOffers";
+    const index = data.communityVip[key].findIndex(offer => offer.id === Number(offerId));
+    if (index < 0) return null;
+    const [removed] = data.communityVip[key].splice(index, 1);
+    saveScope(scope, data);
+    return { ...removed };
+}
+
+function buyCommunityVipOffer(message, userId, offerId) {
+    const scope = getScope(message);
+    if (!scope) return { purchased: false, reason: "invalid_scope" };
+    const data = loadScope(scope);
+    const offer = data.communityVip.shopOffers.find(item => item.id === Number(offerId));
+    if (!offer) return { purchased: false, reason: "not_found" };
+    if (data.communityVip.members[String(userId)]?.permanent) {
+        return { purchased: false, reason: "already_permanent" };
+    }
+    const account = getAccount({ ...message, userId: String(userId) }).account;
+    if (account.balance < offer.price) {
+        return { purchased: false, reason: "insufficient_balance", balance: account.balance, offer: { ...offer } };
+    }
+    account.balance -= offer.price;
+    recordDailyProfit(account, "loja", -offer.price);
+    const member = grantCommunityVip(data.communityVip, userId, offer.durationMs);
+    saveScope(scope, data);
+    recordAuditLog(message, "store", `${auditLogs.describeActor(message)} comprou VIP local por ${offer.price} SatCoins.`);
+    return { purchased: true, offer: { ...offer }, member: { ...member }, balance: account.balance };
+}
+
+function createCommunityVipOrder(message, userId, offerId) {
+    const scope = getScope(message);
+    if (!scope) return null;
+    const data = loadScope(scope);
+    const offer = data.communityVip.manualOffers.find(item => item.id === Number(offerId));
+    if (!offer) return null;
+    if (data.communityVip.members[String(userId)]?.permanent) {
+        return { error: "already_permanent" };
+    }
+    const order = {
+        id: data.communityVip.nextOrderId++,
+        offerId: offer.id,
+        durationMs: offer.durationMs,
+        priceCents: offer.priceCents,
+        userId: String(userId),
+        displayName: message.displayName || message.username || String(userId),
+        status: "pending",
+        createdAt: new Date().toISOString()
+    };
+    data.communityVip.orders.push(order);
+    saveScope(scope, data);
+    return { ...order };
+}
+
+function getCommunityVipOrders(message, status = null) {
+    const vip = getCommunityVip(message);
+    if (!vip) return null;
+    return vip.orders.filter(order => !status || order.status === status);
+}
+
+function resolveCommunityVipOrder(message, orderId, status) {
+    const scope = getScope(message);
+    if (!scope || !["approved", "rejected"].includes(status)) return null;
+    const data = loadScope(scope);
+    const order = data.communityVip.orders.find(item =>
+        item.id === Number(orderId) && item.status === "pending"
+    );
+    if (!order) return null;
+    if (status === "approved") grantCommunityVip(data.communityVip, order.userId, order.durationMs);
+    order.status = status;
+    order.resolvedAt = new Date().toISOString();
+    order.resolvedBy = String(message.userId);
+    saveScope(scope, data);
+    return {
+        ...order,
+        member: data.communityVip.members[order.userId] ? { ...data.communityVip.members[order.userId] } : null
+    };
 }
 
 function getCommunityStore(message) {
@@ -2868,6 +3244,7 @@ module.exports = {
     setProfileOutline,
     setProfileCircle,
     setProfileEffect,
+    grantProfileCosmetic,
     resetProfileOutline,
     resetProfileCircle,
     resetProfileEffect,
@@ -2934,6 +3311,19 @@ module.exports = {
     updateLocalSignalSearch,
     updateLocalSignalSearchDraft,
     getCommunityStore,
+    getCommunityVip,
+    isCommunityVipActive,
+    setCommunityVip,
+    removeCommunityVip,
+    removeCommunityVipDuration,
+    setCommunityVipRole,
+    updateCommunityVipCommand,
+    upsertCommunityVipOffer,
+    removeCommunityVipOffer,
+    buyCommunityVipOffer,
+    createCommunityVipOrder,
+    getCommunityVipOrders,
+    resolveCommunityVipOrder,
     setCommunityStoreText,
     updateCommunityStoreDetails,
     addCommunityStoreItem,

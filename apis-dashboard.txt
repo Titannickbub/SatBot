@@ -172,6 +172,30 @@ Exemplo de resposta (HTTP 200)
     "vaultBalance": 300,
     "position": 4
   },
+  "communityVip": {
+    "active": true,
+    "permanent": false,
+    "expiresAt": "2026-11-17T23:20:00.000Z",
+    "shopOffers": [
+      {
+        "id": 1,
+        "durationMs": 2592000000,
+        "priceMinorUnits": 5000,
+        "priceFormatted": "5.000💷"
+      }
+    ],
+    "manualOffers": [
+      {
+        "id": 1,
+        "durationMs": 2592000000,
+        "priceCents": 1000,
+        "priceFormatted": "R$ 10,00"
+      }
+    ]
+  },
+  "permissions": {
+    "canManageVip": false
+  },
   "nofap": {
     "enabled": true,
     "active": true,
@@ -223,6 +247,13 @@ Dados e renderização
   mesmo quando activity.today.total já tiver valor.
 - economy.walletBalance e vaultBalance são os saldos da carteira e do cofre;
   position é a colocação no ranking de economia.
+- communityVip contém apenas o VIP deste grupo/servidor e suas ofertas. O
+  estado VIPG global não é retornado por esta rota. shopOffers são compradas
+  com SatCoins; manualOffers criam pedidos para análise administrativa e
+  pagamento fora do bot. durationMs é a duração em milissegundos.
+- permissions.canManageVip informa se a conta vinculada tem permissão para
+  gerenciar o VIP local: Gerenciar Servidor ou Gerenciar Cargos no Discord,
+  administrador no Telegram e administrador do grupo no WhatsApp.
 - nofap representa o desafio NoFap do grupo. enabled indica que o desafio está
   configurado e ativo; active indica que o usuário participa. currentDays é a
   sequência pessoal atual, resets é a contagem de resets no desafio e
@@ -246,6 +277,50 @@ Erros
 - HTTP 403: plataforma não vinculada ou usuário não participa mais do grupo.
 - HTTP 503: integração da plataforma indisponível; ofereça nova tentativa.
 - HTTP 500: falha inesperada ao carregar o painel.
+
+Compras e pedidos de VIP local
+------------------------------
+As rotas abaixo são autenticadas e exigem Origin do mesmo host. Não aceite
+platformId ou userId enviados pelo app: o servidor identifica o comprador
+exclusivamente pela sessão.
+
+- POST /api/account/local/vip-purchase
+  Corpo: {"platform":"discord","groupId":"ID_DO_GRUPO","offerId":1}
+  Desconta SatCoins da carteira local e concede a duração da oferta.
+- POST /api/account/local/vip-order
+  Corpo: {"platform":"discord","groupId":"ID_DO_GRUPO","offerId":1}
+  Cria um pedido manual pendente; o administrador confirma o pagamento e
+  aprova pelo painel ou comando administrativo.
+
+As respostas de sucesso incluem success e message. Compra inclui ainda o
+saldo restante; o campo warning pode indicar que a compra foi concluída, mas
+o cargo do Discord não pôde ser sincronizado.
+
+Administração do VIP local
+--------------------------
+POST /api/account/local/admin-community-vip
+
+Requer sessão, Origin do mesmo host, participação no grupo e permissão para
+gerenciar VIP local. O identificador do membro concedido é aceito somente
+nesta rota administrativa e não determina a Conta Central usada para
+autorização.
+
+Exemplos de corpo:
+- {"platform":"discord","groupId":"ID_DO_GRUPO","action":"state"}
+- {"platform":"discord","groupId":"ID_DO_GRUPO","action":"member-set","userId":"ID","durationMs":2592000000,"permanent":false}
+- {"platform":"discord","groupId":"ID_DO_GRUPO","action":"member-remove","userId":"ID"}
+- {"platform":"discord","groupId":"ID_DO_GRUPO","action":"offer-upsert","type":"shop","durationMs":2592000000,"price":5000}
+- {"platform":"discord","groupId":"ID_DO_GRUPO","action":"offer-upsert","type":"manual","durationMs":2592000000,"priceCents":1000}
+- {"platform":"discord","groupId":"ID_DO_GRUPO","action":"offer-remove","type":"shop","offerId":1}
+- {"platform":"discord","groupId":"ID_DO_GRUPO","action":"order-resolve","orderId":1,"status":"approved"}
+- {"platform":"discord","groupId":"ID_DO_GRUPO","action":"command-set","command":"comando","enabled":true}
+- {"platform":"discord","groupId":"ID_DO_GRUPO","action":"role-set","roleId":"ID_DO_CARGO"}
+
+As ações de oferta aceitam type "shop" (SatCoins) ou "manual" (reais). Para
+editar, envie também offerId; sem esse campo, uma nova oferta é criada.
+order-resolve aceita status "approved" ou "rejected". role-set só funciona no
+Discord e exige Gerenciar Cargos do bot e hierarquia válida. Sucesso retorna
+communityVip com a configuração atualizada.
 
 Exemplo de erro:
 {"error":"mensagem explicando o problema"}

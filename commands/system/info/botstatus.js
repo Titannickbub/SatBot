@@ -112,7 +112,9 @@ module.exports = {
             ? countItems(crossplay.data.crossplayGroups)
             : 0;
         const onlyChatsWhitelist = onlyChats.whitelist || {};
-        const vipWhitelist = vip.vipOnly?.whitelist || {};
+        const vipPvBypassPlatforms = Object.entries(vip.pvBypass || {})
+            .filter(([, enabled]) => enabled === true)
+            .map(([platform]) => platform);
         const platformLines = [
             `• WhatsApp: ${state(platforms.whatsapp !== false)}${whatsapp?.user?.id ? ` (${whatsapp.user.id.split(":")[0]})` : " (não conectado)"}`,
             `• Telegram: ${state(platforms.telegram !== false)}${telegram?.botInfo?.username ? ` (@${telegram.botInfo.username})` : " (não conectado)"}`,
@@ -149,8 +151,8 @@ ${platformLines.join("\n")}
 • Auto Download: ${state(autoDownload.enabled === true)}
 • Anti-PV: ${state(antiPv.enabled === true)}
 • Anti-PV modo: ${antiPv.mode || "ignore"} | listas: ${(antiPv.commandWhitelist || []).length} comandos, ${(antiPv.userWhitelist || []).length} usuários
-• VIP-only: ${state(vip.vipOnly?.enabled === true)}
-• VIP modo: ${vip.vipOnly?.mode || "ignore"} | comandos VIP: ${(vip.vipCommands || []).length}
+• VIPG bypass Anti-PV: ${vipPvBypassPlatforms.length ? vipPvBypassPlatforms.join(", ") : "nenhuma plataforma"}
+• VIP local: comandos VIP configurados por grupo/servidor
 • Only Chats: ${state(onlyChats.enabled === true)}
 • Only Chats modo: ${onlyChats.mode || "ignore"} | whitelist: ${Object.values(onlyChatsWhitelist).reduce((total, items) => total + (Array.isArray(items) ? items.length : 0), 0)} itens
 • Bloqueio global de comandos: ${state(blockcmd.enabled === true)} | ${(blockcmd.blockedCommands || []).length} bloqueados

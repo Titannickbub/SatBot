@@ -1010,35 +1010,16 @@ function isIdInWhitelist(whitelistArray, idList) {
     });
 }
 
-function isChatAllowedByOnlyChats(message) {
-    if (!message) return true;
-    if (message.isPrivate) return true;
-
-    const onlychatsConfig = getOnlyChatsConfig();
-    if (!onlychatsConfig || !onlychatsConfig.enabled) {
-        return true;
-    }
-
-    const { whitelist } = onlychatsConfig;
+function isOnlyChatsContextWhitelisted(message) {
+    if (!message || message.isPrivate) return false;
+    const { whitelist } = getOnlyChatsConfig();
     const raw = message.raw || {};
 
-    // 1. Check Whitelisted Commands (bypass restriction for specific commands)
-    const text = message.text ? String(message.text).trim() : "";
-    const prefix = message.prefix || "!";
-    if (text.startsWith(prefix)) {
-        const commandName = text.split(/\s+/)[0].substring(prefix.length).toLowerCase();
-        if (commandName && isIdInWhitelist(whitelist.commands, [commandName])) {
-            return true;
-        }
-    }
-
-    // 2. Check Server / Guild / Community
     const serverId = message.serverId || message.guildId || raw.guild?.id || raw.communityId || message.communityId;
     if (serverId && isIdInWhitelist(whitelist.servers, [String(serverId)])) {
         return true;
     }
 
-    // 3. Check Category
     let categoryId = message.categoryId;
     if (!categoryId && raw.channel) {
         if (typeof raw.channel.isThread === "function" && raw.channel.isThread()) {
@@ -1051,29 +1032,43 @@ function isChatAllowedByOnlyChats(message) {
         return true;
     }
 
-    // 4. Check Chat / Channel
     const chatIds = [];
     const mainChatId = message.chatId || message.target?.chatId || raw.channel?.id || (raw.chat ? raw.chat.id : null);
     if (mainChatId) chatIds.push(String(mainChatId));
+    if (raw.channel && typeof raw.channel.isThread === "function" && raw.channel.isThread() && raw.channel.parentId) {
+        chatIds.push(String(raw.channel.parentId));
+    }
+    if (chatIds.length && isIdInWhitelist(whitelist.chats, chatIds)) {
+        return true;
+    }
 
-    if (raw.channel && typeof raw.channel.isThread === "function" && raw.channel.isThread()) {
-        if (raw.channel.parentId) {
-            chatIds.push(String(raw.channel.parentId));
+    const topicId = message.threadId || message.topicId || raw.message_thread_id ||
+        (raw.channel && typeof raw.channel.isThread === "function" && raw.channel.isThread() ? raw.channel.id : null);
+    return Boolean(topicId && isIdInWhitelist(whitelist.topics, [String(topicId)]));
+}
+
+function isChatAllowedByOnlyChats(message) {
+    if (!message) return true;
+    if (message.isPrivate) return true;
+
+    const onlychatsConfig = getOnlyChatsConfig();
+    if (!onlychatsConfig || !onlychatsConfig.enabled) {
+        return true;
+    }
+
+    const { whitelist } = onlychatsConfig;
+
+    // 1. Check Whitelisted Commands (bypass restriction for specific commands)
+    const text = message.text ? String(message.text).trim() : "";
+    const prefix = message.prefix || "!";
+    if (text.startsWith(prefix)) {
+        const commandName = text.split(/\s+/)[0].substring(prefix.length).toLowerCase();
+        if (commandName && isIdInWhitelist(whitelist.commands, [commandName])) {
+            return true;
         }
     }
 
-    if (chatIds.length > 0 && isIdInWhitelist(whitelist.chats, chatIds)) {
-        return true;
-    }
-
-    // 5. Check Topic / Thread
-    const topicId = message.threadId || message.topicId || raw.message_thread_id ||
-        (raw.channel && typeof raw.channel.isThread === "function" && raw.channel.isThread() ? raw.channel.id : null);
-    if (topicId && isIdInWhitelist(whitelist.topics, [String(topicId)])) {
-        return true;
-    }
-
-    return false;
+    return isOnlyChatsContextWhitelisted(message);
 }
 
 function getStickerConfig() {
@@ -1218,6 +1213,7 @@ module.exports = {
     setBotInfo,
     getDefaultOnlyChatsConfig,
     getOnlyChatsConfig,
+    isOnlyChatsContextWhitelisted,
     setOnlyChatsEnabled,
     setOnlyChatsMode,
     setOnlyChatsMessage,

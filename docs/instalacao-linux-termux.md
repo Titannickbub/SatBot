@@ -54,10 +54,12 @@ bot:
 cd ~
 git clone --depth 1 https://github.com/Titannickbub/SatBot.git
 cd SatBot
-npm start
+bash start_termux.sh
 ```
 
-O primeiro início instala as dependências necessárias e abre o fluxo de login.
+O script instala as dependências listadas pelo projeto e as versões do Sharp
+necessárias no Termux; depois, inicia o bot e o reinicia se o processo encerrar.
+Na primeira execução, aguarde a instalação terminar e siga o fluxo de login.
 Mantenha o Termux aberto enquanto o bot estiver em execução; o Android pode
 suspender o aplicativo em segundo plano conforme as configurações de bateria
 do dispositivo. Para autenticar as plataformas e registrar o primeiro Super

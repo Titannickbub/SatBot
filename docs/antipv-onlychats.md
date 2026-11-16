@@ -86,25 +86,25 @@ pelo Anti-PV.
 
 ### Bypass de PV para usuários VIP
 
-O `!set_vip` permite que Super Usuários gerenciem VIPs e habilitem o bypass de
-PV para todos os VIPs de uma plataforma. Para conceder VIP, consulte o status
-ou veja todos os subcomandos e limitações, acesse a página
-[VIP e `set_vip`](./setvip.md).
+O `!set_vipg` permite que Super Usuários gerenciem VIPG e habilitem o bypass
+de PV para todos os VIPs de uma plataforma. Para conceder VIP, consultar o
+status ou ver todos os subcomandos e limitações, acesse
+[VIP local e VIPG](./setvip.md).
 
 Por padrão, ter VIP não libera automaticamente mensagens privadas. Para
 permitir que **todos os VIPs ativos** em uma plataforma usem o bot no PV,
 ative o bypass naquela plataforma:
 
 ```text
-!set_vip pv on whatsapp
-!set_vip pv on telegram
-!set_vip pv on discord
+!set_vipg pv on whatsapp
+!set_vipg pv on telegram
+!set_vipg pv on discord
 ```
 
 Para desativá-lo novamente:
 
 ```text
-!set_vip pv off whatsapp
+!set_vipg pv off whatsapp
 ```
 
 Essa opção é global por plataforma, não individual: com o bypass do WhatsApp

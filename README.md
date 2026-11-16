@@ -95,7 +95,8 @@ Os recursos e a forma de uso podem variar entre as plataformas.
 - Recursos VIP, incluindo opções de gerenciamento por Super Usuários.
 - Dashboard e ferramentas relacionadas, quando disponíveis na integração.
 
-Consulte [VIP e `set_vip`](./docs/setvip.md) para detalhes sobre as opções VIP.
+Consulte [VIP local e VIPG global](./docs/setvip.md) para detalhes sobre os
+benefícios e comandos de administração.
 
 ### 📰 Novidades
 
@@ -130,7 +131,7 @@ ou `bash update_beta.sh` no Linux, dentro da pasta dessa instalação. A branch
 <p><a href="./docs/instalacao.md"><img src="https://img.shields.io/badge/🚀%20Instalação-escolha%20seu%20guia-4CAF50" alt="Escolha seu guia de instalação"></a></p>
 <p><a href="./docs/configuracao.md"><img src="https://img.shields.io/badge/⚙️%20Configuração-configure%20o%20SatBot-2196F3" alt="Guia de configuração"></a></p>
 <p><a href="./docs/antipv-onlychats.md"><img src="https://img.shields.io/badge/🛡️%20Anti--PV%20e%20OnlyChats-entenda%20as%20proteções-673AB7" alt="Documentação de Anti-PV e OnlyChats"></a></p>
-<p><a href="./docs/setvip.md"><img src="https://img.shields.io/badge/⭐%20VIP%20e%20set__vip-gerencie%20recursos%20VIP-FF9800" alt="Documentação VIP e set_vip"></a></p>
+<p><a href="./docs/setvip.md"><img src="https://img.shields.io/badge/⭐%20VIP%20local%20e%20VIPG-gerencie%20recursos%20VIP-FF9800" alt="Documentação VIP local e VIPG"></a></p>
 <p><a href="./docs/tutoriais.md"><img src="https://img.shields.io/badge/🧭%20Tutoriais-veja%20os%20passo%20a%20passo-00ACC1" alt="Tutoriais do SatBot"></a></p>
 
 ---
