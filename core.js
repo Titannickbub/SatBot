@@ -17,6 +17,7 @@ const platforms = [];
 const platformRegistry = {};
 const functions = {};
 const middlewares = [];
+const COMPONENT_MESSAGE_CONTEXT = Symbol.for("satbot.componentMessageContext");
 
 function normalizeCommandName(value) {
     return String(value || "")
@@ -834,18 +835,58 @@ async function createComponentMessage(interaction, commandName) {
             : null;
         let isAdmin = chat.type === "private";
         let canManageMessages = isAdmin;
-        if (!isAdmin && typeof interaction.getChatMember === "function") {
+        let permissionCheckFailed = false;
+        const telegramApi = interaction.telegram || global.telegramBot?.telegram;
+        if (!isAdmin && typeof telegramApi?.getChatAdministrators === "function") {
+            let adminListLookupSucceeded = false;
             try {
-                const member = await interaction.getChatMember(user.id);
-                isAdmin = ["administrator", "creator"].includes(member.status);
-                canManageMessages = member.status === "creator" ||
-                    (member.status === "administrator" && member.can_delete_messages === true);
+                const administrators = await telegramApi.getChatAdministrators(chat.id);
+                adminListLookupSucceeded = true;
+                const member = administrators.find(entry =>
+                    String(entry.user?.id) === String(user.id)
+                );
+                isAdmin = Boolean(member);
+                canManageMessages = member?.status === "creator" ||
+                    (member?.status === "administrator" && member.can_delete_messages === true);
             } catch (error) {
                 console.error(
                     `[${_ts()}] ❌[COMPONENT] Falha ao buscar permissões do Telegram | chat: ${chat.id} | user: ${user.id}:`,
                     error.message || error
                 );
+                permissionCheckFailed = true;
             }
+            if (!adminListLookupSucceeded && typeof telegramApi.getChatMember === "function") {
+                try {
+                    const member = await telegramApi.getChatMember(chat.id, user.id);
+                    isAdmin = ["administrator", "creator"].includes(member.status);
+                    canManageMessages = member.status === "creator" ||
+                        (member.status === "administrator" && member.can_delete_messages === true);
+                    if (isAdmin) permissionCheckFailed = false;
+                } catch (error) {
+                    console.error(
+                        `[${_ts()}] ❌[COMPONENT] Falha ao consultar membro do Telegram | chat: ${chat.id} | user: ${user.id}:`,
+                        error.message || error
+                    );
+                }
+            }
+        } else if (!isAdmin && typeof telegramApi?.getChatMember === "function") {
+            try {
+                const member = await telegramApi.getChatMember(chat.id, user.id);
+                isAdmin = ["administrator", "creator"].includes(member.status);
+                canManageMessages = member.status === "creator" ||
+                    (member.status === "administrator" && member.can_delete_messages === true);
+                permissionCheckFailed = !isAdmin;
+            } catch (error) {
+                console.error(
+                    `[${_ts()}] ❌[COMPONENT] Falha ao consultar membro do Telegram | chat: ${chat.id} | user: ${user.id}:`,
+                    error.message || error
+                );
+            }
+        } else if (!isAdmin) {
+            console.error(
+                `[${_ts()}] ❌[COMPONENT] Cliente Telegram indisponível para verificar permissões | chat: ${chat.id} | user: ${user.id}`
+            );
+            permissionCheckFailed = true;
         }
 
         message = {
@@ -862,7 +903,7 @@ async function createComponentMessage(interaction, commandName) {
                 .join(" ") || user.username || String(user.id),
             messageId: sourceMessage?.message_id ? String(sourceMessage.message_id) : null,
             raw: { chat },
-            sender: { isAdmin, canManageMessages },
+            sender: { isAdmin, canManageMessages, permissionCheckFailed },
             reply: async payload => {
                 const text = typeof payload === "string" ? payload : payload?.text;
                 if (!text || typeof interaction.answerCbQuery !== "function") return false;
@@ -1002,8 +1043,10 @@ async function handleComponentInteraction(interaction) {
     const rawCommandName = componentParts[0];
     const commandName = normalizeCommandName(rawCommandName);
     const safeActionTokens = new Set([
-        "back", "cancel", "category", "choose", "community", "confirm",
-        "cosmetic", "details", "discord", "items", "menu", "select",
+        "approve", "back", "cancel", "catalog", "category", "choose", "community", "confirm",
+        "cosmetic", "details", "discord", "editplan", "extend", "initial", "items",
+        "menu", "orders", "paid", "permanent", "pixhelp", "cancelorder", "reject", "rejectconfirm", "remove",
+        "removeconfirm", "renewal", "select", "setplan", "subscriptions",
         "telegram", "tc", "tx", "cc", "cx"
     ]);
     const action = componentParts.slice(1, 4)
@@ -1033,6 +1076,37 @@ async function handleComponentInteraction(interaction) {
             return true;
         }
         return false;
+    }
+
+    if (message.platform === "telegram" && !message.isPrivate) {
+        let botMember;
+        try {
+            const telegram = platformRegistry.telegram;
+            if (typeof telegram?.getBotChatMember !== "function") {
+                throw new Error("Consulta de associação do bot ao grupo indisponível.");
+            }
+            botMember = await telegram.getBotChatMember(message.chatId);
+        } catch (error) {
+            console.error(
+                `[${_ts()}] ❌[COMPONENT] Falha ao verificar se o bot ainda está no grupo | chat: ${message.chatId}:`,
+                error.message || error
+            );
+            logComponentInteraction(message, commandName, action, "bloqueado: falha ao verificar bot no grupo");
+            await message.reply({
+                text: "❌ Não foi possível confirmar se o bot ainda está neste grupo. Tente novamente mais tarde."
+            });
+            return true;
+        }
+
+        const botIsInChat = ["creator", "administrator", "member"].includes(botMember?.status) ||
+            (botMember?.status === "restricted" && botMember.is_member === true);
+        if (!botIsInChat) {
+            logComponentInteraction(message, commandName, action, "bloqueado: bot fora do grupo");
+            await message.reply({
+                text: "⚠️ O bot não está mais neste grupo. Adicione-o novamente para usar estes botões."
+            });
+            return true;
+        }
     }
 
     if (!command || typeof command.handleInteraction !== "function") {
@@ -1146,6 +1220,7 @@ async function handleComponentInteraction(interaction) {
     }
 
     try {
+        interaction[COMPONENT_MESSAGE_CONTEXT] = message;
         const handled = (await command.handleInteraction(interaction)) !== false;
         logComponentInteraction(message, commandName, action, handled ? "processado" : "não reconhecido");
         return handled;

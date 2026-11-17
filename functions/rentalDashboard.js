@@ -4,6 +4,7 @@ const rental = require("./rentalHelper");
 const PAGES = {
     home: { title: "Superusuário", path: "/painel-su" },
     settings: { title: "Configurações do aluguel", path: "/painel-su/aluguel" },
+    mercadopago: { title: "Mercado Pago", path: "/painel-su/mercado-pago" },
     plans: { title: "Planos", path: "/painel-su/planos" },
     orders: { title: "Pedidos", path: "/painel-su/pedidos" },
     subscriptions: { title: "Assinaturas", path: "/painel-su/assinaturas" },
@@ -34,6 +35,29 @@ function durationDays(ms) {
     return Number.isFinite(value) ? Number(value.toFixed(2)) : 1;
 }
 
+function rentalEnabled(settings) {
+    return Object.values(settings?.enabledPlatforms || {}).some(Boolean);
+}
+
+function onlyChatsAccessEntries(onlyChats) {
+    const types = [
+        ["servers", "Servidor"],
+        ["categories", "Categoria"],
+        ["chats", "Chat/canal"],
+        ["topics", "Tópico"]
+    ];
+    return types.flatMap(([key, label]) =>
+        (onlyChats?.whitelist?.[key] || []).map(item => {
+            const id = typeof item === "object" && item !== null ? String(item.id) : String(item);
+            return {
+                id,
+                name: typeof item === "object" && item !== null ? String(item.name || id) : id,
+                type: label
+            };
+        })
+    );
+}
+
 function navbar(platform, currentPage) {
     const links = Object.entries(PAGES).map(([key, page]) =>
         `<a class="nav-pill${key === currentPage ? " active" : ""}" href="${page.path}?plataforma=${encodeURIComponent(platform)}">${escapeHtml(page.title)}</a>`
@@ -43,11 +67,17 @@ function navbar(platform, currentPage) {
 
 function homeContent(data) {
     const settings = data.settings;
+    const freeOnlyChatsCount = rentalEnabled(settings)
+        ? onlyChatsAccessEntries(data.onlyChats).length
+        : 0;
+    const subscriptionCount = data.subscriptions.filter(item => item.status !== "deleted").length +
+        freeOnlyChatsCount;
     const links = [
         ["settings", "⚙", "Configurações", "Ativar o aluguel, ajustar a permanência, avisos e expiração."],
+        ["mercadopago", "◇", "Mercado Pago", "Configurar cobranças Pix automáticas e verificação de pagamentos."],
         ["plans", "◇", "Planos", `${data.plans.length} plano(s) · criar, editar ou apagar.`],
-        ["orders", "⇄", "Pedidos", `${data.orders.filter(order => order.status === "pending").length} pedido(s) pendente(s) · analisar e administrar.`],
-        ["subscriptions", "♧", "Assinaturas", `${data.subscriptions.filter(item => item.status !== "deleted").length} assinatura(s) · consultar, editar, remover ou conceder.`],
+        ["orders", "⇄", "Pedidos", `${data.orders.filter(order => ["pending", "awaiting_payment"].includes(order.status)).length} pedido(s) em aberto · Pix e confirmação de pagamento.`],
+        ["subscriptions", "♧", "Assinaturas", `${subscriptionCount} assinatura(s) e acessos permanentes gratuitos · consultar, editar, remover ou conceder.`],
         ["onlychats", "◉", "OnlyChats", "Configurar o bloqueio e as permissões permanentes."]
     ];
     const enabled = Object.entries(settings.enabledPlatforms || {})
@@ -76,6 +106,16 @@ function settingsContent(data) {
     </form></section>`;
 }
 
+function mercadoPagoContent(data) {
+    const settings = data.mercadoPago || {};
+    return `<section class="panel"><h1>Mercado Pago</h1><p>Configure Pix automático para pedidos de aluguel. Os comandos manuais de envio e confirmação continuam disponíveis. O token nunca é exibido após ser salvo.</p><p class="notice">Não é necessário domínio público nem webhook: os pagamentos são consultados automaticamente a cada minuto e novamente quando o cliente clica em <strong>Já paguei</strong>.</p><form id="mercadoPagoForm" class="form-grid">
+      <label class="full">Token de acesso<input name="accessToken" type="password" maxlength="1000" autocomplete="new-password" placeholder="${settings.accessTokenConfigured ? "Já configurado; deixe vazio para manter" : "Cole o token de acesso"}"><small>Status: ${settings.accessTokenConfigured ? "configurado" : "não configurado"}. Configure este campo somente no painel autenticado.</small></label>
+      <label class="toggle-row"><span><strong>Remover token</strong><small>Desativa a cobrança automática se não houver outra credencial configurada.</small></span><input name="clearAccessToken" type="checkbox"></label>
+      <label class="toggle-row"><span><strong>Cobrança automática</strong><small>Gera e envia o Pix ao criar o pedido; a aprovação depende da confirmação do Mercado Pago.</small></span><input name="automaticEnabled" type="checkbox"${settings.automaticEnabled ? " checked" : ""}></label>
+      <button class="primary" type="submit">Salvar Mercado Pago</button><p class="feedback" id="mercadoPagoFeedback" role="status"></p>
+    </form></section>`;
+}
+
 function plansContent(data) {
     const cards = data.plans.length ? data.plans.map(plan =>
         `<article class="record-card"><header><strong>${escapeHtml(rental.displayId(plan.id, "PL"))} · ${escapeHtml(plan.name)}</strong><span>${plan.active === false ? "Inativo" : "Ativo"}</span></header><form class="plan-form" data-id="${escapeHtml(plan.id)}"><label>Nome<input name="name" maxlength="80" value="${escapeHtml(plan.name)}" required></label><div class="two-col"><label>Valor (R$)<input name="price" type="number" min="0" step="0.01" value="${(plan.priceCents / 100).toFixed(2)}" required></label><label>Duração (dias)<input name="durationDays" type="number" min="0.01" step="0.01" value="${durationDays(plan.durationMs)}" required></label></div><div class="actions"><button type="submit">Salvar alterações</button><button type="button" class="danger" data-action="plan.delete" data-id="${escapeHtml(plan.id)}">Apagar plano</button></div></form></article>`
@@ -86,25 +126,40 @@ function plansContent(data) {
 function ordersContent(data) {
     const rows = data.orders.length ? data.orders.map(order => {
         const pending = order.status === "pending";
+        const awaitingPayment = order.status === "awaiting_payment";
         const planOptions = data.plans.map(plan =>
             `<option value="${escapeHtml(plan.id)}"${plan.id === order.planId ? " selected" : ""}>${escapeHtml(rental.displayId(plan.id, "PL"))} · ${escapeHtml(plan.name)} · ${formatPrice(plan.priceCents)} · ${escapeHtml(rental.formatDuration(plan.durationMs))}</option>`
         ).join("");
-        return `<article class="record-card"><header><strong>${escapeHtml(rental.displayId(order.id, "AL"))} · ${order.type === "renewal" ? "Renovação" : "Contratação"} · ${escapeHtml(order.platform)}</strong><span class="status ${pending ? "pending" : ""}">${escapeHtml(order.status)}</span></header><p>Grupo/servidor: <code>${escapeHtml(order.scopeId)}</code><br>Solicitante: ${escapeHtml(order.creatorName || order.creatorId)}<br>Criado: ${escapeHtml(formatDate(order.createdAt))}</p>${pending ? `<form class="order-form" data-id="${escapeHtml(order.id)}" data-platform="${escapeHtml(order.platform)}"><label>Plano do pedido<select name="planId" required>${planOptions}</select></label><div class="actions"><button type="submit">Salvar alteração</button><button type="button" class="primary" data-action="order.approve" data-id="${escapeHtml(order.id)}" data-platform="${escapeHtml(order.platform)}">Aceitar</button><button type="button" class="danger" data-action="order.reject" data-id="${escapeHtml(order.id)}" data-platform="${escapeHtml(order.platform)}">Recusar</button><button type="button" class="danger outline" data-action="order.delete" data-id="${escapeHtml(order.id)}" data-platform="${escapeHtml(order.platform)}">Apagar pedido</button></div></form>` : `<p>Plano: ${escapeHtml(order.planName)} · ${formatPrice(order.priceCents)} · ${escapeHtml(rental.formatDuration(order.durationMs))}</p><button type="button" class="danger outline" data-action="order.delete" data-id="${escapeHtml(order.id)}" data-platform="${escapeHtml(order.platform)}">Apagar registro</button>`}</article>`;
+        const details = `<p>Plano: ${escapeHtml(order.planName)} · ${formatPrice(order.priceCents)} · ${escapeHtml(rental.formatDuration(order.durationMs))}</p>`;
+        const controls = pending
+            ? `<form class="order-form" data-id="${escapeHtml(order.id)}" data-platform="${escapeHtml(order.platform)}"><label>Plano do pedido<select name="planId" required>${planOptions}</select></label><div class="actions"><button type="submit">Salvar alteração</button><button type="button" class="primary" data-action="order.pix" data-id="${escapeHtml(order.id)}" data-platform="${escapeHtml(order.platform)}">Enviar chave Pix</button><button type="button" class="danger" data-action="order.reject" data-id="${escapeHtml(order.id)}" data-platform="${escapeHtml(order.platform)}">Recusar pedido</button><button type="button" class="danger outline" data-action="order.delete" data-id="${escapeHtml(order.id)}" data-platform="${escapeHtml(order.platform)}">Apagar pedido</button></div></form>`
+            : awaitingPayment
+                ? `${details}<p>${order.paymentProvider === "mercado_pago" ? "Pagamento via Mercado Pago" : "Pagamento manual"} · Prazo: ${escapeHtml(formatDate(order.paymentExpiresAt))}${order.paymentReportedAt ? `<br>Solicitante informou o pagamento: ${escapeHtml(formatDate(order.paymentReportedAt))}` : ""}</p>${order.paymentDeliveryWarning ? `<p class="warning">${escapeHtml(order.paymentDeliveryWarning)} Reenvie a chave para tentar somente o destino pendente.</p><button type="button" class="primary" data-action="order.pix" data-id="${escapeHtml(order.id)}" data-platform="${escapeHtml(order.platform)}">Reenviar chave Pix</button>` : ""}${order.manualPixDeliveryWarning ? `<p class="warning">${escapeHtml(order.manualPixDeliveryWarning)}</p>` : ""}${order.mercadoPagoDeliveryWarning ? `<p class="warning">${escapeHtml(order.mercadoPagoDeliveryWarning)}</p><button type="button" class="primary" data-action="order.mercadopago.resend" data-id="${escapeHtml(order.id)}" data-platform="${escapeHtml(order.platform)}">Reenviar Pix automático</button>` : ""}<div class="actions">${order.paymentProvider === "mercado_pago" ? `<button type="button" data-action="order.pix" data-id="${escapeHtml(order.id)}" data-platform="${escapeHtml(order.platform)}">Enviar Pix manual</button>` : ""}<button type="button" class="primary" data-action="order.approve" data-id="${escapeHtml(order.id)}" data-platform="${escapeHtml(order.platform)}">Pagamento recebido</button><button type="button" class="danger" data-action="order.reject" data-id="${escapeHtml(order.id)}" data-platform="${escapeHtml(order.platform)}">Recusar pagamento</button><button type="button" class="danger outline" data-action="order.delete" data-id="${escapeHtml(order.id)}" data-platform="${escapeHtml(order.platform)}">Apagar pedido</button></div>`
+                : `${details}<button type="button" class="danger outline" data-action="order.delete" data-id="${escapeHtml(order.id)}" data-platform="${escapeHtml(order.platform)}">Apagar registro</button>`;
+        return `<article class="record-card"><header><strong>${escapeHtml(rental.displayId(order.id, "AL"))} · ${order.type === "renewal" ? "Renovação" : "Contratação"} · ${escapeHtml(order.platform)}</strong><span class="status ${(pending || awaitingPayment) ? "pending" : ""}">${awaitingPayment ? order.paymentReportedAt ? "Pagamento informado pelo solicitante" : "Aguardando pagamento" : pending ? "Aguardando envio do Pix" : escapeHtml(order.status)}</span></header><p>Grupo/servidor: <code>${escapeHtml(order.scopeId)}</code><br>Solicitante: ${escapeHtml(order.creatorName || order.creatorId)}<br>Criado: ${escapeHtml(formatDate(order.createdAt))}</p>${controls}</article>`;
     }).join("") : `<p class="empty">Nenhum pedido criado.</p>`;
-    return `<section class="panel"><h1>Pedidos</h1><p>Pedidos iniciais não expiram. Aceitar um pedido ativa a duração já registrada nele; a renovação aprovada depois do vencimento começa na aprovação.</p><div class="records">${rows}</div><p class="feedback" id="ordersFeedback" role="status"></p></section>`;
+    return `<section class="panel"><h1>Pedidos</h1><p>No modo manual, o SU envia uma chave Pix; no modo automático, o Mercado Pago gera e envia a cobrança ao criar o pedido. O prazo é de 24 horas e a assinatura só é ativada após a confirmação do pagamento. Pedidos sem decisão expiram automaticamente; recusas e contratações iniciais expiradas seguem a política de aluguel configurada.</p><div class="records">${rows}</div><p class="feedback" id="ordersFeedback" role="status"></p></section>`;
 }
 
 function subscriptionsContent(data) {
     const planOptions = data.plans.filter(plan => plan.active !== false).map(plan =>
         `<option value="${escapeHtml(plan.id)}">${escapeHtml(rental.displayId(plan.id, "PL"))} · ${escapeHtml(plan.name)} · ${rental.formatDuration(plan.durationMs)}</option>`
     ).join("");
+    const permanentAccesses = rentalEnabled(data.settings)
+        ? onlyChatsAccessEntries(data.onlyChats).map(item =>
+            `<article class="record-card"><header><strong>${escapeHtml(item.type)} · ${escapeHtml(item.name)}</strong><span class="status">Permanente · gratuita</span></header><p>OnlyChats · Todas as plataformas<br>ID: <code>${escapeHtml(item.id)}</code></p></article>`
+        )
+        : [];
+    const onlyChatsAccess = permanentAccesses.length
+        ? `<h2 class="section-title">Acessos permanentes gratuitos do OnlyChats</h2><p>As permissões da whitelist mantêm acesso permanente, sem cobrança. Edite ou remova esses acessos na página OnlyChats.</p><div class="records">${permanentAccesses.join("")}</div>`
+        : "";
     const rows = data.subscriptions.length ? data.subscriptions.map(subscription => {
         const state = subscription.permanent ? "Permanente" :
             subscription.deletedAt ? "Removida · em permanência" :
                 subscription.expiresAt <= Date.now() ? "Vencida" : "Ativa";
         return `<article class="record-card"><header><strong>${escapeHtml(subscription.id)} · ${escapeHtml(subscription.planName || "Assinatura manual")} · ${escapeHtml(subscription.platform)}</strong><span class="status">${state}</span></header><p>Grupo/servidor: <code>${escapeHtml(subscription.scopeId)}</code><br>Criada: ${escapeHtml(formatDate(subscription.createdAt))}<br>Solicitante: ${escapeHtml(subscription.creatorName || subscription.creatorId || "—")}</p><form class="subscription-form" data-id="${escapeHtml(subscription.id)}" data-platform="${escapeHtml(subscription.platform)}" data-expires-at="${Number(subscription.expiresAt) || ""}"><div class="two-col"><label>Vencimento<input name="expiresAt" type="datetime-local"${subscription.permanent ? " disabled" : ""}></label><label class="check-row">Permanente<input name="permanent" type="checkbox"${subscription.permanent ? " checked" : ""}></label></div><div class="actions"><button type="submit">Salvar alteração</button>${subscription.deletedAt ? "" : `<button type="button" class="danger" data-action="subscription.delete" data-id="${escapeHtml(subscription.id)}" data-platform="${escapeHtml(subscription.platform)}">Apagar assinatura</button>`}</div></form></article>`;
     }).join("") : `<p class="empty">Nenhuma assinatura cadastrada.</p>`;
-    return `<section class="panel"><h1>Assinaturas</h1><p>Gerencie assinaturas de todas as plataformas ou conceda uma diretamente. As permissões permanentes do OnlyChats também aparecem como permanentes na página OnlyChats.</p><form id="subscriptionCreateForm" class="form-grid"><h2>Conceder assinatura sem pedido</h2><label>Plataforma<select name="targetPlatform"><option value="whatsapp"${data.platform === "whatsapp" ? " selected" : ""}>WhatsApp</option><option value="telegram"${data.platform === "telegram" ? " selected" : ""}>Telegram</option><option value="discord"${data.platform === "discord" ? " selected" : ""}>Discord</option></select></label><label>ID do grupo/servidor<input name="scopeId" maxlength="120" required></label><label>Canal/chat para os avisos<input name="chatId" maxlength="120" required><small>WhatsApp/Telegram: ID do grupo. Discord: ID de um canal de texto acessível ao bot.</small></label><label>Plano<select name="planId" required><option value="">Selecione</option>${planOptions}</select></label><label>ID do solicitante (opcional)<input name="creatorId" maxlength="120"></label><button class="primary" type="submit">Criar assinatura</button><p class="feedback" id="subscriptionFeedback" role="status"></p></form><div class="records">${rows}</div></section>`;
+    return `<section class="panel"><h1>Assinaturas</h1><p>Gerencie assinaturas de todas as plataformas ou conceda uma diretamente. Acessos liberados pelo OnlyChats são exibidos como permanentes e gratuitos enquanto o aluguel estiver ativo.</p><form id="subscriptionCreateForm" class="form-grid"><h2>Conceder assinatura sem pedido</h2><label>Plataforma<select name="targetPlatform"><option value="whatsapp"${data.platform === "whatsapp" ? " selected" : ""}>WhatsApp</option><option value="telegram"${data.platform === "telegram" ? " selected" : ""}>Telegram</option><option value="discord"${data.platform === "discord" ? " selected" : ""}>Discord</option></select></label><label>ID do grupo/servidor<input name="scopeId" maxlength="120" required></label><label>Canal/chat para os avisos<input name="chatId" maxlength="120" required><small>WhatsApp/Telegram: ID do grupo. Discord: ID de um canal de texto acessível ao bot.</small></label><label>Plano<select name="planId" required><option value="">Selecione</option>${planOptions}</select></label><label>ID do solicitante (opcional)<input name="creatorId" maxlength="120"></label><button class="primary" type="submit">Criar assinatura</button><p class="feedback" id="subscriptionFeedback" role="status"></p></form><div class="records">${rows}</div>${onlyChatsAccess}</section>`;
 }
 
 function onlyChatsContent(data) {
@@ -116,7 +171,7 @@ function onlyChatsContent(data) {
             return `<article class="permission-row"><span><strong>${escapeHtml(type)}</strong><code>${escapeHtml(id)}</code><small>${escapeHtml(name)}</small></span><button type="button" class="danger outline" data-action="onlychats.remove" data-type="${escapeHtml(type)}" data-id="${escapeHtml(id)}">Remover</button></article>`;
         })
     ).join("") || `<p class="empty">A lista está vazia.</p>`;
-    return `<section class="panel"><h1>OnlyChats</h1><p class="warning">Essa configuração é global e afeta todas as plataformas. Acesso manual de servidor/chat é tratado como permanente; não remova permissões compartilhadas sem conferir o impacto.</p><form id="onlyChatsForm" class="form-grid"><label class="toggle-row"><span><strong>OnlyChats</strong><small>Restringir respostas aos contextos permitidos.</small></span><input name="enabled" type="checkbox"${settings.enabled ? " checked" : ""}></label><label>Comportamento<select name="mode"><option value="ignore"${settings.mode === "ignore" ? " selected" : ""}>Ignorar sem responder</option><option value="reply"${settings.mode === "reply" ? " selected" : ""}>Responder com aviso</option></select></label><label class="full">Mensagem de bloqueio<textarea name="message" rows="3" maxlength="2000">${escapeHtml(settings.message)}</textarea></label><button class="primary" type="submit">Salvar OnlyChats</button><p class="feedback" id="onlyChatsFeedback" role="status"></p></form><form id="onlyChatsAddForm" class="form-grid compact"><h2>Adicionar acesso permanente</h2><label>Tipo<select name="type"><option value="server">Servidor</option><option value="chat">Chat/grupo/canal</option><option value="categoria">Categoria</option><option value="topic">Tópico</option><option value="command">Comando liberado</option></select></label><label>ID ou comando<input name="id" maxlength="120" required></label><label>Nome (opcional)<input name="name" maxlength="120"></label><button type="submit">Adicionar</button><p class="feedback" id="onlyChatsAddFeedback" role="status"></p></form><h2 class="section-title">Permissões cadastradas</h2><div class="records">${entries}</div></section>`;
+    return `<section class="panel"><h1>OnlyChats</h1><p class="warning">A whitelist é global e compartilhada por WhatsApp, Telegram e Discord; esta página lista permissões de todas as plataformas, independentemente da plataforma selecionada. O acesso permitido por essa lista é permanente e gratuito no modo aluguel.</p><form id="onlyChatsForm" class="form-grid"><label class="toggle-row"><span><strong>OnlyChats</strong><small>Restringir respostas aos contextos permitidos.</small></span><input name="enabled" type="checkbox"${settings.enabled ? " checked" : ""}></label><label>Comportamento<select name="mode"><option value="ignore"${settings.mode === "ignore" ? " selected" : ""}>Ignorar sem responder</option><option value="reply"${settings.mode === "reply" ? " selected" : ""}>Responder com aviso</option></select></label><label class="full">Mensagem de bloqueio<textarea name="message" rows="3" maxlength="2000">${escapeHtml(settings.message)}</textarea></label><button class="primary" type="submit">Salvar OnlyChats</button><p class="feedback" id="onlyChatsFeedback" role="status"></p></form><form id="onlyChatsAddForm" class="form-grid compact"><h2>Adicionar acesso permanente</h2><label>Tipo<select name="type"><option value="server">Servidor</option><option value="chat">Chat/grupo/canal</option><option value="categoria">Categoria</option><option value="topic">Tópico</option><option value="command">Comando liberado</option></select></label><label>ID ou comando<input name="id" maxlength="120" required></label><label>Nome (opcional)<input name="name" maxlength="120"></label><button type="submit">Adicionar</button><p class="feedback" id="onlyChatsAddFeedback" role="status"></p></form><h2 class="section-title">Permissões cadastradas · todas as plataformas</h2><div class="records">${entries}</div></section>`;
 }
 
 function render(pageName, data) {
@@ -124,6 +179,7 @@ function render(pageName, data) {
     if (!page) throw new Error("Página de superusuário inválida.");
     const body = pageName === "home" ? homeContent(data)
         : pageName === "settings" ? settingsContent(data)
+            : pageName === "mercadopago" ? mercadoPagoContent(data)
             : pageName === "plans" ? plansContent(data)
                 : pageName === "orders" ? ordersContent(data)
                     : pageName === "subscriptions" ? subscriptionsContent(data)
@@ -137,6 +193,7 @@ function render(pageName, data) {
         function moneyToCents(value){const number=Number(value);if(!Number.isFinite(number)||number<0)throw new Error("Informe um valor válido.");return Math.round(number*100)}
         function daysToMs(value){const days=Number(value);if(!Number.isFinite(days)||days<=0)throw new Error("A duração precisa ser maior que zero.");return Math.round(days*86400000)}
         document.getElementById("settingsForm")?.addEventListener("submit",async event=>{event.preventDefault();const form=event.currentTarget;const button=form.querySelector("button");button.disabled=true;try{const fd=new FormData(form);const result=await post("settings.update",{settings:{enabledPlatforms:{whatsapp:fd.get("enabled-whatsapp")==="on",telegram:fd.get("enabled-telegram")==="on",discord:fd.get("enabled-discord")==="on"},presenceDurationMs:Math.round(Number(fd.get("presenceHours"))*3600000),noticeDays:Number(fd.get("noticeDays")),expiryAction:fd.get("expiryAction"),welcomeMessage:fd.get("welcomeMessage")}});show("settingsFeedback",result.message||"Configurações salvas.");setTimeout(()=>location.reload(),4000)}catch(error){show("settingsFeedback",error.message,true)}finally{button.disabled=false}});
+        document.getElementById("mercadoPagoForm")?.addEventListener("submit",async event=>{event.preventDefault();const form=event.currentTarget;const button=form.querySelector("button");button.disabled=true;try{const fd=new FormData(form);const updates={automaticEnabled:fd.get("automaticEnabled")==="on",clearAccessToken:fd.get("clearAccessToken")==="on"};if(fd.get("accessToken"))updates.accessToken=fd.get("accessToken");const result=await post("mercadopago.update",updates);show("mercadoPagoFeedback",result.message||"Configurações do Mercado Pago salvas.");setTimeout(()=>location.reload(),1500)}catch(error){show("mercadoPagoFeedback",error.message,true)}finally{button.disabled=false}});
         document.getElementById("planCreateForm")?.addEventListener("submit",async event=>{event.preventDefault();const form=event.currentTarget;const button=form.querySelector("button");button.disabled=true;try{const fd=new FormData(form);await post("plan.create",{name:fd.get("name"),priceCents:moneyToCents(fd.get("price")),durationMs:daysToMs(fd.get("durationDays"))});location.reload()}catch(error){show("planFeedback",error.message,true);button.disabled=false}});
         document.querySelectorAll(".plan-form").forEach(form=>form.addEventListener("submit",async event=>{event.preventDefault();const fd=new FormData(form);try{await post("plan.edit",{id:form.dataset.id,name:fd.get("name"),priceCents:moneyToCents(fd.get("price")),durationMs:daysToMs(fd.get("durationDays"))});location.reload()}catch(error){alert(error.message)}}));
         document.querySelectorAll(".order-form").forEach(form=>form.addEventListener("submit",async event=>{event.preventDefault();const fd=new FormData(form);try{await post("order.edit",{targetPlatform:form.dataset.platform,id:form.dataset.id,planId:fd.get("planId")});location.reload()}catch(error){show("ordersFeedback",error.message,true)}}));
@@ -144,7 +201,7 @@ function render(pageName, data) {
         document.querySelectorAll(".subscription-form").forEach(form=>{const permanent=form.elements.permanent;const expiresAt=form.elements.expiresAt;if(form.dataset.expiresAt){const date=new Date(Number(form.dataset.expiresAt));date.setMinutes(date.getMinutes()-date.getTimezoneOffset());expiresAt.value=date.toISOString().slice(0,16)}permanent?.addEventListener("change",()=>{expiresAt.disabled=permanent.checked});form.addEventListener("submit",async event=>{event.preventDefault();const fd=new FormData(form);try{await post("subscription.edit",{targetPlatform:form.dataset.platform,id:form.dataset.id,permanent:fd.get("permanent")==="on",expiresAt:fd.get("permanent")==="on"?null:new Date(fd.get("expiresAt")).getTime()});location.reload()}catch(error){show("actionFeedback",error.message,true)}})});
         document.getElementById("onlyChatsForm")?.addEventListener("submit",async event=>{event.preventDefault();const form=event.currentTarget;const fd=new FormData(form);try{await post("onlychats.update",{enabled:fd.get("enabled")==="on",mode:fd.get("mode"),message:fd.get("message")});show("onlyChatsFeedback","OnlyChats atualizado.");setTimeout(()=>location.reload(),1000)}catch(error){show("onlyChatsFeedback",error.message,true)}});
         document.getElementById("onlyChatsAddForm")?.addEventListener("submit",async event=>{event.preventDefault();const form=event.currentTarget;const fd=new FormData(form);try{await post("onlychats.add",{type:fd.get("type"),id:fd.get("id"),name:fd.get("name")});location.reload()}catch(error){show("onlyChatsAddFeedback",error.message,true)}});
-        document.querySelectorAll("[data-action]").forEach(button=>button.addEventListener("click",async()=>{const {action,id,type,platform:targetPlatform}=button.dataset;if(action==="plan.delete"&&!confirm("Apagar este plano? Pedidos já criados não serão alterados."))return;if(action==="order.approve"&&!confirm("Aceitar este pedido e ativar a assinatura?"))return;if(action==="order.reject"&&!confirm("Recusar o pedido? Pedidos iniciais recusados fazem o bot sair do grupo/servidor."))return;if(action==="order.delete"&&!confirm("Apagar este pedido?"))return;if(action==="subscription.delete"&&!confirm("Apagar e bloquear esta assinatura? O período de permanência começará agora."))return;try{const result=await post(action,{id,type,targetPlatform});if(result.warning){show("actionFeedback",result.message||result.warning,true);setTimeout(()=>location.reload(),3500)}else location.reload()}catch(error){show("actionFeedback",error.message,true)}}));
+        document.querySelectorAll("[data-action]").forEach(button=>button.addEventListener("click",async()=>{const {action,id,type,platform:targetPlatform}=button.dataset;if(action==="plan.delete"&&!confirm("Apagar este plano? Pedidos já criados não serão alterados."))return;if(action==="order.pix"){const pixKey=prompt("Informe a chave Pix. No primeiro envio, ela vai ao grupo/servidor e ao privado; em pedidos com Pix automático, envia uma alternativa manual:");if(!pixKey)return;try{await post(action,{id,targetPlatform,pixKey});location.reload()}catch(error){show("ordersFeedback",error.message,true)}return}if(action==="order.approve"&&!confirm("Confirmar que o pagamento foi recebido e ativar a assinatura?"))return;if(action==="order.reject"&&!confirm("Recusar o pedido/pagamento? A contratação inicial seguirá a política configurada."))return;if(action==="order.delete"&&!confirm("Apagar este pedido?"))return;if(action==="subscription.delete"&&!confirm("Apagar e bloquear esta assinatura? O período de permanência começará agora."))return;try{const result=await post(action,{id,type,targetPlatform});if(result.warning){show("actionFeedback",result.message||result.warning,true);setTimeout(()=>location.reload(),3500)}else location.reload()}catch(error){show("actionFeedback",error.message,true)}}));
       </script></body></html>`;
 }
 

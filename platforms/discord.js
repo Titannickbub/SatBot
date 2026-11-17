@@ -1122,12 +1122,21 @@ async function sendText(
     const sendPayload = options.embed
         ? {
             embeds: [options.embed],
+            ...(options.components?.length ? { components: options.components } : {}),
             allowedMentions: options.allowedMentions || { parse: [] }
         }
         : options.disableMentions
-            ? { content: text, allowedMentions: { parse: [] } }
+            ? {
+                content: text,
+                ...(options.components?.length ? { components: options.components } : {}),
+                allowedMentions: { parse: [] }
+            }
             : options.allowedMentions
-                ? { content: text, allowedMentions: options.allowedMentions }
+                ? {
+                    content: text,
+                    ...(options.components?.length ? { components: options.components } : {}),
+                    allowedMentions: options.allowedMentions
+                }
                 : text;
     const msg = await channel.send(sendPayload);
 

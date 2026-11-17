@@ -967,6 +967,12 @@ async function checkBotPermission(chatId, action) {
     }
 }
 
+async function getBotChatMember(chatId) {
+    if (!bot) throw new Error("[TELEGRAM] Bot não iniciado.");
+    const botInfo = bot.botInfo || await bot.telegram.getMe();
+    return bot.telegram.getChatMember(String(chatId), botInfo.id);
+}
+
 /**
  * Verifica se o MEMBRO pode executar a ação no chat.
  * @param {string} chatId  ID do chat
@@ -1066,6 +1072,8 @@ module.exports = {
     setChatOpen,
 
     checkBotPermission,
+
+    getBotChatMember,
 
     checkUserPermission
 
