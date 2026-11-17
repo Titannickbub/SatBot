@@ -1,47 +1,64 @@
 const config = require("../functions/config");
 const pkg = require("../package.json");
 
+function getActivePlatforms() {
+    const connected = {
+        whatsapp: Boolean(global.whatsappSock?.user),
+        telegram: Boolean(global.telegramBot?.botInfo),
+        discord: Boolean(global.discordClient?.isReady?.())
+    };
+    const names = {
+        whatsapp: "WhatsApp",
+        telegram: "Telegram",
+        discord: "Discord"
+    };
+    return Object.entries(connected)
+        .filter(([platform, isConnected]) =>
+            isConnected &&
+            (typeof config.isPlatformEnabled !== "function" || config.isPlatformEnabled(platform))
+        )
+        .map(([platform]) => names[platform]);
+}
+
 module.exports = {
     name: "infobot",
-    aliases: ["sobre", "about", "dono", "info_bot", "botinfo", "bot_info", "bot-info"],
+    aliases: ["sobre", "about", "info_bot", "botinfo", "bot_info", "bot-info"],
     category: null,
-    description: `🤖 Exibe informações públicas sobre o bot, seu responsável e a base utilizada.
+    description: `🤖 Exibe informações do bot em execução e sua base de código.
 
-⚙️ Algumas opções podem ser configuradas com {prefix}setbotinfo.
+📌 O contato do responsável é exibido por {prefix}dono.
 
 📌 Uso:
 {prefix}infobot
 
 💡 Exemplos:
 {prefix}infobot
-{prefix}dono
 {prefix}sobre
 {prefix}about`,
     usage: "{prefix}infobot",
 
     async execute(message) {
         const info = typeof config.getBotInfo === "function" ? config.getBotInfo() : {};
-        const botName = config.getBotName?.() || info.baseName || "Sat Bot";
-        const contacts = Array.isArray(info.ownerContacts) && info.ownerContacts.length
-            ? info.ownerContacts.map(contact => `• ${contact}`).join("\n")
-            : "• Não informado";
+        const botName = config.getBotName?.() || "Sat Bot";
+        const activePlatforms = getActivePlatforms();
 
         const text = [
             `🤖 *${botName}*`,
             info.description || "Bot multi-plataforma para sua comunidade.",
             `📦 Versão atual: ${pkg.version || "desconhecida"}`,
             "",
-            "👤 *Responsável e contato:*",
-            `• ${info.ownerName || "Não informado"}`,
-            contacts,
+            "⚙️ *Bot em execução:*",
+            `• Nome: ${botName}`,
+            `• Prefixo: ${config.getPrefix?.() || "!"}`,
+            `• Plataformas ativas: ${activePlatforms.length ? activePlatforms.join(", ") : "nenhuma conectada"}`,
+            "",
+            `📌 Use *${message.prefix || "!"}menu* para ver os comandos disponíveis.`,
             "",
             "🧩 *Base utilizada:*",
-            `• ${info.baseName || botName}`,
-            `• Desenvolvedor: ${info.baseDeveloper || "Não informado"}`,
-            `• Repositório: ${info.baseRepository || "Não informado"}`,
-            `• Licença: ${info.baseLicense || "Não informado"}`,
-            "",
-            `📌 Use *${message.prefix || "!"}menu* para ver os comandos disponíveis.`
+            "• Sat Bot",
+            "• Desenvolvedor: Titannickbub",
+            "• Repositório: https://github.com/Titannickbub/SatBot",
+            "• Licença: ISC"
         ].join("\n");
 
         return message.reply({ text });

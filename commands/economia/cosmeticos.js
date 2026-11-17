@@ -1,6 +1,12 @@
 const economy = require("../../functions/economy");
 const imageBanner = require("../../functions/imageBanner");
 const profileCosmetics = require("../../functions/profileCosmetics");
+const {
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    StringSelectMenuBuilder
+} = require("discord.js");
 
 const RARITY_LABELS = {
     [economy.ITEM_RARITY.COMMON]: "Comum",
@@ -14,7 +20,7 @@ module.exports = {
     name: "cosmeticos",
     aliases: ["cosmético", "cosmetico", "cosméticos", "cosmetics"],
     category: "economia",
-    description: "Consulte e equipe fundos, outlines, círculos e efeitos cosméticos no seu perfil.",
+    description: "Consulte, compre e equipe fundos, outlines, círculos e efeitos cosméticos no seu perfil.",
     usage: "{prefix}cosmeticos help",
 
     async execute(message) {
@@ -127,6 +133,128 @@ module.exports = {
         return message.reply({
             text: `✅ ${typeLabel(type)} ${item.label} aplicado.`
         });
+    },
+
+    async handleInteraction(interaction) {
+        const componentId = interaction.customId || interaction.callbackQuery?.data || "";
+        const parts = String(componentId).split(":");
+        const [commandName, action, typeOrIndex, key] = parts;
+        if (commandName !== "cosmeticos") return false;
+
+        const isDiscord = !interaction.callbackQuery &&
+            (interaction.isStringSelectMenu?.() || interaction.isButton?.());
+        const isTelegram = Boolean(interaction.callbackQuery);
+
+        if (action === "back" && (isDiscord || isTelegram)) {
+            const message = createInteractionMessage(
+                interaction,
+                { sendNewMessage: isTelegram && typeOrIndex === "items" }
+            );
+            if (typeOrIndex === "items") {
+                const ownerId = key;
+                const type = parts[4];
+                if (String(message.userId) !== ownerId) {
+                    if (isTelegram) {
+                        await interaction.answerCbQuery("Esta navegação pertence a outra pessoa.", { show_alert: true });
+                    } else {
+                        await interaction.reply({ content: "❌ Esta navegação pertence a outra pessoa.", ephemeral: true });
+                    }
+                    return true;
+                }
+                if (!cosmeticType(type)) {
+                    return isTelegram
+                        ? interaction.answerCbQuery("Categoria inválida.", { show_alert: true })
+                        : interaction.reply({ content: "❌ Categoria inválida.", ephemeral: true });
+                }
+                const state = economy.getProfileCosmetics(message);
+                const labels = currentCosmeticLabels(state);
+                if (isTelegram) {
+                    await interaction.answerCbQuery();
+                    await replyCosmeticCatalog(
+                        message, state, type, labels.background, labels.outline,
+                        labels.circle, labels.effect, message.prefix
+                    );
+                    try {
+                        await interaction.deleteMessage();
+                    } catch (error) {
+                        console.warn("[COSMETICOS] Não foi possível remover a prévia anterior:", error.message || error);
+                        await interaction.editMessageCaption("Catálogo atualizado abaixo.", {
+                            reply_markup: { inline_keyboard: [] }
+                        });
+                    }
+                    return true;
+                }
+                const payload = replyCosmeticCatalog(
+                    message, state, type, labels.background, labels.outline,
+                    labels.circle, labels.effect, message.prefix
+                );
+                await interaction.update({ ...toDiscordInteractionPayload(payload), attachments: [] });
+                return true;
+            }
+
+            if (typeOrIndex !== "menu") return false;
+            if (isTelegram) await interaction.answerCbQuery();
+            const state = economy.getProfileCosmetics(message);
+            const labels = currentCosmeticLabels(state);
+            const payload = replyMenu(
+                message, labels.background, labels.outline, labels.circle,
+                labels.effect, message.prefix
+            );
+            if (isDiscord) await interaction.update(toDiscordInteractionPayload(payload));
+            else await payload;
+            return true;
+        }
+
+        if (isDiscord && action === "category") {
+            const type = interaction.values?.[0];
+            if (!cosmeticType(type)) return false;
+            const message = createInteractionMessage(interaction);
+            const state = economy.getProfileCosmetics(message);
+            const labels = currentCosmeticLabels(state);
+            await interaction.update(toDiscordInteractionPayload(replyCosmeticCatalog(
+                message, state, type, labels.background, labels.outline,
+                labels.circle, labels.effect, message.prefix
+            )));
+            return true;
+        }
+
+        if (isTelegram && action === "category") {
+            const type = typeOrIndex;
+            if (!cosmeticType(type)) {
+                await interaction.answerCbQuery("Categoria inválida.", { show_alert: true });
+                return true;
+            }
+            await interaction.answerCbQuery();
+            const message = createInteractionMessage(interaction);
+            const state = economy.getProfileCosmetics(message);
+            const labels = currentCosmeticLabels(state);
+            await replyCosmeticCatalog(
+                message, state, type, labels.background, labels.outline,
+                labels.circle, labels.effect, message.prefix
+            );
+            return true;
+        }
+
+        let selectedType;
+        let selectedKey;
+        if (isDiscord && action === "select") {
+            [selectedType, selectedKey] = String(interaction.values?.[0] || "").split(":");
+        } else if (isTelegram && action === "choose") {
+            selectedType = typeOrIndex;
+            selectedKey = key;
+        } else {
+            return false;
+        }
+
+        if (!cosmeticType(selectedType) || !itemsForType(selectedType)[selectedKey]) {
+            return isTelegram
+                ? interaction.answerCbQuery("Esse cosmético não está mais disponível.", { show_alert: true })
+                : interaction.reply({ content: "❌ Esse cosmético não está mais disponível.", ephemeral: true });
+        }
+
+        const buyCommand = require("./comprar");
+        await buyCommand.beginCosmeticPurchase(interaction, selectedType, selectedKey);
+        return true;
     }
 };
 
@@ -174,7 +302,8 @@ function replyMenu(message, currentBackground, currentOutline, currentCircle, cu
                 title: "🎨 Loja de cosméticos",
                 description: `Personalize seu perfil neste grupo ou servidor.\n\n**Categorias**\n${categoryLines.join("\n")}\n\n${currentLine}`,
                 footer: { text: "Escolha uma categoria para consultar os itens." }
-            }
+            },
+            components: createDiscordCategoryMenu()
         });
     }
     if (message.platform === "telegram") {
@@ -187,7 +316,8 @@ function replyMenu(message, currentBackground, currentOutline, currentCircle, cu
                 "",
                 escapeHtml(currentLine)
             ].join("\n"),
-            parse_mode: "HTML"
+            parse_mode: "HTML",
+            reply_markup: createTelegramCategoryKeyboard()
         });
     }
     return message.reply({
@@ -206,6 +336,8 @@ function formatHelp(prefix) {
     return [
         "🎨 COSMÉTICOS DO PERFIL",
         "Consulte fundos, outlines, círculos e efeitos de perfil.",
+        "No Discord e no Telegram, selecione a categoria e o cosmético para confirmar a compra ou aplicar um item que já possui.",
+        "Os comandos de texto continuam disponíveis em todas as plataformas.",
         "",
         "Abra a loja e veja as opções:",
         `${prefix}cosmeticos`,
@@ -270,6 +402,7 @@ function replyCosmeticCatalog(message, state, type, currentBackground, currentOu
         "Para ver a prévia e aplicar uma opção comprada:",
         `${prefix}cosmeticos ${categoryName(type)} <item>`,
         `${prefix}cosmeticos previa ${categoryName(type)} <id|item>`,
+        "Selecione um item abaixo para confirmar a compra ou aplicar um item que já possui.",
         "",
         `Compre com ${prefix}comprar <id> ou ${prefix}comprar ${categoryName(type)} <item>.`,
         `Itens épicos custam ${economy.formatMoney(economy.PROFILE_EFFECT_PRICE)}. Opções compradas podem ser equipadas novamente sem custo.`,
@@ -282,13 +415,15 @@ function replyCosmeticCatalog(message, state, type, currentBackground, currentOu
                 color: 0x8fb5ff,
                 title: `${typeEmoji(type)} ${typeLabel(type)}`,
                 description: lines.slice(2).join("\n")
-            }
+            },
+            components: createDiscordCosmeticComponents(type, itemsByKey, ownedItems)
         });
     }
     if (message.platform === "telegram") {
         return message.reply({
             text: lines.map(escapeHtml).join("\n"),
-            parse_mode: "HTML"
+            parse_mode: "HTML",
+            reply_markup: createTelegramCosmeticKeyboard(type, itemsByKey, ownedItems)
         });
     }
     return message.reply({ text: lines.join("\n") });
@@ -352,4 +487,141 @@ function escapeHtml(value) {
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
+}
+
+function currentCosmeticLabels(state) {
+    return {
+        background: state.background
+            ? economy.PROFILE_BACKGROUNDS[state.background].label
+            : "Original",
+        outline: state.outline
+            ? economy.PROFILE_OUTLINES[state.outline].label
+            : "Padrão (acompanha o fundo)",
+        circle: state.circle ? economy.PROFILE_CIRCLES[state.circle].label : "Nenhum",
+        effect: state.effect ? economy.PROFILE_EFFECTS[state.effect].label : "Nenhum"
+    };
+}
+
+function createDiscordCategoryMenu() {
+    const menu = new StringSelectMenuBuilder()
+        .setCustomId("cosmeticos:category")
+        .setPlaceholder("Escolha uma categoria");
+    for (const type of ["background", "outline", "circle", "effect"]) {
+        menu.addOptions({
+            label: typeLabel(type),
+            description: `Consultar ${categoryName(type)}s disponíveis`,
+            value: type,
+            emoji: typeEmoji(type)
+        });
+    }
+    return [new ActionRowBuilder().addComponents(menu)];
+}
+
+function createTelegramCategoryKeyboard() {
+    return {
+        inline_keyboard: ["background", "outline", "circle", "effect"].map(type => [{
+            text: `${typeEmoji(type)} ${typeLabel(type)}`,
+            callback_data: `cosmeticos:category:${type}`
+        }])
+    };
+}
+
+function createDiscordCosmeticComponents(type, itemsByKey, ownedItems) {
+    const entries = Object.entries(itemsByKey);
+    const rows = [];
+    for (let offset = 0; offset < Math.min(entries.length, 100); offset += 25) {
+        const index = Math.floor(offset / 25);
+        const menu = new StringSelectMenuBuilder()
+            .setCustomId(`cosmeticos:select:${index}`)
+            .setPlaceholder(`Selecione ${typeLabel(type).toLowerCase()} para comprar ou aplicar`)
+            .addOptions(entries.slice(offset, offset + 25).map(([key, item]) => ({
+                label: `ID ${item.id} · ${item.label}`,
+                description: ownedItems.includes(key)
+                    ? "Já possui — aplicar sem custo"
+                    : `Preço: ${economy.formatMoney(priceForType(type, key))}`,
+                value: `${type}:${key}`,
+                emoji: ownedItems.includes(key) ? "✅" : typeEmoji(type)
+            })));
+        rows.push(new ActionRowBuilder().addComponents(menu));
+    }
+    rows.push(new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId("cosmeticos:back:menu")
+            .setLabel("Voltar às categorias")
+            .setStyle(ButtonStyle.Secondary)
+    ));
+    return rows;
+}
+
+function createTelegramCosmeticKeyboard(type, itemsByKey, ownedItems) {
+    const keyboard = Object.entries(itemsByKey).slice(0, 100).map(([key, item]) => [{
+        text: ownedItems.includes(key)
+            ? `✅ ${item.label} · aplicar`
+            : `${typeEmoji(type)} ${item.label} · ${economy.formatMoney(priceForType(type, key))}`,
+        callback_data: `cosmeticos:choose:${type}:${key}`
+    }]);
+    keyboard.push([{
+        text: "⬅️ Voltar às categorias",
+        callback_data: "cosmeticos:back:menu"
+    }]);
+    return {
+        inline_keyboard: keyboard
+    };
+}
+
+function createInteractionMessage(interaction, { sendNewMessage = false } = {}) {
+    const prefix = require("../../functions/config").getConfig().prefix || "!";
+    if (interaction.callbackQuery) {
+        const sourceMessage = interaction.callbackQuery.message;
+        const chat = sourceMessage.chat;
+        return {
+            platform: "telegram",
+            chatId: String(chat.id),
+            chatName: chat.title || null,
+            threadId: sourceMessage.message_thread_id ? String(sourceMessage.message_thread_id) : null,
+            chatType: chat.type,
+            isPrivate: chat.type === "private",
+            userId: String(interaction.from.id),
+            username: interaction.from.username || null,
+            displayName: [interaction.from.first_name, interaction.from.last_name]
+                .filter(Boolean).join(" ") || interaction.from.username || String(interaction.from.id),
+            prefix,
+            raw: { chat },
+            reply: payload => {
+                const options = {
+                    ...(payload.parse_mode ? { parse_mode: payload.parse_mode } : {}),
+                    ...(payload.reply_markup ? { reply_markup: payload.reply_markup } : {})
+                };
+                if (sendNewMessage) {
+                    if (sourceMessage.message_thread_id) {
+                        options.message_thread_id = Number(sourceMessage.message_thread_id);
+                    }
+                    return interaction.reply(payload.text, options);
+                }
+                return interaction.editMessageText(payload.text, options);
+            }
+        };
+    }
+
+    return {
+        platform: "discord",
+        chatId: String(interaction.channelId),
+        guildId: interaction.guildId ? String(interaction.guildId) : null,
+        chatType: interaction.guildId ? "group" : "private",
+        isPrivate: !interaction.guildId,
+        userId: String(interaction.user.id),
+        username: interaction.user.username,
+        displayName: interaction.member?.displayName || interaction.user.globalName || interaction.user.username,
+        prefix,
+        raw: { guild: interaction.guild, guildId: interaction.guildId },
+        reply: payload => payload
+    };
+}
+
+function toDiscordInteractionPayload(payload) {
+    const { embed, ...rest } = payload;
+    return {
+        ...rest,
+        ...(embed ? { embeds: [embed] } : {})
+    };
 }

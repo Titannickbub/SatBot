@@ -205,7 +205,7 @@ function extractDiscordMedia(discordMsg) {
     return null;
 }
 
-async function start(onMessage) {
+async function start(onMessage, onComponentInteraction) {
     require("dotenv").config({ path: path.join(__dirname, "..", "settings", ".env"), override: true });
 
     const token = authFlow.getEnvValue("DISCORD_TOKEN");
@@ -420,6 +420,32 @@ async function start(onMessage) {
     });
 
     client.on("interactionCreate", async (interaction) => {
+        if (interaction.isStringSelectMenu() || interaction.isButton()) {
+            try {
+                const handled = typeof onComponentInteraction === "function"
+                    ? await onComponentInteraction(interaction)
+                    : false;
+                if (handled) return;
+                await interaction.reply({
+                    content: "❌ Esta interação não está mais disponível.",
+                    ephemeral: true
+                });
+            } catch (error) {
+                console.error("❌[DISCORD] Erro ao encaminhar interação de componente:", error);
+                if (interaction.deferred || interaction.replied) {
+                    await interaction.followUp({
+                        content: "❌ Não foi possível processar essa interação agora.",
+                        ephemeral: true
+                    }).catch(() => {});
+                } else {
+                    await interaction.reply({
+                        content: "❌ Não foi possível processar essa interação agora.",
+                        ephemeral: true
+                    }).catch(() => {});
+                }
+            }
+            return;
+        }
         if (!interaction.isChatInputCommand()) return;
 
         try {
@@ -491,17 +517,18 @@ async function start(onMessage) {
                 try {
                     if (data?.embed) {
                         const embed = new EmbedBuilder(data.embed);
+                        const components = data.components || [];
                         if (!repliedToInteraction) {
                             repliedToInteraction = true;
                             if (interaction.deferred || interaction.replied) {
-                                return await interaction.editReply({ embeds: [embed] });
+                                return await interaction.editReply({ embeds: [embed], components });
                             }
-                            return await interaction.reply({ embeds: [embed] });
+                            return await interaction.reply({ embeds: [embed], components });
                         }
                         if (interaction.deferred || interaction.replied) {
-                            return await interaction.followUp({ embeds: [embed] });
+                            return await interaction.followUp({ embeds: [embed], components });
                         }
-                        return await interaction.channel.send({ embeds: [embed] });
+                        return await interaction.channel.send({ embeds: [embed], components });
                     }
                     if (typeof data === "object" && data !== null && (data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url)) {
                         const image = data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url;
@@ -536,15 +563,27 @@ async function start(onMessage) {
                         if (!repliedToInteraction) {
                             repliedToInteraction = true;
                             if (interaction.deferred || interaction.replied) {
-                                await interaction.editReply({ content: chunk });
+                                await interaction.editReply({
+                                    content: chunk,
+                                    components: i === 0 ? (data.components || []) : []
+                                });
                             } else {
-                                await interaction.reply({ content: chunk });
+                                await interaction.reply({
+                                    content: chunk,
+                                    components: i === 0 ? (data.components || []) : []
+                                });
                             }
                         } else {
                             if (interaction.deferred || interaction.replied) {
-                                await interaction.followUp({ content: chunk });
+                                await interaction.followUp({
+                                    content: chunk,
+                                    components: i === 0 ? (data.components || []) : []
+                                });
                             } else {
-                                await interaction.channel.send(chunk);
+                                await interaction.channel.send({
+                                    content: chunk,
+                                    components: i === 0 ? (data.components || []) : []
+                                });
                             }
                         }
                     }
@@ -817,7 +856,10 @@ async function start(onMessage) {
             reply: async function (data) {
                 try {
                     if (data?.embed) {
-                        return await msg.reply({ embeds: [new EmbedBuilder(data.embed)] });
+                        return await msg.reply({
+                            embeds: [new EmbedBuilder(data.embed)],
+                            components: data.components || []
+                        });
                     }
                     if (typeof data === "object" && data !== null && (data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url)) {
                         const image = data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url;
@@ -835,8 +877,11 @@ async function start(onMessage) {
 
                     const MAX_LEN = 2000;
                     if (text.length <= MAX_LEN) {
+                        const components = data && typeof data === "object" ? data.components || [] : [];
                         if (data && typeof data === "object" && data.allowedMentions) {
-                            await msg.reply({ content: text, allowedMentions: data.allowedMentions });
+                            await msg.reply({ content: text, allowedMentions: data.allowedMentions, components });
+                        } else if (components.length) {
+                            await msg.reply({ content: text, components });
                         } else {
                             await msg.reply(text);
                         }
@@ -909,7 +954,8 @@ async function start(onMessage) {
                                 .setImage(`attachment://${fileName}`)
                                 .setDescription(caption)
                         ],
-                        files: [{ attachment: image, name: fileName }]
+                        files: [{ attachment: image, name: fileName }],
+                        components: data.components || []
                     });
                 } else if (typeof image === "string" && /^https?:\/\//i.test(image)) {
                     await msg.reply({
@@ -917,12 +963,14 @@ async function start(onMessage) {
                             new EmbedBuilder()
                                 .setImage(image)
                                 .setDescription(caption)
-                        ]
+                        ],
+                        components: data.components || []
                     });
                 } else {
                     await msg.reply({
                         content: caption,
-                        files: [image]
+                        files: [image],
+                        components: data.components || []
                     });
                 }
             },
@@ -1071,11 +1119,26 @@ async function sendText(
 
     }
 
-    const msg = await channel.send(options.disableMentions
-        ? { content: text, allowedMentions: { parse: [] } }
-        : options.allowedMentions
-            ? { content: text, allowedMentions: options.allowedMentions }
-            : text);
+    const sendPayload = options.embed
+        ? {
+            embeds: [options.embed],
+            ...(options.components?.length ? { components: options.components } : {}),
+            allowedMentions: options.allowedMentions || { parse: [] }
+        }
+        : options.disableMentions
+            ? {
+                content: text,
+                ...(options.components?.length ? { components: options.components } : {}),
+                allowedMentions: { parse: [] }
+            }
+            : options.allowedMentions
+                ? {
+                    content: text,
+                    ...(options.components?.length ? { components: options.components } : {}),
+                    allowedMentions: options.allowedMentions
+                }
+                : text;
+    const msg = await channel.send(sendPayload);
 
     return msg.id;
 

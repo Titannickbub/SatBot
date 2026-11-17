@@ -30,11 +30,7 @@ const DEFAULT_CONFIG = {
     botInfo: {
         description: "Um bot multi-plataforma para facilitar sua comunidade.",
         ownerName: "Dono do bot",
-        ownerContacts: [],
-        baseName: "Sat Bot",
-        baseDeveloper: "Titannickbub",
-        baseRepository: "https://github.com/Titannickbub/SatBot",
-        baseLicense: "ISC"
+        ownerContacts: []
     },
     blockcmd_su: {
         enabled: false,
@@ -95,8 +91,12 @@ function normalizeConfig(data) {
             ...(source.sticker && typeof source.sticker === "object" ? source.sticker : {})
         },
         botInfo: {
-            ...DEFAULT_CONFIG.botInfo,
-            ...(source.botInfo && typeof source.botInfo === "object" ? source.botInfo : {}),
+            description: typeof source.botInfo?.description === "string"
+                ? source.botInfo.description
+                : DEFAULT_CONFIG.botInfo.description,
+            ownerName: typeof source.botInfo?.ownerName === "string"
+                ? source.botInfo.ownerName
+                : DEFAULT_CONFIG.botInfo.ownerName,
             ownerContacts: Array.isArray(source.botInfo?.ownerContacts)
                 ? source.botInfo.ownerContacts.filter(contact => typeof contact === "string" && contact.trim())
                 : DEFAULT_CONFIG.botInfo.ownerContacts
@@ -843,30 +843,30 @@ function setBotName(name) {
             data.sticker.authorName = updatedName;
         }
     }
-    if (data.botInfo && (data.botInfo.baseName === previousName || data.botInfo.baseName === "Sat Bot")) {
-        data.botInfo.baseName = updatedName;
-    }
 
     save(data);
     return updatedName;
 }
 
 function getBotInfo() {
-    const info = load().botInfo;
-    const botName = getBotName();
+    const info = load().botInfo || {};
     return {
-        ...info,
-        baseName: !info.baseName || info.baseName === "Sat Bot"
-            ? botName
-            : info.baseName
+        description: info.description || DEFAULT_CONFIG.botInfo.description,
+        ownerName: info.ownerName || DEFAULT_CONFIG.botInfo.ownerName,
+        ownerContacts: Array.isArray(info.ownerContacts) ? info.ownerContacts : []
     };
 }
 
 function setBotInfo(updates) {
     const data = load();
+    const source = updates && typeof updates === "object" ? updates : {};
     data.botInfo = {
-        ...data.botInfo,
-        ...(updates && typeof updates === "object" ? updates : {})
+        ...getBotInfo(),
+        ...(typeof source.description === "string" ? { description: source.description } : {}),
+        ...(typeof source.ownerName === "string" ? { ownerName: source.ownerName } : {}),
+        ...(Array.isArray(source.ownerContacts) ? {
+            ownerContacts: source.ownerContacts.filter(contact => typeof contact === "string" && contact.trim())
+        } : {})
     };
     save(data);
     return data.botInfo;

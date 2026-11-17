@@ -25,6 +25,7 @@ plataformas e só podem ser usados por superusuários (SU/donos do bot).
   <a href="./system/configuracoes.md"><img src="https://img.shields.io/badge/Configura%C3%A7%C3%B5es-guia-673AB7?style=for-the-badge" alt="Configurações globais do System"></a><br>
   <a href="./system/acoes-imediatas.md"><img src="https://img.shields.io/badge/A%C3%A7%C3%B5es%20imediatas-guia-673AB7?style=for-the-badge" alt="Ações imediatas do System"></a><br>
   <a href="./system/info-bronxys.md"><img src="https://img.shields.io/badge/Info%20e%20Bronxys-guia-2196F3?style=for-the-badge" alt="Status do bot e integração Bronxys"></a><br>
+  <a href="./aluguel.md"><img src="https://img.shields.io/badge/Fluxo%20de%20aluguel%20e%20Pix-guia-673AB7?style=for-the-badge" alt="Comandos do fluxo de aluguel e pagamento Pix"></a><br>
 </p>
 
 ## 🧭 Comandos documentados

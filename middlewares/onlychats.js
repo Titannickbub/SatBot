@@ -41,13 +41,20 @@ module.exports = {
             return true;
         }
 
-        await rentalHelper.processPendingDeletionNotices(message.platform, message);
+        if (!message.isComponentInteraction) {
+            await rentalHelper.processPendingDeletionNotices(message.platform, message);
+        }
 
         if (isOnlyChatsContextWhitelisted(message)) {
             return true;
         }
 
-        if (rentalHelper.getSettings(message.platform).enabled) {
+        const rentalEnabled = rentalHelper.getSettings(message.platform).enabled;
+        if (rentalEnabled && rentalHelper.isRentalManagementCommand(message)) {
+            return true;
+        }
+
+        if (rentalEnabled && !message.isComponentInteraction) {
             const scopeId = rentalHelper.getScopeId(message);
             const chatId = rentalHelper.getChatId(message);
             if (scopeId && chatId) {

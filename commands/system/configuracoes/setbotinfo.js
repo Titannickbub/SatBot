@@ -6,16 +6,10 @@ const fields = {
     descrição: "description",
     dono: "ownerName",
     responsavel: "ownerName",
-    responsável: "ownerName",
-    base: "baseName",
-    desenvolvedor: "baseDeveloper",
-    repositorio: "baseRepository",
-    repositório: "baseRepository",
-    licenca: "baseLicense",
-    licença: "baseLicense"
+    responsável: "ownerName"
 };
 
-const DESCRIPTION = `📋 Altera os dados públicos exibidos pelo comando {prefix}infobot.
+const DESCRIPTION = `📋 Altera a descrição do bot e os dados de contato exibidos por {prefix}dono.
 
 🔐 Disponível apenas para superusuários / donos do bot.
 
@@ -23,10 +17,6 @@ const DESCRIPTION = `📋 Altera os dados públicos exibidos pelo comando {prefi
 • descricao — texto descritivo do bot.
 • dono / responsavel — nome do responsável pelo bot.
 • contato / contatos — informações de contato (separar com |).
-• base — nome do projeto base.
-• desenvolvedor — nome do desenvolvedor da base.
-• repositorio — URL do repositório do projeto.
-• licenca — tipo de licença do projeto.
 
 📝 1. Altere a descrição do bot:
 {prefix}setbotinfo descricao Meu bot multifuncional para grupos!
@@ -41,13 +31,7 @@ const DESCRIPTION = `📋 Altera os dados públicos exibidos pelo comando {prefi
 Para vários contatos, separe-os com |.
 
 🗑️ 4. Remova todos os contatos:
-{prefix}setbotinfo contato limpar
-
-🔗 5. Configure dados do projeto base:
-{prefix}setbotinfo base SatBot
-{prefix}setbotinfo desenvolvedor NomeDoDesenvolvedor
-{prefix}setbotinfo repositorio https://github.com/usuario/repositorio
-{prefix}setbotinfo licenca MIT`;
+{prefix}setbotinfo contato limpar`;
 
 module.exports = {
     name: "setbotinfo",
@@ -59,7 +43,6 @@ module.exports = {
         "{prefix}setbotinfo descricao Meu bot multifuncional!",
         "{prefix}setbotinfo dono Nome do responsável",
         "{prefix}setbotinfo contato WhatsApp: +55 00 00000-0000 | Discord: usuario",
-        "{prefix}setbotinfo repositorio https://github.com/usuario/repositorio",
         "{prefix}setbotinfo contato limpar"
     ],
 
@@ -74,7 +57,7 @@ module.exports = {
 
         if (!field || ["ajuda", "help"].includes(field)) {
             return message.reply({
-                text: `ℹ️ Uso: ${message.prefix}setbotinfo <campo> <valor>\n\nCampos: descricao, dono, contato, base, desenvolvedor, repositorio, licenca.\nUse "contato limpar" para remover os contatos.`
+                text: `ℹ️ Uso: ${message.prefix}setbotinfo <campo> <valor>\n\nCampos: descricao, dono, contato.\nUse "contato limpar" para remover os contatos.`
             });
         }
 
@@ -91,7 +74,7 @@ module.exports = {
 
         const configField = fields[field];
         if (!configField) {
-            return message.reply({ text: "❌ Campo inválido. Use: descricao, dono, contato, base, desenvolvedor, repositorio ou licenca." });
+            return message.reply({ text: "❌ Campo inválido. Use: descricao, dono ou contato. As informações da base são fixas." });
         }
         if (!value) {
             return message.reply({ text: `❌ Informe um valor para "${field}".` });

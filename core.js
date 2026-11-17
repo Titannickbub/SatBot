@@ -17,6 +17,7 @@ const platforms = [];
 const platformRegistry = {};
 const functions = {};
 const middlewares = [];
+const COMPONENT_MESSAGE_CONTEXT = Symbol.for("satbot.componentMessageContext");
 
 function normalizeCommandName(value) {
     return String(value || "")
@@ -771,7 +772,7 @@ async function start() {
         }
         console.log(`${_ts()} ♻️[CORE] Iniciando plataforma [${i}]: ${name}`);
         try {
-            await platform.start(handleMessage);
+            await platform.start(handleMessage, handleComponentInteraction);
             console.log(`${_ts()} ✅[CORE] Plataforma [${i}] inicializada: ${name}`);
         } catch (err) {
             console.error(`${_ts()} ❌[CORE] Erro ao iniciar plataforma [${name}]:`, err.message || err);
@@ -805,6 +806,430 @@ async function start() {
     }
 }
 
+function hasComponentPermission(permissions, permission) {
+    try {
+        return Boolean(permissions?.has?.(permission));
+    } catch (error) {
+        console.error(`[${_ts()}] ❌[COMPONENT] Falha ao verificar permissão ${permission}:`, error);
+        return false;
+    }
+}
+
+async function createComponentMessage(interaction, commandName) {
+    const config = functions.config?.getConfig?.() || {};
+    const prefix = config.prefix || "!";
+    const isTelegram = Boolean(interaction?.callbackQuery);
+    const user = isTelegram
+        ? interaction.from || interaction.callbackQuery?.from
+        : interaction.user;
+    if (!user?.id) return null;
+
+    let message;
+    if (isTelegram) {
+        const sourceMessage = interaction.callbackQuery?.message;
+        const chat = sourceMessage?.chat || interaction.chat;
+        if (!chat?.id) return null;
+
+        const threadId = sourceMessage?.message_thread_id
+            ? String(sourceMessage.message_thread_id)
+            : null;
+        let isAdmin = chat.type === "private";
+        let canManageMessages = isAdmin;
+        let permissionCheckFailed = false;
+        const telegramApi = interaction.telegram || global.telegramBot?.telegram;
+        if (!isAdmin && typeof telegramApi?.getChatAdministrators === "function") {
+            let adminListLookupSucceeded = false;
+            try {
+                const administrators = await telegramApi.getChatAdministrators(chat.id);
+                adminListLookupSucceeded = true;
+                const member = administrators.find(entry =>
+                    String(entry.user?.id) === String(user.id)
+                );
+                isAdmin = Boolean(member);
+                canManageMessages = member?.status === "creator" ||
+                    (member?.status === "administrator" && member.can_delete_messages === true);
+            } catch (error) {
+                console.error(
+                    `[${_ts()}] ❌[COMPONENT] Falha ao buscar permissões do Telegram | chat: ${chat.id} | user: ${user.id}:`,
+                    error.message || error
+                );
+                permissionCheckFailed = true;
+            }
+            if (!adminListLookupSucceeded && typeof telegramApi.getChatMember === "function") {
+                try {
+                    const member = await telegramApi.getChatMember(chat.id, user.id);
+                    isAdmin = ["administrator", "creator"].includes(member.status);
+                    canManageMessages = member.status === "creator" ||
+                        (member.status === "administrator" && member.can_delete_messages === true);
+                    if (isAdmin) permissionCheckFailed = false;
+                } catch (error) {
+                    console.error(
+                        `[${_ts()}] ❌[COMPONENT] Falha ao consultar membro do Telegram | chat: ${chat.id} | user: ${user.id}:`,
+                        error.message || error
+                    );
+                }
+            }
+        } else if (!isAdmin && typeof telegramApi?.getChatMember === "function") {
+            try {
+                const member = await telegramApi.getChatMember(chat.id, user.id);
+                isAdmin = ["administrator", "creator"].includes(member.status);
+                canManageMessages = member.status === "creator" ||
+                    (member.status === "administrator" && member.can_delete_messages === true);
+                permissionCheckFailed = !isAdmin;
+            } catch (error) {
+                console.error(
+                    `[${_ts()}] ❌[COMPONENT] Falha ao consultar membro do Telegram | chat: ${chat.id} | user: ${user.id}:`,
+                    error.message || error
+                );
+            }
+        } else if (!isAdmin) {
+            console.error(
+                `[${_ts()}] ❌[COMPONENT] Cliente Telegram indisponível para verificar permissões | chat: ${chat.id} | user: ${user.id}`
+            );
+            permissionCheckFailed = true;
+        }
+
+        message = {
+            platform: "telegram",
+            chatId: String(chat.id),
+            chatName: chat.title || null,
+            chatType: chat.type || "group",
+            isPrivate: chat.type === "private",
+            threadId,
+            userId: String(user.id),
+            username: user.username || null,
+            displayName: [user.first_name, user.last_name]
+                .filter(Boolean)
+                .join(" ") || user.username || String(user.id),
+            messageId: sourceMessage?.message_id ? String(sourceMessage.message_id) : null,
+            raw: { chat },
+            sender: { isAdmin, canManageMessages, permissionCheckFailed },
+            reply: async payload => {
+                const text = typeof payload === "string" ? payload : payload?.text;
+                if (!text || typeof interaction.answerCbQuery !== "function") return false;
+                const response = await interaction.answerCbQuery(String(text).slice(0, 180), {
+                    show_alert: true
+                });
+                message._componentReplySent = true;
+                return response;
+            }
+        };
+    } else {
+        const channel = interaction.channel || null;
+        const guild = interaction.guild || channel?.guild || null;
+        const guildId = interaction.guildId ? String(interaction.guildId) : guild?.id ? String(guild.id) : null;
+        const channelId = interaction.channelId ? String(interaction.channelId) : channel?.id ? String(channel.id) : null;
+        if (!channelId || (guildId && !channel)) return null;
+
+        const permissions = interaction.memberPermissions || interaction.member?.permissions;
+        const isPrivate = !guildId;
+        const isAdmin = isPrivate || hasComponentPermission(permissions, "Administrator");
+        const canManageMessages = isPrivate || hasComponentPermission(permissions, "ManageMessages");
+        const isThread = channel?.isThread?.() === true;
+        const categoryId = isThread
+            ? channel.parent?.parentId || channel.parent?.parent?.id || null
+            : channel?.parentId || null;
+        message = {
+            platform: "discord",
+            chatId: channelId,
+            channelId,
+            guildId,
+            chatName: channel?.name || null,
+            chatType: isPrivate ? "private" : "group",
+            isPrivate,
+            threadId: isThread ? channelId : null,
+            categoryId: categoryId ? String(categoryId) : null,
+            userId: String(user.id),
+            username: user.username || null,
+            displayName: interaction.member?.displayName ||
+                interaction.member?.nickname ||
+                user.globalName ||
+                user.username ||
+                String(user.id),
+            messageId: String(interaction.id || ""),
+            raw: {
+                guild: guild || (guildId ? { id: guildId } : null),
+                guildId,
+                channel
+            },
+            sender: { isAdmin, canManageMessages },
+            reply: async payload => {
+                const text = typeof payload === "string" ? payload : payload?.text;
+                if (!text) return false;
+                const response = { content: String(text), ephemeral: true };
+                const result = interaction.deferred || interaction.replied
+                    ? await interaction.followUp(response)
+                    : await interaction.reply(response);
+                message._componentReplySent = true;
+                return result;
+            }
+        };
+    }
+
+    message.prefix = prefix;
+    message.command = commandName;
+    message.args = [];
+    message.text = `${prefix}${commandName}`;
+    message.isCommand = true;
+    message.isComponentInteraction = true;
+    message.functions = functions;
+    message.platforms = platforms;
+    message.sender.isOwner = functions.owners?.isOwner?.(message) === true;
+    if (message.sender.isOwner) {
+        message.sender.isAdmin = true;
+        message.sender.canManageMessages = true;
+    }
+    return message;
+}
+
+function logComponentInteraction(message, commandName, action, result) {
+    const safe = value => String(value || "desconhecido")
+        .replace(/[\r\n|]/g, " ")
+        .slice(0, 100);
+    console.log(
+        `${_ts()} 🧩[COMPONENT:${safe(message?.platform)}] ` +
+        `${safe(message?.username || message?.displayName)} (${safe(message?.userId)}) ` +
+        `chat:${safe(message?.chatId)} comando:${safe(commandName)} ` +
+        `ação:${safe(action)} resultado:${safe(result)}`
+    );
+}
+
+async function runComponentMiddlewares(message, runOn) {
+    const requiredNames = runOn === "all"
+        ? new Set(["antipv", "onlychats", "vip"])
+        : new Set(["antispam", "blockcmd"]);
+    const required = [...requiredNames];
+    const available = new Set(middlewares.map(middleware => middleware.name));
+    const missing = required.filter(name => !available.has(name));
+    if (missing.length) {
+        console.error(`[${_ts()}] ❌[COMPONENT] Middlewares de proteção indisponíveis: ${missing.join(", ")}`);
+        return { allowed: false, middleware: "proteções indisponíveis", error: true };
+    }
+
+    for (const middleware of middlewares) {
+        if (!requiredNames.has(middleware.name)) continue;
+        try {
+            const continueExecution = await middleware.execute(message);
+            if (continueExecution === false) {
+                return { allowed: false, middleware: middleware.name };
+            }
+        } catch (error) {
+            console.error(
+                `[${_ts()}] ❌[COMPONENT] Erro no middleware '${middleware.name}':`,
+                error
+            );
+            return { allowed: false, middleware: middleware.name, error: true };
+        }
+    }
+    return { allowed: true };
+}
+
+async function acknowledgeComponentSilently(interaction) {
+    if (interaction?.callbackQuery && typeof interaction.answerCbQuery === "function") {
+        await interaction.answerCbQuery();
+        return;
+    }
+    if (!interaction?.deferred && !interaction?.replied &&
+        typeof interaction?.deferUpdate === "function") {
+        await interaction.deferUpdate();
+    }
+}
+
+async function handleComponentInteraction(interaction) {
+    const componentId = interaction?.customId || interaction?.callbackQuery?.data;
+    if (typeof componentId !== "string") return false;
+
+    const componentParts = componentId.split(":");
+    const rawCommandName = componentParts[0];
+    const commandName = normalizeCommandName(rawCommandName);
+    const safeActionTokens = new Set([
+        "approve", "back", "cancel", "catalog", "category", "choose", "community", "confirm",
+        "cosmetic", "details", "discord", "editplan", "extend", "initial", "items",
+        "menu", "orders", "paid", "permanent", "pixhelp", "cancelorder", "reject", "rejectconfirm", "remove",
+        "removeconfirm", "renewal", "select", "setplan", "subscriptions",
+        "telegram", "tc", "tx", "cc", "cx"
+    ]);
+    const action = componentParts.slice(1, 4)
+        .filter(part => safeActionTokens.has(part))
+        .join(":") || "outro";
+    const command = commands[commandName];
+    let message;
+    try {
+        message = await createComponentMessage(interaction, commandName);
+    } catch (error) {
+        console.error(`[${_ts()}] ❌[COMPONENT] Falha ao criar contexto de interação:`, error);
+        logComponentInteraction(null, commandName, action, "erro de contexto");
+        throw error;
+    }
+
+    if (!message) {
+        logComponentInteraction(null, commandName, action, "contexto inválido");
+        if (interaction?.callbackQuery && typeof interaction.answerCbQuery === "function") {
+            await interaction.answerCbQuery("Não foi possível validar esta ação.", { show_alert: true });
+            return true;
+        }
+        if (typeof interaction?.reply === "function") {
+            await interaction.reply({
+                content: "❌ Não foi possível validar esta ação.",
+                ephemeral: true
+            });
+            return true;
+        }
+        return false;
+    }
+
+    if (message.platform === "telegram" && !message.isPrivate) {
+        let botMember;
+        try {
+            const telegram = platformRegistry.telegram;
+            if (typeof telegram?.getBotChatMember !== "function") {
+                throw new Error("Consulta de associação do bot ao grupo indisponível.");
+            }
+            botMember = await telegram.getBotChatMember(message.chatId);
+        } catch (error) {
+            console.error(
+                `[${_ts()}] ❌[COMPONENT] Falha ao verificar se o bot ainda está no grupo | chat: ${message.chatId}:`,
+                error.message || error
+            );
+            logComponentInteraction(message, commandName, action, "bloqueado: falha ao verificar bot no grupo");
+            await message.reply({
+                text: "❌ Não foi possível confirmar se o bot ainda está neste grupo. Tente novamente mais tarde."
+            });
+            return true;
+        }
+
+        const botIsInChat = ["creator", "administrator", "member"].includes(botMember?.status) ||
+            (botMember?.status === "restricted" && botMember.is_member === true);
+        if (!botIsInChat) {
+            logComponentInteraction(message, commandName, action, "bloqueado: bot fora do grupo");
+            await message.reply({
+                text: "⚠️ O bot não está mais neste grupo. Adicione-o novamente para usar estes botões."
+            });
+            return true;
+        }
+    }
+
+    if (!command || typeof command.handleInteraction !== "function") {
+        logComponentInteraction(message, commandName, action, "não reconhecido");
+        return false;
+    }
+
+    let config;
+    try {
+        config = functions.config?.getConfig?.() || {};
+    } catch (error) {
+        console.error(`[${_ts()}] ❌[COMPONENT] Falha ao carregar configurações:`, error);
+        logComponentInteraction(message, commandName, action, "erro ao validar");
+        await message.reply({ text: "❌ Não foi possível validar esta ação. Tente novamente." });
+        return true;
+    }
+    const ignoreInitialSeconds = typeof config.ignoreInitialSeconds === "number"
+        ? config.ignoreInitialSeconds
+        : 30;
+    const uptime = status.startedAt ? Date.now() - status.startedAt : 0;
+    if (!status.initialSetup && uptime < ignoreInitialSeconds * 1000) {
+        logComponentInteraction(message, commandName, action, "bloqueado: inicialização");
+        await message.reply({
+            text: "⏳ O bot ainda está iniciando. Tente novamente em alguns instantes."
+        });
+        return true;
+    }
+
+    if (!message.isPrivate &&
+        !message.sender.isAdmin &&
+        !message.sender.canManageMessages &&
+        !message.sender.isOwner) {
+        try {
+            if (functions.soAdmHelper?.isEnabled?.(message)) {
+                logComponentInteraction(message, commandName, action, "bloqueado: apenas administradores");
+                await message.reply({ text: "⛔ Este servidor está configurado para aceitar apenas ações de administradores." });
+                return true;
+            }
+        } catch (error) {
+            console.error(`[${_ts()}] ❌[COMPONENT] Falha ao verificar modo somente administradores:`, error);
+            logComponentInteraction(message, commandName, action, "bloqueado: falha de permissão");
+            await message.reply({ text: "❌ Não foi possível validar suas permissões. Tente novamente." });
+            return true;
+        }
+    }
+
+    const allMiddlewareResult = await runComponentMiddlewares(message, "all");
+    if (!allMiddlewareResult.allowed) {
+        logComponentInteraction(
+            message,
+            commandName,
+            action,
+            `bloqueado: ${allMiddlewareResult.middleware}`
+        );
+        if (allMiddlewareResult.error && !message._componentReplySent) {
+            await message.reply({
+                text: "❌ Não foi possível validar esta ação. Tente novamente."
+            });
+        } else if (!message._componentReplySent) {
+            await acknowledgeComponentSilently(interaction);
+        }
+        return true;
+    }
+
+    const commandCategory = String(command.category || "").toLowerCase();
+    if ((commandCategory === "economia" || commandCategory.startsWith("economia/")) &&
+        typeof functions.economy?.isEnabled === "function") {
+        let economyEnabled;
+        try {
+            economyEnabled = functions.economy.isEnabled(message);
+        } catch (error) {
+            console.error(`[${_ts()}] ❌[COMPONENT] Falha ao validar estado da economia:`, error);
+            logComponentInteraction(message, commandName, action, "erro ao validar economia");
+            await message.reply({ text: "❌ Não foi possível validar a economia. Tente novamente." });
+            return true;
+        }
+        if (!economyEnabled) {
+            logComponentInteraction(message, commandName, action, "bloqueado: economia desativada");
+            await message.reply({
+                text: `❌ A economia está desativada neste grupo/servidor.\nUm administrador deve usar ${message.prefix}economia ativar para liberá-la.`
+            });
+            return true;
+        }
+    }
+
+    const commandMiddlewareResult = await runComponentMiddlewares(message, "command");
+    if (!commandMiddlewareResult.allowed) {
+        logComponentInteraction(
+            message,
+            commandName,
+            action,
+            `bloqueado: ${commandMiddlewareResult.middleware}`
+        );
+        if (commandMiddlewareResult.error && !message._componentReplySent) {
+            await message.reply({
+                text: "❌ Não foi possível validar esta ação. Tente novamente."
+            });
+        } else if (!message._componentReplySent) {
+            await acknowledgeComponentSilently(interaction);
+        }
+        return true;
+    }
+
+    const interactionTracker = middlewares.find(middleware => middleware.name === "trackInteraction");
+    if (interactionTracker) {
+        try {
+            await interactionTracker.execute(message);
+        } catch (error) {
+            console.error(`[${_ts()}] ❌[COMPONENT] Falha ao registrar última interação:`, error);
+        }
+    }
+
+    try {
+        interaction[COMPONENT_MESSAGE_CONTEXT] = message;
+        const handled = (await command.handleInteraction(interaction)) !== false;
+        logComponentInteraction(message, commandName, action, handled ? "processado" : "não reconhecido");
+        return handled;
+    } catch (error) {
+        logComponentInteraction(message, commandName, action, "erro");
+        throw error;
+    }
+}
+
 function getCommands() {
     return commands;
 }
@@ -823,6 +1248,7 @@ module.exports = {
     getCommands,
     normalizeCommandName,
     getFunctions,
-    handleMessage
+    handleMessage,
+    handleComponentInteraction
 
 };
