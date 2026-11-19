@@ -48,6 +48,7 @@ const soAdmHelper = require("./soAdmHelper");
 const owners = require("./owners");
 const rentalHelper = require("./rentalHelper");
 const rentalDashboard = require("./rentalDashboard");
+const mercadoPago = require("./mercadoPago");
 
 const DEFAULT_PORT = 32013;
 const WEB_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -8321,6 +8322,7 @@ function start() {
           const action = String(payload?.action || "");
           const platformScopedActions = new Set([
             "order.edit", "order.pix", "order.approve", "order.reject", "order.delete",
+            "order.mercadopago.resend",
             "subscription.create", "subscription.edit", "subscription.delete"
           ]);
           const targetPlatform = platformScopedActions.has(action)
@@ -8330,7 +8332,17 @@ function start() {
             ? platformAccount
             : getLinkedPlatformAccount(central, targetPlatform);
           let result = {};
-          if (action === "settings.update") {
+          if (action === "mercadopago.update") {
+            const settings = mercadoPago.updateSettings({
+              accessToken: payload.accessToken,
+              clearAccessToken: payload.clearAccessToken === true,
+              automaticEnabled: payload.automaticEnabled
+            });
+            result = {
+              mercadoPago: settings,
+              message: "Configurações do Mercado Pago salvas. O token não é exibido novamente."
+            };
+          } else if (action === "settings.update") {
             if (!payload.settings || typeof payload.settings !== "object" || Array.isArray(payload.settings)) {
               throw new Error("Configurações de aluguel inválidas.");
             }
@@ -8388,6 +8400,17 @@ function start() {
               warning: order.paymentDeliveryWarning || "",
               message: `${order.paymentDeliveryWarning ? `Entrega parcial: ${order.paymentDeliveryWarning} ` : "Chave Pix enviada no grupo/servidor e no privado do solicitante. "}` +
                 `O prazo termina em ${new Date(order.paymentExpiresAt).toLocaleString("pt-BR")}.`
+            };
+          } else if (action === "order.mercadopago.resend") {
+            const order = await rentalHelper.sendAutomaticPix(
+              targetPlatform,
+              payload.id,
+              targetAccount.platformId
+            );
+            result = {
+              order,
+              warning: order.mercadoPagoDeliveryWarning || "",
+              message: order.mercadoPagoDeliveryWarning || "Pix automático reenviado nos destinos pendentes."
             };
           } else if (action === "order.approve") {
             const approved = await rentalHelper.approveOrder(targetPlatform, payload.id, targetAccount.platformId);
@@ -11134,7 +11157,8 @@ function start() {
         const data = {
           ...rentalHelper.getDashboardData(platform),
           platform,
-          onlyChats: config.getOnlyChatsConfig()
+          onlyChats: config.getOnlyChatsConfig(),
+          mercadoPago: mercadoPago.getPublicSettings()
         };
         response.writeHead(200, {
           "Content-Type": "text/html; charset=utf-8",

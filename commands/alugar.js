@@ -1,6 +1,8 @@
-const rental = require("../../functions/rentalHelper");
-const { isOwner } = require("../../functions/owners");
-const send = require("../../functions/send");
+const rental = require("../functions/rentalHelper");
+const { isOwner } = require("../functions/owners");
+const send = require("../functions/send");
+const centralAccounts = require("../functions/centralAccounts");
+const mercadoPago = require("../functions/mercadoPago");
 const crypto = require("crypto");
 const {
     ActionRowBuilder,
@@ -204,7 +206,7 @@ function makeInteractionMessage(interaction) {
             username: interaction.from.username || null,
             displayName: [interaction.from.first_name, interaction.from.last_name]
                 .filter(Boolean).join(" ") || interaction.from.username || String(interaction.from.id),
-            prefix: require("../../functions/config").getPrefix(),
+            prefix: require("../functions/config").getPrefix(),
             raw: { chat },
             sender: { isOwner: false }
         };
@@ -229,7 +231,7 @@ function makeInteractionMessage(interaction) {
         userId: String(user.id),
         username: user.username || null,
         displayName: interaction.member?.displayName || user.globalName || user.username || String(user.id),
-        prefix: require("../../functions/config").getPrefix(),
+        prefix: require("../functions/config").getPrefix(),
         raw: { guild: guild || (guildId ? { id: String(guildId) } : null), channel },
         sender: { isOwner: false }
     };
@@ -524,6 +526,14 @@ async function handleRentalInteraction(interaction) {
             await replyToComponent(interaction, "Este plano não está mais disponível. Consulte a lista atualizada.");
             return true;
         }
+        if (rental.isAutomaticPixEnabled() && plan.priceCents > 0 &&
+            !rental.getPayerEmail(platform, message.userId)) {
+            await replyToComponent(
+                interaction,
+                `Antes de solicitar, cadastre seu e-mail na Conta Central pelo privado do bot:\n${commandLine(`${prefix}alugar email <seu-e-mail>`)}`
+            );
+            return true;
+        }
         const scopeId = rental.getScopeId(message);
         const openOrders = rental.getOpenOrders(platform, { scopeId });
         if (openOrders.length) {
@@ -541,7 +551,9 @@ async function handleRentalInteraction(interaction) {
             `💰 Valor: ${rental.formatPrice(plan.priceCents)}`,
             `⏱ Duração: ${rental.formatDuration(plan.durationMs)}`,
             "",
-            "Confirme para criar o pedido. O SU enviará a chave Pix depois, no grupo/servidor e no seu privado."
+            rental.isAutomaticPixEnabled() && plan.priceCents > 0
+                ? "Confirme para criar o pedido. O Pix será gerado e enviado automaticamente no grupo/servidor e no seu privado."
+                : "Confirme para criar o pedido. O SU enviará a chave Pix depois, no grupo/servidor e no seu privado."
         ].join("\n");
         const ownerId = message.userId;
         const snapshot = getPlanSnapshot(plan);
@@ -600,11 +612,23 @@ async function handleRentalInteraction(interaction) {
                 planId: plan.id,
                 type
             });
+            let automaticWarning = "";
+            if (rental.isAutomaticPixEnabled() && order.priceCents > 0) {
+                try {
+                    const payment = await rental.sendAutomaticPix(platform, order.id, message.userId);
+                    automaticWarning = payment.mercadoPagoDeliveryWarning
+                        ? `\n⚠️ ${payment.mercadoPagoDeliveryWarning} O SU pode reenviar com ${prefix}alugarsu mercadopago reenviar ${rental.displayId(order.id, "AL")}.`
+                        : "\n💠 Pix automático enviado no grupo/servidor e no seu privado.";
+                } catch (error) {
+                    console.error(`[ALUGUEL] Falha ao gerar Pix automático para ${platform}/${order.id}:`, error.message || error);
+                    automaticWarning = "\n⚠️ Não consegui gerar ou enviar o Pix automático. O SU pode verificar o pedido e enviar uma chave manual.";
+                }
+            }
             await updateComponentMessage(
                 interaction,
-                `✅ Pedido ${rental.displayId(order.id, "AL")} criado. O SU enviará a chave Pix no grupo/servidor e no seu privado.\n` +
+                `✅ Pedido ${rental.displayId(order.id, "AL")} criado.${automaticWarning || " O SU enviará a chave Pix no grupo/servidor e no seu privado."}\n` +
                 `💎 ${order.planName} · ${rental.formatPrice(order.priceCents)} · ${rental.formatDuration(order.durationMs)}\n` +
-                `Aguarde a chave Pix do SU. Consulte o andamento com:\n${commandLine(`${prefix}alugar status ${order.id}`)}`,
+                `Aguarde as instruções de pagamento. Consulte o andamento com:\n${commandLine(`${prefix}alugar status ${order.id}`)}`,
                 []
             );
         } catch (error) {
@@ -649,9 +673,14 @@ async function handleRentalInteraction(interaction) {
         try {
             if (action === "paid") {
                 const result = await rental.reportOrderPayment(platform, order.id, message.userId);
+                const paymentStatus = result.automaticApproved
+                    ? `✅ Mercado Pago confirmou o pagamento do pedido ${rental.displayId(order.id, "AL")} e a assinatura foi ativada.`
+                    : result.automaticPending
+                        ? `⏳ O Mercado Pago ainda não confirmou o pagamento do pedido ${rental.displayId(order.id, "AL")}. O pedido permanece aberto e continuará sendo verificado automaticamente.`
+                        : `✅ Seu aviso de pagamento foi registrado para o pedido ${rental.displayId(order.id, "AL")}. Aguarde a confirmação.`;
                 await updateComponentMessage(
                     interaction,
-                    `✅ Pagamento informado ao SU para o pedido ${rental.displayId(order.id, "AL")}. Aguarde a confirmação.${result.warning ? `\n⚠️ ${result.warning}` : ""}`,
+                    `${paymentStatus}${result.warning ? `\n⚠️ ${result.warning}` : ""}`,
                     []
                 );
             } else {
@@ -912,6 +941,67 @@ async function runSuperUserCommand(message, args, isModeAlias) {
     const action = isModeAlias ? "modo" : String(args[0] || "").toLowerCase();
     const rest = isModeAlias ? args : args.slice(1);
 
+    if (action === "mercadopago" || action === "mercado" || action === "mp") {
+        const operation = action === "mercado" && String(rest[0] || "").toLowerCase() === "pago"
+            ? String(rest[1] || "status").toLowerCase()
+            : String(rest[0] || "status").toLowerCase();
+        const values = action === "mercado" && String(rest[0] || "").toLowerCase() === "pago"
+            ? rest.slice(2)
+            : rest.slice(1);
+        const privateOnly = new Set(["token"]);
+        if (privateOnly.has(operation) && !message.isPrivate) {
+            return reply(message, "Por segurança, configure credenciais do Mercado Pago somente no privado do bot.");
+        }
+        if (operation === "status" || operation === "config") {
+            const settings = mercadoPago.getPublicSettings();
+            return reply(message, [
+                `Mercado Pago: ${settings.automaticEnabled ? "automático ativo" : "automático desativado"}`,
+                `Token de acesso: ${settings.accessTokenConfigured ? "configurado" : "não configurado"}`,
+                "Verificação dos pagamentos: automática a cada minuto e ao clicar em Já paguei.",
+                "Comandos de configuração:",
+                commandLine(`${commandPrefix} mercadopago token <token|remover>`),
+                commandLine(`${commandPrefix} mercadopago automatico <on|off>`)
+            ].join("\n"));
+        }
+        if (operation === "token") {
+            const value = values.join(" ").trim();
+            const clearing = ["remover", "limpar", "apagar"].includes(value.toLowerCase());
+            if (!value) {
+                return reply(message, `Uso:\n${commandLine(`${commandPrefix} mercadopago ${operation} <valor|remover>`)}`);
+            }
+            const settings = mercadoPago.updateSettings(
+                clearing ? { clearAccessToken: true } : { accessToken: value }
+            );
+            return reply(message, `Token ${clearing ? "removido" : "salvo"}${settings.automaticEnabled ? "." : ". A cobrança automática permanece desativada."}`);
+        }
+        if (operation === "automatico" || operation === "automatic") {
+            const mode = String(values[0] || "").toLowerCase();
+            if (!["on", "off", "ativar", "desativar"].includes(mode)) {
+                return reply(message, `Uso:\n${commandLine(`${commandPrefix} mercadopago automatico <on|off>`)}`);
+            }
+            const settings = mercadoPago.updateSettings({
+                automaticEnabled: mode === "on" || mode === "ativar"
+            });
+            return reply(message, `✅ Cobrança automática do Mercado Pago ${settings.automaticEnabled ? "ativada" : "desativada"}.`);
+        }
+        if (operation === "reenviar") {
+            if (!values[0]) {
+                return reply(message, `Uso:\n${commandLine(`${commandPrefix} mercadopago reenviar <ID-do-pedido>`)}`);
+            }
+            const order = await rental.sendAutomaticPix(platform, values[0], actorId);
+            return reply(message, order.mercadoPagoDeliveryWarning
+                ? `⚠️ ${order.mercadoPagoDeliveryWarning}`
+                : "✅ Pix automático reenviado nos destinos pendentes.");
+        }
+        return reply(message, [
+            "Configuração do Mercado Pago:",
+            commandLine(`${commandPrefix} mercadopago status`),
+            commandLine(`${commandPrefix} mercadopago token <token>`),
+            commandLine(`${commandPrefix} mercadopago automatico <on|off>`),
+            commandLine(`${commandPrefix} mercadopago reenviar <ID-do-pedido>`)
+        ].join("\n"));
+    }
+
     if (action === "modo") {
         const mode = String(rest[0] || "").toLowerCase();
         if (mode !== "on" && mode !== "off") {
@@ -1116,6 +1206,9 @@ async function runSuperUserCommand(message, args, isModeAlias) {
         commandLine(`${commandPrefix} apagarassinatura <ID>`),
         commandLine(`${commandPrefix} status`),
         commandLine(`${commandPrefix} status <ID-do-pedido>`),
+        commandLine(`${commandPrefix} mercadopago status`),
+        commandLine(`${commandPrefix} mercadopago automatico <on|off>`),
+        commandLine(`${commandPrefix} mercadopago reenviar <ID>`),
         commandLine(`${commandPrefix} permanencia <duração>`),
         commandLine(`${commandPrefix} aviso <dias>`),
         commandLine(`${commandPrefix} expiracao <bloquear|sair>`),
@@ -1133,9 +1226,8 @@ async function runSuperUserCommand(message, args, isModeAlias) {
 module.exports = {
     name: "alugar",
     aliases: [],
-    category: "system/configurações",
     description: "Consulte planos e solicite aluguel ou renovação; comandos administrativos ficam em alugarsu.",
-    usage: "{prefix}alugar [contratar|renovar|paguei|cancelar|status|ajuda]",
+    usage: "{prefix}alugar help",
     platformSupport: {
         whatsapp: "full",
         telegram: "full",
@@ -1160,6 +1252,7 @@ module.exports = {
         const platform = platformOf(message);
         const superUserActions = new Set([
             "modo", "config", "permanencia", "aviso", "expiracao", "mensagem",
+            "mercadopago", "mercado", "mp",
             "plano", "pedidos", "aceitar", "aprovar", "pago", "pagamento",
             "pix", "enviarpix", "recusar", "editarpedido", "apagarpedido",
             "assinaturas", "conceder", "editarassinatura", "apagarassinatura",
@@ -1167,6 +1260,35 @@ module.exports = {
         ]);
         if (superUserActions.has(publicAction)) {
             return reply(message, `Este comando é exclusivo do SU. Use:\n${commandLine(`${message.prefix || "!"}alugarsu ${args.join(" ")}`)}`);
+        }
+        if (publicAction === "email") {
+            if (!message.isPrivate) {
+                return reply(message, `Por segurança, cadastre ou remova seu e-mail somente no privado do bot:\n${commandLine(`${message.prefix || "!"}alugar email <seu-e-mail>`)}`);
+            }
+            if (!message.userId) return reply(message, "Não consegui identificar sua conta nesta plataforma.");
+            const store = message.functions?.centralAccounts || global.centralAccounts || centralAccounts;
+            const account = await store.getOrCreateByPlatform(platform, String(message.userId), {
+                username: message.username || null,
+                displayName: message.displayName || message.sender?.name || null
+            });
+            const value = String(args[1] || "").trim();
+            if (["remover", "limpar", "apagar"].includes(value.toLowerCase())) {
+                const removed = await store.removeEmail(account.id);
+                return reply(message, removed
+                    ? "✅ E-mail removido da Conta Central."
+                    : "A Conta Central não tinha um e-mail cadastrado.");
+            }
+            if (!value) {
+                const email = account.email;
+                const masked = email
+                    ? `${email.slice(0, 1)}${"*".repeat(Math.max(2, email.indexOf("@") - 1))}${email.slice(email.indexOf("@"))}`
+                    : null;
+                return reply(message, masked
+                    ? `E-mail da Conta Central: ${masked}\nPara alterar:\n${commandLine(`${message.prefix || "!"}alugar email <novo-e-mail>`)}\nPara remover:\n${commandLine(`${message.prefix || "!"}alugar email remover`)}`
+                    : `Nenhum e-mail cadastrado.\nPara cadastrar:\n${commandLine(`${message.prefix || "!"}alugar email <seu-e-mail>`)}`);
+            }
+            const email = await store.setEmail(account.id, value);
+            return reply(message, `✅ E-mail ${email.slice(0, 1)}${"*".repeat(Math.max(2, email.indexOf("@") - 1))}${email.slice(email.indexOf("@"))} salvo somente na Conta Central.`);
         }
         if (publicAction === "ajuda" || publicAction === "help") {
             const prefix = message.prefix || "!";
@@ -1189,6 +1311,12 @@ module.exports = {
                 "",
                 commandLine(`${prefix}alugar cancelar [ID-do-pedido]`),
                 "Cancelar seu pedido aberto.",
+                "",
+                commandLine(`${prefix}alugar email <seu-e-mail>`),
+                "Cadastrar o e-mail na Conta Central (somente no privado) para pagamentos automáticos.",
+                "",
+                commandLine(`${prefix}alugar email remover`),
+                "Remover o e-mail salvo na Conta Central.",
                 "",
                 `O SU envia a chave com:\n${commandLine(`${prefix}alugarsu pix <ID-do-pedido> <chave-Pix>`)}`,
                 `Após verificar o recebimento, o SU confirma com:\n${commandLine(`${prefix}alugarsu pago <ID-do-pedido>`)}`
@@ -1249,7 +1377,12 @@ module.exports = {
                     : getClientOpenOrder(message, platform);
                 if (!order) return reply(message, "Não encontrei pedido aberto neste grupo/servidor. Informe o ID do pedido, se estiver usando o privado.");
                 const result = await rental.reportOrderPayment(platform, order.id, message.userId);
-                return reply(message, `✅ Avisei o SU que você pagou o pedido ${rental.displayId(result.order.id, "AL")}. Aguarde a confirmação.${result.warning ? `\n⚠️ ${result.warning}` : ""}`);
+                const paymentStatus = result.automaticApproved
+                    ? `✅ Mercado Pago confirmou o pagamento do pedido ${rental.displayId(result.order.id, "AL")} e a assinatura foi ativada.`
+                    : result.automaticPending
+                        ? `⏳ O Mercado Pago ainda não confirmou o pagamento do pedido ${rental.displayId(result.order.id, "AL")}. O pedido permanece aberto e continuará sendo verificado automaticamente.`
+                        : `✅ Seu aviso de pagamento foi registrado para o pedido ${rental.displayId(result.order.id, "AL")}. Aguarde a confirmação.`;
+                return reply(message, `${paymentStatus}${result.warning ? `\n⚠️ ${result.warning}` : ""}`);
             } catch (error) {
                 return reply(message, `❌ ${error.message || "Não foi possível informar o pagamento."}`);
             }
@@ -1333,10 +1466,22 @@ module.exports = {
                     planId: args[1],
                     type: publicAction === "renovar" ? "renewal" : "initial"
                 });
+                let paymentNotice = "";
+                if (rental.isAutomaticPixEnabled() && order.priceCents > 0) {
+                    try {
+                        const payment = await rental.sendAutomaticPix(platform, order.id, creatorId);
+                        paymentNotice = payment.mercadoPagoDeliveryWarning
+                            ? `\n⚠️ ${payment.mercadoPagoDeliveryWarning} O SU pode reenviar com ${message.prefix || "!"}alugarsu mercadopago reenviar ${rental.displayId(order.id, "AL")}.`
+                            : "\n💠 Pix automático enviado no grupo/servidor e no seu privado.";
+                    } catch (error) {
+                        console.error(`[ALUGUEL] Falha ao gerar Pix automático para ${platform}/${order.id}:`, error.message || error);
+                        paymentNotice = "\n⚠️ Não consegui gerar ou enviar o Pix automático. O SU pode verificar o pedido e enviar uma chave manual.";
+                    }
+                }
                 return reply(message, [
-                    `✅ Pedido ${rental.displayId(order.id, "AL")} criado. O SU enviará a chave Pix no grupo/servidor e no seu privado.`,
+                    `✅ Pedido ${rental.displayId(order.id, "AL")} criado.${paymentNotice || " O SU enviará a chave Pix no grupo/servidor e no seu privado."}`,
                     `💎 Plano: ${order.planName} · ${rental.formatPrice(order.priceCents)} · ${rental.formatDuration(order.durationMs)}`,
-                    "Aguarde a chave Pix do SU."
+                    "Aguarde as instruções de pagamento."
                 ].join("\n"));
             } catch (error) {
                 return reply(message, `❌ ${error.message || "Não foi possível criar o pedido."}`);

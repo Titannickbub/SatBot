@@ -1,7 +1,10 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const config = require("./config");
 const { ChannelType } = require("discord.js");
+const QRCode = require("qrcode");
+const mercadoPago = require("./mercadoPago");
 
 const DATA_FILE = path.join(__dirname, "..", "settings", "rental.json");
 const PLATFORMS = new Set(["whatsapp", "telegram", "discord"]);
@@ -39,6 +42,18 @@ const PREVIOUS_DETAILED_WELCOME_MESSAGE = [
 const MAX_DURATION_MS = 10 * 365 * DAY_MS;
 const PAYMENT_WINDOW_MS = DAY_MS;
 const paymentSendLocks = new Set();
+const mercadoPagoPollErrors = new Map();
+let mercadoPagoPolling = false;
+
+function getPayerEmail(platform, userId) {
+    const accounts = global.centralAccounts || require("./centralAccounts");
+    const central = accounts.findByPlatform(assertPlatform(platform), String(userId || ""));
+    return typeof central?.email === "string" ? central.email : null;
+}
+
+function isAutomaticPixEnabled() {
+    return mercadoPago.isAutomaticEnabled();
+}
 
 function assertPlatform(platform) {
     const normalized = String(platform || "").toLowerCase();
@@ -548,20 +563,23 @@ function formatRentalWelcome(platform, displayName, message) {
         ? `👋 Bem-vindos a ${displayName}!`
         : "👋 Informações sobre o aluguel";
     const components = String(message).includes("• ") && ["discord", "telegram"].includes(platform)
-        ? require("../commands/system/alugar").createPlanChoiceComponents(
+        ? require("../commands/alugar").createPlanChoiceComponents(
             platform,
             getPlans(platform)
         )
         : [];
 
     if (platform === "discord") {
+        const body = String(message)
+            .replace(/^• (\S+) — (.*)$/gm, "• **$1** — $2")
+            .replace(/^📌 (.+)$/gm, "📌 `$1`");
         return {
             text: "",
             options: {
                 disableMentions: true,
                 embed: {
                     title: heading,
-                    description: message,
+                    description: body,
                     color: 0xF1C40F,
                     footer: { text: "Aluguel do bot" }
                 },
@@ -587,7 +605,9 @@ function formatRentalWelcome(platform, displayName, message) {
         };
     }
 
-    const body = String(message).replace(/^• (\S+) — (.*)$/gm, "*$1* — $2");
+    const body = String(message)
+        .replace(/^• (\S+) — (.*)$/gm, "*$1* — $2")
+        .replace(/^📌 (.+)$/gm, "📌 ```$1```");
     return { text: `*${heading}*\n\n${body}`, options: undefined };
 }
 
@@ -597,6 +617,14 @@ async function sendPlatformText(platform, chatId, text, options, threadId = null
         throw new Error(`A plataforma ${platform} não está disponível para envio.`);
     }
     return adapter.sendText(String(chatId), threadId, text, options);
+}
+
+async function sendPlatformImage(platform, chatId, image, caption, threadId = null) {
+    const adapter = global.platformRegistry?.[platform];
+    if (!adapter || typeof adapter.sendImg !== "function") {
+        throw new Error(`A plataforma ${platform} não está disponível para enviar imagens.`);
+    }
+    return adapter.sendImg(String(chatId), threadId, image, caption);
 }
 
 async function getWhatsAppAdminMentions(chatId) {
@@ -685,21 +713,41 @@ async function notifyDiscordGuildInviter(scopeId, inviterId, inviterName, guildN
     });
     if (!claimed) return false;
 
-    const text = [
-        `👋 Olá${inviterName ? `, ${inviterName}` : ""}! Obrigado por adicionar o ${config.getBotName()} ao servidor ${guildName || scopeId}.`,
+    const planList = formatPlanList(normalized);
+    const description = [
+        `Obrigado por adicionar o ${config.getBotName()} ao servidor ${guildName || scopeId}.`,
         "",
-        "O aluguel está disponível nestes planos:",
-        formatPlanList(normalized),
-        "",
-        "Para contratar, escolha um ID acima e use este comando em um canal de texto do servidor:",
-        `📌 ${config.getPrefix()}alugar contratar <ID>`,
-        `A permanência inicial é de ${formatDuration(settings.presenceDurationMs)}; se nenhum pedido for criado nesse período, o bot sairá do servidor.`,
-        "Para falar com o dono, use:",
-        `📌 ${config.getPrefix()}dono`
+        "Planos de aluguel disponíveis:",
+        planList
     ].join("\n");
+    const embed = {
+        color: 0x5865f2,
+        title: `👋 ${inviterName ? `Olá, ${inviterName}!` : "Obrigado por me adicionar"}`.slice(0, 256),
+        description: description.length > 4096
+            ? `${description.slice(0, 4095)}…`
+            : description,
+        fields: [
+            {
+                name: "Como contratar",
+                value: `Escolha um plano acima e, em um canal de texto do servidor, use:\n\`${config.getPrefix()}alugar contratar <ID>\``
+            },
+            {
+                name: "Permanência inicial",
+                value: `O prazo é de ${formatDuration(settings.presenceDurationMs)}. Sem um pedido nesse período, o bot sairá do servidor.`
+            },
+            {
+                name: "Precisa de ajuda?",
+                value: `Para falar com o dono, use \`${config.getPrefix()}dono\`.`
+            }
+        ],
+        footer: { text: `Aluguel do bot · ${guildName || scopeId}` }
+    };
 
     try {
-        await sendPlatformText(normalized, String(inviterId), text, { disableMentions: true });
+        await sendPlatformText(normalized, String(inviterId), "", {
+            embed,
+            allowedMentions: { parse: [] }
+        });
         console.info(`[ALUGUEL] Informações enviadas por PV ao responsável ${inviterId} após entrada no servidor ${scopeId}.`);
         return true;
     } catch (error) {
@@ -833,6 +881,11 @@ function createOrder(platform, { scopeId, chatId, threadId, categoryId, creatorI
         if (!data.settings.enabled) throw new Error("O modo de aluguel está desativado.");
         const plan = findPlan(data, planId);
         if (!plan) throw new Error("Plano não encontrado ou indisponível.");
+        if (isAutomaticPixEnabled() && plan.priceCents > 0 && !getPayerEmail(normalized, creatorId)) {
+            throw new Error(
+                `Cadastre seu e-mail na Conta Central antes de solicitar: use ${config.getPrefix()}alugar email <seu-e-mail> no privado do bot.`
+            );
+        }
         const subscription = data.subscriptions.find(item =>
             item.scopeId === String(scopeId) && item.status !== "deleted"
         );
@@ -976,6 +1029,14 @@ function editOrder(platform, orderId, planId) {
 }
 
 function deleteOrder(platform, orderId) {
+    const existing = getOrder(platform, orderId);
+    if (!existing) throw new Error("Pedido não encontrado.");
+    if (paymentSendLocks.has(`${assertPlatform(platform)}:${existing.id}`)) {
+        throw new Error("Os dados de pagamento deste pedido estão sendo processados. Tente novamente em instantes.");
+    }
+    if (existing.status === "awaiting_payment" && existing.paymentProvider === "mercado_pago") {
+        throw new Error("Cancele ou recuse a cobrança do Mercado Pago antes de apagar este pedido.");
+    }
     return updatePlatform(platform, data => {
         const index = data.orders.findIndex(order => order.id === findById(data.orders, orderId, "AL")?.id);
         if (index < 0) throw new Error("Pedido não encontrado.");
@@ -998,7 +1059,7 @@ function escapeTelegramHtml(text) {
         .replace(/>/g, "&gt;");
 }
 
-function getPaymentKeyMessage(platform, order, pixKey, expiresAt, isGroup) {
+function getPaymentKeyMessage(platform, order, expiresAt, isGroup) {
     const orderId = displayId(order.id, "AL");
     const requester = String(order.creatorName || order.creatorId);
     if (platform === "telegram") {
@@ -1006,18 +1067,16 @@ function getPaymentKeyMessage(platform, order, pixKey, expiresAt, isGroup) {
             ? `<a href="tg://user?id=${encodeURIComponent(order.creatorId)}">${escapeTelegramHtml(requester)}</a>`
             : escapeTelegramHtml(requester);
         return [
-            `<b>💠 Pagamento Pix do pedido ${escapeTelegramHtml(orderId)}</b>`,
-            `👤 Solicitante: ${requesterLabel}`,
-            `💎 Plano: ${escapeTelegramHtml(order.planName)}`,
-            `💰 Valor: ${escapeTelegramHtml(formatPrice(order.priceCents))}`,
-            `🔑 Chave Pix: <code>${escapeTelegramHtml(pixKey)}</code>`,
+            `<b>💠 Pagamento Pix · ${escapeTelegramHtml(orderId)}</b>`,
             "",
-            `⏳ Pague em até 24 horas, antes de ${escapeTelegramHtml(new Date(expiresAt).toLocaleString("pt-BR"))}.`,
-            "Após pagar, use o botão ou este comando:",
-            `<code>${escapeTelegramHtml(config.getPrefix())}alugar paguei ${escapeTelegramHtml(orderId)}</code>`,
+            `👤 <b>Solicitante:</b> ${requesterLabel}`,
+            `📦 <b>Plano:</b> ${escapeTelegramHtml(order.planName)}`,
+            `💰 <b>Valor:</b> ${escapeTelegramHtml(formatPrice(order.priceCents))}`,
+            "🔑 A chave Pix está na próxima mensagem.",
             "",
-            "Para cancelar, use o botão ou este comando:",
-            `<code>${escapeTelegramHtml(config.getPrefix())}alugar cancelar ${escapeTelegramHtml(orderId)}</code>`
+            `⏳ <b>Prazo:</b> até ${escapeTelegramHtml(new Date(expiresAt).toLocaleString("pt-BR"))}`,
+            `✅ <b>Após pagar:</b> use o botão ou <code>${escapeTelegramHtml(config.getPrefix())}alugar paguei ${escapeTelegramHtml(orderId)}</code>`,
+            `❌ <b>Para cancelar:</b> use o botão ou <code>${escapeTelegramHtml(config.getPrefix())}alugar cancelar ${escapeTelegramHtml(orderId)}</code>`
         ].join("\n");
     }
 
@@ -1026,28 +1085,168 @@ function getPaymentKeyMessage(platform, order, pixKey, expiresAt, isGroup) {
             ? `<@${order.creatorId}>`
             : `@${String(order.creatorId).split("@")[0]}`
         : requester;
+    if (platform === "whatsapp") {
+        return [
+            `💠 *PAGAMENTO PIX · ${orderId}*`,
+            "",
+            `👤 *Solicitante:* ${requesterLabel}`,
+            `📦 *Plano:* ${order.planName}`,
+            `💰 *Valor:* ${formatPrice(order.priceCents)}`,
+            "🔑 A chave Pix está na próxima mensagem.",
+            "",
+            `⏳ *Prazo:* até ${new Date(expiresAt).toLocaleString("pt-BR")}`,
+            `✅ *Após pagar:* use o botão ou o comando abaixo`,
+            `\`\`\`${config.getPrefix()}alugar paguei ${orderId}\`\`\``,
+            `❌ *Para cancelar:* use o botão ou o comando abaixo`,
+            `\`\`\`${config.getPrefix()}alugar cancelar ${orderId}\`\`\``
+        ].join("\n");
+    }
     return [
-        `💠 Pagamento Pix do pedido ${orderId}`,
-        `👤 Solicitante: ${requesterLabel}`,
-        `💎 Plano: ${order.planName}`,
-        `💰 Valor: ${formatPrice(order.priceCents)}`,
-        `🔑 Chave Pix: ${pixKey}`,
+        `💠 **Pagamento Pix · ${orderId}**`,
         "",
-        `⏳ Pague em até 24 horas, antes de ${new Date(expiresAt).toLocaleString("pt-BR")}.`,
-        "Após pagar, use o botão ou este comando:",
-        `📌 ${config.getPrefix()}alugar paguei ${orderId}`,
+        `👤 **Solicitante:** ${requesterLabel}`,
+        `📦 **Plano:** ${order.planName}`,
+        `💰 **Valor:** ${formatPrice(order.priceCents)}`,
+        "🔑 A chave Pix está na próxima mensagem.",
         "",
-        "Para cancelar, use o botão ou este comando:",
-        `📌 ${config.getPrefix()}alugar cancelar ${orderId}`
+        `⏳ **Prazo:** até ${new Date(expiresAt).toLocaleString("pt-BR")}`,
+        `✅ **Após pagar:** use o botão ou \`${config.getPrefix()}alugar paguei ${orderId}\``,
+        `❌ **Para cancelar:** use o botão ou \`${config.getPrefix()}alugar cancelar ${orderId}\``
     ].join("\n");
 }
 
-function getPaymentActionOptions(platform, order, isGroup) {
+function getManualPixKeyMessage(platform, pixKey) {
+    if (platform === "telegram") {
+        return `<b>📋 Chave Pix para copiar</b>\n<pre>${escapeTelegramHtml(pixKey)}</pre>`;
+    }
+    if (platform === "whatsapp") {
+        return `📋 *CHAVE PIX PARA COPIAR*\n\n\`\`\`${pixKey}\`\`\``;
+    }
+    return `📋 **Chave Pix para copiar**\n\`\`\`\n${pixKey}\n\`\`\``;
+}
+
+function getAutomaticPixMessage(platform, order, ticketUrl, expiresAt, isGroup) {
+    const orderId = displayId(order.id, "AL");
+    const requester = String(order.creatorName || order.creatorId);
+    const requesterLabel = isGroup
+        ? platform === "discord"
+            ? `<@${order.creatorId}>`
+            : platform === "telegram"
+                ? `<a href="tg://user?id=${encodeURIComponent(order.creatorId)}">${escapeTelegramHtml(requester)}</a>`
+                : `@${String(order.creatorId).split("@")[0]}`
+        : requester;
+    if (platform === "telegram") {
+        return [
+            `<b>💠 Pix automático · ${escapeTelegramHtml(orderId)}</b>`,
+            "",
+            `👤 <b>Solicitante:</b> ${requesterLabel}`,
+            `📦 <b>Plano:</b> ${escapeTelegramHtml(order.planName)}`,
+            `💰 <b>Valor:</b> ${escapeTelegramHtml(formatPrice(order.priceCents))}`,
+            ...(ticketUrl ? [`🧾 <b>Link de pagamento:</b> ${escapeTelegramHtml(ticketUrl)}`] : []),
+            "📲 Escaneie o QR Code enviado em seguida ou copie o código Pix da próxima mensagem.",
+            "",
+            `⏳ <b>Prazo:</b> até ${escapeTelegramHtml(new Date(expiresAt).toLocaleString("pt-BR"))}`,
+            `✅ <b>Após pagar:</b> use o botão ou <code>${escapeTelegramHtml(config.getPrefix())}alugar paguei ${escapeTelegramHtml(orderId)}</code>`,
+            `❌ <b>Para cancelar:</b> use o botão ou <code>${escapeTelegramHtml(config.getPrefix())}alugar cancelar ${escapeTelegramHtml(orderId)}</code>`
+        ].join("\n");
+    }
+    if (platform === "whatsapp") {
+        return [
+            `💠 *PIX AUTOMÁTICO · ${orderId}*`,
+            "",
+            `👤 *Solicitante:* ${requesterLabel}`,
+            `📦 *Plano:* ${order.planName}`,
+            `💰 *Valor:* ${formatPrice(order.priceCents)}`,
+            ...(ticketUrl ? [`🧾 *Link de pagamento:* ${ticketUrl}`] : []),
+            "📲 Escaneie o QR Code enviado em seguida ou copie o código Pix da próxima mensagem.",
+            "",
+            `⏳ *Prazo:* até ${new Date(expiresAt).toLocaleString("pt-BR")}`,
+            `✅ *Após pagar:* use o botão ou o comando abaixo`,
+            `\`\`\`${config.getPrefix()}alugar paguei ${orderId}\`\`\``,
+            `❌ *Para cancelar:* use o botão ou o comando abaixo`,
+            `\`\`\`${config.getPrefix()}alugar cancelar ${orderId}\`\`\``
+        ].join("\n");
+    }
+    return [
+        `💠 **Pix automático · ${orderId}**`,
+        "",
+        `👤 **Solicitante:** ${requesterLabel}`,
+        `📦 **Plano:** ${order.planName}`,
+        `💰 **Valor:** ${formatPrice(order.priceCents)}`,
+        ...(ticketUrl ? [`🧾 **Link de pagamento:** ${ticketUrl}`] : []),
+        "📲 Escaneie o QR Code enviado em seguida ou copie o código Pix da próxima mensagem.",
+        "",
+        `⏳ **Prazo:** até ${new Date(expiresAt).toLocaleString("pt-BR")}`,
+        `✅ **Após pagar:** use o botão ou \`${config.getPrefix()}alugar paguei ${orderId}\``,
+        `❌ **Para cancelar:** use o botão ou \`${config.getPrefix()}alugar cancelar ${orderId}\``
+    ].join("\n");
+}
+
+function getAutomaticPixCodeMessage(platform, order, pixCode) {
+    const orderId = displayId(order.id, "AL");
+    if (platform === "telegram") {
+        return `<b>📋 Pix copia e cola · ${escapeTelegramHtml(orderId)}</b>\n<pre>${escapeTelegramHtml(pixCode)}</pre>`;
+    }
+    if (platform === "whatsapp") {
+        return `📋 *PIX COPIA E COLA · ${orderId}*\n\n\`\`\`${pixCode}\`\`\``;
+    }
+    return `📋 **Pix copia e cola · ${orderId}**\n\`\`\`\n${pixCode}\n\`\`\``;
+}
+
+function getAutomaticPixQrCaption(platform, order) {
+    const orderId = displayId(order.id, "AL");
+    if (platform === "whatsapp") return `📲 *QR CODE PIX · ${orderId}*\nEscaneie pelo aplicativo do seu banco.`;
+    if (platform === "discord") return `📲 **QR Code Pix · ${orderId}** — escaneie pelo aplicativo do seu banco.`;
+    return `QR Code Pix · ${orderId}. Escaneie pelo aplicativo do seu banco.`;
+}
+
+function getDiscordPaymentEmbed(order, { automatic, expiresAt, ticketUrl, isGroup }) {
+    const orderId = displayId(order.id, "AL");
+    const requester = String(order.creatorName || order.creatorId);
+    const requesterLabel = isGroup ? `<@${order.creatorId}>` : requester;
+    const prefix = config.getPrefix();
+    return {
+        color: automatic ? 0x009ee3 : 0x5865f2,
+        title: `💠 ${automatic ? "Pix automático" : "Pagamento Pix"} · ${orderId}`,
+        description: automatic
+            ? "Escaneie o QR Code enviado em seguida ou copie o código Pix da próxima mensagem."
+            : "A chave Pix para copiar será enviada em uma mensagem separada.",
+        fields: [
+            { name: "Solicitante", value: requesterLabel.slice(0, 1024), inline: true },
+            { name: "Plano", value: String(order.planName).slice(0, 1024), inline: true },
+            { name: "Valor", value: formatPrice(order.priceCents), inline: true },
+            ...(ticketUrl ? [{ name: "Link de pagamento", value: String(ticketUrl).slice(0, 1024) }] : []),
+            { name: "Prazo", value: new Date(expiresAt).toLocaleString("pt-BR"), inline: true },
+            {
+                name: "Após pagar",
+                value: `Use o botão abaixo ou \`${prefix}alugar paguei ${orderId}\`.\nPara cancelar: \`${prefix}alugar cancelar ${orderId}\`.`
+            }
+        ],
+        footer: { text: "SatBot · Pagamento de aluguel" }
+    };
+}
+
+function getPaymentCopyOptions(platform, title, value) {
+    if (platform === "telegram") return { parse_mode: "HTML" };
+    if (platform === "discord") {
+        return {
+            embed: {
+                color: 0x009ee3,
+                title: `📋 ${title}`,
+                description: `\`\`\`\n${value}\n\`\`\``,
+                footer: { text: "Toque/clique no bloco para copiar o Pix." }
+            }
+        };
+    }
+    return undefined;
+}
+
+function getPaymentActionOptions(platform, order, isGroup, embed = undefined) {
     if (platform === "whatsapp") {
         return isGroup ? [String(order.creatorId)] : undefined;
     }
 
-    const components = require("../commands/system/alugar")
+    const components = require("../commands/alugar")
         .createPaymentActionComponents(platform, order.id);
     if (platform === "telegram") {
         return {
@@ -1056,6 +1255,7 @@ function getPaymentActionOptions(platform, order, isGroup) {
         };
     }
     return {
+        ...(embed ? { embed } : {}),
         components,
         allowedMentions: isGroup
             ? { users: [String(order.creatorId)] }
@@ -1076,11 +1276,14 @@ async function sendPaymentKey(platform, orderId, pixKey, actorId) {
     if (paymentSendLocks.has(lockKey)) {
         throw new Error("O envio do Pix deste pedido já está sendo processado.");
     }
-    const isRetry = order.status === "awaiting_payment" && Boolean(order.paymentDeliveryWarning);
-    if (order.status !== "pending" && !isRetry) {
+    const manualFallback = order.status === "awaiting_payment" &&
+        order.paymentProvider === "mercado_pago";
+    const isRetry = order.status === "awaiting_payment" &&
+        Boolean(order.paymentDeliveryWarning) && !manualFallback;
+    if (order.status !== "pending" && !isRetry && !manualFallback) {
         throw new Error("A chave Pix só pode ser enviada para pedidos que aguardam o SU ou têm uma entrega parcial.");
     }
-    if (isRetry && Number(order.paymentExpiresAt) <= Date.now()) {
+    if ((isRetry || manualFallback) && Number(order.paymentExpiresAt) <= Date.now()) {
         throw new Error("O prazo de pagamento deste pedido terminou; não é possível reenviar o Pix.");
     }
     if (!order.creatorId) {
@@ -1093,7 +1296,9 @@ async function sendPaymentKey(platform, orderId, pixKey, actorId) {
         const expiresAt = isRetry
             ? Number(order.paymentExpiresAt)
             : now + PAYMENT_WINDOW_MS;
-        const existingDelivery = order.paymentDelivery || (isRetry
+        const existingDelivery = manualFallback
+            ? { privateSent: false, groupSent: false }
+            : order.paymentDelivery || (isRetry
             ? { privateSent: true, groupSent: false }
             : { privateSent: false, groupSent: false });
         const destinations = [
@@ -1115,8 +1320,31 @@ async function sendPaymentKey(platform, orderId, pixKey, actorId) {
                 await sendPlatformText(
                     normalized,
                     destination.chatId,
-                    getPaymentKeyMessage(normalized, order, key, expiresAt, destination.isGroup),
-                    getPaymentActionOptions(normalized, order, destination.isGroup),
+                    getPaymentKeyMessage(normalized, order, expiresAt, destination.isGroup),
+                    getPaymentActionOptions(
+                        normalized,
+                        order,
+                        destination.isGroup,
+                        normalized === "discord"
+                            ? getDiscordPaymentEmbed(order, {
+                                automatic: false,
+                                expiresAt,
+                                ticketUrl: null,
+                                isGroup: destination.isGroup
+                            })
+                            : undefined
+                    ),
+                    destination.threadId
+                );
+                await sendPlatformText(
+                    normalized,
+                    destination.chatId,
+                    getManualPixKeyMessage(normalized, key),
+                    getPaymentCopyOptions(
+                        normalized,
+                        `Chave Pix para copiar · ${displayId(order.id, "AL")}`,
+                        key
+                    ),
                     destination.threadId
                 );
                 return { ...destination, sent: true };
@@ -1138,9 +1366,21 @@ async function sendPaymentKey(platform, orderId, pixKey, actorId) {
 
         const updatedOrder = updatePlatform(normalized, data => {
             const current = findById(data.orders, order.id, "AL");
-            if (!current || (current.status !== "pending" &&
-                !(current.status === "awaiting_payment" && current.paymentDeliveryWarning))) {
+            if (!current || (manualFallback
+                ? current.status !== "awaiting_payment" || current.paymentProvider !== "mercado_pago"
+                : current.status !== "pending" &&
+                    !(current.status === "awaiting_payment" && current.paymentDeliveryWarning))) {
                 throw new Error("O pedido mudou enquanto o Pix era enviado. Verifique o status antes de tentar novamente.");
+            }
+            if (manualFallback) {
+                current.manualPixSentAt = current.manualPixSentAt || now;
+                current.manualPixSentBy = current.manualPixSentBy || String(actorId || "");
+                current.manualPixDeliveryWarning = failures.length
+                    ? `Falha ao enviar a chave Pix manual para ${failures.map(attempt =>
+                        `${attempt.isGroup ? "grupo/servidor" : "privado"} (${String(attempt.error?.message || attempt.error).slice(0, 160)})`
+                    ).join(" e ")}.`
+                    : null;
+                return clone(current);
             }
             current.status = "awaiting_payment";
             current.paymentKeySentAt = current.paymentKeySentAt || now;
@@ -1160,10 +1400,268 @@ async function sendPaymentKey(platform, orderId, pixKey, actorId) {
         if (updatedOrder.paymentDeliveryWarning) {
             console.warn(`[ALUGUEL] Entrega parcial do Pix em ${normalized}/${order.id}: ${updatedOrder.paymentDeliveryWarning}`);
         }
+        return manualFallback
+            ? { ...updatedOrder, paymentDeliveryWarning: updatedOrder.manualPixDeliveryWarning }
+            : updatedOrder;
+    } finally {
+        paymentSendLocks.delete(lockKey);
+    }
+}
+
+async function sendAutomaticPix(platform, orderId, actorId) {
+    const normalized = assertPlatform(platform);
+    const order = getOrder(normalized, orderId);
+    if (!order) throw new Error("Pedido não encontrado.");
+    const isRetry = order.status === "awaiting_payment" &&
+        order.paymentProvider === "mercado_pago" &&
+        Boolean(order.mercadoPagoPaymentId && order.mercadoPagoQrCode);
+    if (!isAutomaticPixEnabled() && !isRetry) {
+        throw new Error("A cobrança automática do Mercado Pago está desativada.");
+    }
+    if (order.priceCents <= 0) throw new Error("A cobrança automática exige um pedido com valor maior que zero.");
+    if (!order.creatorId) throw new Error("O pedido não tem um solicitante válido para receber o Pix.");
+    const email = getPayerEmail(normalized, order.creatorId);
+    if (!email) {
+        throw new Error(
+            `O solicitante precisa cadastrar um e-mail na Conta Central com ${config.getPrefix()}alugar email <seu-e-mail> no privado.`
+        );
+    }
+    const lockKey = `${normalized}:${order.id}`;
+    if (paymentSendLocks.has(lockKey)) {
+        throw new Error("O envio dos dados de pagamento deste pedido já está sendo processado.");
+    }
+    if (order.status !== "pending" && !isRetry) {
+        throw new Error("O Pix automático só pode ser enviado para um pedido pendente ou com entrega incompleta.");
+    }
+    if (isRetry && Number(order.paymentExpiresAt) <= Date.now()) {
+        throw new Error("O prazo de pagamento deste pedido terminou; não é possível reenviar o Pix.");
+    }
+
+    paymentSendLocks.add(lockKey);
+    try {
+        let current = order;
+        if (!isRetry) {
+            const idempotencyKey = order.mercadoPagoIdempotencyKey ||
+                (crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString("hex"));
+            current = updatePlatform(normalized, data => {
+                const item = findById(data.orders, order.id, "AL");
+                if (!item || item.status !== "pending") {
+                    throw new Error("O pedido mudou antes da criação da cobrança automática.");
+                }
+                item.mercadoPagoIdempotencyKey = idempotencyKey;
+                item.mercadoPagoExternalReference = `satbot:${normalized}:${item.id}`;
+                return clone(item);
+            });
+            let payment;
+            try {
+                payment = await mercadoPago.createPixPayment({
+                    platform: normalized,
+                    order: current,
+                    email,
+                    idempotencyKey: current.mercadoPagoIdempotencyKey
+                });
+            } catch (error) {
+                console.error(`[ALUGUEL] Falha ao criar cobrança Mercado Pago em ${normalized}/${order.id}:`, error.message || error);
+                await notifyRentalOwners(
+                    normalized,
+                    `⚠️ Não foi possível criar o Pix automático do pedido ${displayId(order.id, "AL")}: ${String(error.message || error).slice(0, 240)}. O pedido continua aguardando o SU e aceita envio manual.`
+                );
+                throw error;
+            }
+            current = updatePlatform(normalized, data => {
+                const item = findById(data.orders, order.id, "AL");
+                if (!item || item.status !== "pending" ||
+                    item.mercadoPagoIdempotencyKey !== current.mercadoPagoIdempotencyKey) {
+                    throw new Error("O pedido mudou durante a criação da cobrança automática.");
+                }
+                item.status = "awaiting_payment";
+                item.paymentKeySentAt = Date.now();
+                item.paymentExpiresAt = payment.expiresAt;
+                item.paymentSentBy = String(actorId || "mercado_pago");
+                item.paymentProvider = "mercado_pago";
+                item.mercadoPagoPaymentId = payment.paymentId;
+                item.mercadoPagoQrCode = payment.qrCode;
+                item.mercadoPagoTicketUrl = payment.ticketUrl;
+                item.mercadoPagoDelivery = { privateSent: false, groupSent: false };
+                item.mercadoPagoDeliveryWarning = null;
+                return clone(item);
+            });
+        }
+
+        const delivery = current.mercadoPagoDelivery || { privateSent: false, groupSent: false };
+        const destinations = [
+            { key: "privateSent", chatId: current.creatorId, threadId: null, isGroup: false },
+            { key: "groupSent", chatId: current.chatId, threadId: current.threadId || null, isGroup: true }
+        ].filter(destination => !delivery[destination.key]);
+        const qrCodeImage = destinations.length
+            ? await QRCode.toBuffer(current.mercadoPagoQrCode, {
+                type: "png",
+                width: 512,
+                margin: 2,
+                errorCorrectionLevel: "M"
+            })
+            : null;
+        const attempts = await Promise.all(destinations.map(async destination => {
+            try {
+                await sendPlatformText(
+                    normalized,
+                    destination.chatId,
+                    getAutomaticPixMessage(
+                        normalized,
+                        current,
+                        current.mercadoPagoTicketUrl,
+                        current.paymentExpiresAt,
+                        destination.isGroup
+                    ),
+                    getPaymentActionOptions(
+                        normalized,
+                        current,
+                        destination.isGroup,
+                        normalized === "discord"
+                            ? getDiscordPaymentEmbed(current, {
+                                automatic: true,
+                                expiresAt: current.paymentExpiresAt,
+                                ticketUrl: current.mercadoPagoTicketUrl,
+                                isGroup: destination.isGroup
+                            })
+                            : undefined
+                    ),
+                    destination.threadId
+                );
+                await sendPlatformText(
+                    normalized,
+                    destination.chatId,
+                    getAutomaticPixCodeMessage(
+                        normalized,
+                        current,
+                        current.mercadoPagoQrCode
+                    ),
+                    getPaymentCopyOptions(
+                        normalized,
+                        `Pix copia e cola · ${displayId(current.id, "AL")}`,
+                        current.mercadoPagoQrCode
+                    ),
+                    destination.threadId
+                );
+                await sendPlatformImage(
+                    normalized,
+                    destination.chatId,
+                    qrCodeImage,
+                    getAutomaticPixQrCaption(normalized, current),
+                    destination.threadId
+                );
+                return { ...destination, sent: true };
+            } catch (error) {
+                return { ...destination, sent: false, error };
+            }
+        }));
+        const updatedDelivery = { ...delivery };
+        for (const attempt of attempts) {
+            if (attempt.sent) updatedDelivery[attempt.key] = true;
+        }
+        const failures = attempts.filter(attempt => !attempt.sent);
+        const updatedOrder = updatePlatform(normalized, data => {
+            const item = findById(data.orders, order.id, "AL");
+            if (!item || item.status !== "awaiting_payment" ||
+                item.mercadoPagoPaymentId !== current.mercadoPagoPaymentId) {
+                throw new Error("O pedido mudou enquanto os dados do Pix eram enviados.");
+            }
+            item.mercadoPagoDelivery = updatedDelivery;
+            item.mercadoPagoDeliveryWarning = failures.length
+                ? `Falha ao enviar o Pix automático para ${failures.map(attempt =>
+                    `${attempt.isGroup ? "grupo/servidor" : "privado"} (${String(attempt.error?.message || attempt.error).slice(0, 160)})`
+                ).join(" e ")}.`
+                : null;
+            return clone(item);
+        });
+        if (updatedOrder.mercadoPagoDeliveryWarning) {
+            console.warn(`[ALUGUEL] Entrega parcial do Pix automático em ${normalized}/${order.id}: ${updatedOrder.mercadoPagoDeliveryWarning}`);
+            await notifyRentalOwners(
+                normalized,
+                `⚠️ Pix automático do pedido ${displayId(order.id, "AL")} entregue parcialmente: ${updatedOrder.mercadoPagoDeliveryWarning}\nReenvie com ${config.getPrefix()}alugarsu mercadopago reenviar ${displayId(order.id, "AL")}.`
+            );
+        }
         return updatedOrder;
     } finally {
         paymentSendLocks.delete(lockKey);
     }
+}
+
+async function processMercadoPagoPayment(paymentId) {
+    const payment = await mercadoPago.getPayment(paymentId);
+    const reference = String(payment.external_reference || "");
+    const match = reference.match(/^satbot:(whatsapp|telegram|discord):(.+)$/);
+    if (!match) return { ignored: true };
+    const [, platform, orderId] = match;
+    const order = getOrder(platform, orderId);
+    if (!order || order.mercadoPagoExternalReference !== reference) return { ignored: true };
+    if (paymentSendLocks.has(`${platform}:${order.id}`)) {
+        const error = new Error("A criação/entrega do Pix deste pedido ainda está em andamento.");
+        error.code = "payment-processing";
+        throw error;
+    }
+    if (order.paymentProvider !== "mercado_pago" ||
+        order.mercadoPagoPaymentId !== String(payment.id)) {
+        return { ignored: true };
+    }
+
+    const amountCents = Math.round(Number(payment.transaction_amount) * 100);
+    if (payment.payment_method_id !== "pix" ||
+        payment.currency_id !== "BRL" ||
+        !Number.isSafeInteger(amountCents) ||
+        amountCents !== order.priceCents) {
+        const warning = `Pagamento Mercado Pago ${payment.id} não aprovado: método, moeda ou valor divergente do pedido ${order.id}.`;
+        const shouldNotify = updatePlatform(platform, data => {
+            const item = findById(data.orders, order.id, "AL");
+            if (!item || item.mercadoPagoPaymentWarning === warning) return false;
+            item.mercadoPagoPaymentWarning = warning;
+            return true;
+        });
+        if (shouldNotify) {
+            await notifyRentalOwners(platform, `⚠️ ${warning} Confira a transação no Mercado Pago antes de qualquer aprovação manual.`);
+        }
+        return { ignored: true };
+    }
+
+    if (["refunded", "charged_back"].includes(payment.status)) {
+        const shouldNotify = updatePlatform(platform, data => {
+            const item = findById(data.orders, order.id, "AL");
+            if (!item || item.mercadoPagoLastRiskNoticeStatus === payment.status) return false;
+            item.mercadoPagoLastRiskNoticeStatus = payment.status;
+            return true;
+        });
+        if (shouldNotify) {
+            await notifyRentalOwners(
+                platform,
+                `⚠️ O Mercado Pago informou status "${payment.status}" para o pagamento ${payment.id} do pedido ${displayId(order.id, "AL")}. Verifique a transação.`
+            );
+        }
+        return { ignored: true };
+    }
+    if (order.status !== "awaiting_payment") return { ignored: true };
+
+    if (payment.status === "approved") {
+        const result = await approveOrder(platform, order.id, "mercado_pago", {
+            allowExpiredForVerifiedPayment: true
+        });
+        await notifyRentalOwners(
+            platform,
+            `✅ Mercado Pago confirmou o pagamento do pedido ${displayId(order.id, "AL")} (${formatPrice(order.priceCents)}). A assinatura foi ativada.`
+        );
+        return { approved: true, order: result.order };
+    }
+    if (["rejected", "cancelled"].includes(payment.status)) {
+        if (Number(order.paymentExpiresAt) <= Date.now()) return { ignored: true };
+        const rejected = await rejectOrder(platform, order.id, "mercado_pago", {
+            paymentAlreadyDeclined: true
+        });
+        await notifyRentalOwners(
+            platform,
+            `❌ Mercado Pago ${payment.status === "rejected" ? "recusou" : "cancelou"} o pagamento do pedido ${displayId(order.id, "AL")}.`
+        );
+        return { rejected: true, order: rejected };
+    }
+    return { pending: true };
 }
 
 async function notifyRentalOwners(platform, text) {
@@ -1199,9 +1697,30 @@ async function reportOrderPayment(platform, orderId, requesterId) {
     const normalized = assertPlatform(platform);
     const existingOrder = getOrder(normalized, orderId);
     if (!existingOrder) throw new Error("Pedido não encontrado.");
+    if (String(existingOrder.creatorId) !== String(requesterId)) {
+        throw new Error("Somente quem solicitou este pedido pode informar o pagamento.");
+    }
     if (paymentSendLocks.has(`${normalized}:${existingOrder.id}`)) {
         throw new Error("O envio dos dados de pagamento ainda está em andamento. Tente novamente em instantes.");
     }
+    let automaticCheckWarning = "";
+    if (existingOrder.paymentProvider === "mercado_pago" && existingOrder.mercadoPagoPaymentId) {
+        try {
+            await processMercadoPagoPayment(existingOrder.mercadoPagoPaymentId);
+        } catch (error) {
+            console.error(`[ALUGUEL] Falha na verificação imediata do pagamento ${normalized}/${existingOrder.id}:`, error.message || error);
+            automaticCheckWarning = "Não foi possível consultar o Mercado Pago agora; a verificação automática será tentada novamente.";
+        }
+        const checkedOrder = getOrder(normalized, existingOrder.id);
+        if (checkedOrder?.status === "approved") {
+            return { order: checkedOrder, automaticApproved: true, warning: automaticCheckWarning };
+        }
+        if (!checkedOrder || checkedOrder.status !== "awaiting_payment") {
+            throw new Error("O pagamento foi recusado, cancelado ou o pedido não está mais aberto.");
+        }
+    }
+
+    let shouldNotify = false;
     const order = updatePlatform(normalized, data => {
         const current = findById(data.orders, orderId, "AL");
         if (!current) throw new Error("Pedido não encontrado.");
@@ -1214,52 +1733,179 @@ async function reportOrderPayment(platform, orderId, requesterId) {
         if (Number(current.paymentExpiresAt) <= Date.now()) {
             throw new Error("O prazo de pagamento deste pedido terminou.");
         }
-        if (current.paymentReportedAt) {
+        if (current.paymentReportedAt && current.paymentProvider !== "mercado_pago") {
             throw new Error("Você já informou o pagamento deste pedido. Aguarde a confirmação do SU.");
         }
-        current.paymentReportedAt = Date.now();
-        current.paymentReportedBy = String(requesterId);
+        if (!current.paymentReportedAt) {
+            current.paymentReportedAt = Date.now();
+            current.paymentReportedBy = String(requesterId);
+            shouldNotify = true;
+        }
         return clone(current);
     });
 
-    const warning = await notifyRentalOwners(
-        normalized,
-        `💰 O solicitante ${order.creatorName || order.creatorId} informou que pagou o pedido ${displayId(order.id, "AL")}.\n` +
-        `Plano: ${order.planName} · ${formatPrice(order.priceCents)}\n` +
-        `Confirme somente após verificar o Pix:\n📌 ${config.getPrefix()}alugarsu pago ${displayId(order.id, "AL")}`
-    );
-    return { order, warning };
+    const ownerWarning = shouldNotify
+        ? await notifyRentalOwners(
+            normalized,
+            `💰 O solicitante ${order.creatorName || order.creatorId} informou que pagou o pedido ${displayId(order.id, "AL")}.\n` +
+            `Plano: ${order.planName} · ${formatPrice(order.priceCents)}\n` +
+            `Confirme somente após verificar o Pix:\n📌 ${config.getPrefix()}alugarsu pago ${displayId(order.id, "AL")}`
+        )
+        : "";
+    const warning = [automaticCheckWarning, ownerWarning].filter(Boolean).join(" ");
+    const latestOrder = getOrder(normalized, order.id) || order;
+    if (latestOrder.paymentProvider === "mercado_pago") {
+        if (latestOrder.status === "approved") {
+            return { order: latestOrder, automaticApproved: true, warning };
+        }
+        if (latestOrder.status !== "awaiting_payment") {
+            throw new Error("O pagamento foi recusado, cancelado ou o pedido não está mais aberto.");
+        }
+    }
+    return {
+        order: latestOrder,
+        warning,
+        automaticPending: latestOrder.paymentProvider === "mercado_pago" &&
+            latestOrder.status === "awaiting_payment"
+    };
+}
+
+async function pollMercadoPagoPayments() {
+    if (mercadoPagoPolling) return;
+    let settings;
+    try {
+        settings = mercadoPago.getPublicSettings();
+    } catch (error) {
+        console.error("[ALUGUEL] Não foi possível carregar a configuração do Mercado Pago para verificar pagamentos:", error.message || error);
+        return;
+    }
+    if (!settings.accessTokenConfigured) return;
+
+    mercadoPagoPolling = true;
+    const activeOrderKeys = new Set();
+    try {
+        for (const platform of PLATFORMS) {
+            const orders = listOrders(platform, "awaiting_payment").filter(order =>
+                order.paymentProvider === "mercado_pago" && order.mercadoPagoPaymentId
+            );
+            for (const order of orders) {
+                const key = `${platform}:${order.id}`;
+                activeOrderKeys.add(key);
+                try {
+                    await processMercadoPagoPayment(order.mercadoPagoPaymentId);
+                    mercadoPagoPollErrors.delete(key);
+                } catch (error) {
+                    const lastLoggedAt = mercadoPagoPollErrors.get(key) || 0;
+                    if (Date.now() - lastLoggedAt >= 5 * 60_000) {
+                        console.error(`[ALUGUEL] Falha ao verificar pagamento Mercado Pago ${key}:`, error.message || error);
+                        mercadoPagoPollErrors.set(key, Date.now());
+                    }
+                }
+            }
+        }
+    } finally {
+        for (const key of mercadoPagoPollErrors.keys()) {
+            if (!activeOrderKeys.has(key)) mercadoPagoPollErrors.delete(key);
+        }
+        mercadoPagoPolling = false;
+    }
+}
+
+async function withMercadoPagoCancellation(platform, order, updateOrder) {
+    if (order.paymentProvider !== "mercado_pago" || !order.mercadoPagoPaymentId ||
+        order.status !== "awaiting_payment") {
+        return updateOrder();
+    }
+    const lockKey = `${platform}:${order.id}`;
+    if (paymentSendLocks.has(lockKey)) {
+        throw new Error("Os dados de pagamento deste pedido estão sendo processados. Tente novamente em instantes.");
+    }
+    paymentSendLocks.add(lockKey);
+    try {
+        let payment = await mercadoPago.getPayment(order.mercadoPagoPaymentId);
+        const expectedReference = `satbot:${platform}:${order.id}`;
+        if (String(payment.id) !== order.mercadoPagoPaymentId ||
+            payment.external_reference !== expectedReference) {
+            throw new Error("Não consegui confirmar a cobrança deste pedido no Mercado Pago; ele não foi alterado.");
+        }
+        if (payment.status === "approved") {
+            paymentSendLocks.delete(lockKey);
+            try {
+                await processMercadoPagoPayment(order.mercadoPagoPaymentId);
+            } catch (error) {
+                console.error(`[ALUGUEL] Falha ao processar pagamento já aprovado ${platform}/${order.id}:`, error.message || error);
+            }
+            throw new Error("O Mercado Pago já marcou esta cobrança como aprovada. O SU deve verificar a transação antes de qualquer alteração.");
+        }
+        if (payment.status === "pending") {
+            try {
+                payment = await mercadoPago.cancelPayment(order.mercadoPagoPaymentId);
+            } catch (cancelError) {
+                try {
+                    payment = await mercadoPago.getPayment(order.mercadoPagoPaymentId);
+                } catch (checkError) {
+                    throw new Error(
+                        `Não consegui cancelar nem verificar a cobrança no Mercado Pago: ${String(cancelError.message || cancelError).slice(0, 180)}; ${String(checkError.message || checkError).slice(0, 180)}`
+                    );
+                }
+            }
+            if (payment.status === "approved") {
+                paymentSendLocks.delete(lockKey);
+                try {
+                    await processMercadoPagoPayment(order.mercadoPagoPaymentId);
+                } catch (error) {
+                    console.error(`[ALUGUEL] Falha ao processar pagamento já aprovado ${platform}/${order.id}:`, error.message || error);
+                }
+                throw new Error("O Mercado Pago já marcou esta cobrança como aprovada. O SU deve verificar a transação antes de qualquer alteração.");
+            }
+        }
+        if (!["cancelled", "rejected"].includes(payment.status)) {
+            throw new Error("Não consegui cancelar a cobrança no Mercado Pago; o pedido continua aberto para evitar perda de pagamento.");
+        }
+        if (String(payment.id) !== order.mercadoPagoPaymentId ||
+            payment.external_reference !== expectedReference) {
+            throw new Error("O Mercado Pago retornou uma cobrança diferente; o pedido não foi alterado.");
+        }
+        return updateOrder();
+    } finally {
+        paymentSendLocks.delete(lockKey);
+    }
 }
 
 async function cancelOrderByCreator(platform, orderId, requesterId) {
     const normalized = assertPlatform(platform);
     const existingOrder = getOrder(normalized, orderId);
     if (!existingOrder) throw new Error("Pedido não encontrado.");
+    if (String(existingOrder.creatorId) !== String(requesterId)) {
+        throw new Error("Somente quem solicitou este pedido pode cancelá-lo.");
+    }
     if (paymentSendLocks.has(`${normalized}:${existingOrder.id}`)) {
         throw new Error("O envio dos dados de pagamento ainda está em andamento. Tente novamente em instantes.");
     }
-    const order = updatePlatform(normalized, data => {
-        const current = findById(data.orders, orderId, "AL");
-        if (!current) throw new Error("Pedido não encontrado.");
-        if (String(current.creatorId) !== String(requesterId)) {
-            throw new Error("Somente quem solicitou este pedido pode cancelá-lo.");
-        }
-        if (!["pending", "awaiting_payment"].includes(current.status)) {
-            throw new Error("Este pedido não pode mais ser cancelado.");
-        }
-        current.status = "cancelled";
-        current.cancelledAt = Date.now();
-        current.cancelledBy = String(requesterId);
-        if (current.type === "initial") {
-            const presence = getPresence(data, current.scopeId);
-            if (presence?.pendingOrderId === current.id) {
-                presence.state = "trial";
-                presence.pendingOrderId = null;
-                delete presence.rejectionAction;
+    const order = await withMercadoPagoCancellation(normalized, existingOrder, () =>
+        updatePlatform(normalized, data => {
+            const current = findById(data.orders, orderId, "AL");
+            if (!current) throw new Error("Pedido não encontrado.");
+            if (String(current.creatorId) !== String(requesterId)) {
+                throw new Error("Somente quem solicitou este pedido pode cancelá-lo.");
             }
-        }
-        return clone(current);
-    });
+            if (!["pending", "awaiting_payment"].includes(current.status)) {
+                throw new Error("Este pedido não pode mais ser cancelado.");
+            }
+            current.status = "cancelled";
+            current.cancelledAt = Date.now();
+            current.cancelledBy = String(requesterId);
+            if (current.type === "initial") {
+                const presence = getPresence(data, current.scopeId);
+                if (presence?.pendingOrderId === current.id) {
+                    presence.state = "trial";
+                    presence.pendingOrderId = null;
+                    delete presence.rejectionAction;
+                }
+            }
+            return clone(current);
+        })
+    );
 
     const warning = await notifyRentalOwners(
         normalized,
@@ -1300,8 +1946,12 @@ async function leaveChat(platform, scopeId) {
     return result;
 }
 
-async function approveOrder(platform, orderId, actorId) {
+async function approveOrder(platform, orderId, actorId, { allowExpiredForVerifiedPayment = false } = {}) {
     const normalized = assertPlatform(platform);
+    const existing = getOrder(normalized, orderId);
+    if (existing && paymentSendLocks.has(`${normalized}:${existing.id}`)) {
+        throw new Error("O envio dos dados de pagamento ainda está em andamento. Tente novamente em instantes.");
+    }
     const result = updatePlatform(normalized, data => {
         const order = findById(data.orders, orderId, "AL");
         if (!order) throw new Error("Pedido não encontrado.");
@@ -1309,7 +1959,7 @@ async function approveOrder(platform, orderId, actorId) {
             throw new Error("O pedido só pode ser aprovado depois do envio do Pix.");
         }
         const now = Date.now();
-        if (Number(order.paymentExpiresAt) <= now) {
+        if (!allowExpiredForVerifiedPayment && Number(order.paymentExpiresAt) <= now) {
             throw new Error("O prazo de pagamento deste pedido terminou.");
         }
         let subscription = data.subscriptions.find(item => item.id === order.subscriptionId);
@@ -1401,9 +2051,21 @@ async function approveOrder(platform, orderId, actorId) {
     return { ...result, warning: notificationFailures.join(" ") };
 }
 
-async function rejectOrder(platform, orderId, actorId) {
+async function rejectOrder(platform, orderId, actorId, { paymentAlreadyDeclined = false } = {}) {
     const normalized = assertPlatform(platform);
-    const order = updatePlatform(normalized, data => {
+    const existingOrder = getOrder(normalized, orderId);
+    if (!existingOrder) throw new Error("Pedido não encontrado.");
+    if (paymentSendLocks.has(`${normalized}:${existingOrder.id}`)) {
+        throw new Error("Os dados de pagamento deste pedido estão sendo processados. Tente novamente em instantes.");
+    }
+    if (!["pending", "awaiting_payment"].includes(existingOrder.status)) {
+        throw new Error("Este pedido já foi decidido ou expirou.");
+    }
+    if (existingOrder.status === "awaiting_payment" &&
+        Number(existingOrder.paymentExpiresAt) <= Date.now()) {
+        throw new Error("O prazo de pagamento terminou. Aguarde a expiração automática do pedido.");
+    }
+    const updateOrder = () => updatePlatform(normalized, data => {
         const item = findById(data.orders, orderId, "AL");
         if (!item) throw new Error("Pedido não encontrado.");
         if (!["pending", "awaiting_payment"].includes(item.status)) {
@@ -1430,6 +2092,9 @@ async function rejectOrder(platform, orderId, actorId) {
         }
         return clone(item);
     });
+    const order = paymentAlreadyDeclined
+        ? updateOrder()
+        : await withMercadoPagoCancellation(normalized, existingOrder, updateOrder);
     const notice = order.paymentKeySentAt
         ? `❌ O pagamento do pedido ${displayId(order.id, "AL")} foi recusado.`
         : `❌ O pedido ${displayId(order.id, "AL")} foi recusado.`;
@@ -1732,6 +2397,7 @@ async function processPendingDeletionNotices(platform, message) {
 }
 
 async function runMaintenance(now = Date.now()) {
+    await pollMercadoPagoPayments();
     const dateKey = getLocalDateKey(now);
     for (const platform of PLATFORMS) {
         const initial = readPlatform(platform);
@@ -1971,6 +2637,11 @@ module.exports = {
     editOrder,
     deleteOrder,
     sendPaymentKey,
+    sendAutomaticPix,
+    processMercadoPagoPayment,
+    isAutomaticPixEnabled,
+    getPayerEmail,
+    getMercadoPagoSettings: mercadoPago.getPublicSettings,
     reportOrderPayment,
     cancelOrderByCreator,
     approveOrder,

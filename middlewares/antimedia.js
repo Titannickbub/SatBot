@@ -31,6 +31,7 @@ module.exports = {
             action,
             message: customMsg,
             mediaTypes = [],
+            allowAllMedia = false,
             userWhitelist = [],
             userBlacklist = [],
             roleWhitelist = [],
@@ -41,7 +42,11 @@ module.exports = {
         const isWhitelisted = isUserWhitelisted(userWhitelist, message.userId) || isRoleWhitelisted(roleWhitelist, message);
 
         // Lista negra é punida mesmo se o tipo específico não estiver filtrado (se for mídia enviada)
-        const blockedTypes = mediaTypes.length ? mediaTypes : ALL_MEDIA_TYPES;
+        const blockedTypes = allowAllMedia
+            ? []
+            : mediaTypes.length
+                ? mediaTypes
+                : ALL_MEDIA_TYPES;
         if (!isBlacklisted && !blockedTypes.includes(mediaType)) {
             return true;
         }

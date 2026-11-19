@@ -25,7 +25,8 @@ Sub-comandos:
 const {
     getLevelLabel,
     getAvailableLevels,
-    getSetAntilink
+    getSetAntilink,
+    readAntilink
 } = require("../../../functions/antilinkHelper");
 const { isOwner } = require("../../../functions/owners");
 
@@ -39,11 +40,25 @@ const ACTIONS = {
 
 // Ações que exigem permissão de moderação extra no bot
 const STRONG_ACTIONS = ["kick", "ban"];
+const ACTION_BUTTON_LABELS = {
+    delete: "🗑 Deletar",
+    warn: "⚠️ Avisar",
+    kick: "🚫 Expulsar",
+    ban: "🔨 Banir"
+};
+const TOGGLE_FIELDS = {
+    enabled: "enabled",
+    ignoreParent: "ignoreParent",
+    ignoreSameGroup: "ignoreSameGroup",
+    ignoreMedia: "ignoreMedia"
+};
 
 module.exports = {
     name: "antilink",
     category: "adm/segurança",
     description: `🔗 Configura a remoção de mensagens com links e as punições aplicadas neste grupo ou servidor.
+
+Sem argumentos, abre o menu de configuração. Mensagem personalizada e listas continuam usando comandos de texto.
 
 🔐 Disponível para administradores do chat e superusuários.
 
@@ -108,8 +123,10 @@ No Discord, também é possível gerenciar exceções por cargo. A lista branca 
 
 📊 Consulte o estado e as configurações:
 {prefix}antilink status`,
-    usage: "{prefix}antilink help",
+    usage: "{prefix}antilink",
     examples: [
+        "{prefix}antilink",
+        "{prefix}antilink help",
         "{prefix}antilink status",
         "{prefix}antilink chat on",
         "{prefix}antilink chat action warn",
@@ -144,12 +161,24 @@ No Discord, também é possível gerenciar exceções por cargo. A lista branca 
         const inputArgs = message.args || [];
         const platform = message.platform;
 
-        // ── 3. Sem args → ajuda ─────────────────────────────────────────
+        // ── 3. Sem args → menu de configuração ─────────────────────────
         if (!inputArgs.length) {
-            return message.reply({ text: _help(message) });
+            if (platform === "whatsapp") {
+                return message.reply({ text: _whatsappSummary(message) });
+            }
+            const levels = getAvailableLevels(message);
+            const selectedLevel = levels.includes("chat") ? "chat" : levels[0];
+            if (!selectedLevel) {
+                return message.reply({ text: "❌ Não há escopos de antilink disponíveis neste chat." });
+            }
+            return message.reply(_configurationMenu(message, selectedLevel));
         }
 
         const first = inputArgs[0].toLowerCase();
+
+        if (first === "help" || first === "ajuda") {
+            return message.reply({ text: _help(message) });
+        }
 
         // ── 4. Status ───────────────────────────────────────────────────
         if (first === "status") {
@@ -505,12 +534,387 @@ No Discord, também é possível gerenciar exceções por cargo. A lista branca 
 
         // ── Fallback: ajuda ─────────────────────────────────────────────
         return message.reply({ text: _help(message) });
+    },
+
+    async handleInteraction(interaction) {
+        return _handleConfigurationInteraction(interaction);
     }
 };
 
 // ─────────────────────────────────────────────────────────────
 //  HELPERS DE RESPOSTA
 // ─────────────────────────────────────────────────────────────
+
+function _getAdapter(message) {
+    return (message.platforms || []).find(platform => platform.name === message.platform) ||
+        global.platformRegistry?.[message.platform];
+}
+
+function _configurationMenu(message, selectedLevel) {
+    const levels = getAvailableLevels(message);
+    if (!levels.includes(selectedLevel)) {
+        return { text: "❌ Esse escopo não está disponível neste chat." };
+    }
+
+    const config = getSetAntilink(message, selectedLevel) || readAntilink(null);
+    const prefix = message.prefix || "!";
+    const levelLabel = getLevelLabel(message.platform, selectedLevel);
+
+    if (message.platform === "discord") {
+        const {
+            ActionRowBuilder,
+            ButtonBuilder,
+            ButtonStyle,
+            EmbedBuilder,
+            StringSelectMenuBuilder
+        } = require("discord.js");
+        const scopeRow = new ActionRowBuilder().addComponents(
+            ...levels.map(level => new ButtonBuilder()
+                .setCustomId(`antilink:scope:${level}:${selectedLevel}`)
+                .setLabel(_scopeButtonLabel(message.platform, level, selectedLevel))
+                .setStyle(level === selectedLevel ? ButtonStyle.Primary : ButtonStyle.Secondary))
+        );
+        const actionMenu = new StringSelectMenuBuilder()
+            .setCustomId(`antilink:action:${selectedLevel}`)
+            .setPlaceholder(`Ação atual: ${config.action}`)
+            .addOptions(Object.entries(ACTIONS).map(([value, description]) => ({
+                label: value,
+                description: description.replace(/^[^\w]+/u, "").slice(0, 100),
+                value
+            })));
+        const actionRow = new ActionRowBuilder().addComponents(actionMenu);
+        const toggles = _getToggleButtons(selectedLevel, config, ButtonBuilder, ButtonStyle);
+        const components = [scopeRow, actionRow];
+        if (toggles.length) components.push(new ActionRowBuilder().addComponents(...toggles));
+        return {
+            embed: _discordMenuEmbed(config, selectedLevel, levelLabel, prefix, EmbedBuilder),
+            components
+        };
+    }
+
+    if (message.platform === "telegram") {
+        const inline_keyboard = [
+            levels.map(level => ({
+                text: _scopeButtonLabel(message.platform, level, selectedLevel),
+                callback_data: `antilink:scope:${level}:${selectedLevel}`
+            })),
+            [
+                _telegramToggleButton(selectedLevel, "enabled", config),
+                ...(selectedLevel === "server" ? [] : [_telegramToggleButton(selectedLevel, "ignoreParent", config)])
+            ],
+            [
+                _telegramToggleButton(selectedLevel, "ignoreSameGroup", config),
+                _telegramToggleButton(selectedLevel, "ignoreMedia", config)
+            ],
+            ...Object.entries(ACTION_BUTTON_LABELS).reduce((rows, [action, label], index) => {
+                if (index % 2 === 0) rows.push([]);
+                rows[rows.length - 1].push({
+                    text: `${config.action === action ? "✅ " : ""}${label}`,
+                    callback_data: `antilink:action:${selectedLevel}:${action}`
+                });
+                return rows;
+            }, [])
+        ];
+        return {
+            text: _telegramMenuHtml(config, selectedLevel, levelLabel, prefix),
+            parse_mode: "HTML",
+            reply_markup: { inline_keyboard }
+        };
+    }
+
+    return { text: "" };
+}
+
+function _discordMenuEmbed(config, selectedLevel, levelLabel, prefix, EmbedBuilder) {
+    const textCommands = [
+        `${prefix}antilink ${selectedLevel} message <texto>`,
+        `${prefix}antilink ${selectedLevel} whitelist add|remove|list <domínio>`,
+        `${prefix}antilink ${selectedLevel} userwhitelist add|remove|list <usuário>`,
+        `${prefix}antilink ${selectedLevel} userblacklist add|remove|list <usuário>`,
+        `${prefix}antilink ${selectedLevel} rolewhitelist|roleblacklist add|remove|list <cargo>`,
+        `${prefix}antilink help`
+    ].map(command => `\`${command}\``).join("\n");
+    const inheritance = selectedLevel === "server"
+        ? "Não se aplica ao servidor."
+        : config.ignoreParent
+            ? "Isolado dos escopos superiores."
+            : "Herdando dos escopos superiores.";
+
+    return new EmbedBuilder({
+        color: config.enabled ? 0x57F287 : 0x5865F2,
+        title: `🔗 Antilink · ${levelLabel}`,
+        description: [
+            `**Proteção:** ${config.enabled ? "✅ Ativa" : "🔕 Inativa"}`,
+            `**Ação:** ${config.action} · ${ACTIONS[config.action] || ""}`
+        ].join("\n"),
+        fields: [
+            {
+                name: "⚙️ Exceções",
+                value: [
+                    `**Herança:** ${inheritance}`,
+                    `**Links do grupo/servidor:** ${config.ignoreSameGroup ? "Ignorados" : "Bloqueados"}`,
+                    `**Links de mídia:** ${config.ignoreMedia ? "Ignorados" : "Bloqueados"}`
+                ].join("\n"),
+                inline: false
+            },
+            {
+                name: "📋 Listas",
+                value: [
+                    `**Domínios:** ${_formatConfigList(config.whitelist)}`,
+                    `**Usuários isentos:** ${_formatConfigList(config.userWhitelist)}`,
+                    `**Usuários restritos:** ${_formatConfigList(config.userBlacklist)}`
+                ].join("\n"),
+                inline: false
+            },
+            {
+                name: "💬 Aviso personalizado",
+                value: _truncateConfigText(config.message || "(padrão)", 300),
+                inline: false
+            },
+            {
+                name: "⌨️ Personalização por texto",
+                value: textCommands,
+                inline: false
+            }
+        ],
+        footer: { text: "Use os botões e o seletor abaixo para alterar esta configuração." }
+    }).toJSON();
+}
+
+function _telegramMenuHtml(config, selectedLevel, levelLabel, prefix) {
+    const textCommands = [
+        `${prefix}antilink ${selectedLevel} message <texto>`,
+        `${prefix}antilink ${selectedLevel} whitelist add|remove|list <domínio>`,
+        `${prefix}antilink ${selectedLevel} userwhitelist add|remove|list <usuário>`,
+        `${prefix}antilink ${selectedLevel} userblacklist add|remove|list <usuário>`,
+        `${prefix}antilink help`
+    ].map(command => `<code>${_escapeHtml(command)}</code>`).join("\n");
+    const inheritance = selectedLevel === "server"
+        ? "Não se aplica ao grupo."
+        : config.ignoreParent
+            ? "Isolado do grupo."
+            : "Herdando do grupo.";
+
+    return [
+        `<b>🔗 ANTILINK · ${_escapeHtml(levelLabel)}</b>`,
+        "",
+        "<b>Proteção</b>",
+        `Estado: ${config.enabled ? "✅ Ativa" : "🔕 Inativa"}`,
+        `Ação: <code>${_escapeHtml(config.action)}</code> · ${_escapeHtml(ACTIONS[config.action] || "")}`,
+        "",
+        "<b>Exceções</b>",
+        `Herança: ${_escapeHtml(inheritance)}`,
+        `Links do grupo: ${config.ignoreSameGroup ? "Ignorados" : "Bloqueados"}`,
+        `Links de mídia: ${config.ignoreMedia ? "Ignorados" : "Bloqueados"}`,
+        "",
+        "<b>Listas</b>",
+        `Domínios: ${_escapeHtml(_formatConfigList(config.whitelist))}`,
+        `Usuários isentos: ${_escapeHtml(_formatConfigList(config.userWhitelist))}`,
+        `Usuários restritos: ${_escapeHtml(_formatConfigList(config.userBlacklist))}`,
+        "",
+        "<b>Aviso personalizado</b>",
+        `<i>${_escapeHtml(_truncateConfigText(config.message || "(padrão)", 300))}</i>`,
+        "",
+        "<b>Personalização por texto</b>",
+        textCommands
+    ].join("\n");
+}
+
+function _escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function _scopeButtonLabel(platform, level, selectedLevel) {
+    const labels = {
+        discord: { server: "Servidor", categoria: "Categoria", chat: "Canal/tópico" },
+        telegram: { server: "Grupo", chat: "Tópico" }
+    };
+    const label = labels[platform]?.[level] || getLevelLabel(platform, level);
+    return level === selectedLevel ? `✅ ${label}` : label;
+}
+
+function _getToggleButtons(level, config, ButtonBuilder, ButtonStyle) {
+    const fields = [
+        { key: "enabled", label: config.enabled ? "✅ Antilink ativo" : "🔕 Antilink inativo" },
+        ...(level === "server" ? [] : [{
+            key: "ignoreParent",
+            label: `Herda superiores: ${config.ignoreParent ? "Não" : "Sim"}`
+        }]),
+        { key: "ignoreSameGroup", label: `Ignora links próprios: ${config.ignoreSameGroup ? "Sim" : "Não"}` },
+        { key: "ignoreMedia", label: `Ignora links de mídia: ${config.ignoreMedia ? "Sim" : "Não"}` }
+    ];
+    return fields.map(field => new ButtonBuilder()
+        .setCustomId(`antilink:toggle:${field.key}:${level}`)
+        .setLabel(field.label)
+        .setStyle(config[field.key] ? ButtonStyle.Success : ButtonStyle.Secondary));
+}
+
+function _telegramToggleButton(level, field, config) {
+    const labels = {
+        enabled: config.enabled ? "✅ Antilink: ON" : "🔕 Antilink: OFF",
+        ignoreParent: config.ignoreParent ? "Ignora superiores: ON" : "Herda superiores: ON",
+        ignoreSameGroup: config.ignoreSameGroup ? "Ignora links próprios: ON" : "Ignora links próprios: OFF",
+        ignoreMedia: config.ignoreMedia ? "Ignora mídia: ON" : "Ignora mídia: OFF"
+    };
+    return {
+        text: labels[field],
+        callback_data: `antilink:toggle:${field}:${level}`
+    };
+}
+
+function _whatsappSummary(message) {
+    const config = getSetAntilink(message, "chat") || readAntilink(null);
+    const prefix = message.prefix || "!";
+    return [
+        "🔗 CONFIGURAÇÃO DO ANTILINK — GRUPO ATUAL",
+        "",
+        `Estado: ${config.enabled ? "✅ Ativo" : "🔕 Inativo"}`,
+        `Ação: ${config.action} — ${ACTIONS[config.action] || ""}`,
+        `Ignora links do grupo: ${config.ignoreSameGroup ? "Sim" : "Não"}`,
+        `Ignora links de mídia: ${config.ignoreMedia ? "Sim" : "Não"}`,
+        `Aviso personalizado: ${_truncateConfigText(config.message || "(padrão)", 300)}`,
+        `Domínios permitidos: ${_formatConfigList(config.whitelist)}`,
+        `Usuários isentos: ${_formatConfigList(config.userWhitelist)}`,
+        `Usuários restritos: ${_formatConfigList(config.userBlacklist)}`,
+        "",
+        `Para ver a ajuda completa, use: ${prefix}antilink help`
+    ].join("\n");
+}
+
+function _formatConfigList(values) {
+    if (!values?.length) return "Nenhum";
+    const displayed = values.slice(0, 5).map(value => _truncateConfigText(value, 40));
+    if (values.length > displayed.length) displayed.push(`e mais ${values.length - displayed.length}`);
+    return displayed.join(", ");
+}
+
+function _truncateConfigText(value, maxLength) {
+    const text = String(value).replace(/\s+/g, " ").trim();
+    return text.length > maxLength
+        ? `${text.slice(0, maxLength - 1)}…`
+        : text;
+}
+
+async function _handleConfigurationInteraction(interaction) {
+    const componentId = interaction?.customId || interaction?.callbackQuery?.data || "";
+    const parts = String(componentId).split(":");
+    const [commandName, action, value, menuLevel] = parts;
+    if (commandName !== "antilink") return false;
+
+    const message = interaction[Symbol.for("satbot.componentMessageContext")];
+    if (!message) return false;
+    const adapter = _getAdapter(message);
+    const userOk = isOwner(message) || (adapter?.checkUserPermission
+        ? await adapter.checkUserPermission(message.chatId, message.userId)
+        : message.sender?.isAdmin);
+    if (!userOk) {
+        await message.reply({ text: "❌ Apenas administradores podem configurar o antilink." });
+        return true;
+    }
+
+    const levels = getAvailableLevels(message);
+    if (action === "scope") {
+        const selectedLevel = value;
+        if (!levels.includes(selectedLevel)) {
+            await message.reply({ text: "❌ Esse escopo não está disponível neste chat." });
+            return true;
+        }
+        if (selectedLevel === menuLevel) {
+            await _answerComponent(interaction, "Esse escopo já está selecionado.");
+            return true;
+        }
+        return _updateConfigurationMenu(interaction, message, selectedLevel);
+    }
+
+    const selectedLevel = action === "toggle" ? menuLevel : value;
+    if (!levels.includes(selectedLevel)) {
+        await message.reply({ text: "❌ Esse escopo não está disponível neste chat." });
+        return true;
+    }
+    const current = getSetAntilink(message, selectedLevel);
+    if (!current) {
+        await message.reply({ text: "❌ Não encontrei as configurações desse escopo." });
+        return true;
+    }
+
+    let update;
+    if (action === "toggle") {
+        const field = value;
+        if (!Object.prototype.hasOwnProperty.call(TOGGLE_FIELDS, field) ||
+            (field === "ignoreParent" && selectedLevel === "server")) {
+            await message.reply({ text: "❌ Essa opção não pode ser alterada neste escopo." });
+            return true;
+        }
+        update = { [TOGGLE_FIELDS[field]]: !current[TOGGLE_FIELDS[field]] };
+    } else if (action === "action") {
+        const selectedAction = interaction.values?.[0] || menuLevel;
+        if (!Object.prototype.hasOwnProperty.call(ACTIONS, selectedAction)) {
+            await message.reply({ text: "❌ Ação inválida." });
+            return true;
+        }
+        update = { action: selectedAction };
+    } else {
+        return false;
+    }
+
+    const changesEnabled = update.enabled === true;
+    const requestedAction = update.action || current.action;
+    if ((changesEnabled || update.action) && STRONG_ACTIONS.includes(requestedAction)) {
+        const botOk = adapter?.checkBotPermission
+            ? await adapter.checkBotPermission(message.chatId, requestedAction)
+            : false;
+        if (!botOk) {
+            await message.reply({
+                text: `⚠️ O bot não tem permissão para executar a ação *${requestedAction}*. Conceda as permissões necessárias ou escolha outra ação.`
+            });
+            return true;
+        }
+    }
+
+    const updatedValue = update.action || Object.keys(update).map(key => update[key])[0];
+    const currentValue = update.action ? current.action : current[Object.keys(update)[0]];
+    if (updatedValue === currentValue) {
+        await _answerComponent(interaction, "Essa configuração já está assim.");
+        return true;
+    }
+    if (!getSetAntilink(message, selectedLevel, update)) {
+        await message.reply({ text: "❌ Não foi possível salvar essa configuração." });
+        return true;
+    }
+    return _updateConfigurationMenu(interaction, message, selectedLevel);
+}
+
+async function _answerComponent(interaction, text) {
+    if (interaction.callbackQuery) {
+        await interaction.answerCbQuery(text);
+    } else {
+        await interaction.reply({ content: text, ephemeral: true });
+    }
+}
+
+async function _updateConfigurationMenu(interaction, message, selectedLevel) {
+    const payload = _configurationMenu(message, selectedLevel);
+    if (interaction.callbackQuery) {
+        await interaction.answerCbQuery();
+        await interaction.editMessageText(payload.text, {
+            parse_mode: payload.parse_mode,
+            reply_markup: payload.reply_markup
+        });
+    } else {
+        const { EmbedBuilder } = require("discord.js");
+        await interaction.update({
+            content: "",
+            embeds: [new EmbedBuilder(payload.embed)],
+            components: payload.components || []
+        });
+    }
+    return true;
+}
 
 function _help(message) {
     const p = message.prefix;

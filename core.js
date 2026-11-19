@@ -284,13 +284,11 @@ function loadCommands() {
 
         const parts = relativePath.split(path.sep);
 
-        const category =
-            command.category ||
-            (
-                parts.length > 1
-                    ? parts[0]
-                    : null
-            );
+        const category = Object.prototype.hasOwnProperty.call(command, "category")
+            ? command.category
+            : parts.length > 1
+                ? parts[0]
+                : null;
 
         const commandKey = normalizeCommandName(command.name);
         const commandEntry = {
@@ -1045,7 +1043,7 @@ async function handleComponentInteraction(interaction) {
     const safeActionTokens = new Set([
         "approve", "back", "cancel", "catalog", "category", "choose", "community", "confirm",
         "cosmetic", "details", "discord", "editplan", "extend", "initial", "items",
-        "menu", "orders", "paid", "permanent", "pixhelp", "cancelorder", "reject", "rejectconfirm", "remove",
+        "menu", "open", "close", "temporary", "orders", "paid", "permanent", "pixhelp", "cancelorder", "reject", "rejectconfirm", "remove",
         "removeconfirm", "renewal", "select", "setplan", "subscriptions",
         "telegram", "tc", "tx", "cc", "cx"
     ]);

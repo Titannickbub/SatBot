@@ -1,4 +1,7 @@
-const { executeStateCommand } = require("../../../functions/chatControlCommand");
+const {
+    executeStateCommand,
+    handleStateInteraction
+} = require("../../../functions/chatControlCommand");
 
 const DESCRIPTION = `🔓 Abre o chat para que os membros possam enviar mensagens.
 
@@ -7,6 +10,8 @@ const DESCRIPTION = `🔓 Abre o chat para que os membros possam enviar mensagen
 📱 WhatsApp: apenas grupos, não comunidades.
 ✈️ Telegram: grupos e supergrupos.
 🎮 Discord: canais de texto (não threads).
+
+No Telegram e no Discord, a confirmação inclui botões para abrir ou fechar o chat e aplicar esta ação por um período comum. No WhatsApp, continue usando os comandos de texto.
 
 ✅ Abrir sem prazo:
 {prefix}abrirchat
@@ -35,5 +40,9 @@ module.exports = {
 
     async execute(message) {
         return executeStateCommand(message, true, DESCRIPTION);
+    },
+
+    async handleInteraction(interaction) {
+        return handleStateInteraction(interaction);
     }
 };

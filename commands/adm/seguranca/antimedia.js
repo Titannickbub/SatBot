@@ -21,10 +21,12 @@ Sub-comandos:
 */
 
 const {
+    ALL_MEDIA_TYPES,
     getLevelLabel,
     getAvailableLevels,
     getSetAntimedia,
-    normalizeMediaTypes
+    normalizeMediaTypes,
+    readAntimedia
 } = require("../../../functions/antimediaHelper");
 const { isOwner } = require("../../../functions/owners");
 const {
@@ -43,11 +45,34 @@ const ACTIONS = {
 };
 
 const STRONG_ACTIONS = ["kick", "ban"];
+const ACTION_BUTTON_LABELS = {
+    delete: "🗑 Deletar",
+    warn: "⚠️ Avisar",
+    kick: "🚫 Expulsar",
+    ban: "🔨 Banir"
+};
+const MEDIA_TYPE_LABELS = {
+    image: "Imagens",
+    video: "Vídeos",
+    audio: "Áudios",
+    sticker: "Figurinhas",
+    location: "Localização",
+    document: "Documentos",
+    contact: "Contatos",
+    voice: "Mensagens de voz",
+    gif: "GIFs"
+};
+const TOGGLE_FIELDS = {
+    enabled: "enabled",
+    ignoreParent: "ignoreParent"
+};
 
 module.exports = {
     name: "antimedia",
     category: "adm/segurança",
     description: `📹 Configura o bloqueio de tipos de mídia e as punições aplicadas neste grupo ou servidor.
+
+Sem argumentos, abre o menu de configuração. Use os controles para bloquear ou permitir mídias; mensagem personalizada e listas de usuários/cargos continuam usando comandos de texto.
 
 🔐 Disponível para administradores do chat e superusuários.
 
@@ -119,6 +144,8 @@ No Discord, também é possível gerenciar exceções por cargo. Informe @cargo,
 {prefix}antimedia status`,
     usage: "{prefix}antimedia",
     examples: [
+        "{prefix}antimedia",
+        "{prefix}antimedia help",
         "{prefix}antimedia status",
         "{prefix}antimedia chat on",
         "{prefix}antimedia chat action warn",
@@ -144,10 +171,21 @@ No Discord, também é possível gerenciar exceções por cargo. Informe @cargo,
 
         const inputArgs = message.args || [];
         if (!inputArgs.length) {
-            return message.reply({ text: _help(message) });
+            if (message.platform === "whatsapp") {
+                return message.reply({ text: _whatsappSummary(message) });
+            }
+            const levels = getAvailableLevels(message);
+            const selectedLevel = levels.includes("chat") ? "chat" : levels[0];
+            if (!selectedLevel) {
+                return message.reply({ text: "❌ Não há escopos de antimedia disponíveis neste chat." });
+            }
+            return message.reply(_configurationMenu(message, selectedLevel));
         }
 
         const first = inputArgs[0].toLowerCase();
+        if (first === "help" || first === "ajuda") {
+            return message.reply({ text: _help(message) });
+        }
         if (first === "status") {
             return message.reply({ text: await _status(message, adapter) });
         }
@@ -220,8 +258,8 @@ No Discord, também é possível gerenciar exceções por cargo. Informe @cargo,
                 return message.reply({ text: "❌ Informe uma ou mais mídias. Ex: !antimedia chat add image, video, audio" });
             }
             const current = getSetAntimedia(message, level) || {};
-            const merged = Array.from(new Set([...(current.mediaTypes || []), ...media]));
-            getSetAntimedia(message, level, { mediaTypes: merged });
+            const merged = Array.from(new Set([..._getBlockedMediaTypes(current), ...media]));
+            getSetAntimedia(message, level, { mediaTypes: merged, allowAllMedia: false });
             const lbl = getLevelLabel(message.platform, level);
             return message.reply({ text: `✅ Mídias adicionadas no nível *${lbl}*:\n${merged.join(", ")}` });
         }
@@ -232,15 +270,16 @@ No Discord, também é possível gerenciar exceções por cargo. Informe @cargo,
                 return message.reply({ text: "❌ Informe as mídias a remover. Ex: !antimedia chat remove sticker, location" });
             }
             const current = getSetAntimedia(message, level) || {};
-            const remaining = (current.mediaTypes || []).filter(type => !media.includes(type));
-            getSetAntimedia(message, level, { mediaTypes: remaining });
+            const remaining = _getBlockedMediaTypes(current).filter(type => !media.includes(type));
+            const allowAllMedia = remaining.length === 0;
+            getSetAntimedia(message, level, { mediaTypes: remaining, allowAllMedia });
             const lbl = getLevelLabel(message.platform, level);
             return message.reply({ text: `✅ Mídias removidas do nível *${lbl}*.` });
         }
 
         if (subCmd === "list") {
             const current = getSetAntimedia(message, level) || {};
-            const types = (current.mediaTypes || []).length ? current.mediaTypes.join(", ") : "(nenhuma)";
+            const types = _mediaTypesStatus(current);
             return message.reply({ text: `📋 Mídias cadastradas:\n${types}` });
         }
 
@@ -426,8 +465,493 @@ No Discord, também é possível gerenciar exceções por cargo. Informe @cargo,
         }
 
         return message.reply({ text: _help(message) });
+    },
+
+    async handleInteraction(interaction) {
+        return _handleConfigurationInteraction(interaction);
     }
 };
+
+function _getAdapter(message) {
+    return (message.platforms || []).find(platform => platform.name === message.platform) ||
+        global.platformRegistry?.[message.platform];
+}
+
+function _configurationMenu(message, selectedLevel) {
+    const levels = getAvailableLevels(message);
+    if (!levels.includes(selectedLevel)) {
+        return { text: "❌ Esse escopo não está disponível neste chat." };
+    }
+
+    const config = getSetAntimedia(message, selectedLevel) || readAntimedia(null);
+    const prefix = message.prefix || "!";
+    const levelLabel = getLevelLabel(message.platform, selectedLevel);
+
+    if (message.platform === "discord") {
+        const {
+            ActionRowBuilder,
+            ButtonBuilder,
+            ButtonStyle,
+            EmbedBuilder,
+            StringSelectMenuBuilder
+        } = require("discord.js");
+        const scopeRow = new ActionRowBuilder().addComponents(
+            ...levels.map(level => new ButtonBuilder()
+                .setCustomId(`antimedia:scope:${level}:${selectedLevel}`)
+                .setLabel(_scopeButtonLabel(message.platform, level, selectedLevel))
+                .setStyle(level === selectedLevel ? ButtonStyle.Primary : ButtonStyle.Secondary))
+        );
+        const actionMenu = new StringSelectMenuBuilder()
+            .setCustomId(`antimedia:action:${selectedLevel}`)
+            .setPlaceholder(`Ação atual: ${config.action}`)
+            .addOptions(Object.entries(ACTIONS).map(([value, description]) => ({
+                label: value,
+                description: description.replace(/^[^\w]+/u, "").slice(0, 100),
+                value
+            })));
+        const actionRow = new ActionRowBuilder().addComponents(actionMenu);
+        const toggles = _getToggleButtons(selectedLevel, config, ButtonBuilder, ButtonStyle);
+        const blockedTypes = _getBlockedMediaTypes(config);
+        const mediaMenu = new StringSelectMenuBuilder()
+            .setCustomId(`antimedia:media:${selectedLevel}`)
+            .setPlaceholder("Selecione as mídias que serão bloqueadas")
+            .setMinValues(1)
+            .setMaxValues(ALL_MEDIA_TYPES.length)
+            .addOptions(ALL_MEDIA_TYPES.map(type => ({
+                label: `${MEDIA_TYPE_LABELS[type]} (${type})`,
+                description: blockedTypes.includes(type) ? "Atualmente bloqueada" : "Atualmente permitida",
+                value: type,
+                default: blockedTypes.includes(type)
+            })));
+        const mediaRow = new ActionRowBuilder().addComponents(mediaMenu);
+        const mediaActionsRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`antimedia:media:${selectedLevel}:blockall`)
+                .setLabel("Bloquear todas")
+                .setStyle(ButtonStyle.Danger),
+            new ButtonBuilder()
+                .setCustomId(`antimedia:media:${selectedLevel}:allowall`)
+                .setLabel("Permitir todas")
+                .setStyle(ButtonStyle.Success)
+        );
+        const components = [scopeRow, actionRow];
+        if (toggles.length) components.push(new ActionRowBuilder().addComponents(...toggles));
+        components.push(mediaRow, mediaActionsRow);
+        return {
+            embed: _discordMenuEmbed(config, selectedLevel, levelLabel, prefix, EmbedBuilder),
+            components
+        };
+    }
+
+    if (message.platform === "telegram") {
+        const blockedTypes = _getBlockedMediaTypes(config);
+        const inline_keyboard = [
+            levels.map(level => ({
+                text: _scopeButtonLabel(message.platform, level, selectedLevel),
+                callback_data: `antimedia:scope:${level}:${selectedLevel}`
+            })),
+            [
+                _telegramToggleButton(selectedLevel, "enabled", config),
+                ...(selectedLevel === "server" ? [] : [_telegramToggleButton(selectedLevel, "ignoreParent", config)])
+            ],
+            ...Object.entries(ACTION_BUTTON_LABELS).reduce((rows, [action, label], index) => {
+                if (index % 2 === 0) rows.push([]);
+                rows[rows.length - 1].push({
+                    text: `${config.action === action ? "✅ " : ""}${label}`,
+                    callback_data: `antimedia:action:${selectedLevel}:${action}`
+                });
+                return rows;
+            }, []),
+            ...ALL_MEDIA_TYPES.reduce((rows, type, index) => {
+                if (index % 2 === 0) rows.push([]);
+                rows[rows.length - 1].push({
+                    text: `${blockedTypes.includes(type) ? "🚫" : "✅"} ${MEDIA_TYPE_LABELS[type]}`,
+                    callback_data: `antimedia:media:${selectedLevel}:toggle:${type}`
+                });
+                return rows;
+            }, []),
+            [
+                {
+                    text: "🚫 Bloquear todas",
+                    callback_data: `antimedia:media:${selectedLevel}:blockall`
+                },
+                {
+                    text: "✅ Permitir todas",
+                    callback_data: `antimedia:media:${selectedLevel}:allowall`
+                }
+            ]
+        ];
+        return {
+            text: _telegramMenuHtml(config, selectedLevel, levelLabel, prefix),
+            parse_mode: "HTML",
+            reply_markup: { inline_keyboard }
+        };
+    }
+
+    return { text: "" };
+}
+
+function _discordMenuEmbed(config, selectedLevel, levelLabel, prefix, EmbedBuilder) {
+    const textCommands = [
+        `${prefix}antimedia ${selectedLevel} add <mídia,...>`,
+        `${prefix}antimedia ${selectedLevel} remove <mídia,...>`,
+        `${prefix}antimedia ${selectedLevel} list`,
+        `${prefix}antimedia ${selectedLevel} message <texto>`,
+        `${prefix}antimedia ${selectedLevel} userwhitelist|userblacklist add|remove|list <usuário>`,
+        `${prefix}antimedia ${selectedLevel} rolewhitelist|roleblacklist add|remove|list <cargo>`,
+        `${prefix}antimedia help`
+    ].map(command => `\`${command}\``).join("\n");
+    const inheritance = selectedLevel === "server"
+        ? "Não se aplica ao servidor."
+        : config.ignoreParent
+            ? "Isolado dos escopos superiores."
+            : "Herdando dos escopos superiores.";
+    const allowedTypes = _getAllowedMediaTypes(config);
+    const blockedSummary = _mediaTypesStatus(config);
+    const allowedSummary = allowedTypes.length ? _formatConfigList(allowedTypes) : "Nenhuma";
+
+    return new EmbedBuilder({
+        color: config.enabled ? 0x57F287 : 0x5865F2,
+        title: `📹 Antimedia · ${levelLabel}`,
+        description: [
+            `**Proteção:** ${config.enabled ? "✅ Ativa" : "🔕 Inativa"}`,
+            `**Ação:** ${config.action} · ${ACTIONS[config.action] || ""}`
+        ].join("\n"),
+        fields: [
+            {
+                name: "🎞️ Mídias bloqueadas",
+                value: [
+                    `**Bloqueadas:** ${blockedSummary}`,
+                    `**Permitidas:** ${allowedSummary}`,
+                    `**Tipos válidos:** ${ALL_MEDIA_TYPES.join(", ")}`
+                ].join("\n"),
+                inline: false
+            },
+            {
+                name: "⚙️ Herança e listas",
+                value: [
+                    `**Herança:** ${inheritance}`,
+                    `**Usuários isentos:** ${_formatConfigList(config.userWhitelist)}`,
+                    `**Usuários restritos:** ${_formatConfigList(config.userBlacklist)}`
+                ].join("\n"),
+                inline: false
+            },
+            {
+                name: "💬 Aviso personalizado",
+                value: _truncateConfigText(config.message || "(padrão)", 300),
+                inline: false
+            },
+            {
+                name: "⌨️ Personalização por texto",
+                value: textCommands,
+                inline: false
+            }
+        ],
+        footer: { text: "Use os botões e o seletor abaixo para alterar esta configuração." }
+    }).toJSON();
+}
+
+function _telegramMenuHtml(config, selectedLevel, levelLabel, prefix) {
+    const textCommands = [
+        `${prefix}antimedia ${selectedLevel} add <mídia,...>`,
+        `${prefix}antimedia ${selectedLevel} remove <mídia,...>`,
+        `${prefix}antimedia ${selectedLevel} list`,
+        `${prefix}antimedia ${selectedLevel} message <texto>`,
+        `${prefix}antimedia help`
+    ].map(command => `<code>${_escapeHtml(command)}</code>`).join("\n");
+    const inheritance = selectedLevel === "server"
+        ? "Não se aplica ao grupo."
+        : config.ignoreParent
+            ? "Isolado do grupo."
+            : "Herdando do grupo.";
+    const allowedTypes = _getAllowedMediaTypes(config);
+    const blockedSummary = _mediaTypesStatus(config);
+    const allowedSummary = allowedTypes.length ? _formatConfigList(allowedTypes) : "Nenhuma";
+
+    return [
+        `<b>📹 ANTIMEDIA · ${_escapeHtml(levelLabel)}</b>`,
+        "",
+        "<b>Proteção</b>",
+        `Estado: ${config.enabled ? "✅ Ativa" : "🔕 Inativa"}`,
+        `Ação: <code>${_escapeHtml(config.action)}</code> · ${_escapeHtml(ACTIONS[config.action] || "")}`,
+        "",
+        "<b>Mídias bloqueadas e permitidas</b>",
+        `Bloqueadas: ${_escapeHtml(blockedSummary)}`,
+        `Permitidas: ${_escapeHtml(allowedSummary)}`,
+        `Tipos válidos: <code>${_escapeHtml(ALL_MEDIA_TYPES.join(", "))}</code>`,
+        "",
+        "<b>Herança e listas</b>",
+        `Herança: ${_escapeHtml(inheritance)}`,
+        `Usuários isentos: ${_escapeHtml(_formatConfigList(config.userWhitelist))}`,
+        `Usuários restritos: ${_escapeHtml(_formatConfigList(config.userBlacklist))}`,
+        "",
+        "<b>Aviso personalizado</b>",
+        `<i>${_escapeHtml(_truncateConfigText(config.message || "(padrão)", 300))}</i>`,
+        "",
+        "<b>Personalização por texto</b>",
+        textCommands
+    ].join("\n");
+}
+
+function _scopeButtonLabel(platform, level, selectedLevel) {
+    const labels = {
+        discord: { server: "Servidor", categoria: "Categoria", chat: "Canal/tópico" },
+        telegram: { server: "Grupo", chat: "Tópico" }
+    };
+    const label = labels[platform]?.[level] || getLevelLabel(platform, level);
+    return level === selectedLevel ? `✅ ${label}` : label;
+}
+
+function _getToggleButtons(level, config, ButtonBuilder, ButtonStyle) {
+    const fields = [
+        { key: "enabled", label: config.enabled ? "✅ Antimedia ativo" : "🔕 Antimedia inativo" },
+        ...(level === "server" ? [] : [{
+            key: "ignoreParent",
+            label: `Herda superiores: ${config.ignoreParent ? "Não" : "Sim"}`
+        }])
+    ];
+    return fields.map(field => new ButtonBuilder()
+        .setCustomId(`antimedia:toggle:${field.key}:${level}`)
+        .setLabel(field.label)
+        .setStyle(config[field.key] ? ButtonStyle.Success : ButtonStyle.Secondary));
+}
+
+function _telegramToggleButton(level, field, config) {
+    const labels = {
+        enabled: config.enabled ? "✅ Antimedia: ON" : "🔕 Antimedia: OFF",
+        ignoreParent: config.ignoreParent ? "Ignora superiores: ON" : "Herda superiores: ON"
+    };
+    return {
+        text: labels[field],
+        callback_data: `antimedia:toggle:${field}:${level}`
+    };
+}
+
+function _whatsappSummary(message) {
+    const config = getSetAntimedia(message, "chat") || readAntimedia(null);
+    const prefix = message.prefix || "!";
+    const allowedTypes = _getAllowedMediaTypes(config);
+    return [
+        "📹 CONFIGURAÇÃO DO ANTIMEDIA — GRUPO ATUAL",
+        "",
+        `Estado: ${config.enabled ? "✅ Ativo" : "🔕 Inativo"}`,
+        `Ação: ${config.action} — ${ACTIONS[config.action] || ""}`,
+        `Mídias bloqueadas: ${_mediaTypesStatus(config)}`,
+        `Mídias permitidas: ${allowedTypes.length ? _formatConfigList(allowedTypes) : "Nenhuma"}`,
+        `Aviso personalizado: ${_truncateConfigText(config.message || "(padrão)", 300)}`,
+        `Usuários isentos: ${_formatConfigList(config.userWhitelist)}`,
+        `Usuários restritos: ${_formatConfigList(config.userBlacklist)}`,
+        "",
+        `Para ver a ajuda completa, use: ${prefix}antimedia help`
+    ].join("\n");
+}
+
+function _formatConfigList(values) {
+    if (!values?.length) return "Nenhum";
+    const displayed = values.slice(0, 5).map(value => _truncateConfigText(value, 40));
+    if (values.length > displayed.length) displayed.push(`e mais ${values.length - displayed.length}`);
+    return displayed.join(", ");
+}
+
+function _getBlockedMediaTypes(config) {
+    if (config.allowAllMedia) return [];
+    if (config.mediaTypes?.length) return normalizeMediaTypes(config.mediaTypes);
+    return [...ALL_MEDIA_TYPES];
+}
+
+function _getAllowedMediaTypes(config) {
+    const blockedTypes = new Set(_getBlockedMediaTypes(config));
+    return ALL_MEDIA_TYPES.filter(type => !blockedTypes.has(type));
+}
+
+function _mediaTypesStatus(config) {
+    if (config.allowAllMedia) return "Nenhuma (todas permitidas)";
+    if (!config.mediaTypes?.length) return "Todas (padrão)";
+    return _formatConfigList(_getBlockedMediaTypes(config));
+}
+
+function _isSameMediaSelection(current, update) {
+    const currentBlocked = _getBlockedMediaTypes(current);
+    const nextBlocked = update.allowAllMedia
+        ? []
+        : update.mediaTypes.length
+            ? normalizeMediaTypes(update.mediaTypes)
+            : [...ALL_MEDIA_TYPES];
+    return currentBlocked.length === nextBlocked.length &&
+        currentBlocked.every(type => nextBlocked.includes(type));
+}
+
+function _truncateConfigText(value, maxLength) {
+    const text = String(value).replace(/\s+/g, " ").trim();
+    return text.length > maxLength
+        ? `${text.slice(0, maxLength - 1)}…`
+        : text;
+}
+
+function _escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+async function _handleConfigurationInteraction(interaction) {
+    const componentId = interaction?.customId || interaction?.callbackQuery?.data || "";
+    const parts = String(componentId).split(":");
+    const [commandName, action, value, menuLevel, extra] = parts;
+    if (commandName !== "antimedia") return false;
+
+    const message = interaction[Symbol.for("satbot.componentMessageContext")];
+    if (!message) return false;
+    const adapter = _getAdapter(message);
+    const userOk = isOwner(message) || (adapter?.checkUserPermission
+        ? await adapter.checkUserPermission(message.chatId, message.userId)
+        : message.sender?.isAdmin);
+    if (!userOk) {
+        await message.reply({ text: "❌ Apenas administradores podem configurar o antimedia." });
+        return true;
+    }
+
+    const levels = getAvailableLevels(message);
+    if (action === "scope") {
+        const selectedLevel = value;
+        if (!levels.includes(selectedLevel)) {
+            await message.reply({ text: "❌ Esse escopo não está disponível neste chat." });
+            return true;
+        }
+        if (selectedLevel === menuLevel) {
+            await _answerComponent(interaction, "Esse escopo já está selecionado.");
+            return true;
+        }
+        return _updateConfigurationMenu(interaction, message, selectedLevel);
+    }
+
+    const selectedLevel = action === "toggle" ? menuLevel : value;
+    if (!levels.includes(selectedLevel)) {
+        await message.reply({ text: "❌ Esse escopo não está disponível neste chat." });
+        return true;
+    }
+    const current = getSetAntimedia(message, selectedLevel);
+    if (!current) {
+        await message.reply({ text: "❌ Não encontrei as configurações desse escopo." });
+        return true;
+    }
+
+    let update;
+    if (action === "toggle") {
+        const field = value;
+        if (!Object.prototype.hasOwnProperty.call(TOGGLE_FIELDS, field) ||
+            (field === "ignoreParent" && selectedLevel === "server")) {
+            await message.reply({ text: "❌ Essa opção não pode ser alterada neste escopo." });
+            return true;
+        }
+        update = { [TOGGLE_FIELDS[field]]: !current[TOGGLE_FIELDS[field]] };
+    } else if (action === "action") {
+        const selectedAction = interaction.values?.[0] || menuLevel;
+        if (!Object.prototype.hasOwnProperty.call(ACTIONS, selectedAction)) {
+            await message.reply({ text: "❌ Ação inválida." });
+            return true;
+        }
+        update = { action: selectedAction };
+    } else if (action === "media") {
+        if (interaction.callbackQuery && menuLevel === "toggle") {
+            if (!ALL_MEDIA_TYPES.includes(extra)) {
+                await message.reply({ text: "❌ Tipo de mídia inválido." });
+                return true;
+            }
+            const blockedTypes = _getBlockedMediaTypes(current);
+            const nextBlockedTypes = blockedTypes.includes(extra)
+                ? blockedTypes.filter(type => type !== extra)
+                : [...blockedTypes, extra];
+            update = {
+                mediaTypes: nextBlockedTypes,
+                allowAllMedia: nextBlockedTypes.length === 0
+            };
+        } else if (menuLevel === "blockall") {
+            update = { mediaTypes: [...ALL_MEDIA_TYPES], allowAllMedia: false };
+        } else if (menuLevel === "allowall") {
+            update = { mediaTypes: [], allowAllMedia: true };
+        } else if (Array.isArray(interaction.values)) {
+            const mediaTypes = normalizeMediaTypes(interaction.values);
+            if (mediaTypes.some(type => !ALL_MEDIA_TYPES.includes(type))) {
+                await message.reply({ text: "❌ A seleção contém um tipo de mídia inválido." });
+                return true;
+            }
+            update = {
+                mediaTypes,
+                allowAllMedia: mediaTypes.length === 0
+            };
+        } else {
+            return false;
+        }
+    } else {
+        return false;
+    }
+
+    if (action === "media") {
+        if (_isSameMediaSelection(current, update)) {
+            await _answerComponent(interaction, "As mídias já estão configuradas assim.");
+            return true;
+        }
+    }
+
+    const changesEnabled = update.enabled === true;
+    const requestedAction = update.action || current.action;
+    if ((changesEnabled || update.action) && STRONG_ACTIONS.includes(requestedAction)) {
+        const botOk = adapter?.checkBotPermission
+            ? await adapter.checkBotPermission(message.chatId, requestedAction)
+            : false;
+        if (!botOk) {
+            await message.reply({
+                text: `⚠️ O bot não tem permissão para executar a ação *${requestedAction}*. Conceda as permissões necessárias ou escolha outra ação.`
+            });
+            return true;
+        }
+    }
+
+    if (action !== "media") {
+        const field = Object.keys(update)[0];
+        const updatedValue = update[field];
+        if (updatedValue === current[field]) {
+            await _answerComponent(interaction, "Essa configuração já está assim.");
+            return true;
+        }
+    }
+    if (!getSetAntimedia(message, selectedLevel, update)) {
+        await message.reply({ text: "❌ Não foi possível salvar essa configuração." });
+        return true;
+    }
+    return _updateConfigurationMenu(interaction, message, selectedLevel);
+}
+
+async function _answerComponent(interaction, text) {
+    if (interaction.callbackQuery) {
+        await interaction.answerCbQuery(text);
+    } else {
+        await interaction.reply({ content: text, ephemeral: true });
+    }
+}
+
+async function _updateConfigurationMenu(interaction, message, selectedLevel) {
+    const payload = _configurationMenu(message, selectedLevel);
+    if (interaction.callbackQuery) {
+        await interaction.answerCbQuery();
+        await interaction.editMessageText(payload.text, {
+            parse_mode: payload.parse_mode,
+            reply_markup: payload.reply_markup
+        });
+    } else {
+        const { EmbedBuilder } = require("discord.js");
+        await interaction.update({
+            content: "",
+            embeds: [new EmbedBuilder(payload.embed)],
+            components: payload.components || []
+        });
+    }
+    return true;
+}
 
 function _help(message) {
     const p = message.prefix;
@@ -538,7 +1062,7 @@ async function _status(message, adapter) {
         const cfg = getSetAntimedia(message, level) || {};
         const enabled = cfg.enabled === true;
         const label = getLevelLabel(platform, level);
-        const types = (cfg.mediaTypes || []).length ? cfg.mediaTypes.join(", ") : "(nenhuma)";
+        const types = _mediaTypesStatus(cfg);
         const uwl = (cfg.userWhitelist || []).length ? `${cfg.userWhitelist.length} usuário(s)` : "0";
         const ubl = (cfg.userBlacklist || []).length ? `${cfg.userBlacklist.length} usuário(s)` : "0";
         lines.push(`  ${enabled ? "✅" : "❌"} ${label} (${level}) — Mídias: ${types} | WL: ${uwl} | BL: ${ubl}`);

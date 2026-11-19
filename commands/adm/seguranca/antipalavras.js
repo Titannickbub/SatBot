@@ -23,7 +23,8 @@ const {
     getLevelLabel,
     getAvailableLevels,
     getSetAntipalavras,
-    normalizeWords
+    normalizeWords,
+    readAntipalavras
 } = require("../../../functions/antipalavrasHelper");
 const { isOwner } = require("../../../functions/owners");
 const {
@@ -42,11 +43,23 @@ const ACTIONS = {
 };
 
 const STRONG_ACTIONS = ["kick", "ban"];
+const ACTION_BUTTON_LABELS = {
+    delete: "🗑 Deletar",
+    warn: "⚠️ Avisar",
+    kick: "🚫 Expulsar",
+    ban: "🔨 Banir"
+};
+const TOGGLE_FIELDS = {
+    enabled: "enabled",
+    ignoreParent: "ignoreParent"
+};
 
 module.exports = {
     name: "antipalavras",
     category: "adm/segurança",
     description: `🚫 Configura a filtragem automática de palavras e frases proibidas e as punições aplicadas neste grupo ou servidor.
+
+Sem argumentos, abre o menu de configuração no Discord e no Telegram. As palavras e frases continuam sendo gerenciadas por comandos de texto.
 
 🔐 Disponível para administradores do chat e superusuários.
 
@@ -134,10 +147,21 @@ No Discord, também é possível gerenciar exceções por cargo. A lista branca 
 
         const inputArgs = message.args || [];
         if (!inputArgs.length) {
-            return message.reply({ text: _help(message) });
+            if (message.platform === "whatsapp") {
+                return message.reply({ text: _whatsappSummary(message) });
+            }
+            const levels = getAvailableLevels(message);
+            const selectedLevel = levels.includes("chat") ? "chat" : levels[0];
+            if (!selectedLevel) {
+                return message.reply({ text: "❌ Não há escopos de antipalavras disponíveis neste chat." });
+            }
+            return message.reply(_configurationMenu(message, selectedLevel));
         }
 
         const first = inputArgs[0].toLowerCase();
+        if (first === "help" || first === "ajuda") {
+            return message.reply({ text: _help(message) });
+        }
         if (first === "status") {
             return message.reply({ text: await _status(message, adapter) });
         }
@@ -414,10 +438,370 @@ No Discord, também é possível gerenciar exceções por cargo. A lista branca 
 
             return message.reply({ text: `❌ Use: ${message.prefix}antipalavras <nivel> roleblacklist add|remove|list [@Cargo|ID|Nome]` });
         }
-
         return message.reply({ text: _help(message) });
+    },
+
+    async handleInteraction(interaction) {
+        return _handleConfigurationInteraction(interaction);
     }
 };
+
+function _getAdapter(message) {
+    return (message.platforms || []).find(platform => platform.name === message.platform) ||
+        global.platformRegistry?.[message.platform];
+}
+
+function _configurationMenu(message, selectedLevel) {
+    const levels = getAvailableLevels(message);
+    if (!levels.includes(selectedLevel)) {
+        return { text: "❌ Esse escopo não está disponível neste chat." };
+    }
+
+    const config = getSetAntipalavras(message, selectedLevel) || readAntipalavras(null);
+    const prefix = message.prefix || "!";
+    const levelLabel = getLevelLabel(message.platform, selectedLevel);
+
+    if (message.platform === "discord") {
+        const {
+            ActionRowBuilder,
+            ButtonBuilder,
+            ButtonStyle,
+            EmbedBuilder,
+            StringSelectMenuBuilder
+        } = require("discord.js");
+        const scopeRow = new ActionRowBuilder().addComponents(
+            ...levels.map(level => new ButtonBuilder()
+                .setCustomId(`antipalavras:scope:${level}:${selectedLevel}`)
+                .setLabel(_scopeButtonLabel(message.platform, level, selectedLevel))
+                .setStyle(level === selectedLevel ? ButtonStyle.Primary : ButtonStyle.Secondary))
+        );
+        const actionMenu = new StringSelectMenuBuilder()
+            .setCustomId(`antipalavras:action:${selectedLevel}`)
+            .setPlaceholder(`Ação atual: ${config.action}`)
+            .addOptions(Object.entries(ACTIONS).map(([value, description]) => ({
+                label: value,
+                description: description.replace(/^[^\w]+/u, "").slice(0, 100),
+                value
+            })));
+        const actionRow = new ActionRowBuilder().addComponents(actionMenu);
+        const toggles = _getToggleButtons(selectedLevel, config, ButtonBuilder, ButtonStyle);
+        const components = [scopeRow, actionRow];
+        if (toggles.length) components.push(new ActionRowBuilder().addComponents(...toggles));
+        return {
+            embed: _discordMenuEmbed(config, selectedLevel, levelLabel, prefix, EmbedBuilder),
+            components
+        };
+    }
+
+    if (message.platform === "telegram") {
+        const inline_keyboard = [
+            levels.map(level => ({
+                text: _scopeButtonLabel(message.platform, level, selectedLevel),
+                callback_data: `antipalavras:scope:${level}:${selectedLevel}`
+            })),
+            [
+                _telegramToggleButton(selectedLevel, "enabled", config),
+                ...(selectedLevel === "server" ? [] : [_telegramToggleButton(selectedLevel, "ignoreParent", config)])
+            ],
+            ...Object.entries(ACTION_BUTTON_LABELS).reduce((rows, [action, label], index) => {
+                if (index % 2 === 0) rows.push([]);
+                rows[rows.length - 1].push({
+                    text: `${config.action === action ? "✅ " : ""}${label}`,
+                    callback_data: `antipalavras:action:${selectedLevel}:${action}`
+                });
+                return rows;
+            }, [])
+        ];
+        return {
+            text: _telegramMenuHtml(config, selectedLevel, levelLabel, prefix),
+            parse_mode: "HTML",
+            reply_markup: { inline_keyboard }
+        };
+    }
+
+    return { text: "" };
+}
+
+function _discordMenuEmbed(config, selectedLevel, levelLabel, prefix, EmbedBuilder) {
+    const textCommands = [
+        `${prefix}antipalavras ${selectedLevel} add <palavra, frase>`,
+        `${prefix}antipalavras ${selectedLevel} remove <palavra, frase>`,
+        `${prefix}antipalavras ${selectedLevel} list`,
+        `${prefix}antipalavras ${selectedLevel} message <texto>`,
+        `${prefix}antipalavras ${selectedLevel} userwhitelist|userblacklist add|remove|list <usuário>`,
+        `${prefix}antipalavras ${selectedLevel} rolewhitelist|roleblacklist add|remove|list <cargo>`,
+        `${prefix}antipalavras help`
+    ].map(command => `\`${command}\``).join("\n");
+    const inheritance = selectedLevel === "server"
+        ? "Não se aplica ao servidor."
+        : config.ignoreParent
+            ? "Isolado dos escopos superiores."
+            : "Herdando dos escopos superiores.";
+
+    return new EmbedBuilder({
+        color: config.enabled ? 0x57F287 : 0x5865F2,
+        title: `🚫 Antipalavras · ${levelLabel}`,
+        description: [
+            `**Proteção:** ${config.enabled ? "✅ Ativa" : "🔕 Inativa"}`,
+            `**Ação:** ${config.action} · ${ACTIONS[config.action] || ""}`
+        ].join("\n"),
+        fields: [
+            {
+                name: "📝 Palavras e frases proibidas",
+                value: _formatConfigList(config.words),
+                inline: false
+            },
+            {
+                name: "⚙️ Herança e listas",
+                value: [
+                    `**Herança:** ${inheritance}`,
+                    `**Usuários isentos:** ${_formatConfigList(config.userWhitelist)}`,
+                    `**Usuários restritos:** ${_formatConfigList(config.userBlacklist)}`,
+                    `**Cargos isentos:** ${_formatConfigList(config.roleWhitelist)}`,
+                    `**Cargos restritos:** ${_formatConfigList(config.roleBlacklist)}`
+                ].join("\n"),
+                inline: false
+            },
+            {
+                name: "💬 Aviso personalizado",
+                value: _truncateConfigText(config.message || "(padrão)", 300),
+                inline: false
+            },
+            {
+                name: "⌨️ Personalização por texto",
+                value: textCommands,
+                inline: false
+            }
+        ],
+        footer: { text: "Use os botões e o seletor abaixo para alterar esta configuração." }
+    }).toJSON();
+}
+
+function _telegramMenuHtml(config, selectedLevel, levelLabel, prefix) {
+    const textCommands = [
+        `${prefix}antipalavras ${selectedLevel} add <palavra, frase>`,
+        `${prefix}antipalavras ${selectedLevel} remove <palavra, frase>`,
+        `${prefix}antipalavras ${selectedLevel} list`,
+        `${prefix}antipalavras ${selectedLevel} message <texto>`,
+        `${prefix}antipalavras help`
+    ].map(command => `<code>${_escapeHtml(command)}</code>`).join("\n");
+    const inheritance = selectedLevel === "server"
+        ? "Não se aplica ao grupo."
+        : config.ignoreParent
+            ? "Isolado do grupo."
+            : "Herdando do grupo.";
+
+    return [
+        `<b>🚫 ANTIPALAVRAS · ${_escapeHtml(levelLabel)}</b>`,
+        "",
+        "<b>Proteção</b>",
+        `Estado: ${config.enabled ? "✅ Ativa" : "🔕 Inativa"}`,
+        `Ação: <code>${_escapeHtml(config.action)}</code> · ${_escapeHtml(ACTIONS[config.action] || "")}`,
+        "",
+        "<b>Palavras e frases proibidas</b>",
+        _escapeHtml(_formatConfigList(config.words)),
+        "",
+        "<b>Herança e listas</b>",
+        `Herança: ${_escapeHtml(inheritance)}`,
+        `Usuários isentos: ${_escapeHtml(_formatConfigList(config.userWhitelist))}`,
+        `Usuários restritos: ${_escapeHtml(_formatConfigList(config.userBlacklist))}`,
+        "",
+        "<b>Aviso personalizado</b>",
+        `<i>${_escapeHtml(_truncateConfigText(config.message || "(padrão)", 300))}</i>`,
+        "",
+        "<b>Personalização por texto</b>",
+        textCommands
+    ].join("\n");
+}
+
+function _whatsappSummary(message) {
+    const config = getSetAntipalavras(message, "chat") || readAntipalavras(null);
+    const prefix = message.prefix || "!";
+    return [
+        "🚫 CONFIGURAÇÃO DO ANTIPALAVRAS — GRUPO ATUAL",
+        "",
+        `Estado: ${config.enabled ? "✅ Ativo" : "🔕 Inativo"}`,
+        `Ação: ${config.action} — ${ACTIONS[config.action] || ""}`,
+        `Palavras/frases proibidas: ${_formatConfigList(config.words)}`,
+        `Ignora regras superiores: ${config.ignoreParent ? "Sim" : "Não"}`,
+        `Aviso personalizado: ${_truncateConfigText(config.message || "(padrão)", 300)}`,
+        `Usuários isentos: ${_formatConfigList(config.userWhitelist)}`,
+        `Usuários restritos: ${_formatConfigList(config.userBlacklist)}`,
+        "",
+        `Para ver a ajuda completa, use: ${prefix}antipalavras help`
+    ].join("\n");
+}
+
+function _formatConfigList(values) {
+    if (!values?.length) return "Nenhum";
+    const displayed = values.slice(0, 5).map(value => _truncateConfigText(value, 40));
+    if (values.length > displayed.length) displayed.push(`e mais ${values.length - displayed.length}`);
+    return displayed.join(", ");
+}
+
+function _truncateConfigText(value, maxLength) {
+    const text = String(value).replace(/\s+/g, " ").trim();
+    return text.length > maxLength
+        ? `${text.slice(0, maxLength - 1)}…`
+        : text;
+}
+
+function _escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function _scopeButtonLabel(platform, level, selectedLevel) {
+    const labels = {
+        discord: { server: "Servidor", categoria: "Categoria", chat: "Canal/tópico" },
+        telegram: { server: "Grupo", chat: "Tópico" }
+    };
+    const label = labels[platform]?.[level] || getLevelLabel(platform, level);
+    return level === selectedLevel ? `✅ ${label}` : label;
+}
+
+function _getToggleButtons(level, config, ButtonBuilder, ButtonStyle) {
+    const fields = [
+        { key: "enabled", label: config.enabled ? "✅ Antipalavras ativo" : "🔕 Antipalavras inativo" },
+        ...(level === "server" ? [] : [{
+            key: "ignoreParent",
+            label: `Herda superiores: ${config.ignoreParent ? "Não" : "Sim"}`
+        }])
+    ];
+    return fields.map(field => new ButtonBuilder()
+        .setCustomId(`antipalavras:toggle:${field.key}:${level}`)
+        .setLabel(field.label)
+        .setStyle(config[field.key] ? ButtonStyle.Success : ButtonStyle.Secondary));
+}
+
+function _telegramToggleButton(level, field, config) {
+    const labels = {
+        enabled: config.enabled ? "✅ Antipalavras: ON" : "🔕 Antipalavras: OFF",
+        ignoreParent: config.ignoreParent ? "Ignora superiores: ON" : "Herda superiores: ON"
+    };
+    return {
+        text: labels[field],
+        callback_data: `antipalavras:toggle:${field}:${level}`
+    };
+}
+
+async function _handleConfigurationInteraction(interaction) {
+    const componentId = interaction?.customId || interaction?.callbackQuery?.data || "";
+    const parts = String(componentId).split(":");
+    const [commandName, action, value, menuLevel] = parts;
+    if (commandName !== "antipalavras") return false;
+
+    const message = interaction[Symbol.for("satbot.componentMessageContext")];
+    if (!message) return false;
+    const adapter = _getAdapter(message);
+    const userOk = isOwner(message) || (adapter?.checkUserPermission
+        ? await adapter.checkUserPermission(message.chatId, message.userId)
+        : message.sender?.isAdmin);
+    if (!userOk) {
+        await message.reply({ text: "❌ Apenas administradores podem configurar o antipalavras." });
+        return true;
+    }
+
+    const levels = getAvailableLevels(message);
+    if (action === "scope") {
+        const selectedLevel = value;
+        if (!levels.includes(selectedLevel)) {
+            await message.reply({ text: "❌ Esse escopo não está disponível neste chat." });
+            return true;
+        }
+        if (selectedLevel === menuLevel) {
+            await _answerComponent(interaction, "Esse escopo já está selecionado.");
+            return true;
+        }
+        return _updateConfigurationMenu(interaction, message, selectedLevel);
+    }
+
+    const selectedLevel = action === "toggle" ? menuLevel : value;
+    if (!levels.includes(selectedLevel)) {
+        await message.reply({ text: "❌ Esse escopo não está disponível neste chat." });
+        return true;
+    }
+    const current = getSetAntipalavras(message, selectedLevel);
+    if (!current) {
+        await message.reply({ text: "❌ Não encontrei as configurações desse escopo." });
+        return true;
+    }
+
+    let update;
+    if (action === "toggle") {
+        const field = value;
+        if (!Object.prototype.hasOwnProperty.call(TOGGLE_FIELDS, field) ||
+            (field === "ignoreParent" && selectedLevel === "server")) {
+            await message.reply({ text: "❌ Essa opção não pode ser alterada neste escopo." });
+            return true;
+        }
+        update = { [TOGGLE_FIELDS[field]]: !current[TOGGLE_FIELDS[field]] };
+    } else if (action === "action") {
+        const selectedAction = interaction.values?.[0] || menuLevel;
+        if (!Object.prototype.hasOwnProperty.call(ACTIONS, selectedAction)) {
+            await message.reply({ text: "❌ Ação inválida." });
+            return true;
+        }
+        update = { action: selectedAction };
+    } else {
+        return false;
+    }
+
+    const requestedAction = update.action || current.action;
+    if ((update.enabled === true || update.action) && STRONG_ACTIONS.includes(requestedAction)) {
+        const botOk = adapter?.checkBotPermission
+            ? await adapter.checkBotPermission(message.chatId, requestedAction)
+            : false;
+        if (!botOk) {
+            await message.reply({
+                text: `⚠️ O bot não tem permissão para executar a ação *${requestedAction}*. Conceda as permissões necessárias ou escolha outra ação.`
+            });
+            return true;
+        }
+    }
+
+    const field = Object.keys(update)[0];
+    if (update[field] === current[field]) {
+        await _answerComponent(interaction, "Essa configuração já está assim.");
+        return true;
+    }
+    if (!getSetAntipalavras(message, selectedLevel, update)) {
+        await message.reply({ text: "❌ Não foi possível salvar essa configuração." });
+        return true;
+    }
+    return _updateConfigurationMenu(interaction, message, selectedLevel);
+}
+
+async function _answerComponent(interaction, text) {
+    if (interaction.callbackQuery) {
+        await interaction.answerCbQuery(text);
+    } else {
+        await interaction.reply({ content: text, ephemeral: true });
+    }
+}
+
+async function _updateConfigurationMenu(interaction, message, selectedLevel) {
+    const payload = _configurationMenu(message, selectedLevel);
+    if (interaction.callbackQuery) {
+        await interaction.answerCbQuery();
+        await interaction.editMessageText(payload.text, {
+            parse_mode: payload.parse_mode,
+            reply_markup: payload.reply_markup
+        });
+    } else {
+        const { EmbedBuilder } = require("discord.js");
+        await interaction.update({
+            content: "",
+            embeds: [new EmbedBuilder(payload.embed)],
+            components: payload.components || []
+        });
+    }
+    return true;
+}
 
 function _help(message) {
     const p = message.prefix;
@@ -436,6 +820,7 @@ function _help(message) {
     lines.push(header);
     lines.push('');
     lines.push('Gerencie a filtragem automática de palavras e frases proibidas por nível.');
+    lines.push('Sem argumentos, abra o menu de configuração no Discord/Telegram; no WhatsApp, consulte o resumo do grupo. Palavras e frases são editadas com os comandos de texto abaixo.');
     lines.push('');
     lines.push('📋 Níveis disponíveis:');
     lines.push('  ' + levelList);

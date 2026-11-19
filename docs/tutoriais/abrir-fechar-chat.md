@@ -52,6 +52,11 @@ o comando oposto ou até outra programação alterar o estado:
 Por exemplo, use `!fecharchat` para encerrar a conversa durante a noite e
 `!abrirchat` no dia seguinte para liberar as mensagens novamente.
 
+No Telegram e no Discord, a confirmação também oferece botões para abrir ou
+fechar o chat. Ela inclui opções de duração para aplicar temporariamente a
+ação do comando: 30 minutos, 1, 2, 6 ou 12 horas, ou 24 horas. No WhatsApp,
+o fluxo permanece pelos comandos de texto.
+
 ## Alteração temporária
 
 Passe uma duração para reverter automaticamente a ação. Ao abrir

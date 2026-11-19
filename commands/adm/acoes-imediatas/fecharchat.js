@@ -1,4 +1,7 @@
-const { executeStateCommand } = require("../../../functions/chatControlCommand");
+const {
+    executeStateCommand,
+    handleStateInteraction
+} = require("../../../functions/chatControlCommand");
 
 const DESCRIPTION = `🔒 Fecha o chat para que somente administradores possam enviar mensagens.
 
@@ -7,6 +10,8 @@ const DESCRIPTION = `🔒 Fecha o chat para que somente administradores possam e
 📱 WhatsApp: apenas grupos, não comunidades.
 ✈️ Telegram: grupos e supergrupos.
 🎮 Discord: canais de texto (não threads).
+
+No Telegram e no Discord, a confirmação inclui botões para abrir ou fechar o chat e aplicar esta ação por um período comum. No WhatsApp, continue usando os comandos de texto.
 
 ✅ Fechar sem prazo:
 {prefix}fecharchat
@@ -35,5 +40,9 @@ module.exports = {
 
     async execute(message) {
         return executeStateCommand(message, false, DESCRIPTION);
+    },
+
+    async handleInteraction(interaction) {
+        return handleStateInteraction(interaction);
     }
 };

@@ -3,6 +3,15 @@
 Os comandos abaixo funcionam por texto no **WhatsApp, Telegram e Discord**.
 Substitua `!` pelo prefixo configurado no bot.
 
+Para abrir os guias rápidos:
+
+```text
+!alugar help
+!alugar_su help
+```
+
+O comando administrativo também continua disponível como `!alugarsu`.
+
 ## Etapa 1: consultar os planos
 
 No grupo ou servidor, um administrador consulta os planos disponíveis com:
@@ -63,7 +72,11 @@ Depois, envia a chave referente ao pedido:
 
 O bot publica os dados do Pix no grupo/servidor, marcando quem solicitou, e
 também os envia no privado da pessoa. No Telegram e no Discord, as mensagens
-incluem botões; no WhatsApp, o fluxo é por texto.
+incluem botões; no Discord, o resumo é apresentado em embed; no WhatsApp, o
+fluxo é por texto. O resumo e a chave Pix são enviados em mensagens separadas
+para facilitar a cópia. Ao adicionar o bot a um servidor Discord, a pessoa
+responsável pela adição também recebe no privado um embed com os planos e as
+instruções.
 Se uma das entregas falhar, o pedido informa qual destino ficou pendente; o SU
 pode repetir o mesmo comando `pix` para tentar somente o envio que faltou. No
 Telegram, a pessoa precisa iniciar uma conversa privada com o bot para que ele
@@ -110,8 +123,71 @@ Para recusar um pedido ou pagamento:
 !alugarsu recusar <ID-do-pedido>
 ```
 
-O pagamento precisa ser confirmado em até 24 horas após o envio da chave. O
-botão ou comando **Já paguei** não substitui a conferência manual do SU.
+O pagamento precisa ser confirmado em até 24 horas após o envio da chave. Em
+pagamentos manuais, o botão ou comando **Já paguei** avisa o SU e não substitui
+a conferência do comprovante. Em Pix automático, ele também solicita uma
+verificação imediata ao Mercado Pago.
+
+## Pix automático com Mercado Pago
+
+O modo automático gera o Pix ao criar o pedido e consulta o Mercado Pago a cada
+minuto para confirmar o pagamento. Quando o cliente clica em **Já paguei** ou usa
+o comando correspondente, o bot também consulta a cobrança imediatamente. Não é
+necessário configurar domínio público, HTTPS ou webhook. Se o pagamento ainda
+estiver pendente, o SU é avisado e as verificações automáticas continuam.
+O resumo do pagamento, o código Pix copia e cola e a imagem do QR Code são
+enviados separadamente para facilitar o pagamento em qualquer plataforma.
+
+Antes de solicitar um pedido com o modo automático ativo, o cliente cadastra seu
+e-mail na Conta Central pelo privado do bot:
+
+```text
+!alugar email <seu-e-mail>
+```
+
+Para consultar o e-mail mascarado ou removê-lo:
+
+```text
+!alugar email
+```
+
+```text
+!alugar email remover
+```
+
+O e-mail fica somente na Conta Central e não é copiado para os pedidos. Se não
+houver e-mail cadastrado, o bot orienta o cliente antes de criar o pedido.
+
+O SU configura o token de acesso pelo privado do bot:
+
+```text
+!alugarsu mercadopago token <token-de-acesso>
+```
+
+Confira o estado e ative/desative a automação com:
+
+```text
+!alugarsu mercadopago status
+```
+
+```text
+!alugarsu mercadopago automatico <on|off>
+```
+
+As mesmas opções estão disponíveis na aba **Mercado Pago** do painel SU. O token
+salvo não é exibido novamente. O Pix manual continua disponível com
+`!alugarsu pix`; a confirmação manual também continua disponível. Se o Pix
+automático não puder ser entregue, o SU pode reenviar os destinos pendentes:
+
+```text
+!alugarsu mercadopago reenviar <ID-do-pedido>
+```
+
+O SU também pode enviar uma chave manual como alternativa ao Pix automático e
+confirmar manualmente um recebimento após verificá-lo. Ao cancelar ou recusar
+um pedido com cobrança automática pendente, o bot primeiro solicita o
+cancelamento no Mercado Pago. Se o pagamento já tiver sido aprovado, ele não
+cancela o pedido e orienta o SU a verificar a transação.
 
 ### Referência rápida do SU
 

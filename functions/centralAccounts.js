@@ -74,6 +74,14 @@ class CentralAccountsStore {
 
   _markDirty() { this.dirty = true; }
 
+  async _persistSensitiveUpdate() {
+    while (this.saving) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    this._markDirty();
+    await this.saveNow();
+  }
+
   getCentralById(id) { return this.data.centralAccounts[id] || null; }
 
   getAllCentralAccounts() { return Object.values(this.data.centralAccounts || {}); }
@@ -107,6 +115,31 @@ class CentralAccountsStore {
     central.lastActivityAt = this._nowISO();
     this._markDirty();
     return central;
+  }
+
+  async setEmail(centralId, email) {
+    const central = this.getCentralById(centralId);
+    if (!central) throw new Error('central not found');
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    if (normalizedEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      throw new Error('email invalid');
+    }
+    central.email = normalizedEmail;
+    central.lastActivityAt = this._nowISO();
+    this._markDirty();
+    await this._persistSensitiveUpdate();
+    return normalizedEmail;
+  }
+
+  async removeEmail(centralId) {
+    const central = this.getCentralById(centralId);
+    if (!central) throw new Error('central not found');
+    const removed = Boolean(central.email);
+    delete central.email;
+    central.lastActivityAt = this._nowISO();
+    this._markDirty();
+    await this._persistSensitiveUpdate();
+    return removed;
   }
 
   async setWebPassword(centralId, password) {
