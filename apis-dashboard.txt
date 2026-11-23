@@ -1,8 +1,36 @@
 APIs DO APP — CONTA CENTRAL E PAINEL DO USUÁRIO
 ==============================================
 
-As duas rotas abaixo retornam JSON para o app. As páginas HTML do site não
-precisam ser usadas para montar as telas nativas.
+As APIs da Conta Central e do painel do usuário retornam JSON para o app. As
+páginas HTML do site não precisam ser usadas para montar as telas nativas.
+
+API pública de identificação e ping
+-----------------------------------
+GET /api/ping
+
+Use esta rota para verificar se um link informado aponta para uma instância
+ativa do SatBot. Envie uma requisição GET sem login ou cookie para
+https://DOMINIO_DO_BOT/api/ping. O app deve considerar o link válido somente
+quando a resposta HTTP for 200, `service` for `satbot` e `online` for `true`.
+Um site que não seja SatBot normalmente responderá 404 ou não terá esse
+identificador no JSON.
+
+Exemplo de resposta (HTTP 200)
+------------------------------
+{
+  "service": "satbot",
+  "online": true,
+  "status": "online",
+  "name": "Sat Bot",
+  "version": "1.2.93",
+  "connectedHours": 12.5,
+  "uptimeSeconds": 45000
+}
+
+`name` é o nome configurado para o bot; `version` vem da versão instalada;
+`connectedHours` é o tempo de atividade do processo em horas, arredondado para
+duas casas decimais; `uptimeSeconds` contém o mesmo tempo em segundos. A rota é
+pública e não deve ser usada para obter informações privadas.
 
 Autenticação comum
 ------------------

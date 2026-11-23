@@ -3,6 +3,15 @@
 Os comandos abaixo funcionam por texto no **WhatsApp, Telegram e Discord**.
 Substitua `!` pelo prefixo configurado no bot.
 
+Para abrir os guias rápidos:
+
+```text
+!alugar help
+!alugar_su help
+```
+
+O comando administrativo também continua disponível como `!alugarsu`.
+
 ## Etapa 1: consultar os planos
 
 No grupo ou servidor, um administrador consulta os planos disponíveis com:

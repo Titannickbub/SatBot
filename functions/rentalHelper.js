@@ -563,7 +563,7 @@ function formatRentalWelcome(platform, displayName, message) {
         ? `👋 Bem-vindos a ${displayName}!`
         : "👋 Informações sobre o aluguel";
     const components = String(message).includes("• ") && ["discord", "telegram"].includes(platform)
-        ? require("../commands/system/alugar").createPlanChoiceComponents(
+        ? require("../commands/alugar").createPlanChoiceComponents(
             platform,
             getPlans(platform)
         )
@@ -1246,7 +1246,7 @@ function getPaymentActionOptions(platform, order, isGroup, embed = undefined) {
         return isGroup ? [String(order.creatorId)] : undefined;
     }
 
-    const components = require("../commands/system/alugar")
+    const components = require("../commands/alugar")
         .createPaymentActionComponents(platform, order.id);
     if (platform === "telegram") {
         return {

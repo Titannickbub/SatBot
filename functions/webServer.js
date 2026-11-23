@@ -2,6 +2,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const packageMetadata = require("../package.json");
 const sharp = require("sharp");
 const economy = require("./economy");
 const xp = require("./xp");
@@ -49,6 +50,7 @@ const owners = require("./owners");
 const rentalHelper = require("./rentalHelper");
 const rentalDashboard = require("./rentalDashboard");
 const mercadoPago = require("./mercadoPago");
+const suggestionService = require("./suggestionService");
 
 const DEFAULT_PORT = 32013;
 const WEB_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -8116,6 +8118,20 @@ function start() {
   const server = http.createServer(async (request, response) => {
     const requestUrl = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
 
+    if (request.method === "GET" && requestUrl.pathname === "/api/ping") {
+      const uptimeSeconds = Math.floor(process.uptime());
+      sendJson(response, 200, {
+        service: "satbot",
+        online: true,
+        status: "online",
+        name: config.getBotName(),
+        version: packageMetadata.version,
+        connectedHours: Number((uptimeSeconds / 3600).toFixed(2)),
+        uptimeSeconds
+      });
+      return;
+    }
+
     if (request.method === "GET" && requestUrl.pathname === "/api/account/me") {
       let central;
       try {
@@ -8323,7 +8339,9 @@ function start() {
           const platformScopedActions = new Set([
             "order.edit", "order.pix", "order.approve", "order.reject", "order.delete",
             "order.mercadopago.resend",
-            "subscription.create", "subscription.edit", "subscription.delete"
+            "subscription.create", "subscription.edit", "subscription.delete",
+            "suggestion.settings", "suggestion.accept", "suggestion.thank",
+            "suggestion.reject", "suggestion.delete"
           ]);
           const targetPlatform = platformScopedActions.has(action)
             ? String(payload?.targetPlatform || platform).toLowerCase()
@@ -8488,6 +8506,54 @@ function start() {
             const removed = config.removeOnlyChatsItem(payload.type, payload.id);
             if (!removed) throw new Error("Permissão OnlyChats não encontrada.");
             result = { message: "Permissão removida." };
+          } else if (action === "suggestion.settings") {
+            if (typeof payload.enabled !== "boolean" ||
+                !payload.channel || typeof payload.channel !== "object" ||
+                Array.isArray(payload.channel)) {
+              throw new Error("Configurações de sugestões inválidas.");
+            }
+            const settings = suggestionService.updateSettings({
+              enabled: payload.enabled,
+              platform: targetPlatform,
+              channel: {
+                chatId: payload.channel.chatId,
+                threadId: payload.channel.threadId,
+                name: payload.channel.name
+              }
+            });
+            result = { settings, message: "Configurações de sugestões salvas." };
+          } else if (["suggestion.accept", "suggestion.thank", "suggestion.reject", "suggestion.delete"].includes(action)) {
+            const suggestion = suggestionService.get(payload.id);
+            if (!suggestion) throw new Error(`Sugestão ${payload.id} não encontrada.`);
+            if (suggestion.platform !== targetPlatform) {
+              throw new Error("A plataforma da sugestão não corresponde à ação solicitada.");
+            }
+            if (action === "suggestion.delete") {
+              suggestionService.remove(payload.id);
+              result = { message: `Sugestão #${payload.id} apagada sem notificar o autor.` };
+            } else {
+              const status = {
+                "suggestion.accept": "accepted",
+                "suggestion.thank": "thanked",
+                "suggestion.reject": "rejected"
+              }[action];
+              let warning = "";
+              if (suggestion.status !== status) {
+                suggestionService.setStatus(payload.id, status, targetAccount.platformId);
+                try {
+                  await suggestionService.notifyAuthor(suggestion, status);
+                } catch (error) {
+                  warning = `Não foi possível avisar o autor: ${error.message || "falha no envio"}`;
+                  console.error(`[WEB] Falha ao avisar o autor da sugestão ${payload.id}:`, error.message || error);
+                }
+              } else {
+                warning = "Essa sugestão já estava com esse status; nenhuma nova mensagem foi enviada.";
+              }
+              result = {
+                warning,
+                message: `${suggestion.status === status ? "Status já estava definido" : "Ação salva"} para a sugestão #${payload.id}.${warning ? ` ${warning}` : " O autor foi avisado."}`
+              };
+            }
           } else {
             throw new Error("Ação do painel SU inválida.");
           }
@@ -11136,6 +11202,52 @@ function start() {
 
     const superUserPage = Object.entries(rentalDashboard.PAGES)
       .find(([, page]) => page.path === requestUrl.pathname);
+    if (request.method === "GET" && requestUrl.pathname === "/api/account/su/suggestions/media") {
+      let central;
+      try {
+        central = await getSessionCentral(request);
+      } catch (error) {
+        console.error("[WEB] Falha ao validar sessão para mídia de sugestão:", error.message || error);
+        sendJson(response, 500, { error: "Não foi possível validar sua sessão agora." });
+        return;
+      }
+      if (!central) {
+        sendJson(response, 401, { error: "Sua sessão expirou. Entre novamente para continuar." });
+        return;
+      }
+      try {
+        const platform = String(requestUrl.searchParams.get("plataforma") || "").toLowerCase();
+        getPlatformSuperUserAccount(central, platform);
+        const media = suggestionService.getMedia(requestUrl.searchParams.get("id"));
+        if (!media) {
+          sendJson(response, 404, { error: "Imagem da sugestão não encontrada." });
+          return;
+        }
+        const mimeType = new Set([
+          "image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp", "image/bmp"
+        ]).has(media.mimeType) ? media.mimeType : "application/octet-stream";
+        const content = fs.readFileSync(media.filePath);
+        response.writeHead(200, {
+          "Content-Type": mimeType,
+          "Content-Length": content.length,
+          "Content-Disposition": 'inline; filename="suggestion-image"',
+          "Cache-Control": "private, no-store",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(content);
+      } catch (error) {
+        const reason = String(error?.message || "");
+        const statusCode = /restrito|não está vinculada/i.test(reason) ? 403
+          : /inválida/i.test(reason) ? 400 : 500;
+        if (statusCode === 500) {
+          console.error("[WEB] Falha ao abrir imagem de sugestão:", error.message || error);
+        }
+        sendJson(response, statusCode, {
+          error: statusCode === 403 || statusCode === 400 ? reason : "Não foi possível abrir a imagem."
+        });
+      }
+      return;
+    }
     if (request.method === "GET" && superUserPage) {
       let central;
       try {
@@ -11158,7 +11270,9 @@ function start() {
           ...rentalHelper.getDashboardData(platform),
           platform,
           onlyChats: config.getOnlyChatsConfig(),
-          mercadoPago: mercadoPago.getPublicSettings()
+          mercadoPago: mercadoPago.getPublicSettings(),
+          suggestions: suggestionService.list(),
+          suggestionSettings: suggestionService.getSettings()
         };
         response.writeHead(200, {
           "Content-Type": "text/html; charset=utf-8",

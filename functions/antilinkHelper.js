@@ -154,11 +154,9 @@ function buildChain(message) {
 
             // Nível categoria (só se o canal estiver em uma)
             const channel = msg?.channel;
-            const parentId = channel?.parentId || null;
-            const isInCategory = parentId && !channel?.isThread?.();
-
-            if (isInCategory && Array.isArray(serverData.categoria)) {
-                const cat = serverData.categoria.find(c => c.id === parentId);
+            const categoryId = getDiscordCategoryId(channel);
+            if (categoryId && Array.isArray(serverData.categoria)) {
+                const cat = serverData.categoria.find(c => c.id === categoryId);
                 if (cat) {
                     chain.push({ level: "categoria", config: readAntilink(cat.settings) });
                 }
@@ -245,6 +243,14 @@ function findChatSettings(serverData, chanId) {
     return null;
 }
 
+function getDiscordCategoryId(channel) {
+    if (!channel) return null;
+    if (channel.isThread?.()) {
+        return channel.parent?.parentId || channel.parent?.parent?.id || null;
+    }
+    return channel.parentId || null;
+}
+
 const fs   = require("fs");
 const path = require("path");
 const groupsDir = path.join(__dirname, "..", "settings", "groups");
@@ -294,7 +300,7 @@ function getSetAntilink(message, level, newConfig = null) {
         }
 
         if (level === "categoria") {
-            const parentId = raw?.channel?.parentId;
+            const parentId = getDiscordCategoryId(raw?.channel);
             if (!parentId) return null;
             const cat = (serverData.categoria || []).find(c => c.id === parentId);
             if (!cat) return null;
@@ -420,10 +426,7 @@ function getAvailableLevels(message) {
     if (platform === "discord") {
         const levels = ["server"];
         const channel = raw?.channel;
-        const parentId = channel?.parentId;
-        const isThread = channel?.isThread?.();
-        if (parentId && !isThread) levels.push("categoria");
-        if (isThread && channel?.parentId) levels.push("categoria");
+        if (getDiscordCategoryId(channel)) levels.push("categoria");
         levels.push("chat");
         return levels;
     }

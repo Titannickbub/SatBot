@@ -28,12 +28,30 @@ Você pode aplicar regras de antilink em diferentes níveis:
 > [!NOTE]
 > Se você omitir o nível ao digitar o comando (ex.: `!antilink on`), a alteração será aplicada automaticamente ao nível **`chat`** (o canal ou grupo atual).
 
+## Menu de configuração no chat
+
+Use `!antilink` sem argumentos para abrir as configurações:
+
+- **Discord:** selecione servidor, categoria ou canal/tópico e configure por botões o estado, a ação e as exceções.
+- **Telegram:** selecione grupo ou tópico (quando estiver em um tópico) e configure pelos botões; o resumo usa formatação HTML.
+- **WhatsApp:** exibe o estado e as opções configuradas para o grupo atual. Use `!antilink help` para consultar a ajuda.
+
+No Discord, o resumo é apresentado em um embed com seções separadas para proteção, exceções, listas e comandos de texto.
+
+A mensagem personalizada e as listas continuam sendo configuradas por comandos de texto, por exemplo:
+
+```text
+!antilink chat message Links não são permitidos aqui!
+!antilink chat whitelist add exemplo.com
+!antilink chat userwhitelist add @usuario
+```
+
 ## Painel administrativo do antilink
 
 As configurações de antilink ficam na página **Antilink** do painel de administração:
 
 - **WhatsApp:** a configuração é feita somente para o grupo aberto no painel.
-- **Telegram:** grupos sem tópicos usam a configuração geral; grupos com tópicos permitem escolher entre **Grupo todo + chat principal** e um tópico específico.
+- **Telegram:** grupos sem tópicos usam a configuração geral; grupos com tópicos permitem escolher entre o grupo e um tópico específico.
 - **Discord:** escolha o servidor, uma categoria ou um chat dentro da categoria.
 
 A opção **Ignorar as regras dos escopos superiores** aparece somente em níveis que podem herdar regras. Ela não é exibida no grupo principal do WhatsApp ou Telegram nem no servidor do Discord.

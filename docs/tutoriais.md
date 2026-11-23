@@ -12,6 +12,7 @@ Explore os guias disponíveis para administrar seu grupo ou servidor:
 <p><a href="./tutoriais/sticker.md"><img src="https://img.shields.io/badge/%F0%9F%96%BC%EF%B8%8F%20Sticker-ver%20comandos%20e%20exemplos-2196F3?style=for-the-badge" alt="Guia dos comandos do menu Sticker"></a></p>
 <p><a href="./tutoriais/utilitarios.md"><img src="https://img.shields.io/badge/%F0%9F%A7%B0%20Utilit%C3%A1rios-ver%20comandos%20e%20exemplos-2196F3?style=for-the-badge" alt="Guia dos comandos do menu Utilitários"></a></p>
 <p><a href="./tutoriais/system.md"><img src="https://img.shields.io/badge/%E2%9A%99%EF%B8%8F%20System-ver%20comandos%20e%20exemplos-2196F3?style=for-the-badge" alt="Guia detalhado do menu System"></a></p>
+<p><a href="./tutoriais/sugestoes.md"><img src="https://img.shields.io/badge/%F0%9F%93%A8%20Sugest%C3%B5es-ver%20envio%20e%20administra%C3%A7%C3%A3o-2196F3?style=for-the-badge" alt="Guia de envio e administração de sugestões"></a></p>
 
 ---
 

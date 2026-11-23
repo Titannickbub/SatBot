@@ -1,8 +1,8 @@
-const rental = require("../../functions/rentalHelper");
-const { isOwner } = require("../../functions/owners");
-const send = require("../../functions/send");
-const centralAccounts = require("../../functions/centralAccounts");
-const mercadoPago = require("../../functions/mercadoPago");
+const rental = require("../functions/rentalHelper");
+const { isOwner } = require("../functions/owners");
+const send = require("../functions/send");
+const centralAccounts = require("../functions/centralAccounts");
+const mercadoPago = require("../functions/mercadoPago");
 const crypto = require("crypto");
 const {
     ActionRowBuilder,
@@ -206,7 +206,7 @@ function makeInteractionMessage(interaction) {
             username: interaction.from.username || null,
             displayName: [interaction.from.first_name, interaction.from.last_name]
                 .filter(Boolean).join(" ") || interaction.from.username || String(interaction.from.id),
-            prefix: require("../../functions/config").getPrefix(),
+            prefix: require("../functions/config").getPrefix(),
             raw: { chat },
             sender: { isOwner: false }
         };
@@ -231,7 +231,7 @@ function makeInteractionMessage(interaction) {
         userId: String(user.id),
         username: user.username || null,
         displayName: interaction.member?.displayName || user.globalName || user.username || String(user.id),
-        prefix: require("../../functions/config").getPrefix(),
+        prefix: require("../functions/config").getPrefix(),
         raw: { guild: guild || (guildId ? { id: String(guildId) } : null), channel },
         sender: { isOwner: false }
     };
@@ -1226,9 +1226,8 @@ async function runSuperUserCommand(message, args, isModeAlias) {
 module.exports = {
     name: "alugar",
     aliases: [],
-    category: "system/configurações",
     description: "Consulte planos e solicite aluguel ou renovação; comandos administrativos ficam em alugarsu.",
-    usage: "{prefix}alugar [contratar|renovar|paguei|cancelar|status|ajuda]",
+    usage: "{prefix}alugar help",
     platformSupport: {
         whatsapp: "full",
         telegram: "full",

@@ -107,10 +107,9 @@ function readActions(filePath) {
     return actions;
 }
 
-function renamePackagedMedia(actions, archiveEntries, hash) {
+function renamePackagedMedia(actions, archiveEntries, mediaDir) {
     const mediaBuffers = new Map();
-    const importedNames = new Map();
-    let index = 0;
+    const importedHashes = new Map();
 
     for (const [actionName, action] of Object.entries(actions)) {
         for (const media of action.media) {
@@ -132,13 +131,18 @@ function renamePackagedMedia(actions, archiveEntries, hash) {
             }
 
             if (!buffer) continue;
-            const importKey = sourceName || `${actionName}:${index}`;
-            let targetName = importedNames.get(importKey);
+            const mediaHash = crypto.createHash("sha256").update(buffer).digest("hex");
+            let targetName = importedHashes.get(mediaHash);
             if (!targetName) {
-                targetName = `mod_${hash.slice(0, 16)}_${index}.bin`;
-                importedNames.set(importKey, targetName);
+                targetName = sourceName ? `${sourceName}.bin` : `act18_${mediaHash}.bin`;
+                const targetPath = path.join(mediaDir, targetName);
+                if (fs.existsSync(targetPath) && !fs.readFileSync(targetPath).equals(buffer)) {
+                    targetName = sourceName
+                        ? `${sourceName}.${mediaHash.slice(0, 12)}.bin`
+                        : `act18_${mediaHash}.bin`;
+                }
+                importedHashes.set(mediaHash, targetName);
                 mediaBuffers.set(targetName, buffer);
-                index++;
             }
             media.file = targetName;
             delete media.base64;
@@ -204,9 +208,8 @@ function writeActionsAtomically(filePath, actions) {
 
 function importArchive(buffer, options = {}) {
     const { importedActions, archiveMedia } = readArchive(buffer);
-    const archiveHash = crypto.createHash("sha256").update(buffer).digest("hex");
-    const mediaBuffers = renamePackagedMedia(importedActions, archiveMedia, archiveHash);
     const paths = options.paths || actStorage.getPaths(null, "global", "adult");
+    const mediaBuffers = renamePackagedMedia(importedActions, archiveMedia, paths.mediaDir);
     const currentActions = readActions(paths.actionsFile);
     const mergedActions = mergeActions(currentActions, importedActions);
 

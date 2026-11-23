@@ -19,6 +19,23 @@ O prefixo nos exemplos é `!`. Se o prefixo do bot foi alterado, substitua-o pel
   - **WhatsApp:** somente o grupo aberto no painel.
   - **Telegram:** grupo todo + chat principal ou um tópico específico, quando o grupo usa tópicos.
 
+## Menu de configuração no chat
+
+Use `!antimedia` sem argumentos para abrir as configurações:
+
+- **Discord:** selecione servidor, categoria ou canal/tópico; o resumo aparece em um embed e os botões configuram o estado, a ação, a herança e os tipos de mídia bloqueados.
+- **Telegram:** selecione grupo ou tópico (quando estiver em um tópico); o resumo usa HTML e os botões configuram o estado, a ação e os tipos de mídia bloqueados.
+- **WhatsApp:** exibe o estado e as opções configuradas para o grupo atual. Use `!antimedia help` para consultar a ajuda.
+
+No Discord, use o seletor para escolher quais mídias bloquear; no Telegram, toque no botão de cada tipo para alternar entre bloqueado e permitido. Os botões **Bloquear todas** e **Permitir todas** aplicam a configuração a todos os tipos. A mensagem personalizada e as listas de usuários/cargos continuam sendo configuradas por comandos de texto:
+
+```text
+!antimedia chat add image, video
+!antimedia chat remove video
+!antimedia chat list
+!antimedia chat message Mídia não permitida aqui!
+```
+
 ## Painel administrativo do antimídia
 
 As configurações ficam na página **Antimídia**, acessada pelo cartão na categoria **Proteção** do painel administrativo. O painel central mantém o status e o acesso à página; as opções de mídia, ação, mensagem e exceções são configuradas na página dedicada.
@@ -48,7 +65,7 @@ O Sat Bot reconhece e categoriza os seguintes tipos de arquivos (aceita nomes em
 | **`contact`** | `contato`, `vcard` | Compartilhamento de cartões de contato telefônico |
 
 > [!NOTE]
-> Se você ativar o antimedia sem cadastrar tipos específicos, **todos os tipos de mídia** serão considerados bloqueados por padrão.
+> Por padrão, uma configuração sem tipos cadastrados bloqueia **todos os tipos de mídia**. Use **Permitir todas** no menu para liberar todos os tipos; a configuração explícita de permissão total é mantida separada do padrão legado.
 
 ---
 
@@ -76,10 +93,12 @@ Você pode adicionar múltiplos tipos separados por vírgula:
   !antimedia chat add sticker, video
   !antimedia chat add image, audio, document
   ```
+  O comando `add` acrescenta tipos à lista de bloqueio atual. Se todos os tipos estiverem bloqueados por padrão, eles continuam bloqueados.
 - **Remover tipos da lista de bloqueio (voltar a permitir):**
   ```text
   !antimedia chat remove sticker
   ```
+  Se todos os tipos forem removidos, o menu registra que todos estão permitidos, em vez de voltar ao padrão legado de bloquear tudo.
 - **Listar as mídias proibidas no nível:**
   ```text
   !antimedia chat list

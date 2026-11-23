@@ -19,6 +19,16 @@ O prefixo nos exemplos é `!`. Se o prefixo do bot foi alterado, substitua-o pel
   - **WhatsApp:** somente o grupo aberto no painel.
   - **Telegram:** grupo todo + chat principal ou um tópico específico, quando o grupo usa tópicos.
 
+## Menu de configuração no chat
+
+Use `!antipalavras` sem argumentos para abrir as configurações:
+
+- **Discord:** selecione servidor, categoria ou canal/tópico; o resumo aparece em um embed e os botões configuram o estado, a ação e a herança.
+- **Telegram:** selecione grupo ou tópico (quando estiver em um tópico); o resumo usa HTML e os botões configuram o estado e a ação.
+- **WhatsApp:** exibe o estado e as palavras/frases configuradas para o grupo atual. Use `!antipalavras help` para consultar a ajuda.
+
+Como cada grupo pode cadastrar palavras e frases próprias, use os comandos de texto para adicionar ou remover termos. O menu exibe os termos atuais e inclui os comandos correspondentes.
+
 ## Painel administrativo do antipalavras
 
 As configurações ficam na página **Antipalavras**, acessada pelo cartão na categoria **Proteção** do painel administrativo. O painel central mantém o estado e a ativação do recurso, enquanto a página dedicada concentra palavras/frases, ação, mensagem e exceções.

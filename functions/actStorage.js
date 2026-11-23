@@ -9,6 +9,12 @@ const SETTINGS_DIR = path.join(__dirname, "..", "settings");
 function getPaths(message, scope = "group", catalog = "normal") {
     const catalogName = catalog === "adult" ? "act18" : "act";
     if (scope === "global") {
+        if (catalog === "adult") {
+            return {
+                actionsFile: path.join(SETTINGS_DIR, `${catalogName}.json`),
+                mediaDir: path.join(SETTINGS_DIR, `${catalogName}_media`)
+            };
+        }
         return {
             actionsFile: path.join(COMMANDS_DIR, `${catalogName}.json`),
             mediaDir: path.join(COMMANDS_DIR, `${catalogName}_media`)

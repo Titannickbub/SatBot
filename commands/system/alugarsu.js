@@ -1,4 +1,4 @@
-const alugar = require("./alugar");
+const alugar = require("../alugar");
 const { isOwner } = require("../../functions/owners");
 
 function isSuperUser(message) {
@@ -7,10 +7,13 @@ function isSuperUser(message) {
 
 module.exports = {
     name: "alugarsu",
-    aliases: ["modoaluguel"],
+    aliases: ["modoaluguel", "alugar_su"],
     category: "system/configurações",
     description: "Administre pedidos, pagamentos e assinaturas de aluguel.",
-    usage: "{prefix}alugarsu [pedidos|pix <ID> <chave>|pago <ID>|recusar <ID>|assinaturas|configurações]",
+    usage: "{prefix}alugar_su help",
+    getMenuUsage() {
+        return "{prefix}alugarsu help";
+    },
     platformSupport: {
         whatsapp: "full",
         telegram: "full",
