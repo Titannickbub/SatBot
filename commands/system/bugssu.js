@@ -56,12 +56,12 @@ function pageNavigationRows(platform, page, totalPages) {
     if (platform === "discord") {
         return [new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-                .setCustomId(`bugssu:page:${Math.max(1, page - 1)}`)
+                .setCustomId(`bugssu:page:previous:${Math.max(1, page - 1)}`)
                 .setLabel("⬅️ Anterior")
                 .setStyle(ButtonStyle.Secondary)
                 .setDisabled(page <= 1),
             new ButtonBuilder()
-                .setCustomId(`bugssu:page:${Math.min(totalPages, page + 1)}`)
+                .setCustomId(`bugssu:page:next:${Math.min(totalPages, page + 1)}`)
                 .setLabel("Próxima ➡️")
                 .setStyle(ButtonStyle.Secondary)
                 .setDisabled(page >= totalPages),
@@ -566,6 +566,8 @@ async function handleInteraction(interaction) {
             if (actionOrId === "back") {
                 await removePageMedia(interaction, message);
                 await updateComponentMessage(interaction, menuPayload(message));
+            } else if (actionOrId === "previous" || actionOrId === "next") {
+                await showSuggestionPage(interaction, message, Number(suggestionId));
             } else {
                 await showSuggestionPage(interaction, message, Number(actionOrId));
             }
