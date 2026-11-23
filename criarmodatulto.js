@@ -46,14 +46,14 @@ h1{margin:0;font-size:23px}h2{font-size:18px;margin:0 0 16px}.muted{color:#a7b0c
 <body>
 <div class="layout">
 <header>
-  <div><h1>Criador de Mod Adulto</h1><div class="muted">Editor local; usa o catálogo global ou o ZIP de settings se ainda não houver catálogo. Exporta sem iniciar o bot.</div></div>
+  <div><h1>Criador de Mod Adulto</h1><div class="muted">Editor local; usa settings/act18.json e settings/act18_media ou o ZIP de settings se ainda não houver catálogo. Exporta sem iniciar o bot.</div></div>
   <div class="top-actions"><button id="reload">Recarregar catálogo global</button><button id="export">Exportar MOD_ADULTO.zip</button></div>
 </header>
 <aside class="actions">
   <h2>Ações</h2>
   <button id="new-action">Nova ação</button>
   <div id="action-list" class="action-list"></div>
-  <div class="muted">O ZIP terá act18.json na raiz e as mídias em act18_media/.</div>
+  <div class="muted">O ZIP terá act18.json na raiz e as mídias em act18_media/. No bot, o catálogo global fica em settings/act18.json e as mídias em settings/act18_media/.</div>
 </aside>
 <main id="editor" class="panel"><div class="empty">Carregando catálogo...</div></main>
 </div>

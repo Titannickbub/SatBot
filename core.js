@@ -1045,7 +1045,7 @@ async function handleComponentInteraction(interaction) {
         "cosmetic", "details", "discord", "editplan", "extend", "initial", "items",
         "menu", "open", "close", "temporary", "orders", "paid", "permanent", "pixhelp", "cancelorder", "reject", "rejectconfirm", "remove",
         "removeconfirm", "renewal", "select", "setplan", "subscriptions",
-        "telegram", "tc", "tx", "cc", "cx"
+        "telegram", "tc", "tx", "cc", "cx", "accept", "thank", "delete"
     ]);
     const action = componentParts.slice(1, 4)
         .filter(part => safeActionTokens.has(part))
