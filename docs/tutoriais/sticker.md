@@ -54,10 +54,10 @@ legenda enquanto responde à outra mídia. O áudio é limitado a 30 segundos.
 `!sa` mantém a proporção, `!fa` estica e `!ra` recorta o centro. Essas opções
 de áudio funcionam somente no WhatsApp.
 
-No WhatsApp, o vídeo ou GIF pode ter até **10 segundos**. O arquivo gerado
-precisa respeitar o limite de **100 KB para figurinha estática** e
-**500 KB (0,5 MB) para figurinha animada**; se ultrapassar, tente uma mídia
-mais simples ou curta.
+No WhatsApp, o vídeo ou GIF pode ter até **10 segundos**. A figurinha estática
+continua limitada a **100 KB**. Para animações, o bot tenta reduzir FPS e
+resolução antes de falhar; o teto de **5 MB é experimental** e pode ser
+rejeitado por algumas versões do WhatsApp.
 
 No Telegram, quando sua conta está vinculada à Conta Central, a figurinha
 também pode ser adicionada ao seu pacote pessoal. Na primeira criação do

@@ -25,6 +25,7 @@ Envie uma foto ou vídeo com o comando na legenda, ou responda à mensagem de m�
 
 📌 Observações:
 • Suporta fotos, imagens, GIFs e vídeos curtos (até 10 segundos).
+• No WhatsApp, o teto experimental para figurinhas animadas é 5 MB; a compressão reduz FPS e resolução quando necessário.
 • No Discord, utilize {prefix}dsticker para figurinhas de servidor ou {prefix}emoji para emojis.`,
     category: "sticker",
     platformSupport: {
@@ -88,7 +89,7 @@ Envie uma foto ou vídeo com o comando na legenda, ou responda à mensagem de m�
 
         if (!mediaObj || typeof mediaObj.getBuffer !== "function") {
             const whatsappLimits = message.platform === "whatsapp"
-                ? "\n\n📏 *Limites do WhatsApp:* imagem até 100 KB; figurinha animada até 500 KB (0,5 MB) e GIF/vídeo de até 10 segundos. Os limites de KB/MB são da figurinha gerada, não do arquivo enviado."
+                ? "\n\n📏 *Limites experimentais do WhatsApp:* imagem até 100 KB; figurinha animada até 5 MB e GIF/vídeo de até 10 segundos. O limite de KB/MB é da figurinha gerada, não do arquivo enviado."
                 : "";
             return message.reply({
                 text: "⚠️ Envie a foto/vídeo com o comando *" + (message.prefix || "!") + "sticker* na legenda, ou responda/marque uma imagem/vídeo com o comando!\n\n" +
@@ -250,12 +251,12 @@ Envie uma foto ou vídeo com o comando na legenda, ou responda à mensagem de m�
             if (err.code === "STICKER_SIZE_LIMIT") {
                 const limit = mediaObj.type === "video" || mediaObj.type === "gif" ||
                     String(mediaObj.mimeType || "").toLowerCase().includes("gif")
-                    ? "500 KB (0,5 MB) para figurinhas animadas"
+                    ? "5 MB (limite experimental) para figurinhas animadas"
                     : "100 KB para figurinhas estáticas";
                 return message.reply({ text: `❌ A figurinha gerada excedeu o limite do WhatsApp de ${limit}. Tente uma mídia mais simples ou curta.` });
             }
             const whatsappLimits = message.platform === "whatsapp"
-                ? " No WhatsApp: GIFs/vídeos até 10 segundos; figurinha final até 500 KB (0,5 MB) se animada ou 100 KB se estática."
+                ? " No WhatsApp: GIFs/vídeos até 10 segundos; figurinha final até 5 MB (limite experimental) se animada ou 100 KB se estática."
                 : "";
             return message.reply({ text: `❌ Falha ao criar a figurinha. Envie uma imagem, GIF ou vídeo válido.${whatsappLimits}` });
         }
