@@ -41,10 +41,23 @@ Aliases do modo padrão: `!sticker`, `!s`, `!fig` e `!figurinha`. Aliases do
 modo esticado: `!f`, `!fsticker`, `!ffig` e `!ffigurinha`. Aliases do modo
 recortado: `!r`, `!rsticker`, `!rfig` e `!rfigurinha`.
 
-No WhatsApp, o vídeo ou GIF pode ter até **10 segundos**. O arquivo gerado
-precisa respeitar o limite de **100 KB para figurinha estática** e
-**500 KB (0,5 MB) para figurinha animada**; se ultrapassar, tente uma mídia
-mais simples ou curta.
+No WhatsApp, crie figurinhas com áudio usando um vídeo que tenha som ou
+combinando uma imagem/vídeo com um áudio: envie uma mídia com o comando na
+legenda enquanto responde à outra mídia. O áudio é limitado a 30 segundos.
+
+```text
+!sa
+!fa
+!ra
+```
+
+`!sa` mantém a proporção, `!fa` estica e `!ra` recorta o centro. Essas opções
+de áudio funcionam somente no WhatsApp.
+
+No WhatsApp, o vídeo ou GIF pode ter até **10 segundos**. A figurinha estática
+continua limitada a **100 KB**. Para animações, o bot tenta reduzir FPS e
+resolução antes de falhar; o teto de **5 MB é experimental** e pode ser
+rejeitado por algumas versões do WhatsApp.
 
 No Telegram, quando sua conta está vinculada à Conta Central, a figurinha
 também pode ser adicionada ao seu pacote pessoal. Na primeira criação do
@@ -137,6 +150,7 @@ mais emojis.
 | `!sticker` | WhatsApp e Telegram | Cria figurinha mantendo a proporção |
 | `!f` / `!fsticker` | WhatsApp e Telegram | Estica a mídia para preencher |
 | `!r` / `!rsticker` | WhatsApp e Telegram | Recorta o centro em formato quadrado |
+| `!sa` / `!fa` / `!ra` | WhatsApp | Cria figurinha com áudio; mantém, estica ou recorta |
 | `!delpack` | Telegram | Apaga seu pacote pessoal de figurinhas |
 | `!delfig` | Telegram | Remove uma figurinha do pacote ao responder a ela |
 | `!dsticker` | Discord | Adiciona figurinha ao servidor |

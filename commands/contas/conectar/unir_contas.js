@@ -1,7 +1,7 @@
 module.exports = {
     name: "unir_contas",
     category: "contas/conectar",
-    description: `🔗 Conecta contas de plataformas diferentes à mesma Conta Central.
+    description: `🔗 Conecta contas de plataformas diferentes à mesma Conta Central. A conta que gerou o código permanece como principal, mantendo seu ID e login.
 
 📝 Gere um código temporário em uma conta:
 {prefix}unir_contas codigo
@@ -55,7 +55,7 @@ Se executar o comando sem opções, esta ajuda será exibida. O código é tempo
             }
 
             try {
-                const merged = await store.useMergeCode(code, targetCentral.id);
+                const merged = await store.useMergeCode(code, targetCentral.id, { keepCodeOwner: true });
                 return message.reply({ text: `✅ Contas unidas com sucesso. Central resultante: ${merged.id}` });
             } catch (error) {
                 console.error("unir_contas login error", error);

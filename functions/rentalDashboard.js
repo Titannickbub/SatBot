@@ -62,7 +62,8 @@ function onlyChatsAccessEntries(onlyChats) {
 function navbar(platform, currentPage) {
     const links = Object.entries(PAGES).map(([key, page]) =>
         `<a class="nav-pill${key === currentPage ? " active" : ""}" href="${page.path}?plataforma=${encodeURIComponent(platform)}">${escapeHtml(page.title)}</a>`
-    ).join("");
+    ).join("") +
+        `<a class="nav-pill" href="/painel-rpg-maker?plataforma=${encodeURIComponent(platform)}">RPG Maker</a>`;
     return `<nav class="topbar"><a href="/dashboard" class="back">← Conta Central</a><span>Todas as plataformas · Superusuário</span></nav><nav class="nav-pills" aria-label="Páginas do painel">${links}</nav>`;
 }
 
@@ -82,11 +83,12 @@ function homeContent(data) {
         ["suggestions", "✉", "Sugestões", `${data.suggestions.filter(item => item.status === "pending").length} pendente(s) · consultar e responder.`],
         ["onlychats", "◉", "OnlyChats", "Configurar o bloqueio e as permissões permanentes."]
     ];
+    const rpgMakerCard = `<a class="bubble-card" href="/painel-rpg-maker?plataforma=${encodeURIComponent(data.platform)}"><span class="bubble-icon" aria-hidden="true">✦</span><strong>RPG Maker</strong><small>Criar e administrar atributos, golpes e personagens globais do RPG.</small><span class="bubble-open">Abrir →</span></a>`;
     const enabled = Object.entries(settings.enabledPlatforms || {})
         .filter(([, value]) => value)
         .map(([platform]) => platform)
         .join(", ") || "nenhuma";
-    return `<section class="hero"><span class="eyebrow">${enabled === "nenhuma" ? "ALUGUEL DESATIVADO" : "ALUGUEL ATIVO"}</span><h1>Painel de superusuário</h1><p>Configurações, planos, pedidos e assinaturas são compartilhados. Plataformas com aluguel ativo: <strong>${escapeHtml(enabled)}</strong>.</p></section><section class="bubble-grid">${links.map(([key, icon, title, description]) => `<a class="bubble-card" href="${PAGES[key].path}?plataforma=${encodeURIComponent(data.platform)}"><span class="bubble-icon" aria-hidden="true">${icon}</span><strong>${title}</strong><small>${description}</small><span class="bubble-open">Abrir →</span></a>`).join("")}</section><p class="notice">Os registros mantêm a plataforma de origem para aplicar cada ação ao serviço correto. Para administrar registros de outra plataforma, vincule-a à Conta Central.</p>`;
+    return `<section class="hero"><span class="eyebrow">${enabled === "nenhuma" ? "ALUGUEL DESATIVADO" : "ALUGUEL ATIVO"}</span><h1>Painel de superusuário</h1><p>Configurações, planos, pedidos e assinaturas são compartilhados. Plataformas com aluguel ativo: <strong>${escapeHtml(enabled)}</strong>.</p></section><section class="bubble-grid">${links.map(([key, icon, title, description]) => `<a class="bubble-card" href="${PAGES[key].path}?plataforma=${encodeURIComponent(data.platform)}"><span class="bubble-icon" aria-hidden="true">${icon}</span><strong>${title}</strong><small>${description}</small><span class="bubble-open">Abrir →</span></a>`).join("")}${rpgMakerCard}</section><p class="notice">Os registros mantêm a plataforma de origem para aplicar cada ação ao serviço correto. Para administrar registros de outra plataforma, vincule-a à Conta Central.</p>`;
 }
 
 function settingsContent(data) {

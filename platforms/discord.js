@@ -611,12 +611,16 @@ async function start(onMessage, onComponentInteraction) {
                     const fileName = imageAttachmentName(image, data.fileName || data.name);
                     payload = {
                         embeds: [new EmbedBuilder().setImage(`attachment://${fileName}`).setDescription(caption)],
-                        files: [{ attachment: image, name: fileName }]
+                        files: [{ attachment: image, name: fileName }],
+                        components: data.components || []
                     };
                 } else if (typeof image === "string" && /^https?:\/\//i.test(image)) {
-                    payload = { embeds: [new EmbedBuilder().setImage(image).setDescription(caption)] };
+                    payload = {
+                        embeds: [new EmbedBuilder().setImage(image).setDescription(caption)],
+                        components: data.components || []
+                    };
                 } else {
-                    payload = { content: caption, files: [image] };
+                    payload = { content: caption, files: [image], components: data.components || [] };
                 }
 
                 if (!repliedToInteraction && (interaction.deferred || interaction.replied)) {

@@ -2,6 +2,75 @@ const fs = require('fs').promises;
 const path = require('path');
 const crypto = require('crypto');
 
+function emptyRpgProfile() {
+  return {
+    xp: 0,
+    globalCurrency: 0,
+    initialCharacterId: null,
+    characters: []
+  };
+}
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeRpgProfile(profile) {
+  const value = profile || emptyRpgProfile();
+  if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      !Number.isFinite(value.xp) || value.xp < 0 ||
+      !Number.isFinite(value.globalCurrency) || value.globalCurrency < 0 ||
+      (value.initialCharacterId !== null &&
+        (!Number.isInteger(value.initialCharacterId) || value.initialCharacterId < 0)) ||
+      !Array.isArray(value.characters)) {
+    throw new Error('RPG profile invalid');
+  }
+  const seenCharacters = new Set();
+  for (const character of value.characters) {
+    if (!character || !Number.isInteger(character.characterId) || character.characterId < 0 ||
+        !Number.isInteger(character.level) || character.level < 1 ||
+        !Array.isArray(character.learnedMoveIds) ||
+        character.learnedMoveIds.some(id => !Number.isInteger(id) || id < 0) ||
+        seenCharacters.has(character.characterId)) {
+      throw new Error('RPG character save invalid');
+    }
+    character.learnedMoveIds = [...new Set(character.learnedMoveIds)];
+    seenCharacters.add(character.characterId);
+  }
+  return value;
+}
+
+function mergeRpgProfiles(targetProfile, sourceProfile) {
+  if (!targetProfile && !sourceProfile) return null;
+  if (!targetProfile) return cloneJson(normalizeRpgProfile(sourceProfile));
+  if (!sourceProfile) return cloneJson(normalizeRpgProfile(targetProfile));
+
+  const target = normalizeRpgProfile(cloneJson(targetProfile));
+  const source = normalizeRpgProfile(cloneJson(sourceProfile));
+  const characters = new Map(target.characters.map(character => [
+    character.characterId,
+    cloneJson(character)
+  ]));
+  for (const character of source.characters) {
+    const existing = characters.get(character.characterId);
+    if (!existing) {
+      characters.set(character.characterId, cloneJson(character));
+      continue;
+    }
+    existing.level = Math.max(existing.level, character.level);
+    existing.learnedMoveIds = [...new Set([
+      ...existing.learnedMoveIds,
+      ...character.learnedMoveIds
+    ])];
+  }
+  return {
+    xp: target.xp + source.xp,
+    globalCurrency: target.globalCurrency + source.globalCurrency,
+    initialCharacterId: target.initialCharacterId ?? source.initialCharacterId,
+    characters: [...characters.values()]
+  };
+}
+
 class CentralAccountsStore {
   constructor() {
     this.filePath = null;
@@ -84,6 +153,25 @@ class CentralAccountsStore {
 
   getCentralById(id) { return this.data.centralAccounts[id] || null; }
 
+  getRpgProfile(centralId) {
+    const central = this.getCentralById(centralId);
+    if (!central) throw new Error('central not found');
+    return cloneJson(normalizeRpgProfile(central.rpg));
+  }
+
+  async updateRpgProfile(centralId, update) {
+    const central = this.getCentralById(centralId);
+    if (!central) throw new Error('central not found');
+    if (typeof update !== 'function') throw new Error('RPG profile update must be a function');
+    const profile = this.getRpgProfile(centralId);
+    const updatedProfile = normalizeRpgProfile(update(profile));
+    central.rpg = cloneJson(updatedProfile);
+    central.lastActivityAt = this._nowISO();
+    this._markDirty();
+    await this._persistSensitiveUpdate();
+    return cloneJson(updatedProfile);
+  }
+
   getAllCentralAccounts() { return Object.values(this.data.centralAccounts || {}); }
 
   findByPlatform(platform, platformId) {
@@ -106,6 +194,23 @@ class CentralAccountsStore {
     if ((central.platformAccounts || []).some(p => p.platform === platformAccount.platform)) throw new Error('A platform account with same platform already linked');
     central.platformAccounts.push({ ...platformAccount, linkedAt: this._nowISO() });
     central.lastActivityAt = this._nowISO(); this._markDirty(); return central;
+  }
+
+  async unlinkPlatform(centralId, platform) {
+    const central = this.getCentralById(centralId);
+    if (!central) throw new Error('central not found');
+
+    const normalizedPlatform = String(platform || '').trim().toLowerCase();
+    const platformAccounts = Array.isArray(central.platformAccounts) ? central.platformAccounts : [];
+    const accountIndex = platformAccounts.findIndex(account => account.platform === normalizedPlatform);
+    if (accountIndex < 0) throw new Error('platform not linked');
+    if (platformAccounts.length <= 1) throw new Error('last platform');
+
+    const [removedAccount] = platformAccounts.splice(accountIndex, 1);
+    central.lastActivityAt = this._nowISO();
+    this._markDirty();
+    await this._persistSensitiveUpdate();
+    return removedAccount;
   }
 
   async updateCentralName(centralId, name) {
@@ -413,24 +518,53 @@ class CentralAccountsStore {
     const expiresAt = new Date(Date.now() + ttlHours * 3600 * 1000).toISOString();
     this.data.mergeCodes[code] = { code, centralId, expiresAt };
     central.mergedCodes = central.mergedCodes || []; central.mergedCodes.push(code);
-    this._markDirty(); return { code, expiresAt };
+    this._markDirty();
+    await this._persistSensitiveUpdate();
+    return { code, expiresAt };
   }
 
-  async useMergeCode(code, targetCentralId) {
-    const entry = this.data.mergeCodes[code]; if (!entry) throw new Error('invalid-code');
-    if (new Date(entry.expiresAt) < new Date()) { delete this.data.mergeCodes[code]; this._markDirty(); throw new Error('code-expired'); }
-    const source = this.getCentralById(entry.centralId); const target = this.getCentralById(targetCentralId);
-    if (!source || !target) throw new Error('central-not-found'); if (source.id === target.id) throw new Error('same-central');
+  async useMergeCode(code, targetCentralId, { keepCodeOwner = false } = {}) {
+    const entry = this.data.mergeCodes[code];
+    if (!entry) throw new Error('invalid-code');
+    if (new Date(entry.expiresAt) < new Date()) {
+      delete this.data.mergeCodes[code];
+      this._markDirty();
+      await this._persistSensitiveUpdate();
+      throw new Error('code-expired');
+    }
+
+    const codeOwner = this.getCentralById(entry.centralId);
+    const joiningAccount = this.getCentralById(targetCentralId);
+    if (!codeOwner || !joiningAccount) throw new Error('central-not-found');
+    if (codeOwner.id === joiningAccount.id) throw new Error('same-central');
+
+    const target = keepCodeOwner ? codeOwner : joiningAccount;
+    const source = keepCodeOwner ? joiningAccount : codeOwner;
+
     const sourcePlatforms = (source.platformAccounts || []).map(p => p.platform);
     const targetPlatforms = (target.platformAccounts || []).map(p => p.platform);
-    for (const p of sourcePlatforms) { if (targetPlatforms.includes(p)) throw new Error('conflict-platform-' + p); }
-    target.platformAccounts = target.platformAccounts.concat(source.platformAccounts || []);
-    target.lastActivityAt = this._nowISO(); delete this.data.centralAccounts[source.id]; delete this.data.mergeCodes[code]; this._markDirty(); return target;
+    for (const platform of sourcePlatforms) {
+      if (targetPlatforms.includes(platform)) throw new Error('conflict-platform-' + platform);
+    }
+
+    const mergedRpg = mergeRpgProfiles(target.rpg, source.rpg);
+    if (mergedRpg) target.rpg = mergedRpg;
+    target.platformAccounts = [...(target.platformAccounts || []), ...(source.platformAccounts || [])];
+    target.lastActivityAt = this._nowISO();
+    delete this.data.centralAccounts[source.id];
+    delete this.data.mergeCodes[code];
+    for (const [pendingCode, pendingEntry] of Object.entries(this.data.mergeCodes)) {
+      if (pendingEntry.centralId === source.id) delete this.data.mergeCodes[pendingCode];
+    }
+    this._markDirty();
+    await this._persistSensitiveUpdate();
+    return target;
   }
 
   async cleanupInactive(thresholdDays = 30) {
     const cutoff = Date.now() - thresholdDays * 24 * 3600 * 1000; const toDelete = [];
     for (const [id, central] of Object.entries(this.data.centralAccounts)) {
+      if (central.rpg) continue;
       const last = central.lastActivityAt ? new Date(central.lastActivityAt).getTime() : new Date(central.createdAt).getTime();
       if (last < cutoff) toDelete.push(id);
     }

@@ -38,9 +38,10 @@ Define quanto tempo o bot ignora mensagens antigas ao iniciar. Aceita s (segundo
 {prefix}config sticker
 {prefix}config sticker pack <nome do pacote>
 {prefix}config sticker autor <nome do autor>
+{prefix}config sticker descricao <texto>
 {prefix}config sticker <pacote> | <autor>
 
-Define o nome do pacote e/ou autor padrão das figurinhas geradas pelo bot.
+Define o nome do pacote, o autor e a descrição gravados nos metadados das figurinhas do WhatsApp.
 
 🛡️ 7. Gerencie o Anti-PV (alias):
 {prefix}config antipv status
@@ -360,6 +361,7 @@ Plataformas
     text += `\n🎨 Figurinhas (Stickers)\n`;
     text += `  • Pacote (Pack): ${stickerCfg.packName}\n`;
     text += `  • Autor (Publisher): ${stickerCfg.authorName}\n`;
+    text += `  • Descrição: ${stickerCfg.description}\n`;
 
     const antipv = message.functions.config.getAntiPVConfig ? message.functions.config.getAntiPVConfig() : {};
     text += `\n🔒 Anti-PV\n`;
@@ -393,6 +395,7 @@ async function alterarStickerConfig(message, subArgs) {
                   `⚙️ *Como alterar:*\n` +
                   `• \`${message.prefix}config sticker pack <nome>\`\n` +
                   `• \`${message.prefix}config sticker autor <nome>\`\n` +
+                  `• \`${message.prefix}config sticker descricao <texto>\`\n` +
                   `• \`${message.prefix}config sticker <pacote> | <autor>\`\n` +
                   `• \`${message.prefix}config sticker reset\` (restaura padrão)`
         });
@@ -417,10 +420,20 @@ async function alterarStickerConfig(message, subArgs) {
         return await message.reply({ text: `✅ Autor das figurinhas atualizado para: *${updated.authorName}*` });
     }
 
+    if (sub === "description" || sub === "descricao" || sub === "descrição" || sub === "desc") {
+        if (!restText) {
+            return await message.reply({
+                text: `❌ Informe a descrição das figurinhas.\nExemplo: \`${message.prefix}config sticker descricao venha pro SatBot https://titannickbub.neocities.org/\``
+            });
+        }
+        const updated = configFn.setStickerDescription(restText);
+        return await message.reply({ text: `✅ Descrição das figurinhas atualizada para: *${updated.description}*` });
+    }
+
     if (sub === "reset" || sub === "padrao") {
         const botName = typeof configFn.getBotName === "function" ? configFn.getBotName() : "Sat Bot";
-        const updated = configFn.setStickerConfig(botName, botName);
-        return await message.reply({ text: `✅ Configuração de figurinhas restaurada:\n📦 Pacote: *${updated.packName}*\n👤 Autor: *${updated.authorName}*` });
+        const updated = configFn.setStickerConfig(botName, botName, "");
+        return await message.reply({ text: `✅ Configuração de figurinhas restaurada:\n📦 Pacote: *${updated.packName}*\n👤 Autor: *${updated.authorName}*\n📝 Descrição: *${updated.description}*` });
     }
 
     const fullText = subArgs.join(" ").trim();
@@ -443,6 +456,7 @@ async function alterarStickerConfig(message, subArgs) {
               `Uso:\n` +
               `• \`${message.prefix}config sticker pack <nome>\`\n` +
               `• \`${message.prefix}config sticker autor <nome>\`\n` +
+              `• \`${message.prefix}config sticker descricao <texto>\`\n` +
               `• \`${message.prefix}config sticker <pacote> | <autor>\``
     });
 }

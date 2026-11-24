@@ -8,7 +8,7 @@ const config = require("./config");
 
 const execFileAsync = promisify(execFile);
 const WHATSAPP_STATIC_STICKER_LIMIT = 100 * 1024;
-const WHATSAPP_ANIMATED_STICKER_LIMIT = 500 * 1024;
+const WHATSAPP_ANIMATED_STICKER_LIMIT = 5 * 1024 * 1024;
 const WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT = 10;
 const TELEGRAM_VIDEO_STICKER_LIMIT = 256 * 1024;
 const TELEGRAM_VIDEO_STICKER_DURATION_LIMIT = 3;
@@ -27,14 +27,14 @@ function getFfmpegPath() {
     }
 }
 
-function getResizeFilter(mode) {
+function getResizeFilter(mode, size = 512) {
     if (mode === "fill") {
-        return "scale=512:512";
+        return `scale=${size}:${size}`;
     }
     if (mode === "cover") {
-        return "scale=512:512:force_original_aspect_ratio=increase,crop=512:512";
+        return `scale=${size}:${size}:force_original_aspect_ratio=increase,crop=${size}:${size}`;
     }
-    return "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000";
+    return `scale=${size}:${size}:force_original_aspect_ratio=decrease,pad=${size}:${size}:(ow-iw)/2:(oh-ih)/2:color=0x00000000`;
 }
 
 async function convertAnimatedToWebp(inputBuffer, mode, maxSizeBytes) {
@@ -43,10 +43,19 @@ async function convertAnimatedToWebp(inputBuffer, mode, maxSizeBytes) {
     const inputPath = path.join(tempDir, `${tempId}.media`);
     const outputPath = path.join(tempDir, `${tempId}.webp`);
     const attempts = [
-        { fps: 15, quality: 70 },
-        { fps: 12, quality: 60 },
-        { fps: 10, quality: 50 },
-        { fps: 8, quality: 40 }
+        { size: 512, fps: 15, quality: 70 },
+        { size: 512, fps: 12, quality: 60 },
+        { size: 512, fps: 10, quality: 50 },
+        { size: 512, fps: 8, quality: 40 },
+        { size: 512, fps: 6, quality: 30 },
+        { size: 448, fps: 10, quality: 35 },
+        { size: 448, fps: 8, quality: 30 },
+        { size: 384, fps: 10, quality: 30 },
+        { size: 384, fps: 8, quality: 25 },
+        { size: 320, fps: 10, quality: 25 },
+        { size: 320, fps: 8, quality: 20 },
+        { size: 256, fps: 8, quality: 20 },
+        { size: 256, fps: 6, quality: 15 }
     ];
 
     try {
@@ -58,7 +67,7 @@ async function convertAnimatedToWebp(inputBuffer, mode, maxSizeBytes) {
                     "-y",
                     "-i", inputPath,
                     "-an",
-                    "-vf", `fps=${attempt.fps},${getResizeFilter(mode)}`,
+                    "-vf", `fps=${attempt.fps},${getResizeFilter(mode, attempt.size)}`,
                     "-c:v", "libwebp",
                     "-loop", "0",
                     "-lossless", "0",
@@ -87,8 +96,11 @@ async function convertAnimatedToWebp(inputBuffer, mode, maxSizeBytes) {
         }
     }
 
+    const limitLabel = maxSizeBytes >= 1024 * 1024
+        ? `${Math.round(maxSizeBytes / (1024 * 1024))} MB`
+        : `${Math.round(maxSizeBytes / 1024)} KB`;
     throw createStickerError(
-        `A figurinha animada excede o limite de ${Math.round(maxSizeBytes / 1024)} KB do WhatsApp mesmo após a compressão.`,
+        `A figurinha animada excede o limite de ${limitLabel} do WhatsApp mesmo após a compressão.`,
         "STICKER_SIZE_LIMIT"
     );
 }
@@ -252,6 +264,9 @@ async function createStickerBuffer(inputBuffer, options = {}) {
     const maxSizeBytes = whatsappLimits
         ? (isAnimated ? WHATSAPP_ANIMATED_STICKER_LIMIT : WHATSAPP_STATIC_STICKER_LIMIT)
         : Infinity;
+    const conversionMaxSizeBytes = options.addMetadata === true && whatsappLimits
+        ? maxSizeBytes - 512
+        : maxSizeBytes;
 
     if (whatsappLimits && isGif && inputMetadata) {
         const duration = getAnimationDurationSeconds(inputMetadata);
@@ -264,8 +279,8 @@ async function createStickerBuffer(inputBuffer, options = {}) {
     }
 
     let webpResult = isAnimated
-        ? await convertAnimatedToWebp(inputBuffer, mode, maxSizeBytes)
-        : await createStaticWebp(inputBuffer, mode, maxSizeBytes);
+        ? await convertAnimatedToWebp(inputBuffer, mode, conversionMaxSizeBytes)
+        : await createStaticWebp(inputBuffer, mode, conversionMaxSizeBytes);
 
     if (!Buffer.isBuffer(webpResult) || webpResult.length < 16) {
         throw new Error("A conversão da mídia não gerou uma figurinha válida.");
@@ -284,10 +299,14 @@ async function createStickerBuffer(inputBuffer, options = {}) {
         );
     }
 
-    // O EXIF customizado pode ser aceito pelo sharp, mas causar renderização
-    // vazia em algumas versões do WhatsApp. O envio padrão usa WebP puro.
+    // EXIF é opt-in porque alguns clientes do WhatsApp podem renderizar stickers com metadados incorretamente.
     const stickerBuffer = options.addMetadata === true
-        ? addExifToWebp(webpResult, options.packName || config.getBotName(), options.authorName || config.getBotName())
+        ? addExifToWebp(
+            webpResult,
+            options.packName || config.getBotName(),
+            options.authorName || config.getBotName(),
+            options.description
+        )
         : webpResult;
     const stickerMetadata = await sharp(stickerBuffer, { failOn: "none" }).metadata();
     if (stickerMetadata.format !== "webp" || !stickerMetadata.width || !stickerMetadata.height) {
@@ -336,19 +355,25 @@ async function createTelegramSticker(inputBuffer, options = {}) {
 }
 
 /**
- * Injeta ou substitui o bloco de metadados EXIF (PackName e AuthorName) em um Buffer de figurinha WebP.
+ * Injeta ou substitui o bloco de metadados EXIF do pacote em um Buffer de figurinha WebP.
  * @param {Buffer} buffer 
  * @param {string} packName 
  * @param {string} authorName 
  * @returns {Buffer}
  */
-function addExifToWebp(buffer, packName = config.getBotName(), authorName = config.getBotName()) {
+function addExifToWebp(
+    buffer,
+    packName = config.getBotName(),
+    authorName = config.getBotName(),
+    description = config.getStickerConfig?.().description
+) {
     if (!Buffer.isBuffer(buffer) || buffer.length < 12) return buffer;
 
     const json = JSON.stringify({
         "sticker-pack-id": "com.satela.bot",
         "sticker-pack-name": String(packName || "Sat Bot"),
         "sticker-pack-publisher": String(authorName || config.getBotName()),
+        "sticker-pack-description": String(description || ""),
         "emojis": ["📌"]
     });
 

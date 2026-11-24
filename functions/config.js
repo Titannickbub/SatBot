@@ -25,7 +25,8 @@ const DEFAULT_CONFIG = {
     },
     sticker: {
         packName: "Sat Bot",
-        authorName: "Sat Bot"
+        authorName: "Sat Bot",
+        description: "venha pro SatBot https://titannickbub.neocities.org/"
     },
     botInfo: {
         description: "Um bot multi-plataforma para facilitar sua comunidade.",
@@ -1076,7 +1077,8 @@ function getStickerConfig() {
     const botName = getBotName() || "Sat Bot";
     const defaults = {
         packName: botName,
-        authorName: botName
+        authorName: botName,
+        description: DEFAULT_CONFIG.sticker.description
     };
     if (!data.sticker) {
         data.sticker = defaults;
@@ -1087,7 +1089,10 @@ function getStickerConfig() {
         packName: data.sticker.packName || defaults.packName,
         authorName: !data.sticker.authorName || data.sticker.authorName === "Satela"
             ? defaults.authorName
-            : data.sticker.authorName
+            : data.sticker.authorName,
+        description: typeof data.sticker.description === "string"
+            ? data.sticker.description
+            : defaults.description
     };
 }
 
@@ -1107,7 +1112,16 @@ function setStickerAuthor(authorName) {
     return data.sticker;
 }
 
-function setStickerConfig(packName, authorName) {
+function setStickerDescription(description) {
+    const data = load();
+    data.sticker = getStickerConfig();
+    const cleanDescription = typeof description === "string" ? description.trim() : "";
+    data.sticker.description = cleanDescription || DEFAULT_CONFIG.sticker.description;
+    save(data);
+    return data.sticker;
+}
+
+function setStickerConfig(packName, authorName, description) {
     const data = load();
     data.sticker = getStickerConfig();
     if (typeof packName === "string" && packName.trim()) {
@@ -1115,6 +1129,10 @@ function setStickerConfig(packName, authorName) {
     }
     if (typeof authorName === "string" && authorName.trim()) {
         data.sticker.authorName = authorName.trim();
+    }
+    if (typeof description === "string") {
+        const cleanDescription = description.trim();
+        data.sticker.description = cleanDescription || DEFAULT_CONFIG.sticker.description;
     }
     save(data);
     return data.sticker;
@@ -1223,6 +1241,7 @@ module.exports = {
     getStickerConfig,
     setStickerPack,
     setStickerAuthor,
+    setStickerDescription,
     setStickerConfig,
     getGlobalBlockcmd,
     setGlobalBlockcmd,

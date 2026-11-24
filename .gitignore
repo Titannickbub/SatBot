@@ -12,6 +12,8 @@
 !/middlewares/**
 !/platforms/
 !/platforms/**
+!/test/
+!/test/**
 
 !/core.js
 !/criarmodatulto.js

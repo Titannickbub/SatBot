@@ -29,7 +29,7 @@ Use `!bugssu` (também `!sugestoessu` ou `!reportsu`) como superusuário:
 !bugssu deletar <ID>
 ```
 
-`canal` configura o chat ou tópico atual para receber os próximos registros naquela plataforma; `canal off` remove o destino. No WhatsApp, as ações são feitas por esses comandos. No Telegram e no Discord, a listagem também apresenta botões para aceitar, agradecer, recusar ou apagar.
+`canal` configura o chat ou tópico atual para receber os próximos registros naquela plataforma; `canal off` remove o destino. No WhatsApp, as ações são feitas por esses comandos. No Telegram e no Discord, o botão **Ver sugestões** mostra um registro por vez, com navegação **Anterior/Próxima** e botões para aceitar, agradecer, recusar ou apagar. O comando `listar [página]` continua disponível para consultar uma página de registros.
 
 Sem argumentos, `!bugssu` abre o menu de administração: no Telegram e no Discord ele inclui botões para ver sugestões, ativar/desativar o recebimento e configurar/remover o canal da plataforma atual. No WhatsApp, o menu mostra os comandos equivalentes.
 

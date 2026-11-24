@@ -5,10 +5,12 @@ const { isOwner } = require("../../functions/owners");
 const {
     ActionRowBuilder,
     ButtonBuilder,
-    ButtonStyle
+    ButtonStyle,
+    EmbedBuilder
 } = require("discord.js");
 
 const PAGE_SIZE = 10;
+const pageMediaMessages = new Map();
 
 function isSuperUser(message) {
     return Boolean(message.sender?.isOwner || isOwner(message));
@@ -20,7 +22,7 @@ function makeInteractionMessage(interaction) {
     return null;
 }
 
-function actionRows(platform, id, status) {
+function actionRows(platform, id, status, page = null) {
     const buttons = status === "pending" ? [
         { label: "Aceitar", action: "accept", style: ButtonStyle.Success },
         { label: "Agradecer", action: "thank", style: ButtonStyle.Primary },
@@ -32,7 +34,9 @@ function actionRows(platform, id, status) {
     if (platform === "discord") {
         return [new ActionRowBuilder().addComponents(
             ...buttons.map(button => new ButtonBuilder()
-                .setCustomId(`bugssu:${button.action}:${id}`)
+                .setCustomId(page === null
+                    ? `bugssu:${button.action}:${id}`
+                    : `bugssu:pageaction:${button.action}:${id}:${page}`)
                 .setLabel(button.label)
                 .setStyle(button.style))
         )];
@@ -40,8 +44,51 @@ function actionRows(platform, id, status) {
     if (platform === "telegram") {
         return [buttons.map(button => ({
             text: button.label,
-            callback_data: `bugssu:${button.action}:${id}`
+            callback_data: page === null
+                ? `bugssu:${button.action}:${id}`
+                : `bugssu:pageaction:${button.action}:${id}:${page}`
         }))];
+    }
+    return [];
+}
+
+function pageNavigationRows(platform, page, totalPages) {
+    if (platform === "discord") {
+        return [new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`bugssu:page:previous:${Math.max(1, page - 1)}`)
+                .setLabel("⬅️ Anterior")
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(page <= 1),
+            new ButtonBuilder()
+                .setCustomId(`bugssu:page:next:${Math.min(totalPages, page + 1)}`)
+                .setLabel("Próxima ➡️")
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(page >= totalPages),
+            new ButtonBuilder()
+                .setCustomId("bugssu:page:back")
+                .setLabel("Menu")
+                .setStyle(ButtonStyle.Primary)
+        )];
+    }
+    if (platform === "telegram") {
+        const buttons = [];
+        if (page > 1) {
+            buttons.push({
+                text: "⬅️ Anterior",
+                callback_data: `bugssu:page:${page - 1}`
+            });
+        }
+        if (page < totalPages) {
+            buttons.push({
+                text: "Próxima ➡️",
+                callback_data: `bugssu:page:${page + 1}`
+            });
+        }
+        return [
+            ...(buttons.length ? [buttons] : []),
+            [{ text: "↩️ Menu", callback_data: "bugssu:page:back" }]
+        ];
     }
     return [];
 }
@@ -71,36 +118,93 @@ function menuRows(platform) {
     return [];
 }
 
-function menuText(message) {
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function menuPayload(message) {
     const platform = suggestionService.assertPlatform(message.platform);
     const settings = suggestionService.getSettings();
     const channel = settings.channels[platform];
     const prefix = message.prefix || "!";
-    return [
-        "⚙️ Gerenciamento de sugestões (SU)",
-        `Recebimento: ${settings.enabled ? "ativado" : "desativado"}`,
-        `Canal: ${channel ? `${channel.name} (${channel.chatId})${channel.threadId ? ` · tópico ${channel.threadId}` : ""}` : "não configurado"}`,
-        "",
-        "Use os botões abaixo ou estes comandos:",
-        `${prefix}bugssu listar [página] — ver e moderar sugestões`,
-        `${prefix}bugssu ativar | desativar — controlar o recebimento`,
-        `${prefix}bugssu canal — usar este chat/tópico como canal`,
-        `${prefix}bugssu canal off — remover o canal configurado`,
-        `${prefix}bugssu aceitar|agradecer|recusar|deletar <ID> — moderar`
-    ].join("\n");
-}
-
-function menuPayload(message) {
-    const text = menuText(message);
+    const channelName = channel
+        ? `${channel.name}${channel.threadId ? ` · tópico ${channel.threadId}` : ""}`
+        : "Não configurado";
+    const commands = [
+        `${prefix}bugssu listar [página] — ver/moderar sugestões`,
+        `${prefix}bugssu ativar | desativar — controlar recebimento`,
+        `${prefix}bugssu canal — usar este chat/tópico como destino`,
+        `${prefix}bugssu canal off — remover o destino`,
+        `${prefix}bugssu aceitar|agradecer|recusar|deletar <ID>`
+    ];
     const components = menuRows(message.platform);
-    return message.platform === "discord"
-        ? { text, components }
-        : {
-            text,
-            ...(message.platform === "telegram"
-                ? { reply_markup: { inline_keyboard: components } }
-                : {})
+    if (platform === "discord") {
+        return {
+            embed: {
+                color: settings.enabled ? 0x57F287 : 0xF0B232,
+                title: "🛠️ Central de sugestões",
+                description: "Consulte e modere reports, além de configurar o recebimento.",
+                fields: [
+                    {
+                        name: "📥 Recebimento",
+                        value: settings.enabled ? "✅ Ativado" : "🔕 Desativado",
+                        inline: true
+                    },
+                    {
+                        name: "📣 Canal de encaminhamento",
+                        value: channel
+                            ? `${channelName}\nID: \`${channel.chatId}\``
+                            : "Não configurado",
+                        inline: true
+                    },
+                    {
+                        name: "⌨️ Comandos",
+                        value: commands.map(command => `\`${command}\``).join("\n"),
+                        inline: false
+                    }
+                ],
+                footer: { text: "A configuração de canal vale para a plataforma deste chat." }
+            },
+            components
         };
+    }
+
+    if (platform === "telegram") {
+        return {
+            text: [
+                "<b>🛠️ Central de sugestões</b>",
+                "<i>Consulte e modere reports e configure o recebimento.</i>",
+                "",
+                `<b>📥 Recebimento:</b> ${settings.enabled ? "✅ Ativado" : "🔕 Desativado"}`,
+                `<b>📣 Canal:</b> ${channel
+                    ? `${escapeHtml(channelName)} <code>${escapeHtml(channel.chatId)}</code>`
+                    : "Não configurado"}`,
+                "",
+                "<b>⌨️ Comandos</b>",
+                ...commands.map(command => `<code>${escapeHtml(command)}</code>`)
+            ].join("\n"),
+            parse_mode: "HTML",
+            reply_markup: { inline_keyboard: components }
+        };
+    }
+
+    return {
+        text: [
+            "*🛠️ CENTRAL DE SUGESTÕES*",
+            "Consulte e modere reports ou configure o recebimento.",
+            "",
+            `*📥 Recebimento:* ${settings.enabled ? "✅ Ativado" : "🔕 Desativado"}`,
+            `*📣 Canal:* ${channel ? `${channelName} (${channel.chatId})` : "Não configurado"}`,
+            "",
+            "*⌨️ COMANDOS*",
+            ...commands.map(command => `• ${command}`)
+        ].join("\n")
+    };
 }
 
 async function showMenu(message) {
@@ -119,8 +223,14 @@ async function sendSuggestionMessage(message, payload) {
         );
     }
     const options = message.platform === "discord"
-        ? { components: payload.components || [] }
-        : { reply_markup: payload.reply_markup || { inline_keyboard: [] } };
+        ? {
+            ...(payload.embed ? { embed: payload.embed } : {}),
+            ...(payload.components?.length ? { components: payload.components } : {})
+        }
+        : {
+            ...(payload.parse_mode ? { parse_mode: payload.parse_mode } : {}),
+            ...(payload.reply_markup ? { reply_markup: payload.reply_markup } : {})
+        };
     return send.text(
         message.platform,
         message.chatId,
@@ -130,7 +240,7 @@ async function sendSuggestionMessage(message, payload) {
     );
 }
 
-function formatSuggestion(suggestion) {
+function formatSuggestion(suggestion, platform) {
     const date = new Date(suggestion.createdAt).toLocaleString("pt-BR");
     const status = {
         pending: "Pendente",
@@ -138,16 +248,182 @@ function formatSuggestion(suggestion) {
         thanked: "Agradecimento enviado",
         rejected: "Recusada"
     }[suggestion.status] || suggestion.status;
-    return [
-        `📨 Sugestão #${suggestion.id} · ${status} · ${suggestion.platform}`,
-        `Usuário: ${suggestion.name}${suggestion.username ? ` (@${suggestion.username})` : ""} · ID: ${suggestion.userId}`,
-        `Chat: ${suggestion.chatName} · ID: ${suggestion.chatId}${suggestion.threadId ? ` · Tópico: ${suggestion.threadId}` : ""}`,
-        `Data: ${date}`,
-        suggestion.text
-            ? (suggestion.text.length > 1200 ? `${suggestion.text.slice(0, 1200)}… [texto abreviado]` : suggestion.text)
-            : "Sugestão enviada com imagem.",
-        suggestion.media ? `📷 Imagem: ${suggestion.media.fileName}` : ""
-    ].filter(Boolean).join("\n");
+    const text = suggestion.text
+        ? (suggestion.text.length > 1200 ? `${suggestion.text.slice(0, 1200)}… [texto abreviado]` : suggestion.text)
+        : "Sugestão enviada com imagem.";
+    const author = `${suggestion.name}${suggestion.username ? ` (@${suggestion.username})` : ""}`;
+    const origin = `${suggestion.chatName}${suggestion.threadId ? ` · tópico ${suggestion.threadId}` : ""}`;
+    if (platform === "discord") {
+        return {
+            embed: {
+                color: suggestion.status === "pending" ? 0x5865F2 : 0x57F287,
+                title: `📨 Sugestão #${suggestion.id}`,
+                description: text,
+                fields: [
+                    { name: "📌 Status", value: status, inline: true },
+                    { name: "🌐 Plataforma", value: suggestion.platform, inline: true },
+                    { name: "👤 Autor", value: `${author}\nID: ${suggestion.userId}`, inline: false },
+                    { name: "💬 Origem", value: `${origin}\nID: ${suggestion.chatId}`, inline: false },
+                    { name: "🕒 Enviada em", value: date, inline: true },
+                    ...(suggestion.media ? [{
+                        name: "🖼️ Anexo",
+                        value: suggestion.media.fileName,
+                        inline: true
+                    }] : [])
+                ],
+                footer: { text: "Moderação de sugestões · SatBot" }
+            }
+        };
+    }
+    if (platform === "telegram") {
+        return {
+            text: [
+                `<b>📨 Sugestão #${escapeHtml(suggestion.id)}</b>`,
+                `<b>📌 Status:</b> ${escapeHtml(status)} · <b>Plataforma:</b> ${escapeHtml(suggestion.platform)}`,
+                `<b>👤 Autor:</b> ${escapeHtml(author)} · <code>${escapeHtml(suggestion.userId)}</code>`,
+                `<b>💬 Origem:</b> ${escapeHtml(origin)} · <code>${escapeHtml(suggestion.chatId)}</code>`,
+                `<b>🕒 Data:</b> ${escapeHtml(date)}`,
+                `<blockquote>${escapeHtml(text)}</blockquote>`,
+                suggestion.media ? `<b>🖼️ Anexo:</b> ${escapeHtml(suggestion.media.fileName)}` : ""
+            ].filter(Boolean).join("\n"),
+            parse_mode: "HTML"
+        };
+    }
+    return {
+        text: [
+            `*📨 SUGESTÃO #${suggestion.id}*`,
+            `*📌 Status:* ${status} · *Plataforma:* ${suggestion.platform}`,
+            `*👤 Autor:* ${author} (${suggestion.userId})`,
+            `*💬 Origem:* ${origin} (${suggestion.chatId})`,
+            `*🕒 Data:* ${date}`,
+            `*📝 Texto:*\n${text}`,
+            suggestion.media ? `*🖼️ Anexo:* ${suggestion.media.fileName}` : ""
+        ].filter(Boolean).join("\n")
+    };
+}
+
+function componentMessageId(interaction) {
+    const messageId = interaction.callbackQuery?.message?.message_id || interaction.message?.id;
+    return messageId ? String(messageId) : "";
+}
+
+function pageMediaKey(interaction, message) {
+    const messageId = componentMessageId(interaction);
+    return messageId ? `${message.platform}:${message.chatId}:${messageId}` : "";
+}
+
+async function removePageMedia(interaction, message) {
+    const key = pageMediaKey(interaction, message);
+    const mediaMessageId = key ? pageMediaMessages.get(key) : null;
+    if (!mediaMessageId) return;
+    try {
+        if (message.platform === "telegram") {
+            const telegram = global.telegramBot?.telegram;
+            if (!telegram?.deleteMessage) throw new Error("Cliente Telegram indisponível para remover a imagem anterior.");
+            await telegram.deleteMessage(message.chatId, Number(mediaMessageId));
+        } else {
+            const channel = await global.discordClient?.channels?.fetch(message.threadId || message.chatId);
+            if (!channel?.messages?.delete) throw new Error("Canal Discord indisponível para remover a imagem anterior.");
+            await channel.messages.delete(mediaMessageId);
+        }
+    } catch (error) {
+        console.warn(`[BUGSSU] Não foi possível remover a imagem da página anterior:`, error.message || error);
+    } finally {
+        pageMediaMessages.delete(key);
+    }
+}
+
+function suggestionPagePayload(message, suggestion, page, totalPages) {
+    const components = [
+        ...actionRows(message.platform, suggestion.id, suggestion.status, page),
+        ...pageNavigationRows(message.platform, page, totalPages)
+    ];
+    const formatted = formatSuggestion(suggestion, message.platform);
+    if (message.platform === "discord") {
+        formatted.embed.footer = {
+            text: `Página ${page}/${totalPages} · Moderação de sugestões · SatBot`
+        };
+        return { ...formatted, components };
+    }
+    return {
+        ...formatted,
+        text: `${formatted.text}\n\n<b>📄 Página ${page}/${totalPages}</b>`,
+        reply_markup: { inline_keyboard: components }
+    };
+}
+
+async function updateComponentMessage(interaction, payload) {
+    if (interaction.callbackQuery) {
+        await interaction.editMessageText(payload.text, {
+            parse_mode: payload.parse_mode,
+            reply_markup: payload.reply_markup
+        });
+        return;
+    }
+    await interaction.update({
+        embeds: [new EmbedBuilder(payload.embed)],
+        components: payload.components
+    });
+}
+
+async function showSuggestionPage(interaction, message, requestedPage) {
+    const suggestions = suggestionService.list();
+    const totalPages = suggestions.length;
+    if (!totalPages) {
+        const payload = message.platform === "discord"
+            ? {
+                embed: {
+                    color: 0x5865F2,
+                    title: "📭 Nenhuma sugestão",
+                    description: "Ainda não há sugestões registradas.",
+                    footer: { text: "Use o botão Menu para voltar à administração." }
+                },
+                components: pageNavigationRows(message.platform, 1, 1)
+            }
+            : {
+                text: "<b>📭 Nenhuma sugestão</b>\nAinda não há sugestões registradas.",
+                parse_mode: "HTML",
+                reply_markup: { inline_keyboard: pageNavigationRows(message.platform, 1, 1) }
+            };
+        await removePageMedia(interaction, message);
+        await updateComponentMessage(interaction, payload);
+        return;
+    }
+
+    const page = Math.max(1, Math.min(totalPages, Number(requestedPage) || 1));
+    const suggestion = suggestions[page - 1];
+    const payload = suggestionPagePayload(message, suggestion, page, totalPages);
+    await removePageMedia(interaction, message);
+    await updateComponentMessage(interaction, payload);
+
+    if (suggestion.media) {
+        const media = suggestionService.getMedia(suggestion.id);
+        if (media) {
+            try {
+                const mediaMessageId = await send.image(
+                    message.platform,
+                    message.chatId,
+                    message.threadId,
+                    fs.readFileSync(media.filePath),
+                    `Imagem da sugestão #${suggestion.id}`
+                );
+                const key = pageMediaKey(interaction, message);
+                if (key && mediaMessageId) pageMediaMessages.set(key, String(mediaMessageId));
+            } catch (error) {
+                console.error(`[BUGSSU] Não foi possível enviar a imagem da sugestão ${suggestion.id}:`, error.message || error);
+                try {
+                    await send.text(
+                        message.platform,
+                        message.chatId,
+                        message.threadId,
+                        "⚠️ A sugestão foi exibida, mas sua imagem não pôde ser carregada."
+                    );
+                } catch (notificationError) {
+                    console.error("[BUGSSU] Não foi possível avisar sobre a falha ao enviar a imagem:", notificationError.message || notificationError);
+                }
+            }
+        }
+    }
 }
 
 async function showSuggestions(message, requestedPage = 1) {
@@ -170,7 +446,7 @@ async function showSuggestions(message, requestedPage = 1) {
         await sendSuggestionMessage(message, {
             text: [
                 `📨 Sugestões (${suggestions.length} nesta página):`,
-                ...suggestions.map(item => `${formatSuggestion(item)}\nAções: ${message.prefix}bugssu aceitar|agradecer|recusar|deletar ${item.id}`)
+                ...suggestions.map(item => `${formatSuggestion(item, "whatsapp").text}\nAções: ${message.prefix}bugssu aceitar|agradecer|recusar|deletar ${item.id}`)
             ].join("\n\n") + pageInfo
         });
         for (const suggestion of suggestions) {
@@ -187,12 +463,12 @@ async function showSuggestions(message, requestedPage = 1) {
     }
     for (const suggestion of suggestions) {
         const components = actionRows(message.platform, suggestion.id, suggestion.status);
-        const payload = message.platform === "discord"
-            ? { text: formatSuggestion(suggestion), components }
-            : {
-                text: formatSuggestion(suggestion),
-                reply_markup: { inline_keyboard: components }
-            };
+        const payload = {
+            ...formatSuggestion(suggestion, message.platform),
+            ...(message.platform === "discord"
+                ? { components }
+                : { reply_markup: { inline_keyboard: components } })
+        };
         await sendSuggestionMessage(message, payload);
         const media = suggestionService.getMedia(suggestion.id);
         if (media) {
@@ -250,30 +526,11 @@ async function handleInteraction(interaction) {
         return true;
     }
 
-    const [, section, actionOrId, suggestionId] = String(interaction.customId || interaction.callbackQuery?.data || "").split(":");
+    const [, section, actionOrId, suggestionId, pageValue] = String(interaction.customId || interaction.callbackQuery?.data || "").split(":");
     try {
         if (section === "menu") {
             if (actionOrId === "list") {
-                if (interaction.callbackQuery) {
-                    await interaction.answerCbQuery("Enviando as sugestões neste chat.");
-                } else {
-                    await interaction.reply({ content: "Enviando as sugestões neste canal.", ephemeral: true });
-                }
-                try {
-                    await showSuggestions(message);
-                } catch (error) {
-                    console.error("[BUGSSU] Não foi possível enviar a lista de sugestões:", error.message || error);
-                    try {
-                        await send.text(
-                            message.platform,
-                            message.chatId,
-                            message.threadId,
-                            "❌ Não foi possível carregar as sugestões. Consulte os logs do bot."
-                        );
-                    } catch (notificationError) {
-                        console.error("[BUGSSU] Não foi possível avisar sobre a falha ao listar sugestões:", notificationError.message || notificationError);
-                    }
-                }
+                await showSuggestionPage(interaction, message, 1);
                 return true;
             }
 
@@ -300,10 +557,30 @@ async function handleInteraction(interaction) {
             }
 
             const payload = menuPayload(message);
-            if (interaction.callbackQuery) {
-                await interaction.editMessageText(payload.text, payload.reply_markup);
+            await removePageMedia(interaction, message);
+            await updateComponentMessage(interaction, payload);
+            return true;
+        }
+
+        if (section === "page") {
+            if (actionOrId === "back") {
+                await removePageMedia(interaction, message);
+                await updateComponentMessage(interaction, menuPayload(message));
+            } else if (actionOrId === "previous" || actionOrId === "next") {
+                await showSuggestionPage(interaction, message, Number(suggestionId));
             } else {
-                await interaction.update({ content: payload.text, components: payload.components });
+                await showSuggestionPage(interaction, message, Number(actionOrId));
+            }
+            return true;
+        }
+
+        if (section === "pageaction") {
+            const result = await moderate(message, actionOrId, suggestionId);
+            await showSuggestionPage(interaction, message, Number(pageValue));
+            if (interaction.callbackQuery) {
+                await interaction.answerCbQuery(result.slice(0, 190), { show_alert: true });
+            } else {
+                await interaction.followUp({ content: result, ephemeral: true });
             }
             return true;
         }
@@ -317,6 +594,8 @@ async function handleInteraction(interaction) {
     } catch (error) {
         if (interaction.callbackQuery) {
             await interaction.answerCbQuery(error.message, { show_alert: true });
+        } else if (interaction.deferred || interaction.replied) {
+            await interaction.followUp({ content: `❌ ${error.message}`, ephemeral: true });
         } else {
             await interaction.reply({ content: `❌ ${error.message}`, ephemeral: true });
         }
