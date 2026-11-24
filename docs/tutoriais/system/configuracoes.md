@@ -141,10 +141,14 @@ ignoradas no início, com unidades `s`, `m` ou `h`.
 !config sticker
 !config sticker pack MeuPacote
 !config sticker autor SatBot
+!config sticker descricao venha pro SatBot https://titannickbub.neocities.org/
 !config sticker MeuPacote | SatBot
 ```
 
-Define o nome padrão do pacote e do autor das figurinhas geradas pelo bot.
+Define o nome padrão do pacote, o autor e a descrição gravados nos metadados
+das figurinhas do WhatsApp. A descrição padrão é `venha pro SatBot
+https://titannickbub.neocities.org/`; use `!config sticker descricao <texto>`
+para alterá-la. `!config sticker reset` restaura os valores padrão.
 O comando também encaminha as opções `antipv`, `onlychats` e `fuso` aos
 respectivos comandos dedicados; para esses recursos, prefira os guias
 [`!antipv`](#-antipv--controle-de-mensagens-privadas),

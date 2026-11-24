@@ -252,6 +252,9 @@ async function createStickerBuffer(inputBuffer, options = {}) {
     const maxSizeBytes = whatsappLimits
         ? (isAnimated ? WHATSAPP_ANIMATED_STICKER_LIMIT : WHATSAPP_STATIC_STICKER_LIMIT)
         : Infinity;
+    const conversionMaxSizeBytes = options.addMetadata === true && whatsappLimits
+        ? maxSizeBytes - 512
+        : maxSizeBytes;
 
     if (whatsappLimits && isGif && inputMetadata) {
         const duration = getAnimationDurationSeconds(inputMetadata);
@@ -264,8 +267,8 @@ async function createStickerBuffer(inputBuffer, options = {}) {
     }
 
     let webpResult = isAnimated
-        ? await convertAnimatedToWebp(inputBuffer, mode, maxSizeBytes)
-        : await createStaticWebp(inputBuffer, mode, maxSizeBytes);
+        ? await convertAnimatedToWebp(inputBuffer, mode, conversionMaxSizeBytes)
+        : await createStaticWebp(inputBuffer, mode, conversionMaxSizeBytes);
 
     if (!Buffer.isBuffer(webpResult) || webpResult.length < 16) {
         throw new Error("A conversão da mídia não gerou uma figurinha válida.");
@@ -284,10 +287,14 @@ async function createStickerBuffer(inputBuffer, options = {}) {
         );
     }
 
-    // O EXIF customizado pode ser aceito pelo sharp, mas causar renderização
-    // vazia em algumas versões do WhatsApp. O envio padrão usa WebP puro.
+    // EXIF é opt-in porque alguns clientes do WhatsApp podem renderizar stickers com metadados incorretamente.
     const stickerBuffer = options.addMetadata === true
-        ? addExifToWebp(webpResult, options.packName || config.getBotName(), options.authorName || config.getBotName())
+        ? addExifToWebp(
+            webpResult,
+            options.packName || config.getBotName(),
+            options.authorName || config.getBotName(),
+            options.description
+        )
         : webpResult;
     const stickerMetadata = await sharp(stickerBuffer, { failOn: "none" }).metadata();
     if (stickerMetadata.format !== "webp" || !stickerMetadata.width || !stickerMetadata.height) {
@@ -336,19 +343,25 @@ async function createTelegramSticker(inputBuffer, options = {}) {
 }
 
 /**
- * Injeta ou substitui o bloco de metadados EXIF (PackName e AuthorName) em um Buffer de figurinha WebP.
+ * Injeta ou substitui o bloco de metadados EXIF do pacote em um Buffer de figurinha WebP.
  * @param {Buffer} buffer 
  * @param {string} packName 
  * @param {string} authorName 
  * @returns {Buffer}
  */
-function addExifToWebp(buffer, packName = config.getBotName(), authorName = config.getBotName()) {
+function addExifToWebp(
+    buffer,
+    packName = config.getBotName(),
+    authorName = config.getBotName(),
+    description = config.getStickerConfig?.().description
+) {
     if (!Buffer.isBuffer(buffer) || buffer.length < 12) return buffer;
 
     const json = JSON.stringify({
         "sticker-pack-id": "com.satela.bot",
         "sticker-pack-name": String(packName || "Sat Bot"),
         "sticker-pack-publisher": String(authorName || config.getBotName()),
+        "sticker-pack-description": String(description || ""),
         "emojis": ["📌"]
     });
 

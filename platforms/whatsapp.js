@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 require("dotenv").config({
   path: path.join(__dirname, "..", "settings", ".env")
@@ -793,6 +794,55 @@ async function start(onMessage) {
               stickerPayload = sticker;
             }
             await sock.sendMessage(chatId, { sticker: stickerPayload }, { quoted: msg });
+          },
+          replyAudioSticker: async function (data) {
+            if (!Buffer.isBuffer(data?.sticker) || !Buffer.isBuffer(data?.audio)) {
+              throw new Error("[WHATSAPP] replyAudioSticker precisa dos buffers do sticker e do áudio.");
+            }
+            if (typeof sock.waUploadToServer !== "function" || typeof sock.relayMessage !== "function") {
+              throw new Error("[WHATSAPP] A conexão Baileys atual não permite enviar figurinhas com áudio.");
+            }
+
+            const prepareWAMessageMedia = baileysPkg.prepareWAMessageMedia;
+            if (typeof prepareWAMessageMedia !== "function") {
+              throw new Error("[WHATSAPP] prepareWAMessageMedia não está disponível nesta versão do Baileys.");
+            }
+
+            const [stickerMedia, audioMedia] = await Promise.all([
+              prepareWAMessageMedia({ sticker: data.sticker }, { upload: sock.waUploadToServer }),
+              prepareWAMessageMedia({
+                audio: data.audio,
+                mimetype: "audio/ogg; codecs=opus",
+                ptt: true
+              }, { upload: sock.waUploadToServer })
+            ]);
+            const stickerMessage = stickerMedia.stickerMessage;
+            const audioMessage = audioMedia.audioMessage;
+            if (!stickerMessage || !audioMessage) {
+              throw new Error("[WHATSAPP] O Baileys não preparou o sticker ou o áudio.");
+            }
+
+            stickerMessage.width = data.width;
+            stickerMessage.height = data.height;
+            stickerMessage.isAnimated = data.isAnimated === true;
+            stickerMessage.isLottie = false;
+            stickerMessage.contextInfo = {
+              stanzaId: msg.key.id,
+              ...(msg.key.participant ? { participant: msg.key.participant } : {}),
+              quotedMessage: msg.message
+            };
+            audioMessage.mimetype = "audio/ogg; codecs=opus";
+            audioMessage.ptt = true;
+            audioMessage.seconds = data.durationSeconds;
+            audioMessage.waveform = data.waveform;
+
+            const { createAudioStickerMessage, relayAudioSticker } = require("../functions/whatsappAudioSticker");
+            const payload = createAudioStickerMessage(
+              baileysPkg.proto,
+              { sticker: data.sticker, audio: data.audio, stickerMessage, audioMessage },
+              crypto.randomBytes(32)
+            );
+            await relayAudioSticker(sock, chatId, payload);
           }
 
         };

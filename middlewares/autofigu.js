@@ -62,7 +62,9 @@ module.exports = {
                     durationSeconds: media.raw?.seconds,
                     mode: "contain",
                     packName: stickerConfig.packName,
-                    authorName: stickerConfig.authorName
+                    authorName: stickerConfig.authorName,
+                    description: stickerConfig.description,
+                    addMetadata: true
                 });
                 await message.replySticker(sticker);
             }

@@ -6,9 +6,10 @@ module.exports = {
     aliases: [
         "s", "fig", "figurinha",
         "f", "fsticker", "ffig", "ffigurinha",
-        "r", "rsticker", "rfig", "rfigurinha"
+        "r", "rsticker", "rfig", "rfigurinha",
+        "sa", "fa", "ra"
     ],
-    description: `🖼️ Converte fotos, imagens, GIFs ou vídeos curtos em figurinhas (stickers) para WhatsApp e Telegram.
+    description: `🖼️ Converte fotos, imagens, GIFs ou vídeos curtos em figurinhas (stickers) para WhatsApp e Telegram. No WhatsApp, sa/fa/ra criam figurinhas com áudio.
 
 📝 1. Crie a figurinha mantendo a proporção original:
 {prefix}s
@@ -20,6 +21,7 @@ Envie uma foto ou vídeo com o comando na legenda, ou responda à mensagem de m�
 📐 2. Modos alternativos de ajuste:
 • {prefix}f / {prefix}fsticker — Estica a imagem para preencher toda a figurinha.
 • {prefix}r / {prefix}rsticker — Recorta a imagem em formato quadrado centralizado.
+• No WhatsApp: {prefix}sa cria com proporção original; {prefix}fa estica; {prefix}ra recorta. Use em vídeo com som ou combine imagem/vídeo e áudio.
 
 📌 Observações:
 • Suporta fotos, imagens, GIFs e vídeos curtos (até 10 segundos).
@@ -34,7 +36,8 @@ Envie uma foto ou vídeo com o comando na legenda, ou responda à mensagem de m�
     examples: [
         "{prefix}sticker / {prefix}s / {prefix}fig / {prefix}figurinha (manter proporção)",
         "{prefix}f / {prefix}fsticker / {prefix}ffig / {prefix}ffigurinha (esticar total)",
-        "{prefix}r / {prefix}rsticker / {prefix}rfig / {prefix}rfigurinha (cortar centro)"
+        "{prefix}r / {prefix}rsticker / {prefix}rfig / {prefix}rfigurinha (cortar centro)",
+        "{prefix}sa / {prefix}fa / {prefix}ra (figurinhas com áudio no WhatsApp)"
     ],
 
     async execute(message) {
@@ -45,7 +48,43 @@ Envie uma foto ou vídeo com o comando na legenda, ou responda à mensagem de m�
             return message.reply({ text: "❌ O comando de figurinha está disponível para WhatsApp e Telegram." });
         }
 
-        const mediaObj = message.media || (message.quoted && message.quoted.media);
+        const commandName = (message.command || "sticker").toLowerCase();
+        const isAudioSticker = ["sa", "fa", "ra"].includes(commandName);
+        if (isAudioSticker && message.platform !== "whatsapp") {
+            return message.reply({ text: "❌ Figurinhas com áudio estão disponíveis apenas no WhatsApp." });
+        }
+        const currentMedia = message.media;
+        const quotedMedia = message.quoted && message.quoted.media;
+        const isAudio = media => media && (
+            String(media.type || "").toLowerCase() === "audio" ||
+            String(media.mimeType || "").toLowerCase().startsWith("audio/")
+        );
+        const isVisual = media => media && (
+            ["image", "video", "gif", "sticker"].includes(String(media.type || "").toLowerCase()) ||
+            /^(image|video)\//i.test(String(media.mimeType || ""))
+        );
+        let mediaObj = currentMedia || quotedMedia;
+        let audioMedia = null;
+
+        if (isAudioSticker) {
+            if (isVisual(currentMedia) && isAudio(quotedMedia)) {
+                mediaObj = currentMedia;
+                audioMedia = quotedMedia;
+            } else if (isAudio(currentMedia) && isVisual(quotedMedia)) {
+                mediaObj = quotedMedia;
+                audioMedia = currentMedia;
+            } else if (String(currentMedia?.type || "").toLowerCase() === "video") {
+                mediaObj = currentMedia;
+                audioMedia = currentMedia;
+            } else if (String(quotedMedia?.type || "").toLowerCase() === "video") {
+                mediaObj = quotedMedia;
+                audioMedia = quotedMedia;
+            } else {
+                return message.reply({
+                    text: `⚠️ Para criar figurinha com áudio, use ${message.prefix || "!"}sa em um vídeo com som, ou combine uma imagem/vídeo com um áudio respondendo a uma das mídias. Use fa para esticar ou ra para recortar. O áudio é limitado a 30 segundos.`
+                });
+            }
+        }
 
         if (!mediaObj || typeof mediaObj.getBuffer !== "function") {
             const whatsappLimits = message.platform === "whatsapp"
@@ -56,7 +95,8 @@ Envie uma foto ou vídeo com o comando na legenda, ou responda à mensagem de m�
                       "📌 *Modos disponíveis:*\n" +
                       "• `!sticker` / `!s` / `!fig` / `!figurinha` — Proporção original\n" +
                       "• `!f` / `!fsticker` / `!ffig` / `!ffigurinha` — Esticar total\n" +
-                      "• `!r` / `!rsticker` / `!rfig` / `!rfigurinha` — Cortar quadrado no centro" +
+                      "• `!r` / `!rsticker` / `!rfig` / `!rfigurinha` — Cortar quadrado no centro\n" +
+                      (message.platform === "whatsapp" ? "• `!sa` / `!fa` / `!ra` — Figurinha com áudio (áudio até 30 segundos)\n" : "") +
                       whatsappLimits
             });
         }
@@ -69,18 +109,21 @@ Envie uma foto ou vídeo com o comando na legenda, ou responda à mensagem de m�
                 return message.reply({ text: "❌ Não foi possível baixar a mídia da mensagem." });
             }
 
-            const cmdName = (message.command || "sticker").toLowerCase();
             let mode = "contain";
-            if (["f", "fsticker", "ffig", "ffigurinha"].includes(cmdName)) {
+            if (["f", "fsticker", "ffig", "ffigurinha", "fa"].includes(commandName)) {
                 mode = "fill";
-            } else if (["r", "rsticker", "rfig", "rfigurinha"].includes(cmdName)) {
+            } else if (["r", "rsticker", "rfig", "rfigurinha", "ra"].includes(commandName)) {
                 mode = "cover";
             }
 
             const configFn = message.functions?.config || require("../../functions/config");
             const stickerConfig = typeof configFn.getStickerConfig === "function"
                 ? configFn.getStickerConfig()
-                : { packName: configFn.getBotName?.() || "Sat Bot", authorName: configFn.getBotName?.() || "Sat Bot" };
+                : {
+                    packName: configFn.getBotName?.() || "Sat Bot",
+                    authorName: configFn.getBotName?.() || "Sat Bot",
+                    description: "venha pro SatBot https://titannickbub.neocities.org/"
+                };
 
             const telegramSticker = message.platform === "telegram"
                 ? await createTelegramSticker(buffer, {
@@ -88,7 +131,8 @@ Envie uma foto ou vídeo com o comando na legenda, ou responda à mensagem de m�
                     type: mediaObj.type,
                     mode,
                     packName: stickerConfig.packName,
-                    authorName: stickerConfig.authorName
+                    authorName: stickerConfig.authorName,
+                    description: stickerConfig.description
                 })
                 : null;
             const stickerBuffer = telegramSticker
@@ -100,8 +144,30 @@ Envie uma foto ou vídeo com o comando na legenda, ou responda à mensagem de m�
                     durationSeconds: mediaObj.raw?.seconds,
                     mode,
                     packName: stickerConfig.packName,
-                    authorName: stickerConfig.authorName
+                    authorName: stickerConfig.authorName,
+                    description: stickerConfig.description,
+                    addMetadata: message.platform === "whatsapp"
                 });
+
+            if (isAudioSticker) {
+                const { createAudioStickerAudio } = require("../../functions/audioStickerHelper");
+                const audioBuffer = audioMedia === mediaObj
+                    ? buffer
+                    : await audioMedia.getBuffer();
+                const audio = await createAudioStickerAudio(audioBuffer);
+                const metadata = await require("sharp")(stickerBuffer, { animated: true, failOn: "none" }).metadata();
+                await message.replyAudioSticker({
+                    sticker: stickerBuffer,
+                    audio: audio.buffer,
+                    durationSeconds: audio.durationSeconds,
+                    waveform: audio.waveform,
+                    width: metadata.width || 512,
+                    height: metadata.pageHeight || metadata.height || 512,
+                    isAnimated: (Number(metadata.pages) || 1) > 1
+                });
+                await message.react("✅").catch(() => {});
+                return;
+            }
 
             // LÓGICA DO TELEGRAM (Pacotes Pessoais + Envio Direto do Sticker do Pacote)
             if (message.platform === "telegram") {

@@ -15,6 +15,8 @@ const marriage = require("./marriageService");
 const groupSettings = require("./groupSettings");
 const auditLogs = require("./auditLogs");
 const { getCurrentChangelog } = require("./changelog");
+const rpgMaker = require("./rpgMaker");
+const rpgMakerWeb = require("./rpgMakerWeb");
 const config = require("./config");
 const send = require("./send");
 const activity = require("./activity");
@@ -7233,6 +7235,8 @@ function renderHome(botName, central = null, loginError = "", hasSession = Boole
         : "Não ativo";
     const platformLabels = { whatsapp: "WhatsApp", discord: "Discord", telegram: "Telegram" };
     const platformIcons = { whatsapp: "◉", discord: "◈", telegram: "➤" };
+    const platformAccounts = Array.isArray(central.platformAccounts) ? central.platformAccounts : [];
+    const canUnlinkPlatform = platformAccounts.length > 1;
     const formatDate = value => {
         if (!value) return "—";
         const date = new Date(value);
@@ -7240,11 +7244,14 @@ function renderHome(botName, central = null, loginError = "", hasSession = Boole
           ? escapeHtml(value)
           : escapeHtml(date.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }));
     };
-    const platforms = (central.platformAccounts || []).map(account => {
+    const platforms = platformAccounts.map(account => {
         const platform = String(account.platform || "");
         const label = platformLabels[platform] || platform;
         const name = account.displayName || account.username || account.platformId;
-        return `<button class="platform-card" type="button" data-platform="${escapeHtml(platform)}" aria-label="Ver grupos e servidores vinculados ao ${escapeHtml(label)}"><span class="platform-icon ${escapeHtml(platform)}">${platformIcons[platform] || "◉"}</span><div class="platform-details"><strong>${escapeHtml(label)}</strong><small>${escapeHtml(name || "Conta conectada")}</small><small class="platform-account-meta">ID: ${escapeHtml(account.platformId || "—")} · Vinculada em: ${formatDate(account.linkedAt)}</small></div><span class="connected">Conectada</span></button>`;
+        const unlinkButtonState = canUnlinkPlatform
+          ? ""
+          : 'disabled title="Mantenha ao menos uma plataforma conectada à Conta Central."';
+        return `<div class="platform-entry"><button class="platform-card" type="button" data-platform="${escapeHtml(platform)}" aria-label="Ver grupos e servidores vinculados ao ${escapeHtml(label)}"><span class="platform-icon ${escapeHtml(platform)}">${platformIcons[platform] || "◉"}</span><div class="platform-details"><strong>${escapeHtml(label)}</strong><small>${escapeHtml(name || "Conta conectada")}</small><small class="platform-account-meta">ID: ${escapeHtml(account.platformId || "—")} · Vinculada em: ${formatDate(account.linkedAt)}</small></div><span class="connected">Conectada</span></button><button class="platform-unlink" type="button" data-unlink-platform="${escapeHtml(platform)}" aria-label="Desvincular ${escapeHtml(label)}" ${unlinkButtonState}>Desvincular</button></div>`;
     }).join("");
     return `<!doctype html>
 <html lang="pt-BR">
@@ -7287,7 +7294,9 @@ function renderHome(botName, central = null, loginError = "", hasSession = Boole
     .panel h2{margin:0;font-size:16px}
     .panel-intro{margin:5px 0 17px;color:var(--muted);font-size:13px}
     .platform-list{display:grid;gap:10px}
+    .platform-entry{display:flex;align-items:stretch;gap:8px}
     .platform-card{display:flex;width:100%;align-items:center;gap:12px;padding:13px;border:1px solid #ffffff0c;border-radius:13px;background:#ffffff05;color:var(--text);text-align:left;cursor:pointer;transition:border-color .18s ease,background .18s ease}
+    .platform-entry .platform-card{width:auto;min-width:0;flex:1}
     .platform-card:hover,.platform-card:focus-visible{border-color:#8599ff88;background:#8599ff12}
     .platform-icon{display:grid;place-items:center;width:38px;height:38px;flex:none;border-radius:12px;background:#8577ff20;color:#c0b8ff;font-size:20px;font-weight:800}
     .platform-icon.whatsapp{background:#2bc67920;color:#74e6a7}.platform-icon.telegram{background:#30a9dc20;color:#76d3f5}
@@ -7296,6 +7305,11 @@ function renderHome(botName, central = null, loginError = "", hasSession = Boole
     .platform-card .platform-account-meta{max-width:none;overflow-wrap:anywhere;white-space:normal;line-height:1.5}
     .platform-card .connected{margin-left:auto;white-space:nowrap;font-size:10px}
     .platform-card .connected:before{width:6px;height:6px}
+    .platform-unlink{align-self:center;min-height:38px;padding:8px 11px;border:1px solid #ff879955;border-radius:10px;background:#ff879910;color:#ffb5bd;font:inherit;font-size:11px;font-weight:700;cursor:pointer}
+    .platform-unlink:hover:not(:disabled),.platform-unlink:focus-visible{border-color:#ff8799;background:#ff879922;outline:none}
+    .platform-unlink:disabled{cursor:not-allowed;opacity:.45}
+    .platform-unlink-feedback{min-height:18px;margin:10px 0 0;color:#9cf0cf;font-size:12px;line-height:1.5}
+    .platform-unlink-feedback.error{color:#ff9caa}
     .vip-card{display:flex;min-height:100%;flex-direction:column;justify-content:space-between;background:radial-gradient(ellipse at top right,#7666ff23,transparent 55%),linear-gradient(145deg,#171d2b,#131925)}
     .vip-mark{display:grid;place-items:center;width:48px;height:48px;margin-bottom:18px;border:1px solid #f6c46a35;border-radius:15px;background:#f6c46a12;color:#ffd37f;font-size:23px}
     .vip-status{margin-top:18px;color:#e6c77f;font-size:21px;font-weight:800}
@@ -7367,8 +7381,9 @@ function renderHome(botName, central = null, loginError = "", hasSession = Boole
     <div class="section-heading"><div><h2>Visão geral</h2><p>Suas conexões e benefícios em um só lugar.</p></div></div>
     <section class="account-layout">
         <article class="panel">
-          <h2>Plataformas conectadas</h2><p class="panel-intro">Contas vinculadas à sua Conta Central.</p>
+          <h2>Plataformas conectadas</h2><p class="panel-intro">Contas vinculadas à sua Conta Central. Mantenha ao menos uma plataforma conectada.</p>
           <div class="platform-list">${platforms || '<p class="panel-intro">Nenhuma plataforma conectada ainda.</p>'}</div>
+          <p class="platform-unlink-feedback" id="platformUnlinkFeedback" role="status" aria-live="polite"></p>
         </article>
         <article class="panel vip-card">
           <div><span class="vip-mark" aria-hidden="true">✧</span><h2>Benefício VIP</h2><p class="panel-intro">Seu status atual no SatBot.</p></div>
@@ -7475,6 +7490,29 @@ function renderHome(botName, central = null, loginError = "", hasSession = Boole
         }catch(error){
           platformGroupStatus.classList.add("error");
           platformGroupStatus.textContent=error.message;
+        }
+    }));
+    document.querySelectorAll("[data-unlink-platform]").forEach(button=>button.addEventListener("click",async()=>{
+        const platform=button.dataset.unlinkPlatform;
+        const label=platformLabels[platform]||platform;
+        if(!window.confirm("Desvincular "+label+" desta Conta Central? O ID e o login da Conta Central serão mantidos."))return;
+        const feedback=document.getElementById("platformUnlinkFeedback");
+        button.disabled=true;
+        showFeedback(feedback,false,"");
+        try{
+          await submitAccountAction("/api/account/unlink-platform",{platform});
+          button.closest(".platform-entry").remove();
+          const remainingUnlinkButtons=document.querySelectorAll("[data-unlink-platform]");
+          if(remainingUnlinkButtons.length<=1){
+            remainingUnlinkButtons.forEach(remainingButton=>{
+              remainingButton.disabled=true;
+              remainingButton.title="Mantenha ao menos uma plataforma conectada à Conta Central.";
+            });
+          }
+          showFeedback(feedback,false,label+" desvinculada. O ID e o login da Conta Central foram mantidos.");
+        }catch(error){
+          showFeedback(feedback,true,error.message);
+          button.disabled=false;
         }
     }));
     document.getElementById("closePlatformDialog").addEventListener("click",()=>platformDialog.close());
@@ -8129,6 +8167,104 @@ function start() {
         connectedHours: Number((uptimeSeconds / 3600).toFixed(2)),
         uptimeSeconds
       });
+      return;
+    }
+
+    if (request.method === "GET" && requestUrl.pathname === "/api/rpg-maker/catalog") {
+      const central = await getSessionCentral(request);
+      if (!central) {
+        sendJson(response, 401, { error: "Sua sessão expirou. Entre novamente para continuar." });
+        return;
+      }
+      try {
+        const platform = String(requestUrl.searchParams.get("plataforma") || "").toLowerCase();
+        getPlatformSuperUserAccount(central, platform);
+        sendJson(response, 200, { catalog: rpgMaker.readCatalog() });
+      } catch (error) {
+        const reason = String(error?.message || "");
+        const statusCode = /restrito|não está vinculada/i.test(reason) ? 403 : 400;
+        sendJson(response, statusCode, { error: reason || "Não foi possível carregar o catálogo." });
+      }
+      return;
+    }
+
+    if (request.method === "POST" && requestUrl.pathname === "/api/rpg-maker/catalog") {
+      if (!isSameOriginRequest(request)) {
+        sendJson(response, 403, { error: "Origem da solicitação inválida." });
+        return;
+      }
+      let payload;
+      try {
+        payload = await readJsonBody(request, 12 * 1024 * 1024);
+      } catch (error) {
+        sendJson(response, error.message === "request-too-large" ? 413 : 400, {
+          error: error.message === "request-too-large" ? "A solicitação excedeu o limite de 12 MB." : "Solicitação JSON inválida."
+        });
+        return;
+      }
+      const central = await getSessionCentral(request);
+      if (!central) {
+        sendJson(response, 401, { error: "Sua sessão expirou. Entre novamente para continuar." });
+        return;
+      }
+      try {
+        const platform = String(payload?.platform || "").toLowerCase();
+        getPlatformSuperUserAccount(central, platform);
+        const catalog = rpgMaker.readCatalog();
+        let message;
+        if (payload.action === "attribute") {
+          const item = rpgMaker.createAttribute(catalog, payload.nome);
+          message = `Atributo "${item.nome}" criado com ID ${item.id}.`;
+        } else if (payload.action === "attribute.update") {
+          const item = rpgMaker.updateAttribute(catalog, payload.id, payload.nome);
+          message = `Atributo "${item.nome}" atualizado.`;
+        } else if (payload.action === "effect") {
+          const item = rpgMaker.createEffect(catalog, payload.nome);
+          message = `Efeito "${item.nome}" criado com ID ${item.id}.`;
+        } else if (payload.action === "effect.update") {
+          const item = rpgMaker.updateEffect(catalog, payload.id, payload.nome);
+          message = `Efeito "${item.nome}" atualizado.`;
+        } else if (payload.action === "move") {
+          const item = rpgMaker.createMove(catalog, payload);
+          message = `Golpe "${item.nome}" criado com ID ${item.id}.`;
+        } else if (payload.action === "move.update") {
+          const item = rpgMaker.updateMove(catalog, payload.id, payload);
+          message = `Golpe "${item.nome}" atualizado.`;
+        } else if (payload.action === "character") {
+          if (!catalog.fraquezas.length || !catalog.golpes.length) {
+            throw new Error("Crie ao menos um atributo e um golpe antes de criar personagens.");
+          }
+          const match = typeof payload.imageData === "string"
+            ? payload.imageData.match(/^data:image\/(?:png|jpeg|gif|webp);base64,([A-Za-z0-9+/=]+)$/)
+            : null;
+          if (!match) throw new Error("Envie uma imagem PNG, JPEG, GIF ou WebP válida.");
+          const imageBuffer = Buffer.from(match[1], "base64");
+          rpgMaker.detectImageFormat(imageBuffer);
+          const character = rpgMaker.saveCharacter(catalog, payload, imageBuffer);
+          message = `Personagem "${character.nome}" criado com ID ${character.id}.`;
+        } else if (payload.action === "character.update") {
+          let imageBuffer = null;
+          if (payload.imageData !== undefined && payload.imageData !== "") {
+            const match = typeof payload.imageData === "string"
+              ? payload.imageData.match(/^data:image\/(?:png|jpeg|gif|webp);base64,([A-Za-z0-9+/=]+)$/)
+              : null;
+            if (!match) throw new Error("Envie uma imagem PNG, JPEG, GIF ou WebP válida.");
+            imageBuffer = Buffer.from(match[1], "base64");
+            rpgMaker.detectImageFormat(imageBuffer);
+          }
+          const character = rpgMaker.updateCharacter(catalog, payload.id, payload, imageBuffer);
+          message = `Personagem "${character.nome}" atualizado.`;
+        } else {
+          sendJson(response, 400, { error: "Ação do RPG Maker inválida." });
+          return;
+        }
+        if (!["character", "character.update"].includes(payload.action)) rpgMaker.persist(catalog);
+        sendJson(response, 200, { success: true, message });
+      } catch (error) {
+        const reason = String(error?.message || "");
+        const statusCode = /restrito|não está vinculada/i.test(reason) ? 403 : 400;
+        sendJson(response, statusCode, { error: reason || "Não foi possível atualizar o catálogo." });
+      }
       return;
     }
 
@@ -10252,6 +10388,35 @@ function start() {
         return;
       }
 
+      if (requestUrl.pathname === "/api/account/unlink-platform") {
+        const platform = typeof payload?.platform === "string"
+          ? payload.platform.trim().toLowerCase()
+          : "";
+        if (!platform || platform.length > 32) {
+          sendJson(response, 400, { error: "Informe uma plataforma válida para desvincular." });
+          return;
+        }
+
+        try {
+          await centralAccounts.unlinkPlatform(central.id, platform);
+          sendJson(response, 200, { success: true });
+        } catch (error) {
+          const errors = {
+            "central not found": { status: 404, message: "Conta Central não encontrada." },
+            "platform not linked": { status: 404, message: "Esta plataforma não está vinculada à sua Conta Central." },
+            "last platform": { status: 400, message: "Mantenha ao menos uma plataforma vinculada à sua Conta Central." }
+          };
+          const knownError = errors[error.message];
+          if (knownError) {
+            sendJson(response, knownError.status, { error: knownError.message });
+            return;
+          }
+          console.error("[WEB] Falha ao desvincular plataforma da Conta Central:", error.message || error);
+          sendJson(response, 500, { error: "Não foi possível desvincular a plataforma agora." });
+        }
+        return;
+      }
+
       if (requestUrl.pathname === "/api/account/name") {
         const name = typeof payload?.name === "string" ? payload.name.trim() : "";
         if (!name) {
@@ -11186,6 +11351,36 @@ function start() {
         "X-Content-Type-Options": "nosniff"
       });
       response.end(renderHome(config.getBotName(), central));
+      return;
+    }
+
+    if (request.method === "GET" && requestUrl.pathname === "/painel-rpg-maker") {
+      const central = await getSessionCentral(request);
+      if (!central) {
+        response.writeHead(302, { Location: "/dashboard", "Cache-Control": "no-store" });
+        response.end();
+        return;
+      }
+      const platform = String(requestUrl.searchParams.get("plataforma") || "").toLowerCase();
+      try {
+        getPlatformSuperUserAccount(central, platform);
+        response.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Referrer-Policy": "no-referrer",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(rpgMakerWeb.renderPage(platform));
+      } catch (error) {
+        const reason = String(error?.message || "");
+        const statusCode = /restrito|não está vinculada/i.test(reason) ? 403 : 400;
+        response.writeHead(statusCode, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff"
+        });
+        response.end(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>RPG Maker indisponível</title><body style="font-family:Segoe UI,Arial;background:#10131c;color:#f5f7fb;padding:40px"><h1>Acesso ao RPG Maker indisponível</h1><p>${escapeHtml(reason)}</p><a href="/dashboard" style="color:#b9c6ff">Voltar à Conta Central</a></body></html>`);
+      }
       return;
     }
 
