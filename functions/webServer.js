@@ -93,6 +93,103 @@ const ADMIN_SYSTEM_SETTING_KEYS = new Set(ADMIN_SYSTEM_SETTINGS.map(setting => s
 const webSessions = new Map();
 const webLoginAttempts = new Map();
 
+function _ts() {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  return `[${hh}:${mm}:${ss}]`;
+}
+
+function sanitizeWebLogValue(value, maxLength = 100) {
+  return String(value ?? "")
+    .replace(/[\r\n|]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function getWebClientIp(request) {
+  const forwarded = String(request?.headers?.["x-forwarded-for"] || "")
+    .split(",")[0]
+    .trim();
+  return sanitizeWebLogValue(
+    forwarded || request?.socket?.remoteAddress || "desconhecido",
+    64
+  );
+}
+
+function describeWebActor(central, fallback = "visitante") {
+  if (!central?.id) return fallback;
+  const label = sanitizeWebLogValue(
+    central.webAuth?.username || central.name || "conta",
+    60
+  );
+  return `${label} (${sanitizeWebLogValue(central.id, 64)})`;
+}
+
+const SILENT_SUCCESS_PATHS = new Set([
+  "/api/ping",
+  "/semfoto.jpg",
+  "/avatar",
+  "/sinal.mp3",
+  "/sinal2.mp3",
+  "/favicon.ico"
+]);
+
+function defaultWebResultLabel(statusCode) {
+  if (statusCode >= 500) return "erro";
+  if (statusCode === 429) return "bloqueado";
+  if (statusCode === 401 || statusCode === 403) return "negado";
+  if (statusCode === 404) return "não encontrado";
+  if (statusCode === 405) return "método não permitido";
+  if (statusCode >= 400) return "inválido";
+  return "ok";
+}
+
+function emitWebAccessLog(webLog, statusCode) {
+  if (!webLog || webLog.skip) return;
+  if (statusCode < 400 && SILENT_SUCCESS_PATHS.has(webLog.pathname) && !webLog.forceLog) {
+    return;
+  }
+
+  const durationMs = Math.max(0, Date.now() - webLog.startedAt);
+  const tag = webLog.platform
+    ? `[WEB:${sanitizeWebLogValue(webLog.platform, 24)}]`
+    : "[WEB]";
+  const actor = webLog.central
+    ? describeWebActor(webLog.central)
+    : (sanitizeWebLogValue(webLog.actorLabel, 80) || "visitante");
+  const parts = [tag, actor];
+  if (webLog.groupId) parts.push(`grupo:${sanitizeWebLogValue(webLog.groupId, 80)}`);
+  parts.push(`rota:${sanitizeWebLogValue(webLog.method, 10)} ${sanitizeWebLogValue(webLog.pathname, 120)}`);
+  if (webLog.action) parts.push(`ação:${sanitizeWebLogValue(webLog.action, 80)}`);
+  if (webLog.target) parts.push(`alvo:${sanitizeWebLogValue(webLog.target, 80)}`);
+  parts.push(`resultado:${sanitizeWebLogValue(webLog.result || defaultWebResultLabel(statusCode), 60)}`);
+  parts.push(`status:${statusCode} (${durationMs}ms)`);
+  if (webLog.includeIp || statusCode === 401 || statusCode === 403 || statusCode === 429) {
+    parts.push(`ip:${sanitizeWebLogValue(webLog.ip, 64)}`);
+  }
+  const detail = webLog.error || webLog.detail;
+  const suffix = detail ? ` | ${sanitizeWebLogValue(detail, 180)}` : "";
+  const icon = statusCode >= 500
+    ? "❌"
+    : (statusCode === 401 || statusCode === 403 || statusCode === 429)
+      ? "⛔"
+      : statusCode >= 400
+        ? "⚠️"
+        : "🌐";
+  const line = `${_ts()} ${icon}${parts.join(" ")}${suffix}`;
+
+  if (statusCode >= 500) {
+    console.error(line);
+  } else if (statusCode >= 400) {
+    console.warn(line);
+  } else {
+    console.log(line);
+  }
+}
+
 function getPort() {
   const domain = config.getWebDomain();
   const configuredPort = Number.parseInt(String(domain || "").split(":").pop(), 10);
@@ -6854,6 +6951,13 @@ function escapeHtml(value) {
 }
 
 function sendJson(response, statusCode, payload, headers = {}) {
+  if (response._webLog) {
+    if (statusCode >= 400 && typeof payload?.error === "string" && !response._webLog.error) {
+      response._webLog.error = payload.error;
+    } else if (statusCode < 400 && typeof payload?.message === "string" && !response._webLog.detail) {
+      response._webLog.detail = payload.message;
+    }
+  }
   response.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
@@ -6942,10 +7046,15 @@ async function getSessionCentral(request) {
       webSessions.delete(match[1]);
       return null;
     }
+    if (request._webLog) request._webLog.central = central;
     return central;
   }
   const central = await centralAccounts.getCentralByRememberedWebSession(match[1]);
-  return isDashboardAccount(central) ? central : null;
+  if (isDashboardAccount(central)) {
+    if (request._webLog) request._webLog.central = central;
+    return central;
+  }
+  return null;
 }
 
 function createWebSession(centralId) {
@@ -8145,16 +8254,47 @@ function styles() {
   return `:root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;background:#10131c;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at top,#27365d 0,#10131c 48%,#090b10 100%)}.card{width:min(860px,100%);padding:34px;border:1px solid var(--profile-border,#334366);border-radius:24px;background:linear-gradient(145deg,var(--profile-surface,#1c2438ee),var(--profile-deep,#111521f2));box-shadow:0 24px 80px #0008}.brand{letter-spacing:.18em;color:var(--profile-accent,#7ea7ff);font-weight:800}.brand span{color:#9da8bd;font-weight:500;font-size:.75em}header{display:flex;align-items:center;gap:18px;margin:34px 0 18px}.avatar{position:relative;overflow:hidden;flex:none;width:72px;height:72px;border-radius:20px;display:grid;place-items:center;background:linear-gradient(135deg,var(--profile-accent,#6d5dfc),var(--profile-border,#3aa8ff));font-size:32px;font-weight:800}.avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}h1{margin:0;font-size:clamp(28px,5vw,46px)}p{margin:8px 0}.muted,.hint{color:#9da8bd}.scope{padding:13px 16px;border-radius:12px;background:var(--profile-deep,#0e1422);color:#b7c5e7;font-size:14px}.scope span{color:var(--profile-accent,#536486);margin:0 8px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}.grid article{padding:22px;border-radius:16px;background:var(--profile-surface,#202a40);border:1px solid var(--profile-outline,var(--profile-border,#334566))}.label{color:#9da8bd;font-size:12px;letter-spacing:.12em;font-weight:700}.value{font-size:32px;font-weight:800;margin:12px 0 8px}.value.small{font-size:22px}.money{color:#8ff0bf}.meta{color:#b8c3d9;font-size:14px}footer{margin-top:26px;color:#71809d;font-size:13px}.error{text-align:center}.error h1{margin-top:28px}@media(max-width:600px){.card{padding:24px}.grid{grid-template-columns:1fr}header{margin-top:26px}}`;
 }
 
-function start() {
+function start(options = {}) {
   const domain = config.getWebDomain();
-  if (!domain) {
-    console.log("[WEB] Painel web desativado: nenhum domínio foi configurado.");
+  if (!domain && options.port === undefined) {
+    console.log(`${_ts()} 🌐[WEB] Painel web desativado: nenhum domínio foi configurado.`);
     return null;
   }
 
-  const port = getPort();
+  const port = Number.isInteger(options.port) && options.port >= 0 && options.port <= 65535
+    ? options.port
+    : getPort();
   const server = http.createServer(async (request, response) => {
-    const requestUrl = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
+    let requestUrl;
+    try {
+      requestUrl = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
+    } catch {
+      requestUrl = new URL("/", `http://${request.headers.host || "localhost"}`);
+    }
+
+    const webLog = {
+      startedAt: Date.now(),
+      method: request.method || "GET",
+      pathname: requestUrl.pathname,
+      ip: getWebClientIp(request),
+      central: null,
+      actorLabel: "",
+      platform: "",
+      groupId: "",
+      action: "",
+      target: "",
+      detail: "",
+      error: "",
+      result: "",
+      includeIp: false,
+      forceLog: false,
+      skip: false
+    };
+    request._webLog = webLog;
+    response._webLog = webLog;
+    response.on("finish", () => emitWebAccessLog(webLog, response.statusCode));
+
+    try {
 
     if (request.method === "GET" && requestUrl.pathname === "/api/ping") {
       const uptimeSeconds = Math.floor(process.uptime());
@@ -8171,6 +8311,7 @@ function start() {
     }
 
     if (request.method === "GET" && requestUrl.pathname === "/api/rpg-maker/catalog") {
+      webLog.action = "rpg_maker.catalog_read";
       const central = await getSessionCentral(request);
       if (!central) {
         sendJson(response, 401, { error: "Sua sessão expirou. Entre novamente para continuar." });
@@ -8178,6 +8319,7 @@ function start() {
       }
       try {
         const platform = String(requestUrl.searchParams.get("plataforma") || "").toLowerCase();
+        webLog.platform = platform;
         getPlatformSuperUserAccount(central, platform);
         sendJson(response, 200, { catalog: rpgMaker.readCatalog() });
       } catch (error) {
@@ -8189,6 +8331,7 @@ function start() {
     }
 
     if (request.method === "POST" && requestUrl.pathname === "/api/rpg-maker/catalog") {
+      webLog.action = "rpg_maker.catalog_update";
       if (!isSameOriginRequest(request)) {
         sendJson(response, 403, { error: "Origem da solicitação inválida." });
         return;
@@ -8209,6 +8352,13 @@ function start() {
       }
       try {
         const platform = String(payload?.platform || "").toLowerCase();
+        webLog.platform = platform;
+        if (payload?.action) webLog.action = `rpg_maker.${String(payload.action)}`;
+        if (payload?.id !== undefined && payload?.id !== null && payload?.id !== "") {
+          webLog.target = String(payload.id);
+        } else if (payload?.nome) {
+          webLog.target = String(payload.nome);
+        }
         getPlatformSuperUserAccount(central, platform);
         const catalog = rpgMaker.readCatalog();
         let message;
@@ -8269,6 +8419,7 @@ function start() {
     }
 
     if (request.method === "GET" && requestUrl.pathname === "/api/account/me") {
+      webLog.action = "account.me";
       let central;
       try {
         central = await getSessionCentral(request);
@@ -8317,7 +8468,10 @@ function start() {
     }
 
     if (request.method === "POST" && requestUrl.pathname === "/api/login") {
+      webLog.action = "auth.login";
+      webLog.includeIp = true;
       if (!isSameOriginRequest(request)) {
+        webLog.result = "origem inválida";
         sendJson(response, 403, { error: "Origem da solicitação inválida." });
         return;
       }
@@ -8326,6 +8480,7 @@ function start() {
       const now = Date.now();
       const previousAttempts = webLoginAttempts.get(remoteAddress);
       if (previousAttempts && previousAttempts.expiresAt > now && previousAttempts.count >= WEB_LOGIN_MAX_ATTEMPTS) {
+        webLog.result = "bloqueado (muitas tentativas)";
         sendJson(response, 429, { error: "Muitas tentativas. Aguarde antes de tentar novamente." });
         return;
       }
@@ -8344,6 +8499,7 @@ function start() {
         : typeof credentials?.centralId === "string" ? credentials.centralId.trim() : "";
       const password = typeof credentials?.password === "string" ? credentials.password : "";
       const rememberMe = credentials?.rememberMe === true;
+      webLog.actorLabel = login ? `login:${login}` : "login:vazio";
       let valid = false;
       let central = null;
       try {
@@ -8352,7 +8508,7 @@ function start() {
           valid = Boolean(central && await centralAccounts.verifyWebPassword(central.id, password));
         }
       } catch (error) {
-        console.error("[WEB] Falha ao validar credenciais do dashboard:", error.message || error);
+        console.error(`${_ts()} ❌[WEB] Falha ao validar credenciais do dashboard:`, error.message || error);
         sendJson(response, 500, { error: "Não foi possível validar o login agora." });
         return;
       }
@@ -8363,6 +8519,7 @@ function start() {
           : { count: 0, expiresAt: now + WEB_LOGIN_LIMIT_MS };
         attempt.count += 1;
         webLoginAttempts.set(remoteAddress, attempt);
+        webLog.result = `falha (${attempt.count}/${WEB_LOGIN_MAX_ATTEMPTS})`;
         sendJson(response, 401, { error: "Usuário/ID central ou senha incorretos." });
         return;
       }
@@ -8372,17 +8529,22 @@ function start() {
         const sessionId = rememberMe
           ? await centralAccounts.createRememberedWebSession(central.id, REMEMBERED_WEB_SESSION_TTL_DAYS)
           : createWebSession(central.id);
+        webLog.central = central;
+        webLog.result = "autenticado";
+        webLog.detail = `lembrar=${rememberMe}`;
         sendJson(response, 200, { success: true }, {
           "Set-Cookie": getSessionCookie(sessionId, requestIsSecure(request), rememberMe)
         });
       } catch (error) {
-        console.error("[WEB] Falha ao criar sessão do dashboard:", error.message || error);
+        console.error(`${_ts()} ❌[WEB] Falha ao criar sessão do dashboard:`, error.message || error);
         sendJson(response, 500, { error: "Não foi possível iniciar a sessão agora." });
       }
       return;
     }
 
     if (request.method === "POST" && requestUrl.pathname === "/api/setup-credentials") {
+      webLog.action = "auth.setup_credentials";
+      webLog.includeIp = true;
       if (!isSameOriginRequest(request)) {
         sendJson(response, 403, { error: "Origem da solicitação inválida." });
         return;
@@ -8398,6 +8560,9 @@ function start() {
       }
 
       try {
+        if (typeof payload?.username === "string" && payload.username.trim()) {
+          webLog.target = payload.username.trim();
+        }
         const password = typeof payload?.password === "string" ? payload.password : "";
         const confirmPassword = typeof payload?.confirmPassword === "string" ? payload.confirmPassword : "";
         if (password !== confirmPassword) {
@@ -8409,6 +8574,7 @@ function start() {
           typeof payload?.username === "string" ? payload.username : "",
           password
         );
+        webLog.result = "configurado";
         sendJson(response, 200, { success: true });
       } catch (error) {
         const errors = {
@@ -8421,7 +8587,7 @@ function start() {
           sendJson(response, 400, { error: errors[error.message] });
           return;
         }
-        console.error("[WEB] Falha ao salvar credenciais da Conta Central:", error.message || error);
+        console.error(`${_ts()} ❌[WEB] Falha ao salvar credenciais da Conta Central:`, error.message || error);
         sendJson(response, 500, { error: "Não foi possível salvar as credenciais agora." });
       }
       return;
@@ -8460,6 +8626,15 @@ function start() {
 
       if (requestUrl.pathname === "/api/account/su/rental") {
         const platform = String(payload?.platform || "").toLowerCase();
+        webLog.platform = platform;
+        webLog.action = `su.${String(payload?.action || "unknown")}`;
+        if (payload?.id !== undefined && payload?.id !== null && payload?.id !== "") {
+          webLog.target = String(payload.id);
+        } else if (payload?.scopeId) {
+          webLog.target = String(payload.scopeId);
+        } else if (payload?.type) {
+          webLog.target = String(payload.type);
+        }
         let platformAccount;
         try {
           platformAccount = getPlatformSuperUserAccount(central, platform);
@@ -8482,6 +8657,7 @@ function start() {
           const targetPlatform = platformScopedActions.has(action)
             ? String(payload?.targetPlatform || platform).toLowerCase()
             : platform;
+          webLog.platform = targetPlatform;
           const targetAccount = targetPlatform === platform
             ? platformAccount
             : getLinkedPlatformAccount(central, targetPlatform);
@@ -8708,6 +8884,8 @@ function start() {
 
       if (requestUrl.pathname === "/api/account/platform-groups") {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
+        webLog.platform = platform;
+        webLog.action = "account.platform_groups";
         const platformAccount = central.platformAccounts.find(account => account.platform === platform);
         if (!platformAccount) {
           sendJson(response, 404, { error: "Esta plataforma não está vinculada à sua Conta Central." });
@@ -8720,6 +8898,7 @@ function start() {
 
         try {
           const groups = await getLinkedPlatformGroups(platform, platformAccount.platformId);
+          webLog.detail = `${groups.length} grupo(s)`;
           sendJson(response, 200, { groups });
         } catch (error) {
           console.error(`[WEB] Falha ao listar grupos da plataforma ${platform}:`, error.message || error);
@@ -8731,6 +8910,12 @@ function start() {
       if (["/api/account/local/vip-purchase", "/api/account/local/vip-order"].includes(requestUrl.pathname)) {
         const platform = typeof payload?.platform === "string" ? payload.platform.toLowerCase() : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
+        webLog.platform = platform;
+        webLog.groupId = groupId;
+        webLog.action = requestUrl.pathname.endsWith("/vip-order") ? "local.vip_order" : "local.vip_purchase";
+        if (payload?.offerId !== undefined && payload?.offerId !== null && payload?.offerId !== "") {
+          webLog.target = `oferta:${payload.offerId}`;
+        }
         try {
           const accountData = await getLocalAccountData(central, platform, groupId);
           const message = getLocalGroupMessage(platform, groupId, accountData.platformId);
@@ -8799,6 +8984,11 @@ function start() {
       if (requestUrl.pathname === "/api/account/local/admin-community-vip") {
         const platform = typeof payload?.platform === "string" ? payload.platform.toLowerCase() : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
+        webLog.platform = platform;
+        webLog.groupId = groupId;
+        webLog.action = `admin.community_vip.${String(payload?.action || "unknown")}`;
+        const vipTarget = payload?.userId || payload?.orderId || payload?.offerId || payload?.command || payload?.roleId;
+        if (vipTarget !== undefined && vipTarget !== null && vipTarget !== "") webLog.target = String(vipTarget);
         try {
           const { platformAccount } = await authorizeCommunityVipAdmin(central, platform, groupId);
           const message = getLocalGroupMessage(platform, groupId, String(platformAccount.platformId));
@@ -8948,6 +9138,10 @@ function start() {
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
         const action = payload?.action;
         const requestedChannelId = typeof payload?.channelId === "string" ? payload.channelId.trim() : "";
+        webLog.platform = platform;
+        webLog.groupId = groupId;
+        webLog.action = `admin.chat_control.${String(action || "unknown")}`;
+        webLog.target = requestedChannelId || groupId;
         if (!["discord", "whatsapp"].includes(platform) ||
             !["open", "close", "status"].includes(action) ||
             (platform === "discord" && !/^\d{15,25}$/.test(requestedChannelId))) {
@@ -9020,6 +9214,9 @@ function start() {
       if (requestUrl.pathname === "/api/account/local/admin-audit-logs") {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
+        webLog.platform = platform;
+        webLog.groupId = groupId;
+        webLog.action = payload?.auditLogs === undefined ? "admin.audit_logs_read" : "admin.audit_logs_update";
         try {
           await getGroupAdminData(central, platform, groupId);
           const platformAccount = central.platformAccounts.find(account => account.platform === platform);
@@ -9062,6 +9259,10 @@ function start() {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
         const channelId = typeof payload?.channelId === "string" ? payload.channelId.trim() : "";
+        webLog.platform = platform;
+        webLog.groupId = groupId;
+        webLog.action = "admin.log_channel_update";
+        webLog.target = channelId || "desativado";
         if (platform !== "discord" || (channelId && !/^\d{15,25}$/.test(channelId))) {
           sendJson(response, 400, { error: "Canal de logs inválido." });
           return;
@@ -9114,6 +9315,9 @@ function start() {
       if (requestUrl.pathname === "/api/account/local/admin-systems-options") {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
+        webLog.platform = platform;
+        webLog.groupId = groupId;
+        webLog.action = "admin.systems_options";
         try {
           await getGroupAdminData(central, platform, groupId);
           sendJson(response, 200, await getAdminSystemsOptions(platform, groupId));
@@ -9136,6 +9340,16 @@ function start() {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
         const isStateRequest = requestUrl.pathname.endsWith("-state");
+        webLog.platform = platform;
+        webLog.groupId = groupId;
+        webLog.action = requestUrl.pathname.endsWith("-overview")
+          ? "admin.schedules_overview"
+          : isStateRequest
+            ? "admin.schedules_read"
+            : requestUrl.pathname.endsWith("-media")
+              ? "admin.schedules_media"
+              : `admin.schedules.${String(payload?.action || "save")}`;
+        if (payload?.scheduleId || payload?.id) webLog.target = String(payload.scheduleId || payload.id);
         try {
           const adminData = await getGroupAdminData(central, platform, groupId);
           if (requestUrl.pathname.endsWith("-overview")) {
@@ -9219,6 +9433,15 @@ function start() {
         const setting = isRpRequest
           ? typeof payload?.setting === "string" ? payload.setting : ""
           : requestUrl.pathname.includes("autoApprove") ? "autoApprove" : "xp";
+        webLog.platform = platform;
+        webLog.groupId = groupId;
+        webLog.action = requestUrl.pathname.endsWith("-state")
+          ? `admin.${setting || "rp"}_read`
+          : requestUrl.pathname === "/api/account/local/admin-rp-action"
+            ? `admin.rp.${String(payload?.action || "action")}`
+            : `admin.${setting || "rp"}_update`;
+        if (payload?.userId) webLog.target = String(payload.userId);
+        else if (setting) webLog.target = setting;
         try {
           await getGroupAdminData(central, platform, groupId);
           const scope = await validateAdminSettingsScope(platform, groupId, payload?.scope || {});
@@ -9309,6 +9532,9 @@ function start() {
       if (requestUrl.pathname === "/api/account/local/admin-settings-state") {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
+        webLog.platform = platform;
+        webLog.groupId = groupId;
+        webLog.action = "admin.settings_read";
         try {
           await getGroupAdminData(central, platform, groupId);
           const scope = await validateAdminSettingsScope(platform, groupId, payload?.scope || {});
@@ -9358,6 +9584,15 @@ function start() {
           : ["antimedia", "antipalavras", "antiraid", "blockcmd", "welcome", "goodbye", "autorepo", "autodownload", "autoia"].find(key => requestUrl.pathname.includes(key)) || "antilink";
         const isStateRequest = requestUrl.pathname.endsWith("-state");
         const isMediaRequest = requestUrl.pathname.endsWith("-media");
+        webLog.platform = platform;
+        webLog.groupId = groupId;
+        webLog.action = setting
+          ? isStateRequest
+            ? `admin.${setting}_read`
+            : isMediaRequest
+              ? `admin.${setting}_media`
+              : `admin.${setting}_update`
+          : "admin.monitor_invalid";
         try {
           if (!setting) {
             sendJson(response, 400, { error: "Monitor inválido." });
@@ -9466,6 +9701,12 @@ function start() {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
         const isStateRequest = requestUrl.pathname.endsWith("-state");
+        webLog.platform = platform;
+        webLog.groupId = groupId;
+        webLog.action = isStateRequest ? "admin.economy_ranking_read" : "admin.economy_ranking_update";
+        if (!isStateRequest && typeof payload?.includeVault === "boolean") {
+          webLog.detail = `incluir_cofre=${payload.includeVault}`;
+        }
         try {
           await getGroupAdminData(central, platform, groupId);
           const platformAccount = central.platformAccounts.find(account => account.platform === platform);
@@ -9498,6 +9739,9 @@ function start() {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
         const isStateRequest = requestUrl.pathname.endsWith("-state");
+        webLog.platform = platform;
+        webLog.groupId = groupId;
+        webLog.action = isStateRequest ? "admin.vault_config_read" : "admin.vault_config_update";
         try {
           await getGroupAdminData(central, platform, groupId);
           const platformAccount = central.platformAccounts.find(account => account.platform === platform);
@@ -9552,6 +9796,9 @@ function start() {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
         const isStateRequest = requestUrl.pathname.endsWith("-state");
+        webLog.platform = platform;
+        webLog.groupId = groupId;
+        webLog.action = isStateRequest ? "admin.local_signal_search_read" : "admin.local_signal_search_update";
         try {
           await getGroupAdminData(central, platform, groupId);
           const platformAccount = central.platformAccounts.find(account => account.platform === platform);
@@ -9620,6 +9867,11 @@ function start() {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
         const isStateRequest = requestUrl.pathname.endsWith("-state");
+        webLog.platform = platform;
+        webLog.groupId = groupId;
+        webLog.action = isStateRequest ? "admin.store2_read" : `admin.store2.${String(payload?.action || "update")}`;
+        const store2Target = payload?.itemId || payload?.orderId || payload?.item?.name;
+        if (store2Target !== undefined && store2Target !== null && store2Target !== "") webLog.target = String(store2Target);
         try {
           await getGroupAdminData(central, platform, groupId);
           const platformAccount = central.platformAccounts.find(account => account.platform === platform);
@@ -9702,6 +9954,11 @@ function start() {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
         const setting = typeof payload?.setting === "string" ? payload.setting : "";
+        webLog.platform = platform;
+        webLog.groupId = groupId;
+        webLog.action = "admin.settings_toggle";
+        if (setting) webLog.target = setting;
+        if (typeof payload?.enabled === "boolean") webLog.detail = `ativo=${payload.enabled}`;
         if (!ADMIN_SYSTEM_SETTING_KEYS.has(setting) || typeof payload?.enabled !== "boolean") {
           sendJson(response, 400, { error: "Configuração ou estado inválido." });
           return;
@@ -9773,6 +10030,10 @@ function start() {
       ].includes(requestUrl.pathname)) {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
+        webLog.platform = platform;
+        webLog.groupId = groupId;
+        webLog.action = `admin.moderation_${requestUrl.pathname.split("/").pop() || "unknown"}`;
+        if (payload?.userId) webLog.target = String(payload.userId).trim().slice(0, 60);
         try {
           const data = await getGroupAdminData(central, platform, groupId);
           const platformAccount = central.platformAccounts.find(account => account.platform === platform);
@@ -9961,6 +10222,10 @@ function start() {
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
         const shop = typeof payload?.shop === "string" ? payload.shop : "";
         const selection = typeof payload?.selection === "string" ? payload.selection.trim() : "";
+        webLog.platform = platform;
+        webLog.groupId = groupId;
+        webLog.action = `local.shop_purchase${shop ? "_" + shop : ""}`;
+        if (selection) webLog.target = selection.slice(0, 60);
         const platformAccount = central.platformAccounts.find(account => account.platform === platform);
         if (!platformAccount?.platformId) {
           sendJson(response, 404, { error: "Esta plataforma não está vinculada à sua Conta Central." });
@@ -10051,6 +10316,9 @@ function start() {
           requestUrl.pathname === "/api/account/local/signal-search") {
         const platform = typeof payload?.platform === "string" ? payload.platform : "";
         const groupId = typeof payload?.groupId === "string" ? payload.groupId : "";
+        webLog.platform = platform;
+        webLog.groupId = groupId;
+        webLog.action = `local.${requestUrl.pathname.split("/").pop() || "unknown"}`;
         const platformAccount = central.platformAccounts.find(account => account.platform === platform);
         if (!platformAccount?.platformId) {
           sendJson(response, 404, { error: "Esta plataforma não está vinculada à sua Conta Central." });
@@ -10330,6 +10598,7 @@ function start() {
       }
 
       if (requestUrl.pathname === "/api/account/password") {
+        webLog.action = "account.password_change";
         const currentPassword = typeof payload?.currentPassword === "string" ? payload.currentPassword : "";
         const newPassword = typeof payload?.newPassword === "string" ? payload.newPassword : "";
         const confirmPassword = typeof payload?.confirmPassword === "string" ? payload.confirmPassword : "";
@@ -10377,6 +10646,7 @@ function start() {
       }
 
       if (requestUrl.pathname === "/api/account/merge-code") {
+        webLog.action = "account.merge_code_generate";
         try {
           const { code, expiresAt } = await centralAccounts.generateMergeCode(central.id);
           await centralAccounts.saveNow();
@@ -10392,6 +10662,8 @@ function start() {
         const platform = typeof payload?.platform === "string"
           ? payload.platform.trim().toLowerCase()
           : "";
+        webLog.action = "account.unlink_platform";
+        if (platform) webLog.target = platform;
         if (!platform || platform.length > 32) {
           sendJson(response, 400, { error: "Informe uma plataforma válida para desvincular." });
           return;
@@ -10419,6 +10691,8 @@ function start() {
 
       if (requestUrl.pathname === "/api/account/name") {
         const name = typeof payload?.name === "string" ? payload.name.trim() : "";
+        webLog.action = "account.name_update";
+        if (name) webLog.target = name.slice(0, 40);
         if (!name) {
           sendJson(response, 400, { error: "Informe um nome para sua Conta Central." });
           return;
@@ -10443,6 +10717,7 @@ function start() {
     }
 
     if (request.method === "POST" && requestUrl.pathname === "/api/logout") {
+      webLog.action = "auth.logout";
       if (!isSameOriginRequest(request)) {
         sendJson(response, 403, { error: "Origem da solicitação inválida." });
         return;
@@ -11343,6 +11618,7 @@ function start() {
     }
 
     if (request.method === "GET" && requestUrl.pathname === "/dashboard") {
+      webLog.action = "page.dashboard";
       const central = await getSessionCentral(request);
       response.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
@@ -11362,6 +11638,8 @@ function start() {
         return;
       }
       const platform = String(requestUrl.searchParams.get("plataforma") || "").toLowerCase();
+      webLog.action = "page.painel_rpg_maker";
+      webLog.platform = platform;
       try {
         getPlatformSuperUserAccount(central, platform);
         response.writeHead(200, {
@@ -11606,6 +11884,9 @@ function start() {
       }
       const platform = String(requestUrl.searchParams.get("plataforma") || "").toLowerCase();
       const groupId = String(requestUrl.searchParams.get("grupo") || "");
+      webLog.action = "page.painel_economia";
+      webLog.platform = platform;
+      webLog.groupId = groupId;
       try {
         const data = await getGroupAdminData(central, platform, groupId);
         response.writeHead(200, {
@@ -11814,6 +12095,9 @@ function start() {
       }
       const platform = String(requestUrl.searchParams.get("plataforma") || "").toLowerCase();
       const groupId = String(requestUrl.searchParams.get("grupo") || "");
+      webLog.action = "page.painel_admin";
+      webLog.platform = platform;
+      webLog.groupId = groupId;
       try {
         const data = await getGroupAdminData(central, platform, groupId);
         data.moderation = await addModerationWarningNames(platform, groupId, data.moderation);
@@ -11850,6 +12134,9 @@ function start() {
       }
       const platform = String(requestUrl.searchParams.get("plataforma") || "").toLowerCase();
       const groupId = String(requestUrl.searchParams.get("grupo") || "");
+      webLog.action = "page.painel_vip_local";
+      webLog.platform = platform;
+      webLog.groupId = groupId;
       try {
         const data = await getCommunityVipAdminData(central, platform, groupId);
         response.writeHead(200, {
@@ -11876,12 +12163,26 @@ function start() {
       return;
     }
 
+    webLog.action = "http.not_found";
     response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
     response.end("Not found");
+    } catch (error) {
+      webLog.error = error?.message || "Erro interno inesperado";
+      console.error(`${_ts()} ❌[WEB] Erro inesperado em ${request.method} ${requestUrl.pathname}:`, error);
+      if (!response.headersSent) {
+        response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+        response.end("Internal server error");
+      } else if (!response.writableEnded) {
+        response.end();
+      }
+    }
   });
 
-  server.on("error", error => console.error(`[WEB] Falha ao iniciar o site na porta ${port}:`, error));
-  server.listen(port, "0.0.0.0", () => console.log(`[WEB] Site disponível na porta ${port}.`));
+  server.on("error", error => console.error(`${_ts()} ❌[WEB] Falha ao iniciar o site na porta ${port}:`, error));
+  server.listen(port, "0.0.0.0", () => {
+    const activePort = server.address()?.port ?? port;
+    console.log(`${_ts()} 🌐[WEB] Site disponível na porta ${activePort}.`);
+  });
   return server;
 }
 
