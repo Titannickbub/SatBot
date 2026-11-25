@@ -147,6 +147,7 @@ test("RPG user actions are registered as separate commands", () => {
         "rpgver",
         "ascensao"
     ]);
+    assert.ok(commands.every(command => command.usage.startsWith("{prefix}")));
 });
 
 test("RPG command displays one profile and catalog help describes the selection flow", async () => {
@@ -155,6 +156,7 @@ test("RPG command displays one profile and catalog help describes the selection 
     const message = {
         platform: "whatsapp",
         userId: "123",
+        prefix: "?",
         args: [],
         functions: {
             centralAccounts: {
@@ -183,7 +185,7 @@ test("RPG command displays one profile and catalog help describes the selection 
 
     await rpgCommands._internals.executeAction(message, "catalog", ["help"]);
     assert.match(payload.text, /COMO USAR O CATÁLOGO RPG/);
-    assert.match(payload.text, /!catalogo base/);
+    assert.match(payload.text, /\?catalogo base/);
 });
 
 test("owned character cards offer Ascensão and the command spends a point", async () => {
@@ -563,6 +565,7 @@ test("WhatsApp catalog lists bases first and pages characters only within a sele
         const message = {
             platform: "whatsapp",
             userId: "123",
+            prefix: "?",
             functions: {
                 centralAccounts: {
                     findByPlatform: () => central,
@@ -597,7 +600,8 @@ test("WhatsApp catalog lists bases first and pages characters only within a sele
         assert.doesNotMatch(selectedBase.text, /Personagem 10|BASE 0/);
         assert.match(secondCharacterPage.text, /\*Página 2\/2\*/);
         assert.match(secondCharacterPage.text, /Personagem 10/);
-        assert.match(characterCard.caption, /↩️ \*Voltar:\* `!catalogo base 12 2`/);
+        assert.match(characterCard.caption, /↩️ \*Voltar:\* `\?catalogo base 12 2`/);
+        assert.match(characterCard.caption, /\?catalogo escolher 0/);
     } finally {
         catalogStore.readCatalog = originalReadCatalog;
         catalogStore.MEDIA_DIR = originalMediaDir;

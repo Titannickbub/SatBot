@@ -673,6 +673,7 @@ async function start() {
 
             const saveAndExit = async () => {
                 try {
+                    functions.rpgBattle?.stop?.();
                     await functions.centralAccounts.stop();
                     process.exit(0);
                 } catch (err) {
@@ -774,6 +775,18 @@ async function start() {
             console.log(`${_ts()} ✅[CORE] Plataforma [${i}] inicializada: ${name}`);
         } catch (err) {
             console.error(`${_ts()} ❌[CORE] Erro ao iniciar plataforma [${name}]:`, err.message || err);
+        }
+    }
+
+    if (functions.rpgBattle && typeof functions.rpgBattle.init === "function") {
+        try {
+            await functions.rpgBattle.init(
+                path.join(__dirname, "settings", "rpg", "batalhas.json"),
+                functions.centralAccounts
+            );
+            global.rpgBattle = functions.rpgBattle;
+        } catch (error) {
+            console.error(`${_ts()} ❌[CORE] Falha ao inicializar batalhas RPG:`, error);
         }
     }
 
@@ -1045,7 +1058,8 @@ async function handleComponentInteraction(interaction) {
         "cosmetic", "details", "discord", "editplan", "extend", "initial", "items",
         "menu", "open", "close", "temporary", "orders", "paid", "permanent", "pixhelp", "cancelorder", "reject", "rejectconfirm", "remove",
         "removeconfirm", "renewal", "select", "setplan", "subscriptions",
-        "telegram", "tc", "tx", "cc", "cx", "accept", "thank", "delete"
+        "telegram", "tc", "tx", "cc", "cx", "accept", "decline", "attack",
+        "surrender", "thank", "delete"
     ]);
     const action = componentParts.slice(1, 4)
         .filter(part => safeActionTokens.has(part))

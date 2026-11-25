@@ -31,6 +31,7 @@ test("character command creator asks for the source base", async () => {
     let replyPayload;
     await creatorCommands._internals.promptForCharacter({
         platform: "whatsapp",
+        prefix: "?",
         reply: async payload => {
             replyPayload = payload;
         }
@@ -41,6 +42,7 @@ test("character command creator asks for the source base", async () => {
 
     assert.match(replyPayload.text, /base\/obra de origem/);
     assert.match(replyPayload.text, /REZERO/);
+    assert.match(replyPayload.text, /\?rpgpersonagem continuar <base>/);
 });
 
 test("character command creator saves the base before continuing to HP", async () => {

@@ -860,10 +860,13 @@ async function start(onMessage, onComponentInteraction) {
             reply: async function (data) {
                 try {
                     if (data?.embed) {
-                        return await msg.reply({
+                        const options = {
                             embeds: [new EmbedBuilder(data.embed)],
-                            components: data.components || []
-                        });
+                            components: data.components || [],
+                            ...(data.allowedMentions ? { allowedMentions: data.allowedMentions } : {})
+                        };
+                        if (data.text) options.content = data.text;
+                        return await msg.reply(options);
                     }
                     if (typeof data === "object" && data !== null && (data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url)) {
                         const image = data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url;
@@ -1127,6 +1130,7 @@ async function sendText(
         ? {
             embeds: [options.embed],
             ...(options.components?.length ? { components: options.components } : {}),
+            ...(options.content ? { content: options.content } : {}),
             allowedMentions: options.allowedMentions || { parse: [] }
         }
         : options.disableMentions

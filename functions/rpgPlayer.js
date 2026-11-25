@@ -72,18 +72,27 @@ function getCharacterStats(character, characterSave = null) {
     return stats;
 }
 
-async function addRpgXp(centralAccounts, centralId, amount) {
+async function addRpgXp(centralAccounts, centralId, amount, rewardId = null) {
     if (!Number.isSafeInteger(amount) || amount <= 0) {
         throw new Error("A quantidade de XP deve ser um inteiro positivo.");
     }
+    if (rewardId !== null && (typeof rewardId !== "string" || !rewardId)) {
+        throw new Error("O identificador da recompensa de XP é inválido.");
+    }
     let previousXp = 0;
+    let alreadyApplied = false;
     const profile = await centralAccounts.updateRpgProfile(centralId, current => {
+        if (rewardId && current.battleRewardIds.includes(rewardId)) {
+            alreadyApplied = true;
+            return current;
+        }
         previousXp = current.xp;
         const totalXp = current.xp + amount;
         if (!Number.isSafeInteger(totalXp)) {
             throw new Error("O XP total ultrapassou o limite permitido.");
         }
         current.xp = totalXp;
+        if (rewardId) current.battleRewardIds.push(rewardId);
         return current;
     });
     const previousLevel = levelForXp(previousXp).level;
@@ -96,6 +105,7 @@ async function addRpgXp(centralAccounts, centralId, amount) {
         level: progress.level,
         levelUps: Math.max(0, progress.level - previousLevel),
         ascensao: profile.ascensao,
+        alreadyApplied,
         profile
     };
 }

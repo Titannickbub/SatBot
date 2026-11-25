@@ -68,6 +68,16 @@ function readCatalog() {
             migrated = true;
         }
     }
+    for (const effect of Array.isArray(catalog?.efeitos) ? catalog.efeitos : []) {
+        if (effect && typeof effect === "object" && effect.afinidadeId === undefined) {
+            effect.afinidadeId = null;
+            migrated = true;
+        }
+        if (effect && typeof effect === "object" && effect.danoPassivoPorRodada === undefined) {
+            effect.danoPassivoPorRodada = 0;
+            migrated = true;
+        }
+    }
     validateCatalog(catalog);
     if (migrated) writeCatalog(catalog);
     return catalog;
@@ -97,6 +107,16 @@ function validateCatalog(catalog) {
     const weaknessIds = new Set(catalog.fraquezas.map(item => item.id));
     const effectIds = new Set(catalog.efeitos.map(item => item.id));
     const moveIds = new Set(catalog.golpes.map(item => item.id));
+
+    for (const effect of catalog.efeitos) {
+        if (effect.afinidadeId !== null && !weaknessIds.has(effect.afinidadeId)) {
+            throw new Error(`O efeito ${effect.id} referencia uma afinidade inexistente.`);
+        }
+        requireNonNegativeInteger(
+            effect.danoPassivoPorRodada,
+            `Dano passivo do efeito ${effect.id}`
+        );
+    }
 
     for (const move of catalog.golpes) {
         requireText(move.nome, `Nome do golpe ${move.id}`);
@@ -251,19 +271,59 @@ function updateAttribute(catalog, id, name) {
     return updateDefinitionName(catalog.fraquezas, id, name, "atributo");
 }
 
-function createEffect(catalog, name) {
+function buildEffect(id, name, input = {}) {
+    const affinityValue = input.afinidadeId;
+    const effect = {
+        id,
+        nome: String(name || "").trim(),
+        afinidadeId: affinityValue === null || affinityValue === undefined || affinityValue === ""
+            ? null
+            : Number(affinityValue),
+        danoPassivoPorRodada: Number(input.danoPassivoPorRodada ?? 0)
+    };
+    return effect;
+}
+
+function createEffect(catalog, name, input = {}) {
     requireText(name, "Nome do efeito");
     if (name.length > 40) throw new Error("O nome do efeito deve ter até 40 caracteres.");
     if (catalog.efeitos.some(item => item.nome.toLocaleLowerCase() === name.trim().toLocaleLowerCase())) {
         throw new Error("Já existe um efeito com esse nome.");
     }
-    const effect = { id: nextId(catalog.efeitos), nome: name.trim() };
+    const effect = buildEffect(nextId(catalog.efeitos), name, input);
     catalog.efeitos.push(effect);
+    try {
+        validateCatalog(catalog);
+    } catch (error) {
+        catalog.efeitos.pop();
+        throw error;
+    }
     return effect;
 }
 
-function updateEffect(catalog, id, name) {
-    return updateDefinitionName(catalog.efeitos, id, name, "efeito");
+function updateEffect(catalog, id, name, input = null) {
+    const numericId = Number(id);
+    const effect = catalog.efeitos.find(entry => entry.id === numericId);
+    if (!effect) throw new Error("Efeito não encontrado.");
+    requireText(name, "Nome do efeito");
+    const trimmedName = name.trim();
+    if (trimmedName.length > 40) throw new Error("O nome do efeito deve ter até 40 caracteres.");
+    if (catalog.efeitos.some(entry =>
+        entry.id !== numericId && entry.nome.toLocaleLowerCase() === trimmedName.toLocaleLowerCase()
+    )) {
+        throw new Error("Já existe um efeito com esse nome.");
+    }
+    const original = { ...effect };
+    Object.assign(effect, input
+        ? buildEffect(numericId, trimmedName, input)
+        : { nome: trimmedName });
+    try {
+        validateCatalog(catalog);
+    } catch (error) {
+        Object.assign(effect, original);
+        throw error;
+    }
+    return effect;
 }
 
 function buildMove(id, input) {

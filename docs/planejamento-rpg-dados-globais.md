@@ -1,7 +1,6 @@
 # Planejamento — Dados do criador de personagens
 
-**Status:** rascunho do catálogo global de personagens, fraquezas, golpes e
-efeitos. As fórmulas são sugestões iniciais para balanceamento.
+**Status:** catálogo global e regras iniciais do RPG Maker/combate PvP.
 
 Este documento fica restrito aos dados que o criador de personagens deverá
 armazenar. O catálogo de personagens, fraquezas, golpes e efeitos fica junto em
@@ -91,7 +90,9 @@ permanecem zero.
   "efeitos": [
     {
       "id": 0,
-      "nome": "Congelado"
+      "nome": "Congelado",
+      "afinidadeId": 1,
+      "danoPassivoPorRodada": 4
     },
     {
       "id": 1,
@@ -245,8 +246,7 @@ partir das regras descritas:
 | `efeitos` | IDs de efeitos globais aplicados pelo golpe; pode ser vazio |
 
 Um custo pode ser zero se o golpe não consumir aquele recurso. Custos negativos
-não são válidos. Um custo de HP pode derrotar quem usou o golpe. Duração,
-chance e demais regras de aplicação dos efeitos ainda precisam ser definidas.
+não são válidos. Um custo de HP pode derrotar quem usou o golpe.
 
 `frases` contém uma ou mais mensagens alternativas. Ao executar o golpe, o bot
 escolhe uma delas e substitui `{personagem}` pelo nome do personagem que usou o
@@ -256,30 +256,28 @@ representam esses valores.
 
 ### Dano por fraqueza e afinidade
 
-Sugestão inicial, aplicada ao dano base do golpe:
+Regra atual, aplicada ao dano base do golpe:
 
 - Se o tipo do golpe corresponder a uma fraqueza do alvo:
-  `dano = arredondar(danoBase × 1,30)` (30% a mais).
+  `dano = floor(danoBase × 2)`.
 - Se corresponder a uma afinidade do alvo:
-  `dano = arredondar(danoBase × 0,70)` (30% a menos).
+  `dano = floor(danoBase × 0,5)`.
 - Se não corresponder a nenhum dos dois:
   `dano = danoBase`.
 
 Como cada golpe tem um tipo, ter várias fraquezas ou afinidades permite cobrir
-mais tipos diferentes; não acumula vários bônus para o mesmo golpe. Sugestão:
-impedir que o mesmo ID apareça ao mesmo tempo nas fraquezas e afinidades de um
-personagem. Ordem em relação a outros efeitos e arredondamento final precisam
-ser confirmados.
+mais tipos diferentes; não acumula vários bônus para o mesmo golpe. Se um tipo
+aparecer nas duas listas, fraqueza tem prioridade.
 
 ### Efeitos
 
-Os efeitos também ficam no JSON global, e golpes os referenciam por ID. O
-exemplo inclui **Congelado** e **Paralisado**; outros efeitos podem ser
-adicionados à lista sem duplicar suas definições nos golpes.
-
-Chegar a zero de stamina pode deixar o personagem paralisado. A duração da
-paralisia, a recuperação e os efeitos de congelamento ainda serão definidos.
-O custo de HP pode levar o próprio usuário a zero HP e derrotá-lo.
+Os efeitos também ficam no JSON global, e golpes os referenciam por ID. Cada
+efeito possui `afinidadeId` (tipo associado, ou `null`) e
+`danoPassivoPorRodada` (valor numérico, zero se não houver dano passivo).
+**Congelado** aplica o tipo Gelo, causa 4 de dano passivo ao fim de cada rodada
+e dura até a batalha terminar; não acumula. A afinidade correspondente impede
+a aplicação do efeito sem anular o dano imediato do golpe. A fraqueza
+correspondente dobra o dano passivo.
 
 ### Progressão fixa
 
@@ -368,12 +366,11 @@ e sessões do painel web; IDs consolidados não podem deixar referências antiga
   com IDs removidos.
 - Como editar ou remover uma fraqueza que já esteja referenciada por
   personagens ou golpes.
-- Testar e ajustar os modificadores sugeridos de 30% a mais/menos.
+- Testar e ajustar os modificadores de dano por fraqueza e afinidade.
 - Testar a curva exponencial de HP e definir o limite de nível ou ajustar a taxa
   de crescimento.
 - Definir o crescimento de mana, stamina e agilidade por nível.
-- Definir duração, chance e recuperação dos efeitos, incluindo congelamento e
-  paralisia por stamina zerada.
+- Definir efeitos adicionais, chance de aplicação e regras de recuperação.
 - Definir se `Clone Travado` ocupa um espaço do limite total de golpes.
 - Definir como golpes permanentes esquecidos podem ser reaprendidos.
 

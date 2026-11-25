@@ -7,8 +7,10 @@ function emptyRpgProfile() {
   return {
     xp: 0,
     ascensao: 0,
+    battleRewardIds: [],
     globalCurrency: 0,
     initialCharacterId: null,
+    teamCharacterIds: [],
     characters: []
   };
 }
@@ -33,6 +35,23 @@ function normalizeRpgProfile(profile) {
   if (!Number.isSafeInteger(value.ascensao) || value.ascensao < 0) {
     throw new Error('RPG profile invalid');
   }
+  if (!Object.prototype.hasOwnProperty.call(value, 'teamCharacterIds')) {
+    value.teamCharacterIds = [];
+  }
+  if (!Array.isArray(value.teamCharacterIds) ||
+      value.teamCharacterIds.length > 3 ||
+      value.teamCharacterIds.some(id => !Number.isInteger(id) || id < 0) ||
+      new Set(value.teamCharacterIds).size !== value.teamCharacterIds.length) {
+    throw new Error('RPG profile invalid');
+  }
+  if (!Object.prototype.hasOwnProperty.call(value, 'battleRewardIds')) {
+    value.battleRewardIds = [];
+  }
+  if (!Array.isArray(value.battleRewardIds) ||
+      value.battleRewardIds.some(id => typeof id !== 'string' || !id) ||
+      new Set(value.battleRewardIds).size !== value.battleRewardIds.length) {
+    throw new Error('RPG profile invalid');
+  }
   const seenCharacters = new Set();
   for (const character of value.characters) {
     if (!character || !Number.isInteger(character.characterId) || character.characterId < 0 ||
@@ -44,6 +63,9 @@ function normalizeRpgProfile(profile) {
     }
     character.learnedMoveIds = [...new Set(character.learnedMoveIds)];
     seenCharacters.add(character.characterId);
+  }
+  if (value.teamCharacterIds.some(id => !seenCharacters.has(id))) {
+    throw new Error('RPG team references an unowned character');
   }
   return value;
 }
@@ -81,8 +103,12 @@ function mergeRpgProfiles(targetProfile, sourceProfile) {
     xp: combinedXp,
     ascensao: target.ascensao + source.ascensao +
       Math.max(0, combinedLevel - previousHighestLevel),
+    battleRewardIds: [...new Set([...target.battleRewardIds, ...source.battleRewardIds])],
     globalCurrency: target.globalCurrency + source.globalCurrency,
     initialCharacterId: target.initialCharacterId ?? source.initialCharacterId,
+    teamCharacterIds: target.teamCharacterIds.length
+      ? target.teamCharacterIds
+      : source.teamCharacterIds,
     characters: [...characters.values()]
   };
 }

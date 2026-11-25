@@ -1,9 +1,14 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const { isOwner } = require("./owners");
 const catalogStore = require("./rpgMaker");
+const config = require("./config");
 
 const drafts = new Map();
 const COMPONENT_CONTEXT = Symbol.for("satbot.componentMessageContext");
+
+function getCommandPrefix(message) {
+    return String(message?.prefix || config.getPrefix());
+}
 
 function draftKey(command, message) {
     return `${command}:${message.platform}:${message.userId}`;
@@ -76,8 +81,9 @@ async function reply(message, text, buttons = [], interaction = null) {
 }
 
 function promptForMove(message, draft, interaction = null) {
+    const prefix = getCommandPrefix(message);
     const prompts = {
-        nome: "Informe o nome do golpe com `!rpggolpe continuar <nome>`.",
+        nome: `Informe o nome do golpe com \`${prefix}rpggolpe continuar <nome>\`.`,
         dano: "Informe o dano base (número >= 0).",
         mana: "Informe o custo de mana (número >= 0).",
         stamina: "Informe o custo de stamina (número >= 0).",
@@ -85,8 +91,8 @@ function promptForMove(message, draft, interaction = null) {
         tipo: "Escolha o tipo do golpe. Selecione um atributo ou use golpe sem tipo.",
         nivel: "Informe o nível de desbloqueio (inteiro >= 0).",
         frases: "Envie uma frase para o golpe; use `{personagem}` e `{alvo}`. Para terminar, envie `fim`.",
-        efeitos: "Selecione os efeitos do golpe e conclua. No WhatsApp, use `!rpggolpe efeito <id>` e depois `!rpggolpe fim`.",
-        complete: "Todas as etapas foram concluídas. Envie `!rpggolpe salvar` para criar o golpe."
+        efeitos: `Selecione os efeitos do golpe e conclua. No WhatsApp, use \`${prefix}rpggolpe efeito <id>\` e depois \`${prefix}rpggolpe fim\`.`,
+        complete: `Todas as etapas foram concluídas. Envie \`${prefix}rpggolpe salvar\` para criar o golpe.`
     };
     const catalog = catalogStore.readCatalog();
     let buttons = [];
@@ -103,21 +109,22 @@ function promptForMove(message, draft, interaction = null) {
 }
 
 function promptForCharacter(message, draft, interaction = null) {
+    const prefix = getCommandPrefix(message);
     const prompts = {
-        nome: "Informe o nome do personagem com `!rpgpersonagem continuar <nome>`.",
-        base: "Informe a base/obra de origem do personagem (ex.: REZERO), usando `!rpgpersonagem continuar <base>`.",
-        sexo: "Escolha o sexo do personagem. No WhatsApp, use `!rpgpersonagem sexo <opção>`.",
+        nome: `Informe o nome do personagem com \`${prefix}rpgpersonagem continuar <nome>\`.`,
+        base: `Informe a base/obra de origem do personagem (ex.: REZERO), usando \`${prefix}rpgpersonagem continuar <base>\`.`,
+        sexo: `Escolha o sexo do personagem. No WhatsApp, use \`${prefix}rpgpersonagem sexo <opção>\`.`,
         hp: "Informe o HP inicial (> 0).",
         mana: "Informe a mana inicial (>= 0).",
         stamina: "Informe a stamina inicial (>= 0).",
         agilidade: "Informe a agilidade inicial (>= 0).",
-        imagem: "Anexe uma imagem PNG, JPEG, GIF ou WebP e envie `!rpgpersonagem continuar`.",
+        imagem: `Anexe uma imagem PNG, JPEG, GIF ou WebP e envie \`${prefix}rpgpersonagem continuar\`.`,
         fraquezas: "Selecione uma ou mais fraquezas/afinidades de combate. Conclua quando terminar.",
         clonador: "O personagem pode clonar golpes?",
         golpes: "Selecione os golpes permanentes. Conclua quando terminar.",
         limite: "Informe o limite total de golpes, ou escolha ilimitado.",
         raridade: "Escolha a raridade. Personagens comuns podem ser escolhidos como personagem inicial gratuito.",
-        complete: "Todas as etapas foram concluídas. Envie `!rpgpersonagem salvar` para criar o personagem."
+        complete: `Todas as etapas foram concluídas. Envie \`${prefix}rpgpersonagem salvar\` para criar o personagem.`
     };
     const catalog = catalogStore.readCatalog();
     let buttons = [];
@@ -203,10 +210,11 @@ function parseCharacterSex(value) {
 
 async function executeMove(message, args) {
     const action = String(args[0] || "").toLowerCase();
+    const prefix = getCommandPrefix(message);
     const key = draftKey("rpggolpe", message);
     if (action === "criar") {
         const catalog = catalogStore.readCatalog();
-        if (!catalog.fraquezas.length) throw new Error("Crie primeiro os atributos com !rpgatributo adicionar <nome>.");
+        if (!catalog.fraquezas.length) throw new Error(`Crie primeiro os atributos com ${prefix}rpgatributo adicionar <nome>.`);
         const draft = beginDraft(message, "rpggolpe", "move");
         return promptForMove(message, draft);
     }
@@ -215,7 +223,7 @@ async function executeMove(message, args) {
         drafts.delete(key);
         return message.reply({ text: "Criação do golpe cancelada." });
     }
-    if (!draft) throw new Error("Nenhuma criação de golpe ativa. Use !rpggolpe criar.");
+    if (!draft) throw new Error(`Nenhuma criação de golpe ativa. Use ${prefix}rpggolpe criar.`);
     if (action === "continuar") {
         const input = getText(message, 1);
         if (draft.step === "frases") {
@@ -231,7 +239,7 @@ async function executeMove(message, args) {
             if (input.toLowerCase() !== "fim") throw new Error("Use os botões para escolher efeitos ou envie `fim`.");
             draft.step = "complete";
         } else if (draft.step === "tipo") {
-            throw new Error("Escolha o tipo pelos botões ou use `!rpggolpe tipo nenhum`.");
+            throw new Error(`Escolha o tipo pelos botões ou use \`${prefix}rpggolpe tipo nenhum\`.`);
         } else {
             const text = input;
             if (!text) throw new Error("Informe um valor para esta etapa.");
@@ -279,16 +287,17 @@ async function executeMove(message, args) {
         return message.reply({ text: `✅ Golpe "${move.nome}" criado com ID ${move.id}.` });
     }
     if (action === "tipo") return promptForMove(message, draft);
-    throw new Error("Use !rpggolpe criar, continuar <valor>, tipo nenhum, efeito <id>, fim, salvar ou cancelar.");
+    throw new Error(`Use ${prefix}rpggolpe criar, continuar <valor>, tipo nenhum, efeito <id>, fim, salvar ou cancelar.`);
 }
 
 async function executeCharacter(message, args) {
     const action = String(args[0] || "").toLowerCase();
+    const prefix = getCommandPrefix(message);
     const key = draftKey("rpgpersonagem", message);
     if (action === "criar") {
         const catalog = catalogStore.readCatalog();
-        if (!catalog.fraquezas.length) throw new Error("Crie primeiro atributos com !rpgatributo adicionar <nome>.");
-        if (!catalog.golpes.length) throw new Error("Crie primeiro golpes com !rpggolpe criar.");
+        if (!catalog.fraquezas.length) throw new Error(`Crie primeiro atributos com ${prefix}rpgatributo adicionar <nome>.`);
+        if (!catalog.golpes.length) throw new Error(`Crie primeiro golpes com ${prefix}rpggolpe criar.`);
         const draft = beginDraft(message, "rpgpersonagem", "character");
         return promptForCharacter(message, draft);
     }
@@ -297,7 +306,7 @@ async function executeCharacter(message, args) {
         drafts.delete(key);
         return message.reply({ text: "Criação do personagem cancelada." });
     }
-    if (!draft) throw new Error("Nenhuma criação de personagem ativa. Use !rpgpersonagem criar.");
+    if (!draft) throw new Error(`Nenhuma criação de personagem ativa. Use ${prefix}rpgpersonagem criar.`);
     if (action === "sexo" && draft.step === "sexo") {
         draft.data.sexo = parseCharacterSex(getText(message, 1));
         draft.step = "hp";
@@ -370,7 +379,7 @@ async function executeCharacter(message, args) {
     if (action === "clonar" && draft.step === "clonador") {
         const value = String(args[1] || "").toLowerCase();
         if (!["sim", "nao", "não"].includes(value)) {
-            throw new Error("Use `!rpgpersonagem clonar sim` ou `!rpgpersonagem clonar nao`.");
+            throw new Error(`Use \`${prefix}rpgpersonagem clonar sim\` ou \`${prefix}rpgpersonagem clonar nao\`.`);
         }
         draft.data.podeClonarGolpes = value === "sim";
         draft.step = draft.data.podeClonarGolpes ? "limite" : "golpes";
@@ -406,7 +415,7 @@ async function executeCharacter(message, args) {
         drafts.delete(key);
         return message.reply({ text: `✅ Personagem "${character.nome}" criado com ID ${character.id}.` });
     }
-    throw new Error("Use !rpgpersonagem criar, continuar <valor>, sexo <opção>, fim, golpe <id>, limite ilimitado, salvar ou cancelar.");
+    throw new Error(`Use ${prefix}rpgpersonagem criar, continuar <valor>, sexo <opção>, fim, golpe <id>, limite ilimitado, salvar ou cancelar.`);
 }
 
 function createAttributeCommand() {
@@ -415,12 +424,13 @@ function createAttributeCommand() {
         aliases: ["rpg_atributo"],
         category: "system/rpg_maker",
         description: "Cria os tipos globais usados por fraquezas, afinidades e golpes. Somente SU.",
-        usage: "!rpgatributo adicionar <nome> | listar",
+        usage: "{prefix}rpgatributo adicionar <nome> | listar",
         async execute(message) {
             if (!hasPermission(message)) return message.reply({ text: "❌ Somente superusuários podem editar os dados globais do RPG." });
             try {
                 const [rawAction, ...rest] = message.args || [];
                 const action = String(rawAction || "").toLowerCase();
+                const prefix = getCommandPrefix(message);
                 const catalog = catalogStore.readCatalog();
                 if (action === "adicionar") {
                     const name = typeof message.getArgText === "function" ? message.getArgText(1).trim() : rest.join(" ").trim();
@@ -434,13 +444,36 @@ function createAttributeCommand() {
                     catalogStore.persist(catalog);
                     return message.reply({ text: `✅ Efeito "${effect.nome}" criado com ID ${effect.id}.` });
                 }
+                if (action === "efeito" && String(rest[0] || "").toLowerCase() === "configurar") {
+                    if (rest.length !== 4) {
+                        throw new Error(`Use ${prefix}rpgatributo efeito configurar <id> <atributo|nenhum> <dano por rodada>.`);
+                    }
+                    const id = parseNumber(rest[1], "ID do efeito", true);
+                    const effect = catalog.efeitos.find(entry => entry.id === id);
+                    if (!effect) throw new Error("Efeito não encontrado.");
+                    const afinidadeId = String(rest[2]).toLowerCase() === "nenhum"
+                        ? null
+                        : parseNumber(rest[2], "ID do atributo", true);
+                    const danoPassivoPorRodada = parseNumber(rest[3], "Dano passivo por rodada", true);
+                    const updated = catalogStore.updateEffect(catalog, id, effect.nome, {
+                        afinidadeId,
+                        danoPassivoPorRodada
+                    });
+                    catalogStore.persist(catalog);
+                    return message.reply({
+                        text: `✅ Efeito "${updated.nome}" atualizado: tipo ${updated.afinidadeId ?? "nenhum"}, ${updated.danoPassivoPorRodada} de dano passivo por rodada.`
+                    });
+                }
                 if (action === "listar" || action === "efeitos") {
                     const entries = action === "efeitos" ? catalog.efeitos : catalog.fraquezas;
                     const label = action === "efeitos" ? "Efeitos globais" : "Atributos globais";
-                    const text = entries.map(item => `${item.id} · ${item.nome}`).join("\n") || `Nenhum ${action === "efeitos" ? "efeito" : "atributo"} cadastrado.`;
+                    const text = entries.map(item => action === "efeitos"
+                        ? `${item.id} · ${item.nome} — tipo ${item.afinidadeId ?? "nenhum"} · ${item.danoPassivoPorRodada} de dano/rodada`
+                        : `${item.id} · ${item.nome}`)
+                        .join("\n") || `Nenhum ${action === "efeitos" ? "efeito" : "atributo"} cadastrado.`;
                     return message.reply({ text: `🌐 ${label}\n${text}` });
                 }
-                return message.reply({ text: "Uso: !rpgatributo adicionar <nome>, !rpgatributo listar, !rpgatributo efeito adicionar <nome> ou !rpgatributo efeitos." });
+                return message.reply({ text: `Uso: ${prefix}rpgatributo adicionar <nome>, ${prefix}rpgatributo listar, ${prefix}rpgatributo efeito adicionar <nome>, ${prefix}rpgatributo efeito configurar <id> <atributo|nenhum> <dano/rodada> ou ${prefix}rpgatributo efeitos.` });
             } catch (error) {
                 return message.reply({ text: `❌ ${error.message}` });
             }
@@ -454,7 +487,7 @@ function createMoveCommand() {
         aliases: ["rpg_golpe"],
         category: "system/rpg_maker",
         description: "Criador passo a passo de golpes globais do RPG. Somente SU.",
-        usage: "!rpggolpe criar",
+        usage: "{prefix}rpggolpe criar",
         async execute(message) {
             if (!hasPermission(message)) return message.reply({ text: "❌ Somente superusuários podem editar os dados globais do RPG." });
             try {
@@ -470,7 +503,7 @@ function createMoveCommand() {
             if (!message || !hasPermission(message)) return true;
             const [, action, value] = id.split(":");
             const draft = drafts.get(draftKey("rpggolpe", message));
-            if (!draft) return reply(message, "❌ Essa etapa expirou. Inicie novamente com !rpggolpe criar.", [], interaction);
+            if (!draft) return reply(message, `❌ Essa etapa expirou. Inicie novamente com ${getCommandPrefix(message)}rpggolpe criar.`, [], interaction);
             if (action === "type") {
                 draft.data.tipoFraquezaId = value === "none" ? null : Number(value);
                 draft.step = "nivel";
@@ -493,7 +526,7 @@ function createCharacterCommand() {
         aliases: ["rpg_personagem"],
         category: "system/rpg_maker",
         description: "Criador passo a passo de personagens globais do RPG. Somente SU.",
-        usage: "!rpgpersonagem criar",
+        usage: "{prefix}rpgpersonagem criar",
         async execute(message) {
             if (!hasPermission(message)) return message.reply({ text: "❌ Somente superusuários podem editar os dados globais do RPG." });
             try {
@@ -508,7 +541,7 @@ function createCharacterCommand() {
             const message = interaction[COMPONENT_CONTEXT];
             if (!message || !hasPermission(message)) return true;
             const draft = drafts.get(draftKey("rpgpersonagem", message));
-            if (!draft) return reply(message, "❌ Essa etapa expirou. Inicie novamente com !rpgpersonagem criar.", [], interaction);
+            if (!draft) return reply(message, `❌ Essa etapa expirou. Inicie novamente com ${getCommandPrefix(message)}rpgpersonagem criar.`, [], interaction);
             const [, action, field, rawValue] = id.split(":");
             const value = rawValue === undefined ? field : rawValue;
             if (action === "toggle") {

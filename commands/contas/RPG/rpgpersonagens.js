@@ -4,7 +4,7 @@ module.exports = {
     name: "meus_personagens",
     category: "contas/RPG",
     description: "Lista os personagens RPG que você possui.",
-    usage: "!meus_personagens [página]",
+    usage: "{prefix}meus_personagens [página]",
     async execute(message) {
         return rpgCommands.execute(message, "personagens", message.args || []);
     },

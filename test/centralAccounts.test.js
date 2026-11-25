@@ -69,8 +69,10 @@ test("linking and unlinking platforms retains the central account identity and l
         assert.deepEqual(merged.rpg, {
             xp: 25,
             ascensao: 0,
+            battleRewardIds: [],
             globalCurrency: 37,
             initialCharacterId: 0,
+            teamCharacterIds: [],
             characters: [
                 { characterId: 0, level: 3, learnedMoveIds: [1, 2, 3] },
                 { characterId: 1, level: 1, learnedMoveIds: [4] }

@@ -1,7 +1,7 @@
 # Planejamento — RPG Mode (1.4.0)
 
-**Status:** direção global definida; progressão inicial de XP e Ascensão
-definida, enquanto fontes de XP e detalhes da economia ainda precisam ser
+**Status:** progressão inicial e regras centrais do combate PvP implementadas;
+fontes de XP fora das batalhas e detalhes da economia ainda precisam ser
 especificados.
 
 ## Visão
@@ -48,6 +48,18 @@ isso não torna o save do RPG local ao grupo.
     numérico efetivo é `floor(valor base × (100 + 5 × (nível − 1)) / 100)`.
     O cálculo usa sempre os valores-base do catálogo; atributos com valor zero
     continuam em zero. Catálogo e loja não recebem esse crescimento.
+13. **Combate PvP:** cada jogador salva uma equipe ordenada de 1 a 3
+    personagens. O personagem vivo mais ágil começa; depois os lados alternam,
+    cada personagem vivo age uma vez por rodada, respeitando a ordem da equipe.
+    O primeiro personagem vivo da equipe adversária recebe os golpes.
+14. **Dano e efeitos:** fraqueza dobra o dano; afinidade reduz o dano imediato
+    pela metade. Congelado causa 4 de dano passivo no fim de cada rodada,
+    dura até a batalha terminar e não acumula. A afinidade do alvo ao tipo do
+    efeito impede aplicá-lo, mas não anula o dano imediato do golpe; fraqueza
+    ao tipo dobra o dano passivo.
+15. **Turnos e recompensas:** 60 segundos sem agir encerram a batalha por
+    timeout. Vitória por derrota de equipe, desistência ou timeout concede
+    10 XP ao vencedor e 1 XP ao perdedor; a concessão é idempotente.
 
 ## Escopo global e contexto de grupo
 
@@ -79,27 +91,30 @@ isso não torna o save do RPG local ao grupo.
 | Níveis | Nível guardado globalmente por personagem possuído; curva e efeitos pendentes |
 | Loja global | Itens de cura e outros itens do RPG; catálogo e consumo pendentes |
 | Loja de Sinais | Moeda global compra sinais/tíquetes usados para desbloquear personagens; preços e resgate pendentes |
-| Equipe | Até três personagens por batalha; se há equipe salva ou seleção a cada combate, pendente |
+| Equipe | 1 a 3 personagens salvos em ordem no perfil global; a ordem afeta turnos e alvos |
 | Identidade | Conta Central; primeiro corrigir uniões para não perder dados ou login quando IDs forem consolidados |
 | Ranking | Definir critérios e apresentação do ranking global |
 | Administração | Definir controles SU para carteira e dados globais; admins locais não editam esses dados |
+| Desafio pendente | Definir prazo para aceitar ou recusar um convite |
 
 ## Fluxo de jogo proposto
 
 1. O jogador recebe a opção de escolher gratuitamente um personagem básico
    inicial.
 2. O jogador seleciona até três personagens que possui para uma batalha.
-3. Um membro desafia outro no grupo atual; o alvo aceita ou recusa.
+3. Um membro desafia outro no grupo atual; o alvo aceita ou recusa por botão no
+   Discord/Telegram ou pelos comandos em qualquer plataforma.
 4. Ao iniciar o combate, o bot registra os personagens selecionados e seus
    níveis como um snapshot imutável daquela batalha.
 5. Vida, efeitos e outros estados de combate são inicializados para a batalha e
    descartados ao terminar; não são salvos como condição persistente do
    personagem.
-6. A cada turno, o jogador escolhe uma ação válida, como ataque, habilidade,
-   defesa ou desistência.
-7. O bot valida o turno, aplica a ação e mostra o resultado aos participantes.
-8. Ao terminar, o bot aplica uma única vez o XP, os itens ou outros prêmios
-   globais definidos para o RPG.
+6. A cada turno, o jogador escolhe um golpe disponível ou desiste. Os botões no
+   Discord/Telegram e os comandos validam o mesmo estado do combate.
+7. O bot valida o turno, aplica dano/efeitos e mostra o resultado aos
+   participantes. Quem não agir em 60 segundos perde por timeout.
+8. Ao terminar, o bot concede uma única vez 10 XP ao vencedor e 1 XP ao
+   perdedor.
 
 ## Escopo sugerido do MVP
 
@@ -123,6 +138,10 @@ isso não torna o save do RPG local ao grupo.
 - Configuração por grupo que habilita ou bloqueia somente os comandos do RPG.
 - Comandos equivalentes nas três plataformas; botões no Discord e Telegram e
   fluxo por texto no WhatsApp.
+- Equipe ordenada de 1 a 3 personagens, golpe no personagem vivo da frente,
+  fraquezas, afinidades e efeito Congelado.
+- Recompensa fixa de 10 XP para vitória e 1 XP para derrota, inclusive por
+  desistência ou timeout.
 - Aplicação idempotente de XP e prêmios para evitar duplicação após repetição
   de ação ou reinício.
 
@@ -216,6 +235,25 @@ Os nomes são rascunhos; a sintaxe final deve seguir o parser atual.
 
 Botões no Discord e Telegram podem oferecer as mesmas ações. Cada interação
 deve revalidar jogador, turno, batalha e prazo no servidor.
+
+### Comandos PvP
+
+- `!equipe` abre a montagem guiada: Discord e Telegram oferecem botões para
+  selecionar, ordenar e salvar até três personagens; no WhatsApp, o bot lista
+  os IDs possuídos e explica a sintaxe.
+- Se o jogador ainda não possui personagens, o botão do catálogo abre a
+  seleção de personagem inicial; no WhatsApp, o bot orienta a usar o catálogo,
+  escolher um personagem comum e então voltar à equipe.
+- `!equipe <id1> [id2] [id3]` também salva diretamente os personagens na ordem
+  informada.
+- `!desafiar [menção]` envia um convite; também é possível responder à mensagem
+  da pessoa sem informar uma menção.
+- `!aceitar_desafio` / `!recusar_desafio` respondem ao convite pendente.
+- `!ataque <nome ou id do golpe>` usa um golpe no personagem vivo da frente.
+- `!desistir_desafio` concede a vitória ao oponente; `!status_batalha` consulta
+  o combate e convites pendentes.
+- Discord usa embeds e botões; Telegram usa HTML e botões inline; WhatsApp usa
+  formatação de texto e comandos.
 
 ## Segurança, equilíbrio e recuperação
 

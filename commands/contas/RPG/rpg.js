@@ -4,7 +4,7 @@ module.exports = {
     name: "rpg",
     category: "contas/RPG",
     description: "Exibe seu perfil e progresso global no RPG.",
-    usage: "!rpg",
+    usage: "{prefix}rpg",
     async execute(message) {
         return rpgCommands.execute(message, "perfil");
     },

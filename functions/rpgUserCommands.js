@@ -4,6 +4,7 @@ const sharp = require("sharp");
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
 const catalogStore = require("./rpgMaker");
 const rpgPlayer = require("./rpgPlayer");
+const config = require("./config");
 
 const COMPONENT_CONTEXT = Symbol.for("satbot.componentMessageContext");
 const CARD_WIDTH = 1200;
@@ -24,6 +25,10 @@ const DECORATIVE_STAT_BARS = Object.freeze({
     stamina: { color: "#63d6a0", width: 202 },
     agilidade: { color: "#b18aff", width: 158 }
 });
+
+function getCommandPrefix(message) {
+    return String(message?.prefix || config.getPrefix());
+}
 
 function getStores(message) {
     const centralAccounts = message.functions?.centralAccounts || global.centralAccounts;
@@ -248,6 +253,7 @@ function makeCardComponents(
 }
 
 async function sendCharacterCard(message, character, catalog, options = {}) {
+    const prefix = getCommandPrefix(message);
     const stats = options.ownedCharacter
         ? rpgPlayer.getCharacterStats(character, options.ownedCharacter)
         : character;
@@ -257,10 +263,10 @@ async function sendCharacterCard(message, character, catalog, options = {}) {
     const allowInitialChoice = options.allowInitialChoice === true;
     const displayReturnCommand = returnCommand === "rpgpersonagens" ? "meus_personagens" : returnCommand;
     const backCommand = options.returnBaseIndex !== undefined && options.returnBaseIndex !== null
-        ? `!catalogo base ${options.returnBaseIndex} ${returnPage}`
+        ? `${prefix}catalogo base ${options.returnBaseIndex} ${returnPage}`
         : options.returnToBases
-            ? `!catalogo ${options.basesPage || 1}`
-            : `!${displayReturnCommand} ${returnPage}`;
+            ? `${prefix}catalogo ${options.basesPage || 1}`
+            : `${prefix}${displayReturnCommand} ${returnPage}`;
     let caption = options.caption || formatCharacterCaption(
         message.platform,
         character,
@@ -269,16 +275,16 @@ async function sendCharacterCard(message, character, catalog, options = {}) {
     );
     if (message.platform === "discord") {
         caption += `\n↩️ **Voltar:** \`${backCommand}\``;
-        if (allowInitialChoice) caption += `\n🎁 **Inicial:** \`!catalogo escolher ${character.id}\``;
-        if (options.canAscend) caption += `\n✨ **Ascensão:** \`!ascensao ${character.id}\``;
+        if (allowInitialChoice) caption += `\n🎁 **Inicial:** \`${prefix}catalogo escolher ${character.id}\``;
+        if (options.canAscend) caption += `\n✨ **Ascensão:** \`${prefix}ascensao ${character.id}\``;
     } else if (message.platform === "telegram") {
         caption += `\n↩️ <b>Voltar:</b> <code>${escapeHtml(backCommand)}</code>`;
-        if (allowInitialChoice) caption += `\n🎁 <b>Inicial:</b> <code>!catalogo escolher ${character.id}</code>`;
-        if (options.canAscend) caption += `\n✨ <b>Ascensão:</b> <code>!ascensao ${character.id}</code>`;
+        if (allowInitialChoice) caption += `\n🎁 <b>Inicial:</b> <code>${escapeHtml(prefix)}catalogo escolher ${character.id}</code>`;
+        if (options.canAscend) caption += `\n✨ <b>Ascensão:</b> <code>${escapeHtml(prefix)}ascensao ${character.id}</code>`;
     } else {
         caption += `\n↩️ *Voltar:* \`${backCommand}\``;
-        if (allowInitialChoice) caption += `\n🎁 *Inicial:* \`!catalogo escolher ${character.id}\``;
-        if (options.canAscend) caption += `\n✨ *Ascensão:* \`!ascensao ${character.id}\``;
+        if (allowInitialChoice) caption += `\n🎁 *Inicial:* \`${prefix}catalogo escolher ${character.id}\``;
+        if (options.canAscend) caption += `\n✨ *Ascensão:* \`${prefix}ascensao ${character.id}\``;
     }
     const payload = {
         image,
@@ -479,18 +485,18 @@ function makePagedResponse({
     return { text, title, lines, ...buttons, page, totalPages, ...metadata };
 }
 
-function getPageInstructions(platform, commandName, paged) {
+function getPageInstructions(platform, commandName, paged, prefix) {
     const { mode = null, baseIndex = null, page = 1, basesPage = 1 } = paged;
     const catalogCommand = commandName;
     const userCommand = commandName === "rpgpersonagens" ? "meus_personagens" : commandName;
     if (platform === "whatsapp") {
         if (catalogCommand === "rpgcatalogo") {
             if (mode === "characters") {
-                return `Outra página: !catalogo base ${baseIndex} <página>. Card: !catalogo ver <id> base ${baseIndex} pagina ${page}. Voltar às bases: !catalogo ${basesPage}.`;
+                return `Outra página: ${prefix}catalogo base ${baseIndex} <página>. Card: ${prefix}catalogo ver <id> base ${baseIndex} pagina ${page}. Voltar às bases: ${prefix}catalogo ${basesPage}.`;
             }
-            return `Escolher uma base: !catalogo base <número>. Próxima página: !catalogo <página>.`;
+            return `Escolher uma base: ${prefix}catalogo base <número>. Próxima página: ${prefix}catalogo <página>.`;
         }
-        return `Para abrir outra página: !${userCommand} <página>. Card: !rpgver <id>.`;
+        return `Para abrir outra página: ${prefix}${userCommand} <página>. Card: ${prefix}rpgver <id>.`;
     }
     if (catalogCommand === "rpgcatalogo") {
         if (mode === "characters") {
@@ -524,7 +530,7 @@ function formatPagedLine(line, platform, mode = null) {
 
 function formatPagedPayload(message, paged, commandName, notice = "") {
     const platform = message.platform;
-    const instructions = getPageInstructions(platform, commandName, paged);
+    const instructions = getPageInstructions(platform, commandName, paged, getCommandPrefix(message));
     const formattedLines = paged.lines.map(line => formatPagedLine(line, platform, paged.mode));
     if (platform === "discord") {
         const description = [
@@ -722,7 +728,7 @@ function getPagedAction(message, commandName, args = []) {
                 .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
                 .map(save => catalog.personagens.find(entry => entry.id === save.characterId))
                 .filter(Boolean),
-            emptyMessage: "Você ainda não possui personagens. Escolha um personagem comum pelo comando !catalogo."
+            emptyMessage: `Você ainda não possui personagens. Escolha um personagem comum pelo comando ${getCommandPrefix(message)}catalogo.`
         });
     }
 
@@ -737,9 +743,9 @@ function normalizeSearch(value) {
         .trim();
 }
 
-function findCharacter(catalog, query) {
+function findCharacter(catalog, query, prefix = config.getPrefix()) {
     const term = String(query || "").trim();
-    if (!term) throw new Error("Informe o ID ou o nome do personagem. Exemplo: !rpgver 0");
+    if (!term) throw new Error(`Informe o ID ou o nome do personagem. Exemplo: ${prefix}rpgver 0`);
     if (/^\d+$/.test(term)) {
         const byId = catalog.personagens.find(character => character.id === Number(term));
         if (byId) return byId;
@@ -759,6 +765,7 @@ async function executeAction(message, action = "menu", args = []) {
     const { centralAccounts, central } = getStores(message);
     const profile = centralAccounts.getRpgProfile(central.id);
     const catalog = catalogStore.readCatalog();
+    const prefix = getCommandPrefix(message);
     const displayName = central.name || message.displayName || message.userId;
 
     if (action === "menu") {
@@ -808,7 +815,7 @@ async function executeAction(message, action = "menu", args = []) {
             return message.reply(formatSimplePayload(message, "✨ ASCENSÃO", [
                 `Pontos disponíveis: ${profile.ascensao ?? 0}`,
                 (profile.ascensao ?? 0) > 0
-                    ? "Use !ascensao <id> para gastar 1 ponto e subir o nível de um personagem seu."
+                    ? `Use ${prefix}ascensao <id> para gastar 1 ponto e subir o nível de um personagem seu.`
                     : "Você ganha 1 ponto ao subir de nível na Conta Central.",
                 ...owned
             ], 0x28a879));
@@ -829,11 +836,11 @@ async function executeAction(message, action = "menu", args = []) {
         const catalogAction = normalizeSearch(args[0]);
         if (catalogAction === "help" || catalogAction === "ajuda") {
             return message.reply(formatSimplePayload(message, "📚 COMO USAR O CATÁLOGO RPG", [
-                "1️⃣ Use !catalogo para listar as bases disponíveis.",
-                "2️⃣ Escolha uma base na lista; no WhatsApp, use !catalogo base <número> [página].",
+                `1️⃣ Use ${prefix}catalogo para listar as bases disponíveis.`,
+                `2️⃣ Escolha uma base na lista; no WhatsApp, use ${prefix}catalogo base <número> [página].`,
                 "3️⃣ Escolha um personagem para abrir o card.",
-                "No WhatsApp, abra o card com !catalogo ver <id> base <número> pagina <página>.",
-                "Para escolher o personagem inicial, abra o card de um personagem comum e use o botão ou !catalogo escolher <id>."
+                `No WhatsApp, abra o card com ${prefix}catalogo ver <id> base <número> pagina <página>.`,
+                `Para escolher o personagem inicial, abra o card de um personagem comum e use o botão ou ${prefix}catalogo escolher <id>.`
             ], 0x7c5ce7));
         }
         if (catalogAction === "ver" || catalogAction === "abrir") {
@@ -848,7 +855,7 @@ async function executeAction(message, action = "menu", args = []) {
             const characterQuery = args.slice(1, firstMarker).join(" ");
             const returnBase = baseMarker < 0 ? null : findCatalogBase(catalog, args[baseMarker + 1]);
             const returnPage = pageMarker < 0 ? 1 : parsePage(args.slice(pageMarker + 1));
-            const character = findCharacter(catalog, characterQuery);
+            const character = findCharacter(catalog, characterQuery, prefix);
             if (returnBase && normalizeSearch(character.base || "Sem base") !== normalizeSearch(returnBase.name)) {
                 throw new Error("Esse personagem não pertence à base informada.");
             }
@@ -881,7 +888,7 @@ async function executeAction(message, action = "menu", args = []) {
     }
 
     if (action === "view") {
-        const character = findCharacter(catalog, args.join(" "));
+        const character = findCharacter(catalog, args.join(" "), prefix);
         const canChooseInitial = profile.initialCharacterId === null &&
             rpgPlayer.getStartingCharacters(catalog).some(candidate => candidate.id === character.id);
         const ownedCharacter = rpgPlayer.getCharacterSave(profile, character.id);
@@ -895,7 +902,7 @@ async function executeAction(message, action = "menu", args = []) {
         });
     }
 
-    throw new Error("Comando RPG desconhecido. Use !rpg para consultar os comandos disponíveis.");
+    throw new Error(`Comando RPG desconhecido. Use ${prefix}rpg para consultar o perfil.`);
 }
 
 async function execute(message, action, args = []) {
@@ -917,7 +924,7 @@ async function showCardFromInteraction(
     const { central, centralAccounts } = getStores(message);
     const profile = centralAccounts.getRpgProfile(central.id);
     const catalog = catalogStore.readCatalog();
-    const character = findCharacter(catalog, characterId);
+    const character = findCharacter(catalog, characterId, getCommandPrefix(message));
     const ownedCharacter = returnCommand === "rpgpersonagens"
         ? rpgPlayer.getCharacterSave(profile, character.id)
         : null;

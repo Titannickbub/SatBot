@@ -10,6 +10,30 @@ test("global RPG definitions receive sequential IDs and reject duplicate names",
     assert.throws(() => rpgMaker.createAttribute(catalog, "fogo"), /Já existe/);
 });
 
+test("effects store an affinity type and passive round damage", () => {
+    const catalog = rpgMaker.emptyCatalog();
+    rpgMaker.createAttribute(catalog, "Gelo");
+
+    const effect = rpgMaker.createEffect(catalog, "Congelado", {
+        afinidadeId: 0,
+        danoPassivoPorRodada: 4
+    });
+    assert.deepEqual(effect, {
+        id: 0,
+        nome: "Congelado",
+        afinidadeId: 0,
+        danoPassivoPorRodada: 4
+    });
+    assert.throws(() => rpgMaker.createEffect(catalog, "Inválido", {
+        afinidadeId: 3,
+        danoPassivoPorRodada: 4
+    }), /afinidade inexistente/);
+    assert.throws(() => rpgMaker.createEffect(catalog, "Inválido", {
+        afinidadeId: 0,
+        danoPassivoPorRodada: 1.5
+    }), /inteiro não negativo/);
+});
+
 test("move creation validates its global references and required costs", () => {
     const catalog = rpgMaker.emptyCatalog();
     rpgMaker.createAttribute(catalog, "Fogo");

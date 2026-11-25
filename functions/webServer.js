@@ -8219,10 +8219,10 @@ function start() {
           const item = rpgMaker.updateAttribute(catalog, payload.id, payload.nome);
           message = `Atributo "${item.nome}" atualizado.`;
         } else if (payload.action === "effect") {
-          const item = rpgMaker.createEffect(catalog, payload.nome);
+          const item = rpgMaker.createEffect(catalog, payload.nome, payload);
           message = `Efeito "${item.nome}" criado com ID ${item.id}.`;
         } else if (payload.action === "effect.update") {
-          const item = rpgMaker.updateEffect(catalog, payload.id, payload.nome);
+          const item = rpgMaker.updateEffect(catalog, payload.id, payload.nome, payload);
           message = `Efeito "${item.nome}" atualizado.`;
         } else if (payload.action === "move") {
           const item = rpgMaker.createMove(catalog, payload);

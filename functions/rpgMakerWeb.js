@@ -75,13 +75,13 @@ function renderPage(platform) {
     <div class="action-pane" data-action-pane="attributes:create">
       <div class="columns">
         <form id="attributeCreateForm"><h2>Novo atributo</h2><label>Nome<input name="nome" maxlength="40" required placeholder="Ex.: Fogo"></label><button class="primary" type="submit">Criar atributo</button></form>
-        <form id="effectCreateForm"><h2>Novo efeito</h2><label>Nome<input name="nome" maxlength="40" required placeholder="Ex.: Congelado"></label><button type="submit">Criar efeito</button></form>
+        <form id="effectCreateForm"><h2>Novo efeito</h2><label>Nome<input name="nome" maxlength="40" required placeholder="Ex.: Congelado"></label><label>Tipo de afinidade<select name="afinidadeId"></select></label><label>Dano passivo por rodada<input name="danoPassivoPorRodada" type="number" min="0" step="1" value="0" required></label><button type="submit">Criar efeito</button></form>
       </div>
     </div>
     <div class="action-pane" data-action-pane="attributes:edit" hidden>
       <div class="columns">
         <form id="attributeEditForm"><h2>Editar atributo</h2><label>Atributo<select name="id" data-window-target="attributes" required><option value="">Selecione um atributo</option></select></label><label>Novo nome<input name="nome" maxlength="40" required></label><button class="primary" type="submit">Salvar atributo</button></form>
-        <form id="effectEditForm"><h2>Editar efeito</h2><label>Efeito<select name="id" data-window-target="attributes" required><option value="">Selecione um efeito</option></select></label><label>Novo nome<input name="nome" maxlength="40" required></label><button type="submit">Salvar efeito</button></form>
+        <form id="effectEditForm"><h2>Editar efeito</h2><label>Efeito<select name="id" data-window-target="attributes" required><option value="">Selecione um efeito</option></select></label><label>Novo nome<input name="nome" maxlength="40" required></label><label>Tipo de afinidade<select name="afinidadeId"></select></label><label>Dano passivo por rodada<input name="danoPassivoPorRodada" type="number" min="0" step="1" required></label><button type="submit">Salvar efeito</button></form>
       </div>
     </div>
     <div class="action-pane" data-action-pane="attributes:list" hidden>
@@ -208,6 +208,18 @@ function fillMoveForm(form,item){
   form.elements.frases.value=item.frases.join("\\n");
   setSelected(form.elements.efeitos,item.efeitos);
 }
+function fillEffectForm(form,item){
+  form.elements.nome.value=item.nome;
+  form.elements.afinidadeId.value=item.afinidadeId===null?"":String(item.afinidadeId);
+  form.elements.danoPassivoPorRodada.value=item.danoPassivoPorRodada;
+}
+function effectPayload(form){
+  return {
+    nome:form.elements.nome.value,
+    afinidadeId:form.elements.afinidadeId.value===""?null:Number(form.elements.afinidadeId.value),
+    danoPassivoPorRodada:Number(form.elements.danoPassivoPorRodada.value)
+  };
+}
 function movePayload(form){
   return {
     nome:form.elements.nome.value,dano:Number(form.elements.dano.value),
@@ -246,6 +258,7 @@ async function load(){
     const pill=document.createElement("span");pill.className="pill";pill.textContent=label+": "+count;summary.append(pill);
   });
   document.querySelectorAll('select[name="tipo"]').forEach(select=>setOptions(select,catalog.fraquezas,"Sem tipo"));
+  document.querySelectorAll('select[name="afinidadeId"]').forEach(select=>setOptions(select,catalog.fraquezas,"Sem tipo"));
   document.querySelectorAll('select[name="efeitos"]').forEach(select=>setOptions(select,catalog.efeitos));
   document.querySelectorAll('select[name="fraquezas"],select[name="afinidades"]').forEach(select=>setOptions(select,catalog.fraquezas));
   document.querySelectorAll('select[name="golpes"]').forEach(select=>setOptions(select,catalog.golpes));
@@ -253,14 +266,17 @@ async function load(){
   setOptions(document.querySelector("#effectEditForm select[name=id]"),catalog.efeitos,"Selecione um efeito");
   setOptions(document.querySelector("#moveEditForm select[name=id]"),catalog.golpes.filter(move=>move.podeEsquecer!==false&&move.nome!=="Clone Travado"),"Selecione um golpe");
   document.querySelectorAll(".character-form select[name=id]").forEach(select=>setOptions(select,catalog.personagens,"Selecione um personagem"));
+  const weaknessName=id=>catalog.fraquezas.find(item=>item.id===id)?.nome||String(id);
+  const effectName=id=>catalog.efeitos.find(item=>item.id===id)?.nome||String(id);
   renderList(document.getElementById("attributeList"),catalog.fraquezas,()=> "Usado em fraquezas, afinidades e tipos de golpes.",item=>{
     const form=document.getElementById("attributeEditForm");selectForEdit(form.elements.id,item,()=>{form.elements.nome.value=item.nome});
   });
-  renderList(document.getElementById("effectList"),catalog.efeitos,()=> "Efeito global.",item=>{
-    const form=document.getElementById("effectEditForm");selectForEdit(form.elements.id,item,()=>{form.elements.nome.value=item.nome});
+  renderList(document.getElementById("effectList"),catalog.efeitos,item=>
+    "Tipo "+(item.afinidadeId===null?"sem afinidade":weaknessName(item.afinidadeId))+
+    " · Dano passivo por rodada "+item.danoPassivoPorRodada,
+    item=>{
+    const form=document.getElementById("effectEditForm");selectForEdit(form.elements.id,item,()=>fillEffectForm(form,item));
   });
-  const weaknessName=id=>catalog.fraquezas.find(item=>item.id===id)?.nome||String(id);
-  const effectName=id=>catalog.efeitos.find(item=>item.id===id)?.nome||String(id);
   renderList(document.getElementById("moveList"),catalog.golpes,item=>
     "Dano "+item.dano+" · Mana "+item.custo.mana+" · Stamina "+item.custo.stamina+" · HP "+item.custo.hp+
     " · Tipo "+(item.tipoFraquezaId===null?"sem tipo":weaknessName(item.tipoFraquezaId))+
@@ -296,14 +312,17 @@ async function submitForm(form,action,build){
   });
 }
 submitForm(document.getElementById("attributeCreateForm"),"attribute",fd=>({nome:fd.get("nome")}));
-submitForm(document.getElementById("effectCreateForm"),"effect",fd=>({nome:fd.get("nome")}));
+submitForm(document.getElementById("effectCreateForm"),"effect",(_fd,form)=>effectPayload(form));
 submitForm(document.getElementById("attributeEditForm"),"attribute.update",fd=>({id:Number(fd.get("id")),nome:fd.get("nome")}));
-submitForm(document.getElementById("effectEditForm"),"effect.update",fd=>({id:Number(fd.get("id")),nome:fd.get("nome")}));
+submitForm(document.getElementById("effectEditForm"),"effect.update",(fd,form)=>({id:Number(fd.get("id")),...effectPayload(form)}));
 submitForm(document.getElementById("moveCreateForm"),"move",(_fd,form)=>movePayload(form));
 submitForm(document.getElementById("moveEditForm"),"move.update",(fd,form)=>({id:Number(fd.get("id")),...movePayload(form)}));
 document.querySelectorAll(".move-form select[name=id]").forEach(select=>select.addEventListener("change",()=>{
   const item=catalog?.golpes.find(move=>move.id===Number(select.value));if(item)fillMoveForm(select.form,item);
 }));
+document.querySelector("#effectEditForm select[name=id]").addEventListener("change",event=>{
+  const item=catalog?.efeitos.find(effect=>effect.id===Number(event.target.value));if(item)fillEffectForm(event.target.form,item);
+});
 async function readImage(file){
   if(file.size>8*1024*1024)throw new Error("A imagem deve ter até 8 MB.");
   return new Promise((resolve,reject)=>{
