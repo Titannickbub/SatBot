@@ -9,42 +9,57 @@ module.exports = {
         "r", "rsticker", "rfig", "rfigurinha",
         "sa", "fa", "ra"
     ],
-    description: `🖼️ Converte fotos, imagens, GIFs ou vídeos curtos em figurinhas (stickers) para WhatsApp e Telegram. No WhatsApp, sa/fa/ra criam figurinhas com áudio.
+    description: `🖼️ FIGURINHAS DE FOTO, GIF OU VÍDEO
+Disponível no WhatsApp e Telegram. Envie o comando junto da mídia ou responda à mensagem que contém a mídia.
 
-📝 1. Crie a figurinha mantendo a proporção original:
-{prefix}s
-{prefix}fig
-{prefix}sticker
+📐 Modos de criação:
+• Proporção original: {prefix}sticker, {prefix}s, {prefix}fig ou {prefix}figurinha
+• Esticar para preencher: {prefix}f, {prefix}fsticker, {prefix}ffig ou {prefix}ffigurinha
+• Recortar quadrado pelo centro: {prefix}r, {prefix}rsticker, {prefix}rfig ou {prefix}rfigurinha
 
-Envie uma foto ou vídeo com o comando na legenda, ou responda à mensagem de mídia com o comando.
+🔊 FIGURINHAS COM ÁUDIO — somente WhatsApp
+Use {prefix}sa para manter a proporção, {prefix}fa para esticar ou {prefix}ra para recortar.
+Envie um vídeo com som ou combine uma imagem/vídeo com um áudio respondendo a uma das mídias. O áudio pode ter até 30 segundos.
 
-📐 2. Modos alternativos de ajuste:
-• {prefix}f / {prefix}fsticker — Estica a imagem para preencher toda a figurinha.
-• {prefix}r / {prefix}rsticker — Recorta a imagem em formato quadrado centralizado.
-• No WhatsApp: {prefix}sa cria com proporção original; {prefix}fa estica; {prefix}ra recorta. Use em vídeo com som ou combine imagem/vídeo e áudio.
+📏 Limites e detalhes:
+• No WhatsApp, GIFs/vídeos podem ter até 10 segundos. A figurinha final pode ter até 100 KB se estática ou 5 MB se animada (limite experimental).
+• No Telegram, a figurinha criada também pode ser adicionada ao seu pacote pessoal.
 
-📌 Observações:
-• Suporta fotos, imagens, GIFs e vídeos curtos (até 10 segundos).
-• No WhatsApp, o teto experimental para figurinhas animadas é 5 MB; a compressão reduz FPS e resolução quando necessário.
-• No Discord, utilize {prefix}dsticker para figurinhas de servidor ou {prefix}emoji para emojis.`,
+📦 PACOTES PESSOAIS — somente Telegram
+• {prefix}delfig ou {prefix}delsticker — responda à figurinha para removê-la do seu pacote.
+• {prefix}delpack, {prefix}deletarpacote ou {prefix}limparpacote — exclui o pacote inteiro.
+
+🛠️ FIGURINHAS E EMOJIS DO SERVIDOR — somente Discord
+• {prefix}dsticker, {prefix}ds, {prefix}dfig ou {prefix}dfigurinha — cria uma figurinha do servidor.
+• {prefix}fdsticker, {prefix}fds, {prefix}fdfig ou {prefix}fdfigurinha — estica a mídia.
+• {prefix}rdsticker, {prefix}rds, {prefix}rdfig ou {prefix}rdfigurinha — recorta pelo centro.
+• {prefix}emoji, {prefix}e, {prefix}semoji ou {prefix}addemoji — cria um emoji; {prefix}femoji/{prefix}fe estica e {prefix}remoji/{prefix}re recorta.
+Esses comandos do Discord são separados do comando sticker e exigem permissão para gerenciar expressões no servidor.`,
     category: "sticker",
     platformSupport: {
         whatsapp: "full",
         telegram: "full",
         discord: "none"
     },
-    usage: "{prefix}sticker @mensagem\n{prefix}fsticker @mensagem\n{prefix}rsticker @mensagem",
+    usage: `Mídia anexada ao comando ou resposta à mensagem:
+{prefix}sticker | {prefix}s | {prefix}fig | {prefix}figurinha
+{prefix}f | {prefix}fsticker | {prefix}ffig | {prefix}ffigurinha
+{prefix}r | {prefix}rsticker | {prefix}rfig | {prefix}rfigurinha
+Áudio (WhatsApp): {prefix}sa | {prefix}fa | {prefix}ra
+Pacote (Telegram): {prefix}delfig | {prefix}delsticker [respondendo à figurinha]
+{prefix}delpack | {prefix}deletarpacote | {prefix}limparpacote`,
     examples: [
-        "{prefix}sticker / {prefix}s / {prefix}fig / {prefix}figurinha (manter proporção)",
-        "{prefix}f / {prefix}fsticker / {prefix}ffig / {prefix}ffigurinha (esticar total)",
-        "{prefix}r / {prefix}rsticker / {prefix}rfig / {prefix}rfigurinha (cortar centro)",
-        "{prefix}sa / {prefix}fa / {prefix}ra (figurinhas com áudio no WhatsApp)"
+        "{prefix}sticker (com foto/vídeo anexado ou respondendo à mídia)",
+        "{prefix}ffig (mesmas formas de envio; estica a mídia)",
+        "{prefix}rfigurinha (mesmas formas de envio; recorta pelo centro)",
+        "{prefix}sa (vídeo com som ou imagem/vídeo combinado com áudio no WhatsApp)"
     ],
 
     async execute(message) {
         if (!["whatsapp", "telegram"].includes(message.platform)) {
             if (message.platform === "discord") {
-                return message.reply({ text: "📌 No Discord, use `!dsticker <nome>` para criar figurinhas do servidor ou `!emoji <nome>` para emojis." });
+                const prefix = message.prefix || "!";
+                return message.reply({ text: `📌 No Discord, use \`${prefix}dsticker <nome>\` para criar figurinhas do servidor ou \`${prefix}emoji <nome>\` para emojis.` });
             }
             return message.reply({ text: "❌ O comando de figurinha está disponível para WhatsApp e Telegram." });
         }
@@ -88,17 +103,21 @@ Envie uma foto ou vídeo com o comando na legenda, ou responda à mensagem de m�
         }
 
         if (!mediaObj || typeof mediaObj.getBuffer !== "function") {
+            const prefix = message.prefix || "!";
             const whatsappLimits = message.platform === "whatsapp"
                 ? "\n\n📏 *Limites experimentais do WhatsApp:* imagem até 100 KB; figurinha animada até 5 MB e GIF/vídeo de até 10 segundos. O limite de KB/MB é da figurinha gerada, não do arquivo enviado."
                 : "";
+            const audioHelp = message.platform === "whatsapp"
+                ? `\n• \`${prefix}sa\` / \`${prefix}fa\` / \`${prefix}ra\` — figurinha com áudio (até 30 segundos).`
+                : "";
             return message.reply({
-                text: "⚠️ Envie a foto/vídeo com o comando *" + (message.prefix || "!") + "sticker* na legenda, ou responda/marque uma imagem/vídeo com o comando!\n\n" +
-                      "📌 *Modos disponíveis:*\n" +
-                      "• `!sticker` / `!s` / `!fig` / `!figurinha` — Proporção original\n" +
-                      "• `!f` / `!fsticker` / `!ffig` / `!ffigurinha` — Esticar total\n" +
-                      "• `!r` / `!rsticker` / `!rfig` / `!rfigurinha` — Cortar quadrado no centro\n" +
-                      (message.platform === "whatsapp" ? "• `!sa` / `!fa` / `!ra` — Figurinha com áudio (áudio até 30 segundos)\n" : "") +
-                      whatsappLimits
+                text: `⚠️ Anexe uma foto/vídeo ao comando ou responda à mensagem de mídia.\n\n` +
+                    `📌 *Modos disponíveis:*\n` +
+                    `• \`${prefix}sticker\` / \`${prefix}s\` / \`${prefix}fig\` / \`${prefix}figurinha\` — proporção original.\n` +
+                    `• \`${prefix}f\` / \`${prefix}fsticker\` / \`${prefix}ffig\` / \`${prefix}ffigurinha\` — esticar.\n` +
+                    `• \`${prefix}r\` / \`${prefix}rsticker\` / \`${prefix}rfig\` / \`${prefix}rfigurinha\` — recortar pelo centro.` +
+                    audioHelp +
+                    whatsappLimits
             });
         }
 

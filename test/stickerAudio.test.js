@@ -20,6 +20,27 @@ test("WhatsApp sticker aliases include the sound variants", () => {
     assert.ok(stickerCommand.aliases.includes("ra"));
 });
 
+test("sticker help clearly lists creation modes and related platform commands", () => {
+    const documentedAliases = [
+        ...stickerCommand.aliases,
+        "delfig", "delsticker", "delpack", "deletarpacote", "limparpacote",
+        "dsticker", "ds", "dfig", "dfigurinha",
+        "fdsticker", "fds", "fdfig", "fdfigurinha",
+        "rdsticker", "rds", "rdfig", "rdfigurinha",
+        "emoji", "e", "semoji", "addemoji", "femoji", "fe", "remoji", "re"
+    ];
+    for (const alias of documentedAliases) {
+        assert.ok(
+            stickerCommand.description.includes(`{prefix}${alias}`) ||
+            stickerCommand.usage.includes(`{prefix}${alias}`),
+            `sticker help is missing ${alias}`
+        );
+    }
+    assert.match(stickerCommand.description, /somente WhatsApp/);
+    assert.match(stickerCommand.description, /somente Telegram/);
+    assert.match(stickerCommand.description, /somente Discord/);
+});
+
 test("WhatsApp-generated WebP metadata includes the configured sticker description", async () => {
     const source = await sharp({
         create: {

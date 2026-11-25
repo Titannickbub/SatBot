@@ -4,6 +4,11 @@ const {
     ButtonStyle
 } = require("discord.js");
 const battleStore = require("./rpgBattle");
+const {
+    renderBattleBanner,
+    renderVictoryBanner,
+    renderChallengeBanner
+} = require("./rpgBattleBanner");
 const catalogStore = require("./rpgMaker");
 const send = require("./send");
 const economy = require("./economy");
@@ -73,7 +78,7 @@ function makeButtons(platform, choices) {
     return {};
 }
 
-function makeChallengePayload(message, challenge) {
+async function makeChallengePayload(message, challenge, catalog = null) {
     const targetMention = challengeMention(message.platform, challenge.opponent);
     const choices = [
         {
@@ -87,112 +92,126 @@ function makeChallengePayload(message, challenge) {
             style: ButtonStyle.Secondary
         }
     ];
-    const team = challenge.challenger.team.map((fighter, index) =>
-        `${index + 1}. ${fighter.name} (nível ${fighter.level})`
-    );
-    const details = [
-        `Equipe: ${team.join(" · ")}`,
-        `Desafio: ${challenge.id}`,
-        `Para responder: ${getCommandPrefix(message)}aceitar_desafio ou ${getCommandPrefix(message)}recusar_desafio.`
-    ];
+    const replyLine = `Para responder: ${getCommandPrefix(message)}aceitar_desafio ou ${getCommandPrefix(message)}recusar_desafio.`;
+    const bannerBuffer = await renderChallengeBanner(challenge, { catalog });
+    const fileName = `desafio-${challenge.id}.png`;
     if (message.platform === "discord") {
+        const mention = targetMention.content || escapeMarkdown(challenge.opponent.name);
         return {
             embed: {
                 color: 0x7c5ce7,
                 title: "⚔️ Desafio de batalha RPG",
                 description: [
-                    `${escapeMarkdown(challenge.challenger.name)} desafiou ${escapeMarkdown(challenge.opponent.name)} para uma batalha!`,
-                    ...details.map(escapeMarkdown)
+                    `${mention}, ${escapeMarkdown(challenge.challenger.name)} desafiou você para uma batalha!`,
+                    escapeMarkdown(replyLine)
                 ].join("\n"),
+                image: { url: `attachment://${fileName}` },
                 footer: { text: "O desafiado precisa ter uma equipe configurada." }
             },
-            text: targetMention.content,
+            files: [{ attachment: bannerBuffer, name: fileName }],
             allowedMentions: targetMention.allowedMentions,
             ...makeButtons(message.platform, choices)
         };
     }
     if (message.platform === "telegram") {
+        const caption = [
+            "<b>⚔️ DESAFIO DE BATALHA RPG</b>",
+            "",
+            `${targetMention.text} ${escapeHtml(challenge.challenger.name)} te desafiou para uma batalha RPG!`,
+            escapeHtml(replyLine)
+        ].join("\n");
         return {
-            text: [
-                "<b>⚔️ DESAFIO DE BATALHA RPG</b>",
-                "",
-                `${targetMention.text} ${escapeHtml(challenge.challenger.name)} te desafiou para uma batalha RPG!`,
-                ...details.map(escapeHtml)
-            ].join("\n"),
+            image: bannerBuffer,
+            fileName,
+            text: caption,
+            caption,
             parse_mode: "HTML",
             ...makeButtons(message.platform, choices)
         };
     }
+    const whatsappText = [
+        "*⚔️ DESAFIO DE BATALHA RPG*",
+        "",
+        `${targetMention.text} ${challenge.challenger.name} te desafiou para uma batalha RPG!`,
+        replyLine
+    ].join("\n");
     return {
-        text: [
-            "*⚔️ DESAFIO DE BATALHA RPG*",
-            "",
-            `${targetMention.text} ${challenge.challenger.name} te desafiou para uma batalha RPG!`,
-            ...details
-        ].join("\n"),
+        image: bannerBuffer,
+        fileName,
+        text: whatsappText,
+        caption: whatsappText,
         ...(targetMention.mentions ? { mentions: targetMention.mentions } : {})
     };
 }
 
-function makeTurnMention(platform, player, fighter) {
+function makeTurnMention(platform, player) {
     const playerId = String(player.platformId || "");
     const playerName = player.name || playerId || "jogador";
-    const fighterName = fighter.name || "personagem";
-    const line = `🔔 Vez de ${playerName}: ${fighterName}.`;
+    const line = `🔔 Vez de ${playerName}`;
 
     if (platform === "discord" && /^\d+$/.test(playerId)) {
         return {
             line,
-            content: `🔔 <@${playerId}>, sua vez de agir!`,
+            discordLine: `🔔 Vez de <@${playerId}>`,
             allowedMentions: { users: [playerId] }
         };
     }
     if (platform === "telegram" && /^\d+$/.test(playerId)) {
         return {
             line,
-            telegramLine: `🔔 Vez de <a href="tg://user?id=${playerId}">${escapeHtml(playerName)}</a>: ${escapeHtml(fighterName)}.`
+            telegramLine: `🔔 Vez de <a href="tg://user?id=${playerId}">${escapeHtml(playerName)}</a>`
         };
     }
     if (platform === "whatsapp" && playerId.includes("@")) {
         const label = playerId.split("@")[0].split(":")[0];
         return {
-            line: `🔔 Vez de @${label}: ${fighterName}.`,
+            line: `🔔 Vez de @${label}`,
             mentions: [playerId]
         };
     }
     return { line };
 }
 
-function makeBattlePayload(message, battle, store, extraEvents = []) {
-    const players = battle.players.map((player, side) => {
-        const team = player.team.map((fighter, index) => {
-            const status = fighter.effects.length
-                ? ` · ${fighter.effects.map(effect => effect.name).join(", ")}`
-                : "";
-            return `${index + 1}. ${fighter.name} Nv.${fighter.level} · HP ${fighter.hp}/${fighter.maxHp} · Mana ${fighter.mana}/${fighter.maxMana} · Stamina ${fighter.stamina}/${fighter.maxStamina}${status}`;
-        });
-        return `${player.name}${side === battle.winnerSide && battle.status === "completed" ? " 🏆" : ""}\n${team.join("\n")}`;
-    });
-    const lines = [
-        `Batalha ${battle.id} · Rodada ${battle.round}`,
-        "",
-        ...players,
-        ...extraEvents.map(event => `• ${event}`)
-    ];
+function fitTelegramCaption(titleLine, lines, turnLineIndex, turnMention) {
+    const formatLine = (line, index) => (
+        index === turnLineIndex && turnMention?.telegramLine
+            ? turnMention.telegramLine
+            : escapeHtml(line)
+    );
+    const full = `${titleLine}\n\n${lines.map(formatLine).join("\n")}`;
+    if (full.length <= 1024) return full;
+
+    const compactLines = lines.filter(line => !/^\d+ · .* — dano /.test(line));
+    const compact = `${titleLine}\n\n${compactLines.map(formatLine).join("\n")}`;
+    if (compact.length <= 1024) return compact;
+
+    const kept = [titleLine, ""];
+    for (let index = 0; index < compactLines.length; index += 1) {
+        const rendered = formatLine(compactLines[index], index);
+        if (kept.join("\n").length + rendered.length + 1 > 1020) break;
+        kept.push(rendered);
+    }
+    return kept.join("\n");
+}
+
+async function makeBattlePayload(message, battle, store, extraEvents = [], catalog = null) {
+    const lines = extraEvents.map(event => `• ${event}`);
     const choices = [];
+    let turn = null;
     let turnMention = null;
     let turnLineIndex = -1;
     if (battle.status === "active") {
-        const turn = store.getTurnState(battle);
-        turnMention = makeTurnMention(message.platform, turn.actor.player, turn.actor.fighter);
-        turnLineIndex = lines.length + 1;
+        turn = store.getTurnState(battle);
+        turnMention = makeTurnMention(message.platform, turn.actor.player);
+        if (lines.length) lines.push("");
+        turnLineIndex = lines.length;
         lines.push(
-            "",
             turnMention.line,
-            `Alvo: ${turn.target.name}.`
+            `Atacante: ${turn.actor.fighter.name}`,
+            `Alvo: ${turn.target.name}`
         );
         if (turn.availableMoves.length) {
-            lines.push("Golpes disponíveis:");
+            lines.push(`Golpes disponíveis (${turn.actor.fighter.name}):`);
             for (const move of turn.availableMoves.slice(0, 24)) {
                 lines.push(
                     `${move.id} · ${move.nome} — dano ${move.dano}; custo ${move.custo.mana} mana, ${move.custo.stamina} stamina, ${move.custo.hp} HP`
@@ -211,51 +230,73 @@ function makeBattlePayload(message, battle, store, extraEvents = []) {
             style: ButtonStyle.Danger
         });
         lines.push(
-            `Use ${getCommandPrefix(message)}ataque <nome ou id do golpe> em até 60 segundos; ou ${getCommandPrefix(message)}desistir_desafio.`
+            `Use ${getCommandPrefix(message)}ataque <nome ou id> em até 60s ou ${getCommandPrefix(message)}desistir_desafio.`
         );
     } else {
         const winner = battle.players[battle.winnerSide];
         const loser = battle.players[1 - battle.winnerSide];
+        const winnerMention = makeTurnMention(message.platform, winner);
+        if (lines.length) lines.push("");
+        turnLineIndex = lines.length;
+        turnMention = winnerMention;
         lines.push(
-            "",
-            `${winner.name} venceu! ${loser.name} recebe ${battle.xpRewards[1 - battle.winnerSide].amount} XP; vencedor recebe ${battle.xpRewards[battle.winnerSide].amount} XP.`
+            `🏆 ${winner.name} venceu! ${loser.name} recebe ${battle.xpRewards[1 - battle.winnerSide].amount} XP; vencedor recebe ${battle.xpRewards[battle.winnerSide].amount} XP.`
         );
+        if (message.platform === "discord" && /^\d+$/.test(String(winner.platformId || ""))) {
+            winnerMention.discordLine = `🏆 <@${winner.platformId}> venceu! ${escapeMarkdown(loser.name)} recebe ${battle.xpRewards[1 - battle.winnerSide].amount} XP; vencedor recebe ${battle.xpRewards[battle.winnerSide].amount} XP.`;
+        } else if (message.platform === "telegram" && /^\d+$/.test(String(winner.platformId || ""))) {
+            winnerMention.telegramLine = `🏆 <a href="tg://user?id=${winner.platformId}">${escapeHtml(winner.name)}</a> venceu! ${escapeHtml(loser.name)} recebe ${battle.xpRewards[1 - battle.winnerSide].amount} XP; vencedor recebe ${battle.xpRewards[battle.winnerSide].amount} XP.`;
+        } else {
+            delete winnerMention.discordLine;
+            delete winnerMention.telegramLine;
+        }
     }
 
-    const description = message.platform === "discord"
-        ? lines.map(escapeMarkdown).join("\n")
-        : message.platform === "telegram"
-            ? lines.map((line, index) => index === turnLineIndex && turnMention.telegramLine
-                ? turnMention.telegramLine
-                : escapeHtml(line)).join("\n")
-            : lines.join("\n");
+    const bannerBuffer = battle.status === "completed"
+        ? await renderVictoryBanner(battle, { catalog })
+        : await renderBattleBanner(battle, { turn, catalog });
+    const fileName = battle.status === "completed"
+        ? `vitoria-${battle.id}.png`
+        : `batalha-${battle.id}.png`;
     const controls = battle.status === "active"
         ? makeButtons(message.platform, choices)
         : {};
     if (message.platform === "discord") {
+        const description = lines.map((line, index) => (
+            index === turnLineIndex && turnMention?.discordLine
+                ? turnMention.discordLine
+                : escapeMarkdown(line)
+        )).join("\n");
         return {
             embed: {
                 color: battle.status === "active" ? 0x2787d4 : 0x28a879,
                 title: battle.status === "active" ? "⚔️ Batalha RPG" : "🏁 Batalha encerrada",
                 description,
-                footer: { text: "Os alvos são selecionados pela ordem da equipe." }
+                image: { url: `attachment://${fileName}` }
             },
-            ...(turnMention?.content ? {
-                text: turnMention.content,
-                allowedMentions: turnMention.allowedMentions
-            } : {}),
+            files: [{ attachment: bannerBuffer, name: fileName }],
+            ...(turnMention?.allowedMentions ? { allowedMentions: turnMention.allowedMentions } : {}),
             ...controls
         };
     }
     if (message.platform === "telegram") {
+        const titleLine = `<b>${battle.status === "active" ? "⚔️ BATALHA RPG" : "🏁 BATALHA ENCERRADA"}</b>`;
+        const caption = fitTelegramCaption(titleLine, lines, turnLineIndex, turnMention);
         return {
-            text: `<b>${battle.status === "active" ? "⚔️ BATALHA RPG" : "🏁 BATALHA ENCERRADA"}</b>\n\n${description}`,
+            image: bannerBuffer,
+            fileName,
+            text: caption,
+            caption,
             parse_mode: "HTML",
             ...controls
         };
     }
+    const whatsappText = `*${battle.status === "active" ? "⚔️ BATALHA RPG" : "🏁 BATALHA ENCERRADA"}*\n\n${lines.join("\n")}`;
     return {
-        text: `*${battle.status === "active" ? "⚔️ BATALHA RPG" : "🏁 BATALHA ENCERRADA"}*\n\n${description}`,
+        image: bannerBuffer,
+        fileName,
+        text: whatsappText,
+        caption: whatsappText,
         ...(turnMention?.mentions ? { mentions: turnMention.mentions } : {})
     };
 }
@@ -333,8 +374,8 @@ function currentScope(message) {
     return scope;
 }
 
-function buildActionMessage(message, battle, store, events) {
-    return makeBattlePayload(message, battle, store, events);
+async function buildActionMessage(message, battle, store, events, catalog = null) {
+    return makeBattlePayload(message, battle, store, events, catalog);
 }
 
 function makeNoticePayload(message, title, lines) {
@@ -498,27 +539,38 @@ function makeTeamWizardPayload(message, profile, catalog, selectedIds, page = 1)
     };
 }
 
-async function sendPublicUpdate(message, battle, store, events = []) {
-    const payload = buildActionMessage(message, battle, store, events);
-    const options = message.platform === "discord"
-        ? {
-            embed: payload.embed,
-            components: payload.components || [],
-            ...(payload.text ? { content: payload.text } : {}),
-            ...(payload.allowedMentions ? { allowedMentions: payload.allowedMentions } : {})
-        }
-        : message.platform === "telegram"
-            ? {
-                parse_mode: payload.parse_mode || "HTML",
-                ...(payload.reply_markup ? { reply_markup: payload.reply_markup } : {})
+async function sendPublicUpdate(message, battle, store, events = [], catalog = null) {
+    const payload = await buildActionMessage(message, battle, store, events, catalog);
+    if (message.platform === "discord") {
+        return send.text(
+            battle.platform,
+            battle.chatId,
+            battle.threadId,
+            payload.text || payload.embed.description,
+            {
+                embed: payload.embed,
+                components: payload.components || [],
+                ...(Array.isArray(payload.files) && payload.files.length ? { files: payload.files } : {}),
+                ...(payload.text ? { content: payload.text } : {}),
+                ...(payload.allowedMentions ? { allowedMentions: payload.allowedMentions } : {})
             }
-            : payload.mentions;
-    return send.text(
+        );
+    }
+    const imageOptions = message.platform === "telegram"
+        ? {
+            parse_mode: payload.parse_mode || "HTML",
+            ...(payload.reply_markup ? { reply_markup: payload.reply_markup } : {})
+        }
+        : payload.mentions?.length
+            ? { mentions: payload.mentions }
+            : undefined;
+    return send.image(
         battle.platform,
         battle.chatId,
         battle.threadId,
-        message.platform === "discord" ? payload.text || payload.embed.description : payload.text,
-        options
+        payload.image,
+        payload.caption || payload.text,
+        imageOptions
     );
 }
 
@@ -561,7 +613,7 @@ async function executeAction(message, action, args = []) {
             opponentName: target.central.name || target.account.displayName || target.account.username,
             catalog
         });
-        return message.reply(makeChallengePayload(message, challenge));
+        return message.reply(await makeChallengePayload(message, challenge, catalog));
     }
 
     if (action === "accept") {
@@ -578,9 +630,9 @@ async function executeAction(message, action, args = []) {
             centralName: central.name,
             catalog
         });
-        return message.reply(makeBattlePayload(message, battle, store, [
+        return message.reply(await makeBattlePayload(message, battle, store, [
             `${battle.players[battle.roundStartSide].team[battle.roundOrder[0].characterIndex].name} começa por ter maior agilidade.`
-        ]));
+        ], catalog));
     }
 
     if (action === "decline") {
@@ -614,7 +666,7 @@ async function executeAction(message, action, args = []) {
                 )
                 : ["Você não tem batalha ativa nem desafios pendentes neste grupo."]));
         }
-        return message.reply(makeBattlePayload(message, battle, store));
+        return message.reply(await makeBattlePayload(message, battle, store, [], catalog));
     }
 
     if (action === "attack") {
@@ -642,16 +694,16 @@ async function executeAction(message, action, args = []) {
                 "Seu turno expirou e a batalha foi encerrada."
             ]));
         }
-        return message.reply(makeBattlePayload(message, outcome.battle, store, outcome.events));
+        return message.reply(await makeBattlePayload(message, outcome.battle, store, outcome.events, catalog));
     }
 
     if (action === "surrender") {
         const battle = store.getBattleForPlayer(central.id, message.platform, scope.id);
         if (!battle) throw new Error("Você não tem uma batalha ativa neste grupo.");
         const completed = await store.surrender({ battleId: battle.id, centralId: central.id });
-        return message.reply(makeBattlePayload(message, completed, store, [
+        return message.reply(await makeBattlePayload(message, completed, store, [
             `${central.name || message.displayName || "Um jogador"} desistiu.`
-        ]));
+        ], catalog));
     }
 
     throw new Error("Comando de batalha desconhecido.");
@@ -776,7 +828,7 @@ async function handleInteraction(interaction) {
             await acknowledge();
             await sendPublicUpdate(message, battle, store, [
                 `${battle.players[battle.roundStartSide].team[battle.roundOrder[0].characterIndex].name} começa por ter maior agilidade.`
-            ]);
+            ], catalog);
             return true;
         }
         if (action === "decline") {
@@ -805,14 +857,14 @@ async function handleInteraction(interaction) {
             });
             if (outcome.expired) throw new Error("Seu turno expirou e a batalha foi encerrada.");
             await acknowledge();
-            await sendPublicUpdate(message, outcome.battle, store, outcome.events);
+            await sendPublicUpdate(message, outcome.battle, store, outcome.events, catalog);
             return true;
         }
         const completed = await store.surrender({ battleId, centralId: central.id });
         await acknowledge();
         await sendPublicUpdate(message, completed, store, [
             `${central.name || message.displayName || "Um jogador"} desistiu.`
-        ]);
+        ], catalog);
         return true;
     } catch (error) {
         if (interaction.callbackQuery && !acknowledged) {

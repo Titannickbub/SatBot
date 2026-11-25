@@ -202,6 +202,137 @@ test("teams keep their selected order, apply damage and effects, and award battl
     }
 });
 
+test("battle alternates one action per player and rotates through each team's characters", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "satbot-rpg-battle-turns-"));
+    const accounts = makeAccounts();
+    const catalog = makeCatalog();
+    accounts.accounts.get("central-a").profile.characters.push({
+        characterId: 2,
+        level: 1,
+        learnedMoveIds: [1]
+    });
+    const store = battleModule.createBattleStore({
+        filePath: path.join(directory, "batalhas.json"),
+        scheduleTimers: false
+    });
+    await store.init(undefined, accounts);
+
+    try {
+        await store.setTeam("central-a", [0, 2], catalog);
+        await store.setTeam("central-b", [1], catalog);
+        const challenge = store.createChallenge({
+            message: makeMessage("user-a"),
+            centralId: "central-a",
+            centralName: "Alpha",
+            opponentCentralId: "central-b",
+            opponentPlatformId: "user-b",
+            opponentName: "Beta",
+            catalog
+        });
+        const battle = await store.acceptChallenge({
+            challengeId: challenge.id,
+            message: makeMessage("user-b"),
+            centralId: "central-b",
+            centralName: "Beta",
+            catalog
+        });
+
+        assert.deepEqual(battle.roundOrder, [
+            { side: 0, characterIndex: 0 },
+            { side: 1, characterIndex: 0 }
+        ]);
+        const firstAction = await store.attack({
+            battleId: battle.id,
+            centralId: "central-a",
+            moveId: 1
+        });
+        assert.equal(store.getTurnState(firstAction.battle).actor.side, 1);
+
+        const secondAction = await store.attack({
+            battleId: battle.id,
+            centralId: "central-b",
+            moveId: 1
+        });
+        assert.equal(secondAction.battle.round, 2);
+        assert.deepEqual(secondAction.battle.roundOrder, [
+            { side: 0, characterIndex: 1 },
+            { side: 1, characterIndex: 0 }
+        ]);
+        assert.equal(store.getTurnState(secondAction.battle).actor.fighter.name, "Gamma");
+
+        const thirdAction = await store.attack({
+            battleId: battle.id,
+            centralId: "central-a",
+            moveId: 1
+        });
+        assert.equal(store.getTurnState(thirdAction.battle).actor.side, 1);
+        await assert.rejects(store.attack({
+            battleId: battle.id,
+            centralId: "central-a",
+            moveId: 1
+        }), /Ainda não é o turno/);
+    } finally {
+        store.stop();
+        await fs.rm(directory, { recursive: true, force: true });
+    }
+});
+
+test("active battles migrate old per-character turn orders to alternating player turns", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "satbot-rpg-battle-migration-"));
+    const filePath = path.join(directory, "batalhas.json");
+    const accounts = makeAccounts();
+    const catalog = makeCatalog();
+    accounts.accounts.get("central-a").profile.characters.push({
+        characterId: 2,
+        level: 1,
+        learnedMoveIds: [1]
+    });
+    const store = battleModule.createBattleStore({ filePath, scheduleTimers: false });
+    await store.init(undefined, accounts);
+
+    try {
+        await store.setTeam("central-a", [0, 2], catalog);
+        await store.setTeam("central-b", [1], catalog);
+        const challenge = store.createChallenge({
+            message: makeMessage("user-a"),
+            centralId: "central-a",
+            centralName: "Alpha",
+            opponentCentralId: "central-b",
+            opponentPlatformId: "user-b",
+            opponentName: "Beta",
+            catalog
+        });
+        const battle = await store.acceptChallenge({
+            challengeId: challenge.id,
+            message: makeMessage("user-b"),
+            centralId: "central-b",
+            centralName: "Beta",
+            catalog
+        });
+        const saved = JSON.parse(await fs.readFile(filePath, "utf8"));
+        delete saved.battles[0].nextCharacterIndexes;
+        saved.battles[0].roundOrder = [
+            { side: 0, characterIndex: 0 },
+            { side: 1, characterIndex: 0 },
+            { side: 0, characterIndex: 1 }
+        ];
+        saved.battles[0].roundOrderIndex = 1;
+        await fs.writeFile(filePath, JSON.stringify(saved), "utf8");
+
+        await store.init(undefined, accounts);
+        const migrated = store.getBattleForPlayer("central-a", "discord", "guild-1");
+        assert.deepEqual(migrated.roundOrder, [
+            { side: 1, characterIndex: 0 },
+            { side: 0, characterIndex: 1 }
+        ]);
+        assert.equal(store.getTurnState(migrated).actor.side, 1);
+        assert.equal(migrated.id, battle.id);
+    } finally {
+        store.stop();
+        await fs.rm(directory, { recursive: true, force: true });
+    }
+});
+
 test("effect affinity blocks status while still allowing immediate weakness damage", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "satbot-rpg-battle-immunity-"));
     const previousRegistry = global.platformRegistry;

@@ -98,21 +98,23 @@ function aliveIndexes(team) {
         .filter(index => index >= 0);
 }
 
-function createRoundOrder(battle, firstSide, firstActor = null) {
-    const remaining = battle.players.map(player => aliveIndexes(player.team));
-    const order = [];
-    if (firstActor) {
-        remaining[firstActor.side] = remaining[firstActor.side]
-            .filter(index => index !== firstActor.characterIndex);
-        order.push(firstActor);
+function nextAliveIndex(team, previousIndex = -1) {
+    for (let offset = 1; offset <= team.length; offset += 1) {
+        const index = (previousIndex + offset) % team.length;
+        if (team[index].hp > 0) return index;
     }
+    return null;
+}
 
-    let side = firstActor ? 1 - firstActor.side : firstSide;
-    while (remaining[0].length || remaining[1].length) {
-        if (!remaining[side].length && remaining[1 - side].length) side = 1 - side;
-        if (!remaining[side].length) break;
-        order.push({ side, characterIndex: remaining[side].shift() });
-        side = 1 - side;
+function createRoundOrder(battle, firstSide, firstActor = null) {
+    const order = [];
+    for (const side of [firstSide, 1 - firstSide]) {
+        const team = battle.players[side].team;
+        if (!aliveIndexes(team).length) continue;
+        const characterIndex = firstActor?.side === side
+            ? firstActor.characterIndex
+            : nextAliveIndex(team, battle.nextCharacterIndexes?.[side] ?? -1);
+        if (characterIndex !== null) order.push({ side, characterIndex });
     }
     return order;
 }
@@ -291,12 +293,32 @@ function createBattleStore({
             save();
         }
         initialized = true;
+        let migratedTurns = false;
         for (const battle of data.battles) {
-            if (battle.status === "active") scheduleTimeout(battle);
+            if (battle.status === "active") {
+                if (!Array.isArray(battle.nextCharacterIndexes)) {
+                    const current = battle.roundOrder?.[battle.roundOrderIndex];
+                    const pointers = [-1, -1];
+                    for (const turn of battle.roundOrder?.slice(0, battle.roundOrderIndex) || []) {
+                        pointers[turn.side] = turn.characterIndex;
+                    }
+                    battle.nextCharacterIndexes = pointers;
+                    battle.roundStartSide = current?.side ?? battle.roundStartSide ?? 0;
+                    battle.roundOrder = createRoundOrder(
+                        battle,
+                        battle.roundStartSide,
+                        current || null
+                    );
+                    battle.roundOrderIndex = 0;
+                    migratedTurns = true;
+                }
+                scheduleTimeout(battle);
+            }
             if (battle.status === "completed" && !battle.rewardsApplied) {
                 await awardBattleXp(battle);
             }
         }
+        if (migratedTurns) save();
         return data;
     }
 
@@ -434,6 +456,7 @@ function createBattleStore({
             players,
             round: 1,
             roundStartSide: fastest.side,
+            nextCharacterIndexes: [-1, -1],
             roundOrder: [],
             roundOrderIndex: 0,
             turnDeadlineAt: new Date(now() + TURN_TIMEOUT_MS).toISOString(),
@@ -492,6 +515,8 @@ function createBattleStore({
             await finishBattle(battle, 1 - defeatedSide, "team_defeated");
             return { completed: true, events };
         }
+        const currentTurn = battle.roundOrder[battle.roundOrderIndex];
+        battle.nextCharacterIndexes[currentTurn.side] = currentTurn.characterIndex;
         battle.roundOrderIndex += 1;
         if (battle.roundOrderIndex >= battle.roundOrder.length) {
             events.push(...tickEffects(battle));
@@ -501,7 +526,6 @@ function createBattleStore({
                 return { completed: true, events };
             }
             battle.round += 1;
-            battle.roundStartSide = 1 - battle.roundStartSide;
             battle.roundOrder = createRoundOrder(battle, battle.roundStartSide);
             battle.roundOrderIndex = 0;
         }
@@ -587,12 +611,46 @@ function createBattleStore({
         const send = require("./send");
         const winner = battle.players[battle.winnerSide];
         const loser = battle.players[1 - battle.winnerSide];
-        await send.text(
-            battle.platform,
-            battle.chatId,
-            battle.threadId,
-            `⏰ ${loser.name} não agiu em 60 segundos. ${winner.name} venceu por tempo. XP: ${WINNER_XP} para o vencedor e ${LOSER_XP} para o perdedor.`
-        );
+        const summary = `⏰ ${loser.name} não agiu em 60 segundos. ${winner.name} venceu por tempo. XP: ${WINNER_XP} para o vencedor e ${LOSER_XP} para o perdedor.`;
+        const { renderVictoryBanner } = require("./rpgBattleBanner");
+        const bannerBuffer = await renderVictoryBanner(battle).catch(() => null);
+        if (bannerBuffer && battle.platform === "discord") {
+            const escapeMd = value => String(value ?? "").replace(/[\\`*_{}\[\]()#+\-.!<>|~]/g, "\\$&");
+            const fileName = `vitoria-${battle.id}.png`;
+            const winnerId = String(winner.platformId || "");
+            const winnerMention = /^\d+$/.test(winnerId) ? `<@${winnerId}>` : escapeMd(winner.name);
+            await send.text(
+                battle.platform,
+                battle.chatId,
+                battle.threadId,
+                summary,
+                {
+                    embed: {
+                        color: 0x28a879,
+                        title: "🏁 Batalha encerrada",
+                        description: `⏰ ${escapeMd(loser.name)} não agiu em 60 segundos.\n🏆 ${winnerMention} venceu por tempo! (+${WINNER_XP} XP / ${escapeMd(loser.name)}: +${LOSER_XP} XP)`,
+                        image: { url: `attachment://${fileName}` }
+                    },
+                    files: [{ attachment: bannerBuffer, name: fileName }],
+                    ...(/^\d+$/.test(winnerId) ? { allowedMentions: { users: [winnerId] } } : {})
+                }
+            );
+        } else if (bannerBuffer && typeof global.platformRegistry?.[battle.platform]?.sendImg === "function") {
+            await send.image(
+                battle.platform,
+                battle.chatId,
+                battle.threadId,
+                bannerBuffer,
+                summary
+            );
+        } else {
+            await send.text(
+                battle.platform,
+                battle.chatId,
+                battle.threadId,
+                summary
+            );
+        }
         return clone(battle);
     }
 

@@ -49,9 +49,10 @@ isso não torna o save do RPG local ao grupo.
     O cálculo usa sempre os valores-base do catálogo; atributos com valor zero
     continuam em zero. Catálogo e loja não recebem esse crescimento.
 13. **Combate PvP:** cada jogador salva uma equipe ordenada de 1 a 3
-    personagens. O personagem vivo mais ágil começa; depois os lados alternam,
-    cada personagem vivo age uma vez por rodada, respeitando a ordem da equipe.
-    O primeiro personagem vivo da equipe adversária recebe os golpes.
+    personagens. O personagem vivo mais ágil começa; depois os jogadores
+    alternam uma ação por vez, sem ações extras por ter mais personagens.
+    Os personagens vivos da equipe revezam na ordem escolhida a cada turno do
+    jogador, e o primeiro personagem vivo da equipe adversária recebe os golpes.
 14. **Dano e efeitos:** fraqueza dobra o dano; afinidade reduz o dano imediato
     pela metade. Congelado causa 4 de dano passivo no fim de cada rodada,
     dura até a batalha terminar e não acumula. A afinidade do alvo ao tipo do

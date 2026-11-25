@@ -433,7 +433,12 @@ async function start(onMessage, onComponentInteraction) {
 
                 if (typeof data === "object" && data !== null && (data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url)) {
                     const image = data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url;
-                    return await this.replyImg({ image, caption: data.caption || data.text || "" });
+                    return await this.replyImg({
+                        image,
+                        caption: data.caption || data.text || "",
+                        ...(data.parse_mode ? { parse_mode: data.parse_mode } : {}),
+                        ...(data.reply_markup ? { reply_markup: data.reply_markup } : {})
+                    });
                 }
 
                 await ctx.reply(
@@ -727,10 +732,13 @@ async function sendImg(
     chatId,
     threadId,
     image,
-    caption
+    caption,
+    sendOptions = {}
 ) {
 
-    const options = {};
+    const options = {
+        ...(sendOptions && typeof sendOptions === "object" ? sendOptions : {})
+    };
 
     if (threadId) {
 

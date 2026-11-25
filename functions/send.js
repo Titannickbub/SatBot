@@ -33,7 +33,8 @@ async function image(
     chatId,
     threadId,
     image,
-    caption
+    caption,
+    options
 ) {
 
     const target =
@@ -53,7 +54,8 @@ async function image(
         chatId,
         threadId,
         image,
-        caption
+        caption,
+        options
     );
 
 }
@@ -137,14 +139,16 @@ async function sendImg(
     chatId,
     threadId,
     imageData,
-    caption
+    caption,
+    options
 ) {
     return await image(
         platform,
         chatId,
         threadId,
         imageData,
-        caption
+        caption,
+        options
     );
 }
 

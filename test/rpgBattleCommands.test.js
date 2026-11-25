@@ -1,6 +1,8 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const sharp = require("sharp");
 const commands = require("../functions/rpgBattleCommands");
+const banner = require("../functions/rpgBattleBanner");
 
 test("battle commands are registered separately and challenge targets support mentions and replies", () => {
     const commandNames = [
@@ -37,12 +39,23 @@ test("battle commands are registered separately and challenge targets support me
     }), "@target");
 });
 
-test("challenge payloads use platform-specific formatting and controls", () => {
+test("challenge payloads include the challenge banner and platform-specific formatting and controls", async () => {
     const challenge = {
         id: "challenge-1",
         challenger: {
             name: "Challenger",
-            team: [{ name: "Fighter", level: 2 }]
+            team: [{
+                characterId: 0,
+                name: "Fighter",
+                level: 2,
+                hp: 110,
+                maxHp: 110,
+                mana: 100,
+                maxMana: 100,
+                stamina: 75,
+                maxStamina: 75,
+                effects: []
+            }]
         },
         opponent: {
             name: "Target",
@@ -50,25 +63,34 @@ test("challenge payloads use platform-specific formatting and controls", () => {
         }
     };
 
-    const discord = commands._internals.makeChallengePayload({ platform: "discord", prefix: "?" }, challenge);
+    const discord = await commands._internals.makeChallengePayload({ platform: "discord", prefix: "?" }, challenge, { personagens: [] });
     assert.equal(discord.embed.title, "⚔️ Desafio de batalha RPG");
+    assert.match(discord.embed.description, /<@123456>/);
     assert.match(discord.embed.description, /\?aceitar\\_desafio/);
-    assert.equal(discord.text, "<@123456>");
+    assert.equal(discord.embed.image.url, "attachment://desafio-challenge-1.png");
+    assert.equal(discord.files[0].name, "desafio-challenge-1.png");
+    assert.equal(Buffer.isBuffer(discord.files[0].attachment), true);
+    const challengeMeta = await sharp(discord.files[0].attachment).metadata();
+    assert.equal(challengeMeta.width, banner.BANNER_WIDTH);
+    assert.equal(challengeMeta.height, banner.CHALLENGE_BANNER_HEIGHT);
+    assert.equal(discord.text, undefined);
     assert.equal(discord.allowedMentions.users[0], "123456");
     assert.equal(discord.components.length, 1);
     assert.equal(discord.components[0].components.length, 2);
 
-    const telegram = commands._internals.makeChallengePayload({ platform: "telegram", prefix: "?" }, challenge);
+    const telegram = await commands._internals.makeChallengePayload({ platform: "telegram", prefix: "?" }, challenge, { personagens: [] });
+    assert.equal(Buffer.isBuffer(telegram.image), true);
     assert.equal(telegram.parse_mode, "HTML");
-    assert.match(telegram.text, /tg:\/\/user\?id=123456/);
-    assert.match(telegram.text, /\?recusar_desafio/);
+    assert.match(telegram.caption, /tg:\/\/user\?id=123456/);
+    assert.match(telegram.caption, /\?recusar_desafio/);
     assert.equal(telegram.reply_markup.inline_keyboard.length, 2);
 
-    const whatsapp = commands._internals.makeChallengePayload({ platform: "whatsapp" }, {
+    const whatsapp = await commands._internals.makeChallengePayload({ platform: "whatsapp" }, {
         ...challenge,
         opponent: { ...challenge.opponent, platformId: "123456@s.whatsapp.net" }
-    });
-    assert.match(whatsapp.text, /@123456/);
+    }, { personagens: [] });
+    assert.equal(Buffer.isBuffer(whatsapp.image), true);
+    assert.match(whatsapp.caption, /@123456/);
     assert.deepEqual(whatsapp.mentions, ["123456@s.whatsapp.net"]);
 });
 
@@ -84,18 +106,42 @@ test("battle payload marks and mentions the player whose turn it is per platform
             {
                 name: "Player One",
                 platformId: "123456",
-                team: [{ name: "Fighter", level: 1, effects: [] }]
+                team: [{
+                    characterId: 0,
+                    name: "Fighter",
+                    level: 1,
+                    hp: 80,
+                    maxHp: 100,
+                    mana: 45,
+                    maxMana: 100,
+                    stamina: 30,
+                    maxStamina: 75,
+                    effects: []
+                }]
             },
             {
                 name: "Player Two",
                 platformId: "654321",
-                team: [{ name: "Target", level: 1, effects: [] }]
+                team: [{
+                    characterId: 0,
+                    name: "Target",
+                    level: 1,
+                    hp: 60,
+                    maxHp: 110,
+                    mana: 90,
+                    maxMana: 100,
+                    stamina: 70,
+                    maxStamina: 75,
+                    effects: []
+                }]
             }
         ]
     };
     const store = {
         getTurnState: () => ({
             actor: {
+                side: 0,
+                characterIndex: 0,
                 player: battle.players[0],
                 fighter: battle.players[0].team[0]
             },
@@ -106,20 +152,37 @@ test("battle payload marks and mentions the player whose turn it is per platform
     const makePayload = platform => commands._internals.makeBattlePayload(
         { platform, prefix: "?" },
         battle,
-        store
+        store,
+        [],
+        { personagens: [] }
     );
 
-    const discord = makePayload("discord");
-    assert.match(discord.embed.description, /Vez de Player One/);
-    assert.equal(discord.text, "🔔 <@123456>, sua vez de agir!");
+    const discord = await makePayload("discord");
+    assert.match(discord.embed.description, /🔔 Vez de <@123456>/);
+    assert.match(discord.embed.description, /Atacante: Fighter/);
+    assert.match(discord.embed.description, /Alvo: Target/);
+    assert.doesNotMatch(discord.embed.description, /HP 80\/100/);
+    assert.doesNotMatch(discord.embed.description, /Rodada 1/);
+    assert.equal(discord.text, undefined);
+    assert.equal(discord.embed.image.url, "attachment://batalha-battle-1.png");
+    assert.equal(discord.files[0].name, "batalha-battle-1.png");
+    assert.equal(Buffer.isBuffer(discord.files[0].attachment), true);
+    const discordMeta = await sharp(discord.files[0].attachment).metadata();
+    assert.equal(discordMeta.format, "png");
+    assert.equal(discordMeta.width, banner.BANNER_WIDTH);
+    assert.equal(discordMeta.height, banner.BANNER_HEIGHT);
     assert.deepEqual(discord.allowedMentions, { users: ["123456"] });
 
-    const telegram = makePayload("telegram");
-    assert.match(telegram.text, /<a href="tg:\/\/user\?id=123456">Player One<\/a>/);
+    const telegram = await makePayload("telegram");
+    assert.equal(Buffer.isBuffer(telegram.image), true);
+    assert.match(telegram.caption, /<a href="tg:\/\/user\?id=123456">Player One<\/a>/);
+    assert.match(telegram.caption, /Atacante: Fighter/);
+    assert.match(telegram.caption, /Alvo: Target/);
 
     battle.players[0].platformId = "123456@s.whatsapp.net";
-    const whatsapp = makePayload("whatsapp");
-    assert.match(whatsapp.text, /Vez de @123456/);
+    const whatsapp = await makePayload("whatsapp");
+    assert.equal(Buffer.isBuffer(whatsapp.image), true);
+    assert.match(whatsapp.caption, /Vez de @123456/);
     assert.deepEqual(whatsapp.mentions, ["123456@s.whatsapp.net"]);
 
     battle.players[0].platformId = "123456";
@@ -137,13 +200,90 @@ test("battle payload marks and mentions the player whose turn it is per platform
         await commands._internals.sendPublicUpdate(
             { platform: "discord", prefix: "?" },
             battle,
-            store
+            store,
+            [],
+            { personagens: [] }
         );
-        assert.equal(sent[2], "🔔 <@123456>, sua vez de agir!");
+        assert.match(sent[2], /🔔 Vez de <@123456>/);
+        assert.equal(sent[3].content, undefined);
         assert.deepEqual(sent[3].allowedMentions, { users: ["123456"] });
+        assert.equal(sent[3].files[0].name, "batalha-battle-1.png");
+        assert.equal(sent[3].embed.image.url, "attachment://batalha-battle-1.png");
     } finally {
         global.platformRegistry = previousRegistry;
     }
+});
+
+test("battle banner renders 3-character teams and proportional HP, mana, and stamina bars", async () => {
+    const statBarFull = banner._internals.renderStatBar("HP", 100, 100, "#f07178", 0, 20, 400);
+    const statBarHalf = banner._internals.renderStatBar("HP", 50, 100, "#f07178", 0, 20, 400);
+    const statBarEmpty = banner._internals.renderStatBar("HP", 0, 100, "#f07178", 0, 20, 400);
+    assert.match(statBarFull, /100\/100/);
+    assert.match(statBarFull, /width="190"/);
+    assert.match(statBarHalf, /50\/100/);
+    assert.match(statBarHalf, /width="95"/);
+    assert.match(statBarEmpty, /0\/100/);
+    assert.doesNotMatch(statBarEmpty, /fill="#f07178"\/>/);
+
+    const battle = {
+        id: "3v3-test",
+        round: 4,
+        status: "active",
+        players: [
+            {
+                name: "Titannickbub",
+                team: [
+                    { characterId: 0, name: "Bruxa Gélida", level: 5, hp: 105, maxHp: 132, mana: 92, maxMana: 120, stamina: 78, maxStamina: 90, effects: [] },
+                    { characterId: 1, name: "Guardião", level: 4, hp: 0, maxHp: 140, mana: 20, maxMana: 80, stamina: 0, maxStamina: 100, effects: [] },
+                    { characterId: 2, name: "Oráculo", level: 3, hp: 70, maxHp: 100, mana: 40, maxMana: 150, stamina: 55, maxStamina: 80, effects: [{ name: "Congelado" }] }
+                ]
+            },
+            {
+                name: "titannickbub<teste>",
+                team: [
+                    { characterId: 0, name: "Bruxa Gélida", level: 1, hp: 74, maxHp: 110, mana: 79, maxMana: 100, stamina: 66, maxStamina: 75, effects: [] },
+                    { characterId: 3, name: "Sentinela", level: 2, hp: 120, maxHp: 120, mana: 60, maxMana: 60, stamina: 90, maxStamina: 90, effects: [] }
+                ]
+            }
+        ]
+    };
+    const png = await banner.renderBattleBanner(battle, {
+        turn: {
+            actor: { side: 1, characterIndex: 0, fighter: battle.players[1].team[0] },
+            target: battle.players[0].team[0]
+        },
+        catalog: { personagens: [] }
+    });
+    const meta = await sharp(png).metadata();
+    assert.equal(meta.format, "png");
+    assert.equal(meta.width, 860);
+    assert.equal(meta.height, 980);
+
+    const completedBattle = {
+        ...battle,
+        status: "completed",
+        winnerSide: 0,
+        reason: "team_defeated",
+        xpRewards: [{ amount: 10 }, { amount: 1 }],
+        players: [
+            { ...battle.players[0], platformId: "111222" },
+            { ...battle.players[1], platformId: "333444" }
+        ]
+    };
+    const victoryPayload = await commands._internals.makeBattlePayload(
+        { platform: "discord", prefix: "?" },
+        completedBattle,
+        { getTurnState: () => { throw new Error("should not be called"); } },
+        ["Golpe final!"],
+        { personagens: [] }
+    );
+    assert.equal(victoryPayload.embed.title, "🏁 Batalha encerrada");
+    assert.equal(victoryPayload.embed.image.url, "attachment://vitoria-3v3-test.png");
+    assert.equal(victoryPayload.files[0].name, "vitoria-3v3-test.png");
+    assert.match(victoryPayload.embed.description, /🏆 <@111222> venceu!/);
+    const victoryMeta = await sharp(victoryPayload.files[0].attachment).metadata();
+    assert.equal(victoryMeta.width, banner.BANNER_WIDTH);
+    assert.equal(victoryMeta.height, banner.VICTORY_BANNER_HEIGHT);
 });
 
 test("team setup directs new players to the catalog and gives owned characters platform controls", () => {
@@ -347,7 +487,7 @@ test("Telegram battle buttons are acknowledged only once if publishing the updat
     global.rpgBattle = store;
     global.platformRegistry = {
         telegram: {
-            sendText: async () => {
+            sendImg: async () => {
                 sends += 1;
                 throw new Error("send failure");
             }

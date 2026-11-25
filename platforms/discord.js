@@ -518,17 +518,24 @@ async function start(onMessage, onComponentInteraction) {
                     if (data?.embed) {
                         const embed = new EmbedBuilder(data.embed);
                         const components = data.components || [];
+                        const replyPayload = {
+                            embeds: [embed],
+                            components,
+                            ...(Array.isArray(data.files) && data.files.length ? { files: data.files } : {}),
+                            ...(data.text ? { content: data.text } : {}),
+                            ...(data.allowedMentions ? { allowedMentions: data.allowedMentions } : {})
+                        };
                         if (!repliedToInteraction) {
                             repliedToInteraction = true;
                             if (interaction.deferred || interaction.replied) {
-                                return await interaction.editReply({ embeds: [embed], components });
+                                return await interaction.editReply(replyPayload);
                             }
-                            return await interaction.reply({ embeds: [embed], components });
+                            return await interaction.reply(replyPayload);
                         }
                         if (interaction.deferred || interaction.replied) {
-                            return await interaction.followUp({ embeds: [embed], components });
+                            return await interaction.followUp(replyPayload);
                         }
-                        return await interaction.channel.send({ embeds: [embed], components });
+                        return await interaction.channel.send(replyPayload);
                     }
                     if (typeof data === "object" && data !== null && (data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url)) {
                         const image = data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url;
@@ -863,6 +870,7 @@ async function start(onMessage, onComponentInteraction) {
                         const options = {
                             embeds: [new EmbedBuilder(data.embed)],
                             components: data.components || [],
+                            ...(Array.isArray(data.files) && data.files.length ? { files: data.files } : {}),
                             ...(data.allowedMentions ? { allowedMentions: data.allowedMentions } : {})
                         };
                         if (data.text) options.content = data.text;
@@ -1131,6 +1139,7 @@ async function sendText(
             embeds: [options.embed],
             ...(options.components?.length ? { components: options.components } : {}),
             ...(options.content ? { content: options.content } : {}),
+            ...(Array.isArray(options.files) && options.files.length ? { files: options.files } : {}),
             allowedMentions: options.allowedMentions || { parse: [] }
         }
         : options.disableMentions

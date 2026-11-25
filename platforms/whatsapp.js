@@ -614,7 +614,11 @@ async function start(onMessage) {
           reply: async function (data) {
             if (typeof data === "object" && data !== null && (data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url)) {
               const image = data.image || data.photo || data.file || data.url || data.media?.buffer || data.media?.url;
-              return await this.replyImg({ image, caption: data.caption || data.text || "" });
+              return await this.replyImg({
+                image,
+                caption: data.caption || data.text || "",
+                ...(Array.isArray(data.mentions) && data.mentions.length ? { mentions: data.mentions } : {})
+              });
             }
             const options = { quoted: msg };
             if (Array.isArray(data?.mentions) && data.mentions.length) {
@@ -892,7 +896,8 @@ async function sendImg(
   chatId,
   threadId,
   image,
-  caption
+  caption,
+  sendOptions = {}
 ) {
 
   if (!global.whatsappSock) {
@@ -909,6 +914,9 @@ async function sendImg(
       caption || ""
 
   };
+  if (Array.isArray(sendOptions?.mentions) && sendOptions.mentions.length) {
+    payload.mentions = sendOptions.mentions;
+  }
 
   Object.assign(payload, await adaptWhatsAppImage(image));
 
