@@ -59,8 +59,87 @@ test("character command creator saves the base before continuing to HP", async (
     try {
         const reply = await creatorCommands._internals.executeCharacter(message, message.args);
         assert.equal(creatorCommands._internals.drafts.get(key).data.base, "REZERO");
+        assert.equal(creatorCommands._internals.drafts.get(key).step, "sexo");
+        assert.match(reply.text, /Etapa sexo/);
+    } finally {
+        creatorCommands._internals.drafts.delete(key);
+    }
+});
+
+test("character creator offers required sex choices and advances on selection", async () => {
+    let replyPayload;
+    await creatorCommands._internals.promptForCharacter({
+        platform: "discord",
+        reply: async payload => {
+            replyPayload = payload;
+        }
+    }, {
+        step: "sexo",
+        data: {}
+    });
+
+    const buttons = replyPayload.components.flatMap(row => row.components);
+    assert.deepEqual(buttons.map(button => button.data.custom_id), [
+        "rpgpersonagem:sex:feminino",
+        "rpgpersonagem:sex:masculino",
+        "rpgpersonagem:sex:intersexo",
+        "rpgpersonagem:sex:nao_binario",
+        "rpgpersonagem:sex:agenero",
+        "rpgpersonagem:sex:desconhecido"
+    ]);
+
+    const key = "rpgpersonagem:discord:sex-button-test";
+    creatorCommands._internals.drafts.set(key, {
+        step: "sexo",
+        data: { nome: "Teste", base: "Original" }
+    });
+    const command = creatorCommands.createCharacterCommand();
+    try {
+        await command.handleInteraction({
+            customId: "rpgpersonagem:sex:feminino",
+            update: async () => {},
+            [Symbol.for("satbot.componentMessageContext")]: {
+                platform: "discord",
+                userId: "sex-button-test",
+                sender: { isOwner: true },
+                reply: async payload => payload
+            }
+        });
+        assert.equal(creatorCommands._internals.drafts.get(key).data.sexo, "feminino");
+        assert.equal(creatorCommands._internals.drafts.get(key).step, "hp");
+    } finally {
+        creatorCommands._internals.drafts.delete(key);
+    }
+});
+
+test("WhatsApp character creator accepts the sex command and rejects unsupported values", async () => {
+    const key = "rpgpersonagem:whatsapp:sex-command-test";
+    const message = {
+        platform: "whatsapp",
+        userId: "sex-command-test",
+        args: ["sexo", "Não-binário"],
+        reply: async payload => payload
+    };
+    creatorCommands._internals.drafts.set(key, {
+        step: "sexo",
+        data: { nome: "Teste", base: "Original" }
+    });
+
+    try {
+        const reply = await creatorCommands._internals.executeCharacter(message, message.args);
+        assert.equal(creatorCommands._internals.drafts.get(key).data.sexo, "nao_binario");
         assert.equal(creatorCommands._internals.drafts.get(key).step, "hp");
         assert.match(reply.text, /Etapa hp/);
+
+        creatorCommands._internals.drafts.set(key, {
+            step: "sexo",
+            data: { nome: "Teste", base: "Original" }
+        });
+        message.args = ["sexo", "alien"];
+        await assert.rejects(
+            creatorCommands._internals.executeCharacter(message, message.args),
+            /Sexo inválido/
+        );
     } finally {
         creatorCommands._internals.drafts.delete(key);
     }

@@ -37,6 +37,7 @@ settings/rpg/personagens_media/
 | `id` | Número único do personagem; a sequência começa em `0` |
 | `nome` | Nome exibido do personagem |
 | `base` | Obra/franquia de origem ou inspiração; agrupa o catálogo (ex.: `REZERO`) |
+| `sexo` | Sexo/categoria informativa: `feminino`, `masculino`, `intersexo`, `nao_binario`, `agenero` ou `desconhecido` |
 | `raridade` | Uma das raridades globais usadas pelos cosméticos: `comum`, `incomum`, `raro`, `epico` ou `lendario` |
 | `media` | Uma referência ao arquivo de imagem separado |
 | `hp` | Vida inicial do personagem no nível inicial |
@@ -65,8 +66,11 @@ vale como lista vazia. Se `podeClonarGolpes` for `false`, `golpesPermanentes`
 Este exemplo reúne a lista editável de fraquezas, efeitos, golpes globais e dois
 personagens. O primeiro tem progressão fixa e não tem afinidades; o segundo é
 clonador e tem o golpe “Clone Travado”. Os nomes e números são ilustrativos.
-Atributos são valores iniciais e o cálculo de crescimento por nível será
-planejado depois.
+Atributos no catálogo são valores-base de nível 1. Para personagens possuídos,
+cada nível aplica 5% sobre o valor-base em HP, mana, stamina e agilidade:
+`floor(valor base × (100 + 5 × (nível − 1)) / 100)`. O cálculo não altera o
+catálogo nem os atributos de personagens exibidos na loja; valores-base zero
+permanecem zero.
 
 ```json
 {
@@ -151,6 +155,7 @@ planejado depois.
       "id": 0,
       "nome": "Lume",
       "base": "ORIGINAL",
+      "sexo": "desconhecido",
       "raridade": "comum",
       "media": [
         {
@@ -171,6 +176,7 @@ planejado depois.
       "id": 1,
       "nome": "Eco",
       "base": "ORIGINAL",
+      "sexo": "desconhecido",
       "raridade": "raro",
       "media": [
         {
@@ -388,8 +394,10 @@ ficam em `settings/rpg/personagens_media/`. A edição é exclusiva para SU.
   `!rpggolpe efeito <id>` para adicionar um efeito e `!rpggolpe salvar` para
   gravar.
 - `!rpgpersonagem criar` inicia o assistente de personagens. Informe nome e
-  base/obra de origem (ex.: `REZERO`), depois envie a imagem anexada ou
-  responda à imagem com `!rpgpersonagem continuar`. Use `fim` para concluir
+  base/obra de origem (ex.: `REZERO`), selecione o sexo (por botões ou com
+  `!rpgpersonagem sexo <feminino|masculino|intersexo|nao_binario|agenero|desconhecido>`),
+  depois envie a imagem anexada ou responda à imagem com
+  `!rpgpersonagem continuar`. Use `fim` para concluir
   seleções, `!rpgpersonagem clonar sim|nao` para definir clonagem,
   `!rpgpersonagem golpe <id>` para selecionar um golpe permanente,
   `!rpgpersonagem limite ilimitado` para remover o limite e escolha uma
@@ -408,8 +416,8 @@ reiniciar antes de salvar.
 No Painel SU há o link **RPG Maker**. O painel separa **Atributos**, **Golpes**
 e **Personagens** em áreas próprias; cada área oferece as ações **Criar**,
 **Editar** e **Ver lista**. A área de atributos também administra efeitos.
-O criador de personagens permite informar a base e escolher a raridade. Edições
-preservam os IDs e validam referências existentes. A API valida sessão, origem
+O criador de personagens permite informar a base e escolher sexo e raridade.
+Edições preservam os IDs e validam referências existentes. A API valida sessão, origem
 da solicitação e vínculo SU da plataforma. Imagens aceitas: PNG, JPEG, GIF ou
 WebP, com limite de 8 MB.
 
@@ -425,8 +433,8 @@ caso contrário, a escolha da conta de origem é mantida.
 Personagens existentes no catálogo que ainda não tenham o campo `raridade`
 recebem `incomum` automaticamente na primeira leitura, evitando torná-los
 opções iniciais comuns sem uma decisão explícita do SU.
-Personagens legados sem `base` recebem `Sem base`; novos personagens exigem
-esse campo.
+Personagens legados sem `base` recebem `Sem base`; os que não tiverem `sexo`
+recebem `desconhecido`. Novos personagens exigem ambos os campos.
 
 Estrutura inicial:
 
@@ -455,22 +463,19 @@ personagem no nível 1 e registra os golpes disponíveis nesse nível.
 
 Os comandos ficam na categoria `contas/RPG`:
 
-- `!rpg` exibe o menu e o resumo do perfil.
-- `!rpgperfil` consulta o XP RPG e a escolha inicial.
-- `!rpgpersonagens [página]` lista personagens possuídos em texto, até 10 por
+- `!rpg` exibe o perfil RPG, incluindo XP, personagem inicial e personagens
+  possuídos.
+- `!meus_personagens [página]` lista personagens possuídos em texto, até 10 por
   página.
-- `!rpgcatalogo [página]` lista apenas as bases disponíveis, até 10 por página.
+- `!catalogo [help|página]` exibe as instruções ou lista apenas as bases disponíveis, até 10 por página.
   Escolher uma base abre a lista dos personagens dela; no Discord e Telegram,
   selecionar um personagem abre seu card, com retorno à lista da base.
-- `!rpgcatalogo base <número> [página]` abre os personagens da base escolhida.
-  No WhatsApp, use `!rpgcatalogo ver <id> base <número> pagina <página>` para
+- `!catalogo base <número> [página]` abre os personagens da base escolhida.
+  No WhatsApp, use `!catalogo ver <id> base <número> pagina <página>` para
   abrir um card e retornar à base. Personagens comuns elegíveis podem ser
-  escolhidos como inicial pelo card ou com `!rpgcatalogo escolher <id>`.
-- `!rpginicial [página]` abre a lista de bases como atalho.
+  escolhidos como inicial pelo card ou com `!catalogo escolher <id>`.
 - `!rpgver <id ou nome>` mostra o card e os dados de um personagem do catálogo.
 - As listas de bases e personagens são paginadas em todos os canais; no
   WhatsApp, omitir a página abre a primeira.
-- Os subcomandos antigos (`!rpg perfil`, `!rpg personagens` e `!rpg inicial`)
-  continuam aceitos por compatibilidade.
 - A escolha inicial é permanente e só pode ser feita uma vez por Conta
   Central. Raridade `comum` é o nível mais baixo e o único elegível.

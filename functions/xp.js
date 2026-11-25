@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const economy = require("./economy");
+const { levelForXp } = require("./levelProgression");
 
 const dataDir = path.join(__dirname, "..", "settings", "xp");
 
@@ -60,16 +61,6 @@ function save(message, data) {
     if (fs.existsSync(target)) fs.rmSync(target, { force: true });
     fs.renameSync(temporary, target);
     return true;
-}
-
-function levelForXp(xp) {
-    let level = 1;
-    let spent = 0;
-    while (xp >= spent + level * 100) {
-        spent += level * 100;
-        level += 1;
-    }
-    return { level, currentLevelXp: spent, nextLevelXp: spent + level * 100 };
 }
 
 function getUser(data, message) {

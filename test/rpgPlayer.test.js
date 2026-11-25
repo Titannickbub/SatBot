@@ -32,14 +32,14 @@ test("a central account can claim one common initial character with only level-o
             ],
             personagens: [
                 {
-                    id: 0, nome: "Personagem comum", raridade: "comum",
+                    id: 0, nome: "Personagem comum", sexo: "feminino", raridade: "comum",
                     media: [{ type: "photo", file: "0.png" }],
                     hp: 100, mana: 50, stamina: 50, agilidade: 10, fraquezas: [0],
                     golpesPermanentes: [0, 1], podeClonarGolpes: false,
                     limiteGolpesAprendidos: 2
                 },
                 {
-                    id: 1, nome: "Personagem raro", raridade: "raro",
+                    id: 1, nome: "Personagem raro", sexo: "masculino", raridade: "raro",
                     media: [{ type: "photo", file: "1.png" }],
                     hp: 100, mana: 50, stamina: 50, agilidade: 10, fraquezas: [0],
                     golpesPermanentes: [0], podeClonarGolpes: false,
@@ -66,8 +66,68 @@ test("a central account can claim one common initial character with only level-o
             level: 1,
             learnedMoveIds: [0]
         });
+
+        test("owned character stats gain five percent of base per level and leave zero attributes at zero", () => {
+            const character = {
+                id: 8,
+                hp: 101,
+                mana: 0,
+                stamina: 51,
+                agilidade: 11
+            };
+            const levelTwo = rpgPlayer.getCharacterStats(character, {
+                characterId: 8,
+                level: 2
+            });
+            const levelSix = rpgPlayer.getCharacterStats(character, {
+                characterId: 8,
+                level: 6
+            });
+
+            assert.deepEqual(levelTwo, {
+                hp: 106,
+                mana: 0,
+                stamina: 53,
+                agilidade: 11
+            });
+            assert.deepEqual(levelSix, {
+                hp: 126,
+                mana: 0,
+                stamina: 63,
+                agilidade: 13
+            });
+            assert.deepEqual(character, {
+                id: 8,
+                hp: 101,
+                mana: 0,
+                stamina: 51,
+                agilidade: 11
+            });
+            assert.deepEqual(rpgPlayer.getCharacterStats(character), {
+                hp: 101,
+                mana: 0,
+                stamina: 51,
+                agilidade: 11
+            });
+        });
         assert.equal(JSON.parse(await fs.readFile(centralAccounts.filePath, "utf8"))
             .centralAccounts[central.id].rpg.initialCharacterId, character.id);
+
+        const progression = await rpgPlayer.addRpgXp(centralAccounts, central.id, 300);
+        assert.equal(progression.level, 3);
+        assert.equal(progression.levelUps, 2);
+        assert.equal(progression.ascensao, 2);
+
+        const firstAscension = await rpgPlayer.ascendCharacter(centralAccounts, central.id, 0);
+        assert.equal(firstAscension.character.level, 2);
+        assert.equal(firstAscension.profile.ascensao, 1);
+        const secondAscension = await rpgPlayer.ascendCharacter(centralAccounts, central.id, 0);
+        assert.equal(secondAscension.character.level, 3);
+        assert.equal(secondAscension.profile.ascensao, 0);
+        await assert.rejects(
+            rpgPlayer.ascendCharacter(centralAccounts, central.id, 0),
+            /pontos de Ascensão/
+        );
 
         await assert.rejects(
             rpgPlayer.chooseInitialCharacter(centralAccounts, central.id, catalog, 0),

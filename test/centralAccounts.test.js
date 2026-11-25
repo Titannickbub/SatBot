@@ -29,12 +29,14 @@ test("linking and unlinking platforms retains the central account identity and l
         target.name = "Receiving account";
         target.rpg = {
             xp: 20,
+            ascensao: 0,
             globalCurrency: 30,
             initialCharacterId: 0,
             characters: [{ characterId: 0, level: 3, learnedMoveIds: [1, 2] }]
         };
         source.rpg = {
             xp: 5,
+            ascensao: 0,
             globalCurrency: 7,
             initialCharacterId: 1,
             characters: [
@@ -66,6 +68,7 @@ test("linking and unlinking platforms retains the central account identity and l
         ]);
         assert.deepEqual(merged.rpg, {
             xp: 25,
+            ascensao: 0,
             globalCurrency: 37,
             initialCharacterId: 0,
             characters: [
@@ -73,6 +76,7 @@ test("linking and unlinking platforms retains the central account identity and l
                 { characterId: 1, level: 1, learnedMoveIds: [4] }
             ]
         });
+
         assert.equal(saved.centralAccounts[target.id].id, target.id);
         assert.deepEqual(saved.centralAccounts[target.id].webAuth, merged.webAuth);
         assert.deepEqual(saved.centralAccounts[target.id].rpg, merged.rpg);
@@ -97,6 +101,51 @@ test("linking and unlinking platforms retains the central account identity and l
             message: "last platform"
         });
         assert.deepEqual(merged.platformAccounts.map(account => account.platformId), ["target-user"]);
+    } finally {
+        centralAccounts.data = previousData;
+        centralAccounts.filePath = previousFilePath;
+        centralAccounts.dirty = previousDirty;
+        await fs.rm(directory, { recursive: true, force: true });
+    }
+});
+
+test("RPG profile migration and XP level ups grant Ascensão points", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "satbot-central-rpg-progression-"));
+    const previousData = centralAccounts.data;
+    const previousFilePath = centralAccounts.filePath;
+    const previousDirty = centralAccounts.dirty;
+
+    try {
+        await centralAccounts.init(path.join(directory, "central-accounts.json"));
+        const central = await centralAccounts.getOrCreateByPlatform("discord", "rpg-progression");
+        central.rpg = {
+            xp: 99,
+            globalCurrency: 0,
+            initialCharacterId: null,
+            characters: []
+        };
+        assert.equal(centralAccounts.getRpgProfile(central.id).ascensao, 0);
+
+        const profile = await centralAccounts.updateRpgProfile(central.id, current => {
+            current.xp = 300;
+            return current;
+        });
+        assert.equal(profile.ascensao, 2);
+
+        const laterLevel = await centralAccounts.updateRpgProfile(central.id, current => {
+            current.xp = 600;
+            return current;
+        });
+        assert.equal(laterLevel.ascensao, 3);
+
+        const legacyCentral = await centralAccounts.getOrCreateByPlatform("telegram", "rpg-legacy");
+        legacyCentral.rpg = {
+            xp: 300,
+            globalCurrency: 0,
+            initialCharacterId: null,
+            characters: []
+        };
+        assert.equal(centralAccounts.getRpgProfile(legacyCentral.id).ascensao, 2);
     } finally {
         centralAccounts.data = previousData;
         centralAccounts.filePath = previousFilePath;

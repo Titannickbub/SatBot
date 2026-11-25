@@ -1,7 +1,8 @@
 # Planejamento — RPG Mode (1.4.0)
 
-**Status:** direção global definida; detalhes da economia, desbloqueios e
-progressão ainda precisam ser especificados.
+**Status:** direção global definida; progressão inicial de XP e Ascensão
+definida, enquanto fontes de XP e detalhes da economia ainda precisam ser
+especificados.
 
 ## Visão
 
@@ -17,8 +18,8 @@ isso não torna o save do RPG local ao grupo.
 2. **SatCoins continuam locais.** O saldo SatCoins de cada grupo permanece
    independente da moeda global do RPG. Não há conversão entre as carteiras.
 3. **O XP do RPG é próprio e global.** Ele não reutiliza o XP social/local e não
-   aparece no perfil local. A fonte e as regras de concessão ainda serão
-   definidas.
+   aparece no perfil local. Usa a mesma curva do XP local: nível 1 precisa de
+   100 XP, e cada nível seguinte exige mais 100 XP que o anterior.
 4. **Cada jogador escolhe uma única vez um personagem inicial gratuito** entre
    os personagens de raridade comum, o nível mais baixo.
 5. **Personagens têm definições globais.** Atributos, fraquezas, ataques,
@@ -39,6 +40,14 @@ isso não torna o save do RPG local ao grupo.
 10. **Ativar/desativar o modo em um grupo só controla os comandos do RPG
     naquele grupo.** Essa configuração não altera saldos, XP, personagens,
     níveis, itens ou batalhas salvos.
+11. **Cada level up da Conta Central concede 1 ponto de Ascensão.** Um ponto
+    pode subir em 1 nível um personagem possuído. XP e Ascensão são globais;
+    use `!ascensao <id>` ou o botão no card do personagem para gastar um ponto.
+    Comprar Ascensão com a moeda global fica para uma etapa futura.
+12. **Os atributos crescem somente nas cópias possuídas.** Cada atributo
+    numérico efetivo é `floor(valor base × (100 + 5 × (nível − 1)) / 100)`.
+    O cálculo usa sempre os valores-base do catálogo; atributos com valor zero
+    continuam em zero. Catálogo e loja não recebem esse crescimento.
 
 ## Escopo global e contexto de grupo
 
@@ -63,7 +72,8 @@ isso não torna o save do RPG local ao grupo.
 | Tema | Definição atual / pendência |
 |---|---|
 | Escopo | Global para progresso e economia do RPG; batalhas do MVP no mesmo grupo |
-| XP | XP próprio e global; fonte, quantidade e progressão pendentes |
+| XP | XP próprio e global; curva igual ao XP local; fontes e quantidade pendentes |
+| Ascensão | 1 ponto por nível da Conta Central; gastar 1 ponto sobe 1 nível de personagem |
 | Moeda | Carteira global do RPG separada de SatCoins; nome e formas de obtenção pendentes |
 | Personagem inicial | Uma escolha gratuita por Conta Central entre personagens de raridade comum |
 | Níveis | Nível guardado globalmente por personagem possuído; curva e efeitos pendentes |
@@ -175,24 +185,21 @@ referências a jogos existentes servem apenas como inspiração de gênero.
 
 Os nomes são rascunhos; a sintaxe final deve seguir o parser atual.
 
-- `!rpg` — menu do modo e estado dos comandos naquele grupo.
-- `!rpgperfil` — dados globais do RPG; não altera nem substitui o perfil local.
-- `!rpgpersonagens [página]` — lista personagens possuídos em texto, até 10 por
+- `!rpg` — perfil RPG global; não altera nem substitui o perfil local.
+- `!meus_personagens [página]` — lista personagens possuídos em texto, até 10 por
   página.
-- `!rpgcatalogo [página]` — lista somente as bases, até 10 por página; escolha
+- `!catalogo [help|página]` — exibe ajuda ou lista somente as bases, até 10 por página; escolha
   uma base para então listar seus personagens.
-- `!rpgcatalogo base <número> [página]` — abre os personagens de uma base.
+- `!catalogo base <número> [página]` — abre os personagens de uma base.
 - No Discord e Telegram, abrir um personagem mostra seu card com opção de
   voltar à lista da base; no WhatsApp, use
-  `!rpgcatalogo ver <id> base <número> pagina <página>`.
+  `!catalogo ver <id> base <número> pagina <página>`.
 - A opção de escolher o personagem inicial fica no card dos personagens comuns,
-  dentro do catálogo.
-- `!rpginicial [página]` — atalho para abrir a lista de bases do catálogo.
+  dentro do catálogo; a orientação para escolher só aparece se o jogador ainda
+  não possuir personagens.
 - `!rpgver <id ou nome>` — exibe o card de um personagem do catálogo.
 - No WhatsApp, omitir a página mostra a primeira; use
-  `!rpgcatalogo escolher <id>` para escolher o personagem inicial.
-- Os subcomandos `!rpg perfil`, `!rpg personagens` e `!rpg inicial` continuam
-  aceitos como atalhos compatíveis.
+  `!catalogo escolher <id>` para escolher o personagem inicial.
 - `!rpg equipe` — selecionar até três personagens para a próxima batalha.
 - `!rpg loja` — loja global com a moeda RPG.
 - `!rpg sinais` — página global para adquirir sinais/tíquetes e desbloquear

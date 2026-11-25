@@ -8,6 +8,7 @@ const CATALOG_PATH = path.join(RPG_DIR, "personagens.json");
 const MEDIA_DIR = path.join(RPG_DIR, "personagens_media");
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const LEGACY_CHARACTER_BASE = "Sem base";
+const LEGACY_CHARACTER_SEX = "desconhecido";
 const RARITY_LABELS = Object.freeze({
     [itemRarity.COMMON]: "Comum",
     [itemRarity.UNCOMMON]: "Incomum",
@@ -16,6 +17,15 @@ const RARITY_LABELS = Object.freeze({
     [itemRarity.LEGENDARY]: "Lendário"
 });
 const CHARACTER_RARITIES = Object.freeze(Object.keys(RARITY_LABELS));
+const SEX_LABELS = Object.freeze({
+    feminino: "Feminino",
+    masculino: "Masculino",
+    intersexo: "Intersexo",
+    nao_binario: "Não binário",
+    agenero: "Agênero",
+    desconhecido: "Desconhecido"
+});
+const CHARACTER_SEXES = Object.freeze(Object.keys(SEX_LABELS));
 const IMAGE_FORMATS = [
     { ext: "png", mimeType: "image/png", signature: buffer => buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) },
     { ext: "jpg", mimeType: "image/jpeg", signature: buffer => buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff },
@@ -50,6 +60,11 @@ function readCatalog() {
         if (character && (character.base === undefined || character.base === null ||
             (typeof character.base === "string" && !character.base.trim()))) {
             character.base = LEGACY_CHARACTER_BASE;
+            migrated = true;
+        }
+        if (character && (character.sexo === undefined || character.sexo === null ||
+            (typeof character.sexo === "string" && !character.sexo.trim()))) {
+            character.sexo = LEGACY_CHARACTER_SEX;
             migrated = true;
         }
     }
@@ -110,6 +125,9 @@ function validateCatalog(catalog) {
         requireText(character.base, `Base do personagem ${character.id}`);
         if (character.base.trim().length > 80) {
             throw new Error(`A base do personagem ${character.id} deve ter até 80 caracteres.`);
+        }
+        if (!CHARACTER_SEXES.includes(character.sexo)) {
+            throw new Error(`O personagem ${character.id} precisa ter um sexo válido.`);
         }
         if (!CHARACTER_RARITIES.includes(character.raridade)) {
             throw new Error(`O personagem ${character.id} precisa ter uma raridade válida.`);
@@ -355,6 +373,7 @@ function buildCharacter(catalog, id, input, media) {
         id,
         nome: String(input.nome || "").trim(),
         base: String(input.base || "").trim(),
+        sexo: String(input.sexo || "").trim().toLocaleLowerCase(),
         raridade: String(input.raridade || ""),
         media,
         hp: Number(input.hp),
@@ -370,6 +389,9 @@ function buildCharacter(catalog, id, input, media) {
     if (character.nome.length > 80) throw new Error("O nome do personagem deve ter até 80 caracteres.");
     requireText(character.base, "Base do personagem");
     if (character.base.length > 80) throw new Error("A base do personagem deve ter até 80 caracteres.");
+    if (!CHARACTER_SEXES.includes(character.sexo)) {
+        throw new Error(`Selecione uma opção válida para o sexo do personagem (${CHARACTER_SEXES.join(", ")}).`);
+    }
     if (!CHARACTER_RARITIES.includes(character.raridade)) {
         throw new Error("Selecione uma raridade válida para o personagem.");
     }
@@ -459,8 +481,11 @@ module.exports = {
     MEDIA_DIR,
     MAX_IMAGE_BYTES,
     LEGACY_CHARACTER_BASE,
+    LEGACY_CHARACTER_SEX,
     RARITY_LABELS,
     CHARACTER_RARITIES,
+    SEX_LABELS,
+    CHARACTER_SEXES,
     emptyCatalog,
     readCatalog,
     writeCatalog,

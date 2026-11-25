@@ -106,6 +106,7 @@ function promptForCharacter(message, draft, interaction = null) {
     const prompts = {
         nome: "Informe o nome do personagem com `!rpgpersonagem continuar <nome>`.",
         base: "Informe a base/obra de origem do personagem (ex.: REZERO), usando `!rpgpersonagem continuar <base>`.",
+        sexo: "Escolha o sexo do personagem. No WhatsApp, use `!rpgpersonagem sexo <opção>`.",
         hp: "Informe o HP inicial (> 0).",
         mana: "Informe a mana inicial (>= 0).",
         stamina: "Informe a stamina inicial (>= 0).",
@@ -138,6 +139,12 @@ function promptForCharacter(message, draft, interaction = null) {
         buttons = selectionChoices("rpgpersonagem", "golpes", catalog.golpes, draft.data.golpesPermanentes);
     } else if (draft.step === "limite") {
         buttons = [{ id: "rpgpersonagem:limit:unlimited", label: "Sem limite", style: ButtonStyle.Primary }];
+    } else if (draft.step === "sexo") {
+        buttons = catalogStore.CHARACTER_SEXES.map(sexo => ({
+            id: `rpgpersonagem:sex:${sexo}`,
+            label: catalogStore.SEX_LABELS[sexo],
+            style: sexo === "desconhecido" ? ButtonStyle.Secondary : ButtonStyle.Primary
+        }));
     } else if (draft.step === "raridade") {
         buttons = catalogStore.CHARACTER_RARITIES.map(rarity => ({
             id: `rpgpersonagem:rarity:${rarity}`,
@@ -155,6 +162,7 @@ function beginDraft(message, command, kind) {
             step: "nome",
             data: {
                 base: "",
+                sexo: "",
                 fraquezas: [],
                 afinidades: [],
                 golpesPermanentes: [],
@@ -167,7 +175,7 @@ function beginDraft(message, command, kind) {
 
 function advanceDraft(draft, kind) {
     const moveSteps = ["nome", "dano", "mana", "stamina", "hp", "tipo", "nivel", "frases", "efeitos"];
-    const characterSteps = ["nome", "base", "hp", "mana", "stamina", "agilidade", "imagem", "fraquezas", "clonador"];
+    const characterSteps = ["nome", "base", "sexo", "hp", "mana", "stamina", "agilidade", "imagem", "fraquezas", "clonador"];
     const steps = kind === "move" ? moveSteps : characterSteps;
     const currentIndex = steps.indexOf(draft.step);
     draft.step = steps[currentIndex + 1] || "complete";
@@ -179,6 +187,18 @@ function parseNumber(value, label, integer = false) {
         throw new Error(`${label} inválido.`);
     }
     return number;
+}
+
+function parseCharacterSex(value) {
+    const normalized = String(value || "")
+        .toLocaleLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[\s-]+/g, "_");
+    if (!catalogStore.CHARACTER_SEXES.includes(normalized)) {
+        throw new Error(`Sexo inválido. Opções: ${catalogStore.CHARACTER_SEXES.join(", ")}.`);
+    }
+    return normalized;
 }
 
 async function executeMove(message, args) {
@@ -278,6 +298,11 @@ async function executeCharacter(message, args) {
         return message.reply({ text: "Criação do personagem cancelada." });
     }
     if (!draft) throw new Error("Nenhuma criação de personagem ativa. Use !rpgpersonagem criar.");
+    if (action === "sexo" && draft.step === "sexo") {
+        draft.data.sexo = parseCharacterSex(getText(message, 1));
+        draft.step = "hp";
+        return promptForCharacter(message, draft);
+    }
     if (action === "continuar") {
         const value = getText(message, 1);
         if (draft.step === "imagem") {
@@ -302,6 +327,8 @@ async function executeCharacter(message, args) {
             else if (draft.step === "base") {
                 if (value.length > 80) throw new Error("A base pode ter até 80 caracteres.");
                 draft.data.base = value;
+            } else if (draft.step === "sexo") {
+                draft.data.sexo = parseCharacterSex(value);
             }
             else if (["hp", "mana", "stamina", "agilidade"].includes(draft.step)) {
                 draft.data[draft.step] = parseNumber(value, draft.step, draft.step !== "hp");
@@ -324,7 +351,7 @@ async function executeCharacter(message, args) {
             } else {
                 throw new Error("Use os botões para escolher a próxima etapa.");
             }
-            if (["nome", "base", "hp", "mana", "stamina", "agilidade"].includes(draft.step)) {
+            if (["nome", "base", "sexo", "hp", "mana", "stamina", "agilidade"].includes(draft.step)) {
                 advanceDraft(draft, "character");
             }
         }
@@ -379,7 +406,7 @@ async function executeCharacter(message, args) {
         drafts.delete(key);
         return message.reply({ text: `✅ Personagem "${character.nome}" criado com ID ${character.id}.` });
     }
-    throw new Error("Use !rpgpersonagem criar, continuar <valor>, fim, golpe <id>, limite ilimitado, salvar ou cancelar.");
+    throw new Error("Use !rpgpersonagem criar, continuar <valor>, sexo <opção>, fim, golpe <id>, limite ilimitado, salvar ou cancelar.");
 }
 
 function createAttributeCommand() {
@@ -501,6 +528,10 @@ function createCharacterCommand() {
                         : "limite";
             } else if (action === "next" && field === "afinidades") {
                 draft.step = "afinidades";
+            } else if (action === "sex" && catalogStore.CHARACTER_SEXES.includes(field)) {
+                if (draft.step !== "sexo") return false;
+                draft.data.sexo = field;
+                draft.step = "hp";
             } else if (action === "clone") {
                 draft.data.podeClonarGolpes = field === "yes";
                 if (draft.data.podeClonarGolpes) {

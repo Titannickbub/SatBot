@@ -14,6 +14,10 @@ test("RPG Maker page has create, edit, and list actions for every main section",
     assert.match(html, /name="raridade"/);
     assert.match(html, /name="base"/);
     assert.match(html, /Base\/obra de origem/);
+    assert.match(html, /name="sexo"/);
+    for (const sex of ["feminino", "masculino", "intersexo", "nao_binario", "agenero", "desconhecido"]) {
+        assert.match(html, new RegExp(`<option value="${sex}">`));
+    }
     for (const rarity of ["comum", "incomum", "raro", "epico", "lendario"]) {
         assert.match(html, new RegExp(`<option value="${rarity}">`));
     }

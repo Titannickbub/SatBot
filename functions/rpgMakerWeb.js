@@ -5,10 +5,14 @@ function renderPage(platform) {
     const rarityOptions = rpgMaker.CHARACTER_RARITIES
         .map(rarity => `<option value="${rarity}">${rpgMaker.RARITY_LABELS[rarity]}</option>`)
         .join("");
+    const sexOptions = rpgMaker.CHARACTER_SEXES
+        .map(sex => `<option value="${sex}">${rpgMaker.SEX_LABELS[sex]}</option>`)
+        .join("");
     const characterForm = (id, edit = false) => `
       <form id="${id}" class="character-form">
         ${edit ? '<label>Personagem<select name="id" data-window-target="characters" required><option value="">Selecione um personagem</option></select></label>' : ""}
         <div class="grid"><label>Nome<input name="nome" maxlength="80" required></label><label>Base/obra de origem<input name="base" maxlength="80" placeholder="Ex.: REZERO" required></label></div>
+        <label>Sexo<select name="sexo" required><option value="">Selecione</option>${sexOptions}</select></label>
         <label>Imagem (opcional na edição; PNG, JPEG, GIF ou WebP, até 8 MB)<input name="imagem" type="file" accept="image/png,image/jpeg,image/gif,image/webp" ${edit ? "" : "required"}></label>
         <label>Raridade<select name="raridade" required>${rarityOptions}</select><span class="hint">Personagens comuns podem ser escolhidos como personagem inicial gratuito.</span></label>
         <div class="grid"><label>HP inicial<input name="hp" type="number" min="1" step="1" required></label><label>Mana inicial<input name="mana" type="number" min="0" step="1" required></label></div>
@@ -217,6 +221,7 @@ function movePayload(form){
 function fillCharacterForm(form,item){
   form.elements.nome.value=item.nome;
   form.elements.base.value=item.base;
+  form.elements.sexo.value=item.sexo;
   form.elements.raridade.value=item.raridade;
   form.elements.hp.value=item.hp;
   form.elements.mana.value=item.mana;
@@ -264,7 +269,7 @@ async function load(){
       const form=document.getElementById("moveEditForm");selectForEdit(form.elements.id,item,()=>fillMoveForm(form,item));
     },item=>item.podeEsquecer!==false&&item.nome!=="Clone Travado");
   renderList(document.getElementById("characterList"),catalog.personagens,item=>
-    "Base "+item.base+" · "+rpgRarityLabel(item.raridade)+" · HP "+item.hp+" · Mana "+item.mana+" · Stamina "+item.stamina+" · Agilidade "+item.agilidade+
+    "Base "+item.base+" · "+rpgSexLabel(item.sexo)+" · "+rpgRarityLabel(item.raridade)+" · HP "+item.hp+" · Mana "+item.mana+" · Stamina "+item.stamina+" · Agilidade "+item.agilidade+
     " · Fraquezas "+item.fraquezas.map(weaknessName).join(", ")+
     " · Afinidades "+((item.afinidades||[]).map(weaknessName).join(", ")||"nenhuma")+
     " · "+(item.podeClonarGolpes?"clonador":"não clonador")+" · Limite "+(item.limiteGolpesAprendidos===null?"ilimitado":item.limiteGolpesAprendidos),
@@ -274,6 +279,9 @@ async function load(){
 }
 function rpgRarityLabel(rarity){
   return ${JSON.stringify(rpgMaker.RARITY_LABELS)}[rarity]||rarity;
+}
+function rpgSexLabel(sex){
+  return ${JSON.stringify(rpgMaker.SEX_LABELS)}[sex]||sex;
 }
 async function submitForm(form,action,build){
   form.addEventListener("submit",async event=>{
@@ -305,7 +313,7 @@ async function readImage(file){
 }
 function characterPayload(form){
   return {
-    nome:form.elements.nome.value,base:form.elements.base.value,hp:Number(form.elements.hp.value),mana:Number(form.elements.mana.value),
+    nome:form.elements.nome.value,base:form.elements.base.value,sexo:form.elements.sexo.value,hp:Number(form.elements.hp.value),mana:Number(form.elements.mana.value),
     raridade:form.elements.raridade.value,
     stamina:Number(form.elements.stamina.value),agilidade:Number(form.elements.agilidade.value),
     fraquezas:selectedValues(form.elements.fraquezas),afinidades:selectedValues(form.elements.afinidades),

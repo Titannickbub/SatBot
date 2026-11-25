@@ -91,7 +91,7 @@ function renderStatCard(label, value, key, left, top) {
 <text x="${left + 22}" y="${top + 78}" fill="#f2f8ff" font-family="Arial,Segoe UI,sans-serif" font-size="25px" font-weight="800">${escapeXml(value)}</text>`;
 }
 
-async function renderCharacterCard(character, catalog, imageBuffer = null) {
+async function renderCharacterCard(character, catalog, imageBuffer = null, stats = character) {
     const portraitSource = imageBuffer || await fs.promises.readFile(getCharacterImagePath(character));
     const rarityColor = RARITY_COLORS[character.raridade] || RARITY_COLORS.comum;
     const rarity = catalogStore.RARITY_LABELS[character.raridade] || character.raridade;
@@ -127,13 +127,13 @@ async function renderCharacterCard(character, catalog, imageBuffer = null) {
 <rect x="482" y="66" width="2" height="535" fill="#a2d9f3" opacity=".25"/>
 <text x="535" y="88" fill="${rarityColor}" font-family="Arial,Segoe UI,sans-serif" font-size="15px" font-weight="800" letter-spacing="2">NÍVEL DE RARIDADE: ${escapeXml(String(rarity).toUpperCase())}</text>
 <text x="535" y="153" fill="#f3f8ff" font-family="Arial,Segoe UI,sans-serif" font-size="45px" font-weight="800">${escapeXml(fitText(character.nome, 25))}</text>
-<text x="535" y="200" fill="#a9c5d8" font-family="Arial,Segoe UI,sans-serif" font-size="13px" font-weight="700">BASE: ${escapeXml(fitText(character.base || "Sem base", 40))}</text>
+<text x="535" y="200" fill="#a9c5d8" font-family="Arial,Segoe UI,sans-serif" font-size="13px" font-weight="700">BASE: ${escapeXml(fitText(character.base || "Sem base", 24))} · SEXO: ${escapeXml(catalogStore.SEX_LABELS[character.sexo] || character.sexo)}</text>
 <text x="1105" y="200" fill="#a9c5d8" font-family="Arial,Segoe UI,sans-serif" font-size="13px" font-weight="700" text-anchor="end">ID ${escapeXml(character.id)}</text>
 <g>
-  ${renderStatCard("HP", character.hp, "hp", 535, 235)}
-  ${renderStatCard("MANA", character.mana, "mana", 829, 235)}
-  ${renderStatCard("STAMINA", character.stamina, "stamina", 535, 337)}
-  ${renderStatCard("AGILIDADE", character.agilidade, "agilidade", 829, 337)}
+  ${renderStatCard("HP", stats.hp, "hp", 535, 235)}
+  ${renderStatCard("MANA", stats.mana, "mana", 829, 235)}
+  ${renderStatCard("STAMINA", stats.stamina, "stamina", 535, 337)}
+  ${renderStatCard("AGILIDADE", stats.agilidade, "agilidade", 829, 337)}
 </g>
 <text x="535" y="457" fill="#94b7ce" font-family="Arial,Segoe UI,sans-serif" font-size="13px" font-weight="800" letter-spacing="1">FRAQUEZAS</text>
 <text x="675" y="457" fill="#eaf7ff" font-family="Arial,Segoe UI,sans-serif" font-size="15px" font-weight="700">${escapeXml(fitText(weaknesses, 24))}</text>
@@ -175,25 +175,43 @@ function makeCardComponents(
     returnCommand = "rpgcatalogo",
     returnPage = 1,
     allowInitialChoice = false,
-    { returnBaseIndex = null, basesPage = 1, returnToBases = false } = {}
+    {
+        returnBaseIndex = null,
+        basesPage = 1,
+        returnToBases = false,
+        canAscend = false
+    } = {}
 ) {
+    const componentCommand = returnCommand === "rpgpersonagens"
+        ? "meus_personagens"
+        : returnCommand === "rpgcatalogo"
+            ? "catalogo"
+            : returnCommand;
     const backId = returnBaseIndex !== null
-        ? `${returnCommand}:backbase:${returnBaseIndex}:${returnPage}:${basesPage}`
+        ? `${componentCommand}:backbase:${returnBaseIndex}:${returnPage}:${basesPage}`
         : returnToBases
-            ? `${returnCommand}:basespage:${basesPage}`
-            : `${returnCommand}:back:${returnPage}`;
-    const chooseId = `rpgcatalogo:initial:${character.id}`;
+            ? `${componentCommand}:basespage:${basesPage}`
+            : `${componentCommand}:back:${returnPage}`;
+    const chooseId = `catalogo:initial:${character.id}`;
+    const ascendId = `meus_personagens:ascend:${character.id}`;
     const backLabel = returnBaseIndex !== null || returnToBases
         ? "Voltar às bases"
         : "Voltar à lista";
     if (platform === "discord") {
+        const navigationButtons = [
+            new ButtonBuilder()
+                .setCustomId(backId)
+                .setLabel(backLabel)
+                .setStyle(ButtonStyle.Secondary)
+        ];
+        if (canAscend) {
+            navigationButtons.push(new ButtonBuilder()
+                .setCustomId(ascendId)
+                .setLabel("Usar Ascensão")
+                .setStyle(ButtonStyle.Success));
+        }
         const components = [
-            new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId(backId)
-                    .setLabel(backLabel)
-                    .setStyle(ButtonStyle.Secondary)
-            )
+            new ActionRowBuilder().addComponents(...navigationButtons)
         ];
         if (allowInitialChoice) {
             components.push(new ActionRowBuilder().addComponents(
@@ -210,6 +228,12 @@ function makeCardComponents(
             text: `⬅️ ${backLabel}`,
             callback_data: backId
         }]];
+        if (canAscend) {
+            inlineKeyboard[0].push({
+                text: "✨ Usar Ascensão",
+                callback_data: ascendId
+            });
+        }
         if (allowInitialChoice) {
             inlineKeyboard.push([{
                 text: "🎁 Escolher como inicial",
@@ -224,25 +248,37 @@ function makeCardComponents(
 }
 
 async function sendCharacterCard(message, character, catalog, options = {}) {
-    const image = await renderCharacterCard(character, catalog);
+    const stats = options.ownedCharacter
+        ? rpgPlayer.getCharacterStats(character, options.ownedCharacter)
+        : character;
+    const image = await renderCharacterCard(character, catalog, null, stats);
     const returnCommand = options.returnCommand || "rpgcatalogo";
     const returnPage = options.returnPage || 1;
     const allowInitialChoice = options.allowInitialChoice === true;
+    const displayReturnCommand = returnCommand === "rpgpersonagens" ? "meus_personagens" : returnCommand;
     const backCommand = options.returnBaseIndex !== undefined && options.returnBaseIndex !== null
-        ? `!rpgcatalogo base ${options.returnBaseIndex} ${returnPage}`
+        ? `!catalogo base ${options.returnBaseIndex} ${returnPage}`
         : options.returnToBases
-            ? `!rpgcatalogo ${options.basesPage || 1}`
-            : `!${returnCommand} ${returnPage}`;
-    let caption = options.caption || formatCharacterCaption(message.platform, character);
+            ? `!catalogo ${options.basesPage || 1}`
+            : `!${displayReturnCommand} ${returnPage}`;
+    let caption = options.caption || formatCharacterCaption(
+        message.platform,
+        character,
+        options.ownedCharacter || null,
+        options.ascensao || 0
+    );
     if (message.platform === "discord") {
-        caption += `\n↩️ **Voltar:** \`${escapeMarkdown(backCommand)}\``;
-        if (allowInitialChoice) caption += `\n🎁 **Inicial:** \`!rpgcatalogo escolher ${character.id}\``;
+        caption += `\n↩️ **Voltar:** \`${backCommand}\``;
+        if (allowInitialChoice) caption += `\n🎁 **Inicial:** \`!catalogo escolher ${character.id}\``;
+        if (options.canAscend) caption += `\n✨ **Ascensão:** \`!ascensao ${character.id}\``;
     } else if (message.platform === "telegram") {
         caption += `\n↩️ <b>Voltar:</b> <code>${escapeHtml(backCommand)}</code>`;
-        if (allowInitialChoice) caption += `\n🎁 <b>Inicial:</b> <code>!rpgcatalogo escolher ${character.id}</code>`;
+        if (allowInitialChoice) caption += `\n🎁 <b>Inicial:</b> <code>!catalogo escolher ${character.id}</code>`;
+        if (options.canAscend) caption += `\n✨ <b>Ascensão:</b> <code>!ascensao ${character.id}</code>`;
     } else {
         caption += `\n↩️ *Voltar:* \`${backCommand}\``;
-        if (allowInitialChoice) caption += `\n🎁 *Inicial:* \`!rpgcatalogo escolher ${character.id}\``;
+        if (allowInitialChoice) caption += `\n🎁 *Inicial:* \`!catalogo escolher ${character.id}\``;
+        if (options.canAscend) caption += `\n✨ *Ascensão:* \`!ascensao ${character.id}\``;
     }
     const payload = {
         image,
@@ -445,15 +481,16 @@ function makePagedResponse({
 
 function getPageInstructions(platform, commandName, paged) {
     const { mode = null, baseIndex = null, page = 1, basesPage = 1 } = paged;
-    const catalogCommand = commandName === "rpginicial" ? "rpgcatalogo" : commandName;
+    const catalogCommand = commandName;
+    const userCommand = commandName === "rpgpersonagens" ? "meus_personagens" : commandName;
     if (platform === "whatsapp") {
         if (catalogCommand === "rpgcatalogo") {
             if (mode === "characters") {
-                return `Outra página: !rpgcatalogo base ${baseIndex} <página>. Card: !rpgcatalogo ver <id> base ${baseIndex} pagina ${page}. Voltar às bases: !rpgcatalogo ${basesPage}.`;
+                return `Outra página: !catalogo base ${baseIndex} <página>. Card: !catalogo ver <id> base ${baseIndex} pagina ${page}. Voltar às bases: !catalogo ${basesPage}.`;
             }
-            return `Escolher uma base: !rpgcatalogo base <número>. Próxima página: !rpgcatalogo <página>.`;
+            return `Escolher uma base: !catalogo base <número>. Próxima página: !catalogo <página>.`;
         }
-        return `Para abrir outra página: !${catalogCommand} <página>. Card: !rpgver <id>.`;
+        return `Para abrir outra página: !${userCommand} <página>. Card: !rpgver <id>.`;
     }
     if (catalogCommand === "rpgcatalogo") {
         if (mode === "characters") {
@@ -471,18 +508,18 @@ function formatPagedLine(line, platform, mode = null) {
         if (match) {
             if (platform === "discord") return `🎬 **Base ${match[1]} · ${escapeMarkdown(match[2])}**`;
             if (platform === "telegram") return `🎬 <b>Base ${match[1]} · ${escapeHtml(match[2])}</b>`;
-            return `🎬 *Base ${match[1]}:* ${match[2]}`;
+            return `🎬 *Base ${match[1]}:* ${escapeMarkdown(match[2])}`;
         }
     }
     if (line.startsWith("📂 BASE:")) {
         const base = line.slice("📂 BASE:".length).trim();
         if (platform === "discord") return `**📂 BASE: ${escapeMarkdown(base)}**`;
         if (platform === "telegram") return `<b>📂 BASE: ${escapeHtml(base)}</b>`;
-        return `📂 *BASE:* ${base}`;
+        return `📂 *BASE:* ${escapeMarkdown(base)}`;
     }
     if (platform === "discord") return `• ${escapeMarkdown(line)}`;
     if (platform === "telegram") return `• ${escapeHtml(line)}`;
-    return `• ${line}`;
+    return `• ${escapeMarkdown(line)}`;
 }
 
 function formatPagedPayload(message, paged, commandName, notice = "") {
@@ -553,20 +590,24 @@ function formatSimplePayload(message, title, lines, color = 0x5865f2) {
         };
     }
     return {
-        text: `*${title}*\n\n${lines.map(line => `• ${line}`).join("\n")}`
+        text: `*${title}*\n\n${lines.map(line => `• ${escapeMarkdown(line)}`).join("\n")}`
     };
 }
 
-function formatCharacterCaption(platform, character) {
+function formatCharacterCaption(platform, character, ownedCharacter = null, ascensao = 0) {
     const rarity = catalogStore.RARITY_LABELS[character.raridade] || character.raridade;
+    const sex = catalogStore.SEX_LABELS[character.sexo] || character.sexo;
     const base = character.base || "Sem base";
+    const ownership = ownedCharacter
+        ? `\n🆙 Seu nível: ${ownedCharacter.level} · ✨ Ascensão disponível: ${ascensao}`
+        : "";
     if (platform === "discord") {
-        return `🎴 **${escapeMarkdown(character.nome)}**\n✨ **${escapeMarkdown(rarity)}** · 🎬 ${escapeMarkdown(base)} · 🆔 \`${character.id}\``;
+        return `🎴 **${escapeMarkdown(character.nome)}**\n✨ **${escapeMarkdown(rarity)}** · 🎬 ${escapeMarkdown(base)} · ⚧️ ${escapeMarkdown(sex)} · 🆔 \`${character.id}\`${ownership}`;
     }
     if (platform === "telegram") {
-        return `🎴 <b>${escapeHtml(character.nome)}</b>\n✨ <b>${escapeHtml(rarity)}</b> · 🎬 ${escapeHtml(base)} · 🆔 <code>${character.id}</code>`;
+        return `🎴 <b>${escapeHtml(character.nome)}</b>\n✨ <b>${escapeHtml(rarity)}</b> · 🎬 ${escapeHtml(base)} · ⚧️ ${escapeHtml(sex)} · 🆔 <code>${character.id}</code>${ownership}`;
     }
-    return `🎴 *Personagem:* ${character.nome}\n✨ *Raridade:* ${rarity} · 🎬 *Base:* ${base} · 🆔 ${character.id}`;
+    return `🎴 *Personagem:* ${character.nome}\n✨ *Raridade:* ${rarity} · 🎬 *Base:* ${base} · ⚧️ *Sexo:* ${sex} · 🆔 ${character.id}${ownership}`;
 }
 
 function sortCharactersByBase(characters) {
@@ -613,7 +654,7 @@ function renderCatalogPage(characters, catalog) {
         }
         const rarity = catalogStore.RARITY_LABELS[character.raridade] || character.raridade;
         lines.push(
-            `${character.id} · ${character.nome} — ${rarity} | HP ${character.hp} · Mana ${character.mana} · Stamina ${character.stamina} · Agilidade ${character.agilidade}`
+            `${character.id} · ${character.nome} — ${rarity} · ${catalogStore.SEX_LABELS[character.sexo] || character.sexo} | HP ${character.hp} · Mana ${character.mana} · Stamina ${character.stamina} · Agilidade ${character.agilidade}`
         );
     }
     return lines;
@@ -624,7 +665,7 @@ function getPagedAction(message, commandName, args = []) {
     const profile = centralAccounts.getRpgProfile(central.id);
     const catalog = catalogStore.readCatalog();
 
-    if (commandName === "rpgcatalogo" || commandName === "rpginicial") {
+    if (commandName === "rpgcatalogo") {
         if (normalizeSearch(args[0]) === "base") {
             const base = findCatalogBase(catalog, args[1]);
             const items = sortCharactersByBase(catalog.personagens.filter(character =>
@@ -634,7 +675,7 @@ function getPagedAction(message, commandName, args = []) {
             const basesPage = args[3] === undefined ? 1 : parsePage([args[3]]);
             return makePagedResponse({
                 platform: message.platform,
-                commandName: "rpgcatalogo",
+                commandName: "catalogo",
                 title: "📚 PERSONAGENS DA BASE",
                 items,
                 page,
@@ -650,13 +691,13 @@ function getPagedAction(message, commandName, args = []) {
         const page = parsePage(args);
         return makePagedResponse({
             platform: message.platform,
-            commandName: "rpgcatalogo",
+            commandName: "catalogo",
             title: "📚 BASES DO CATÁLOGO RPG",
             items,
             page,
             renderItem: base => `${base.id} · ${base.name}`,
             componentBuilder: ({ page: currentPage, totalPages, pageItems }) =>
-                makeBasePageComponents(message.platform, "rpgcatalogo", currentPage, totalPages, pageItems),
+                makeBasePageComponents(message.platform, "catalogo", currentPage, totalPages, pageItems),
             metadata: { mode: "bases" },
             emptyMessage: "Ainda não há bases no catálogo."
         });
@@ -667,8 +708,8 @@ function getPagedAction(message, commandName, args = []) {
         const page = parsePage(args);
         return makePagedResponse({
             platform: message.platform,
-            commandName,
-            title: "🧙 SEUS PERSONAGENS",
+            commandName: "meus_personagens",
+            title: `🧙 SEUS PERSONAGENS · Ascensão: ${profile.ascensao ?? 0}`,
             items,
             page,
             renderItem: save => {
@@ -681,7 +722,7 @@ function getPagedAction(message, commandName, args = []) {
                 .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
                 .map(save => catalog.personagens.find(entry => entry.id === save.characterId))
                 .filter(Boolean),
-            emptyMessage: "Você ainda não possui personagens. Use !rpginicial para escolher o inicial."
+            emptyMessage: "Você ainda não possui personagens. Escolha um personagem comum pelo comando !catalogo."
         });
     }
 
@@ -721,21 +762,31 @@ async function executeAction(message, action = "menu", args = []) {
     const displayName = central.name || message.displayName || message.userId;
 
     if (action === "menu") {
-        return message.reply(formatSimplePayload(message, "🌐 RPG GLOBAL", [
+        const progress = rpgPlayer.levelForXp(profile.xp);
+        return message.reply(formatSimplePayload(message, "🌐 PERFIL RPG", [
             `👤 Conta Central: ${displayName}`,
+            `📈 Nível da Conta: ${progress.level}`,
             `⭐ XP de RPG: ${profile.xp}`,
-            "📚 Catálogo: escolha uma base e depois um personagem para abrir o card.",
-            "⌨️ !rpgcatalogo [página] · !rpgcatalogo base <número> [página]"
-        ]));
+            `⏳ Faltam ${progress.nextLevelXp - profile.xp} XP para o nível ${progress.level + 1}`,
+            `✨ Ascensão: ${profile.ascensao ?? 0} ponto(s)`,
+            `🎁 Personagem inicial: ${profile.initialCharacterId === null
+                ? "ainda não escolhido"
+                : catalog.personagens.find(character => character.id === profile.initialCharacterId)?.nome || "indisponível"}`,
+            `🧙 Personagens possuídos: ${profile.characters.length}`
+        ], 0xb68bff));
     }
 
     if (action === "perfil") {
+        const progress = rpgPlayer.levelForXp(profile.xp);
         const initial = profile.initialCharacterId === null
             ? "ainda não escolhido"
             : catalog.personagens.find(character => character.id === profile.initialCharacterId)?.nome || "indisponível";
         return message.reply(formatSimplePayload(message, "🌐 PERFIL RPG", [
             `👤 Conta Central: ${displayName}`,
+            `📈 Nível da Conta: ${progress.level}`,
             `⭐ XP de RPG: ${profile.xp}`,
+            `⏳ Faltam ${progress.nextLevelXp - profile.xp} XP para o nível ${progress.level + 1}`,
+            `✨ Ascensão: ${profile.ascensao ?? 0} ponto(s)`,
             `🎁 Personagem inicial: ${initial}`,
             `🧙 Personagens possuídos: ${profile.characters.length}`
         ], 0xb68bff));
@@ -746,8 +797,45 @@ async function executeAction(message, action = "menu", args = []) {
         return message.reply(formatPagedPayload(message, paged, "rpgpersonagens"));
     }
 
+    if (action === "ascensao") {
+        if (args.length === 0) {
+            const owned = profile.characters.map(save => {
+                const character = catalog.personagens.find(entry => entry.id === save.characterId);
+                return character
+                    ? `${character.id} · ${character.nome} — nível ${save.level}`
+                    : `ID ${save.characterId} — definição não encontrada`;
+            });
+            return message.reply(formatSimplePayload(message, "✨ ASCENSÃO", [
+                `Pontos disponíveis: ${profile.ascensao ?? 0}`,
+                (profile.ascensao ?? 0) > 0
+                    ? "Use !ascensao <id> para gastar 1 ponto e subir o nível de um personagem seu."
+                    : "Você ganha 1 ponto ao subir de nível na Conta Central.",
+                ...owned
+            ], 0x28a879));
+        }
+        const { character: save, profile: updated } = await rpgPlayer.ascendCharacter(
+            centralAccounts,
+            central.id,
+            args[0]
+        );
+        const character = catalog.personagens.find(entry => entry.id === save.characterId);
+        return message.reply(formatSimplePayload(message, "✨ ASCENSÃO USADA", [
+            `${character?.nome || `Personagem ${save.characterId}`} agora está no nível ${save.level}.`,
+            `Pontos de Ascensão restantes: ${updated.ascensao}`
+        ], 0x28a879));
+    }
+
     if (action === "catalog") {
         const catalogAction = normalizeSearch(args[0]);
+        if (catalogAction === "help" || catalogAction === "ajuda") {
+            return message.reply(formatSimplePayload(message, "📚 COMO USAR O CATÁLOGO RPG", [
+                "1️⃣ Use !catalogo para listar as bases disponíveis.",
+                "2️⃣ Escolha uma base na lista; no WhatsApp, use !catalogo base <número> [página].",
+                "3️⃣ Escolha um personagem para abrir o card.",
+                "No WhatsApp, abra o card com !catalogo ver <id> base <número> pagina <página>.",
+                "Para escolher o personagem inicial, abra o card de um personagem comum e use o botão ou !catalogo escolher <id>."
+            ], 0x7c5ce7));
+        }
         if (catalogAction === "ver" || catalogAction === "abrir") {
             const baseMarker = args.findIndex((value, index) =>
                 index > 1 && normalizeSearch(value) === "base"
@@ -786,39 +874,22 @@ async function executeAction(message, action = "menu", args = []) {
             ], 0x28a879));
         }
         const paged = getPagedAction(message, "rpgcatalogo", args);
-        const initialNotice = profile.initialCharacterId === null
-            ? ""
-            : "Seu personagem inicial já foi escolhido; você ainda pode consultar os cards.";
+        const initialNotice = profile.characters.length === 0
+            ? "Você ainda não possui personagens. Abra o card de um personagem comum para escolhê-lo como inicial."
+            : "";
         return message.reply(formatPagedPayload(message, paged, "rpgcatalogo", initialNotice));
-    }
-
-    if (action === "initial") {
-        const selectionRequested = normalizeSearch(args[0]) === "escolher" ||
-            normalizeSearch(args[0]) === "selecionar";
-        if (selectionRequested) {
-            const { character } = await rpgPlayer.chooseInitialCharacter(
-                centralAccounts,
-                central.id,
-                catalog,
-                args[1]
-            );
-            return message.reply(formatSimplePayload(message, "🎉 Personagem inicial escolhido!", [
-                `${character.nome} foi adicionado à sua conta RPG no nível 1.`
-            ], 0x28a879));
-        }
-        const paged = getPagedAction(message, "rpgcatalogo", args);
-        const notice = profile.initialCharacterId === null
-            ? ""
-            : "Seu personagem inicial já foi escolhido; você ainda pode consultar os cards.";
-        return message.reply(formatPagedPayload(message, paged, "rpgcatalogo", notice));
     }
 
     if (action === "view") {
         const character = findCharacter(catalog, args.join(" "));
         const canChooseInitial = profile.initialCharacterId === null &&
             rpgPlayer.getStartingCharacters(catalog).some(candidate => candidate.id === character.id);
+        const ownedCharacter = rpgPlayer.getCharacterSave(profile, character.id);
         return sendCharacterCard(message, character, catalog, {
             allowInitialChoice: canChooseInitial,
+            ownedCharacter,
+            ascensao: profile.ascensao,
+            canAscend: Boolean(ownedCharacter && profile.ascensao > 0),
             returnCommand: "rpgcatalogo",
             returnToBases: true
         });
@@ -847,6 +918,12 @@ async function showCardFromInteraction(
     const profile = centralAccounts.getRpgProfile(central.id);
     const catalog = catalogStore.readCatalog();
     const character = findCharacter(catalog, characterId);
+    const ownedCharacter = returnCommand === "rpgpersonagens"
+        ? rpgPlayer.getCharacterSave(profile, character.id)
+        : null;
+    if (returnCommand === "rpgpersonagens" && !ownedCharacter) {
+        throw new Error("Você não possui esse personagem.");
+    }
     if (returnCommand === "rpgcatalogo" && returnContext.baseIndex != null) {
         const base = findCatalogBase(catalog, returnContext.baseIndex);
         if (normalizeSearch(character.base || "Sem base") !== normalizeSearch(base.name)) {
@@ -855,7 +932,10 @@ async function showCardFromInteraction(
     }
     const allowInitialChoice = profile.initialCharacterId === null &&
         rpgPlayer.getStartingCharacters(catalog).some(candidate => candidate.id === character.id);
-    const image = await renderCharacterCard(character, catalog);
+    const stats = ownedCharacter
+        ? rpgPlayer.getCharacterStats(character, ownedCharacter)
+        : character;
+    const image = await renderCharacterCard(character, catalog, null, stats);
     const controls = makeCardComponents(
         message.platform,
         character,
@@ -865,10 +945,16 @@ async function showCardFromInteraction(
         {
             returnBaseIndex: returnContext.baseIndex ?? null,
             basesPage: returnContext.basesPage || 1,
-            returnToBases: returnCommand === "rpgcatalogo" && returnContext.baseIndex == null
+            returnToBases: returnCommand === "rpgcatalogo" && returnContext.baseIndex == null,
+            canAscend: Boolean(ownedCharacter && profile.ascensao > 0)
         }
     );
-    const caption = formatCharacterCaption(message.platform, character);
+    const caption = formatCharacterCaption(
+        message.platform,
+        character,
+        ownedCharacter,
+        profile.ascensao
+    );
 
     if (interaction.callbackQuery) {
         await interaction.answerCbQuery();
@@ -889,7 +975,7 @@ async function showCardFromInteraction(
     const embed = new EmbedBuilder()
         .setColor(Number.parseInt((RARITY_COLORS[character.raridade] || RARITY_COLORS.comum).slice(1), 16))
         .setTitle(character.nome)
-        .setDescription(`✨ **${escapeMarkdown(catalogStore.RARITY_LABELS[character.raridade] || character.raridade)}** · 🎬 **Base:** ${escapeMarkdown(character.base || "Sem base")}`)
+        .setDescription(`✨ **${escapeMarkdown(catalogStore.RARITY_LABELS[character.raridade] || character.raridade)}** · 🎬 **Base:** ${escapeMarkdown(character.base || "Sem base")} · ⚧️ **Sexo:** ${escapeMarkdown(catalogStore.SEX_LABELS[character.sexo] || character.sexo)}`)
         .setImage(`attachment://${fileName}`)
         .setFooter({ text: `ID ${character.id} · Catálogo RPG global` });
     return interaction.reply({
@@ -900,11 +986,11 @@ async function showCardFromInteraction(
     });
 }
 
-async function handleInteraction(interaction, acceptedPrefixes = ["rpgcatalogo"]) {
+async function handleInteraction(interaction, acceptedPrefixes = ["catalogo"]) {
     const componentId = String(interaction.customId || interaction.callbackQuery?.data || "");
     const [prefix, action, id, pageValue, baseIndexValue, basesPageValue] = componentId.split(":");
     if (!acceptedPrefixes.includes(prefix) ||
-        !["initial", "page", "view", "back", "base", "basepage", "characterpage", "basespage", "backbase"].includes(action)) return false;
+        !["initial", "page", "view", "back", "base", "basepage", "characterpage", "basespage", "backbase", "ascend"].includes(action)) return false;
 
     const message = interaction[COMPONENT_CONTEXT];
     if (!message) return true;
@@ -944,7 +1030,7 @@ async function handleInteraction(interaction, acceptedPrefixes = ["rpgcatalogo"]
     if (action === "view") {
         try {
             const returnPage = parsePage([pageValue]);
-            const returnCommand = prefix === "rpgpersonagens"
+            const returnCommand = prefix === "meus_personagens"
                 ? "rpgpersonagens"
                 : "rpgcatalogo";
             return await showCardFromInteraction(
@@ -1016,7 +1102,7 @@ async function handleInteraction(interaction, acceptedPrefixes = ["rpgcatalogo"]
     if (action === "back") {
         try {
             const page = parsePage([id]);
-            const returnCommand = prefix === "rpgpersonagens"
+            const returnCommand = prefix === "meus_personagens"
                 ? "rpgpersonagens"
                 : "rpgcatalogo";
             const paged = getPagedAction(message, returnCommand, [page]);
@@ -1048,9 +1134,11 @@ async function handleInteraction(interaction, acceptedPrefixes = ["rpgcatalogo"]
 
     if (action === "page") {
         try {
-            const commandName = prefix === "rpginicial" || prefix === "rpg"
+            const commandName = prefix === "catalogo"
                 ? "rpgcatalogo"
-                : prefix;
+                : prefix === "meus_personagens"
+                    ? "rpgpersonagens"
+                    : prefix;
             const paged = getPagedAction(message, commandName, [id]);
             const payload = formatPagedPayload(message, paged, commandName);
             if (interaction.callbackQuery) {
@@ -1065,6 +1153,33 @@ async function handleInteraction(interaction, acceptedPrefixes = ["rpgcatalogo"]
                 content: null,
                 embeds: [new EmbedBuilder(payload.embed)],
                 components: payload.components || []
+            });
+        } catch (error) {
+            return replyError(error);
+        }
+    }
+
+    if (action === "ascend") {
+        try {
+            const { centralAccounts, central } = getStores(message);
+            const { character, profile } = await rpgPlayer.ascendCharacter(
+                centralAccounts,
+                central.id,
+                id
+            );
+            const definition = catalogStore.readCatalog().personagens
+                .find(entry => entry.id === character.characterId);
+            const success = formatSimplePayload(message, "✨ ASCENSÃO USADA", [
+                `${definition?.nome || `Personagem ${character.characterId}`} agora está no nível ${character.level}.`,
+                `Pontos de Ascensão restantes: ${profile.ascensao}`
+            ], 0x28a879);
+            if (interaction.callbackQuery) {
+                callbackAcknowledged = true;
+                return interaction.answerCbQuery(success.text.slice(0, 190), { show_alert: true });
+            }
+            return interaction.reply({
+                embeds: [new EmbedBuilder(success.embed)],
+                ephemeral: true
             });
         } catch (error) {
             return replyError(error);

@@ -87,6 +87,7 @@ test("characters require a valid weakness and clonable characters require Clone 
         id: 0,
         nome: "Exemplo",
         base: "Original",
+        sexo: "masculino",
         raridade: "comum",
         media: [{ type: "photo", file: "0.png" }],
         hp: 10,
@@ -107,6 +108,11 @@ test("characters require a valid weakness and clonable characters require Clone 
     character.base = "";
     assert.throws(() => rpgMaker.validateCatalog(catalog), /Base do personagem/);
     character.base = "Original";
+    assert.doesNotThrow(() => rpgMaker.validateCatalog(catalog));
+
+    character.sexo = "invalid";
+    assert.throws(() => rpgMaker.validateCatalog(catalog), /sexo válido/);
+    character.sexo = "masculino";
     assert.doesNotThrow(() => rpgMaker.validateCatalog(catalog));
 
     character.golpeClonagemId = 99;

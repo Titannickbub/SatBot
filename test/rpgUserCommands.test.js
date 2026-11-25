@@ -26,6 +26,7 @@ const catalog = {
             id: 0,
             nome: "Bruxa Gélida",
             base: "REZERO",
+            sexo: "feminino",
             raridade: "comum",
             media: [{ type: "photo", file: "0.jpg" }],
             hp: 110,
@@ -102,14 +103,14 @@ test("character cards return to their source base and offer initial choice when 
 
     assert.equal(
         discord.components[0].components[0].data.custom_id,
-        "rpgcatalogo:backbase:2:3:1"
+        "catalogo:backbase:2:3:1"
     );
     assert.equal(
         discord.components[1].components[0].data.custom_id,
-        "rpgcatalogo:initial:0"
+        "catalogo:initial:0"
     );
-    assert.equal(telegram.reply_markup.inline_keyboard[0][0].callback_data, "rpgcatalogo:backbase:2:3:1");
-    assert.equal(telegram.reply_markup.inline_keyboard[1][0].callback_data, "rpgcatalogo:initial:0");
+    assert.equal(telegram.reply_markup.inline_keyboard[0][0].callback_data, "catalogo:backbase:2:3:1");
+    assert.equal(telegram.reply_markup.inline_keyboard[1][0].callback_data, "catalogo:initial:0");
     assert.deepEqual(whatsapp, {});
 });
 
@@ -133,28 +134,116 @@ test("character lookup accepts accent-insensitive names and reports ambiguous ma
 test("RPG user actions are registered as separate commands", () => {
     const commands = [
         require("../commands/contas/RPG/rpg"),
-        require("../commands/contas/RPG/rpgperfil"),
         require("../commands/contas/RPG/rpgpersonagens"),
         require("../commands/contas/RPG/rpgcatalogo"),
-        require("../commands/contas/RPG/rpginicial"),
-        require("../commands/contas/RPG/rpgver")
+        require("../commands/contas/RPG/rpgver"),
+        require("../commands/contas/RPG/ascensao")
     ];
 
     assert.deepEqual(commands.map(command => command.name), [
         "rpg",
-        "rpgperfil",
-        "rpgpersonagens",
-        "rpgcatalogo",
-        "rpginicial",
-        "rpgver"
+        "meus_personagens",
+        "catalogo",
+        "rpgver",
+        "ascensao"
     ]);
+});
+
+test("RPG command displays one profile and catalog help describes the selection flow", async () => {
+    let payload;
+    const central = { id: "profile-test", name: "Jogador" };
+    const message = {
+        platform: "whatsapp",
+        userId: "123",
+        args: [],
+        functions: {
+            centralAccounts: {
+                findByPlatform: () => central,
+                getRpgProfile: () => ({
+                    xp: 42,
+                    ascensao: 0,
+                    globalCurrency: 0,
+                    initialCharacterId: null,
+                    characters: []
+                })
+            }
+        },
+        reply: async value => {
+            payload = value;
+            return value;
+        }
+    };
+
+    await require("../commands/contas/RPG/rpg").execute(message);
+    assert.match(payload.text, /PERFIL RPG/);
+    assert.match(payload.text, /XP de RPG: 42/);
+    assert.match(payload.text, /Nível da Conta: 1/);
+    assert.match(payload.text, /Ascensão: 0 ponto/);
+    assert.match(payload.text, /Personagem inicial/);
+
+    await rpgCommands._internals.executeAction(message, "catalog", ["help"]);
+    assert.match(payload.text, /COMO USAR O CATÁLOGO RPG/);
+    assert.match(payload.text, /!catalogo base/);
+});
+
+test("owned character cards offer Ascensão and the command spends a point", async () => {
+    const card = rpgCommands._internals.makeCardComponents(
+        "discord",
+        { id: 8, nome: "Personagem" },
+        "rpgpersonagens",
+        1,
+        false,
+        { canAscend: true }
+    );
+    assert.equal(card.components[0].components[1].data.custom_id, "meus_personagens:ascend:8");
+
+    let payload;
+    const profile = {
+        xp: 0,
+        ascensao: 1,
+        globalCurrency: 0,
+        initialCharacterId: null,
+        characters: [{ characterId: 8, level: 2, learnedMoveIds: [] }]
+    };
+    const central = { id: "ascension-test", name: "Jogador" };
+    const message = {
+        platform: "whatsapp",
+        userId: "123",
+        args: ["8"],
+        functions: {
+            centralAccounts: {
+                findByPlatform: () => central,
+                getRpgProfile: () => profile,
+                updateRpgProfile: async (id, update) => update(profile)
+            }
+        },
+        reply: async value => {
+            payload = value;
+            return value;
+        }
+    };
+
+    const originalReadCatalog = catalogStore.readCatalog;
+    catalogStore.readCatalog = () => ({
+        fraquezas: [],
+        efeitos: [],
+        golpes: [],
+        personagens: [{ id: 8, nome: "Personagem" }]
+    });
+    try {
+        await require("../commands/contas/RPG/ascensao").execute(message);
+    } finally {
+        catalogStore.readCatalog = originalReadCatalog;
+    }
+    assert.match(payload.text, /agora está no nível 3/);
+    assert.match(payload.text, /Pontos de Ascensão restantes: 0/);
 });
 
 test("character lists paginate ten items and expose previous and next buttons", () => {
     const items = Array.from({ length: 21 }, (_, id) => ({ id, nome: `Personagem ${id}` }));
     const firstPage = rpgCommands._internals.makePagedResponse({
         platform: "discord",
-        commandName: "rpgcatalogo",
+        commandName: "catalogo",
         title: "Catálogo",
         items,
         page: 1,
@@ -163,7 +252,7 @@ test("character lists paginate ten items and expose previous and next buttons", 
     });
     const middlePage = rpgCommands._internals.makePagedResponse({
         platform: "telegram",
-        commandName: "rpgcatalogo",
+        commandName: "catalogo",
         title: "Catálogo",
         items,
         page: 2,
@@ -172,11 +261,11 @@ test("character lists paginate ten items and expose previous and next buttons", 
 
     assert.match(firstPage.text, /Personagem 9/);
     assert.doesNotMatch(firstPage.text, /Personagem 10/);
-    assert.equal(firstPage.components[0].components[0].data.custom_id, "rpgcatalogo:view:0:1");
-    assert.equal(firstPage.components[2].components[0].data.custom_id, "rpgcatalogo:page:2");
+    assert.equal(firstPage.components[0].components[0].data.custom_id, "catalogo:view:0:1");
+    assert.equal(firstPage.components[2].components[0].data.custom_id, "catalogo:page:2");
     assert.deepEqual(
         middlePage.reply_markup.inline_keyboard.at(-1).map(button => button.callback_data),
-        ["rpgcatalogo:page:1", "rpgcatalogo:page:3"]
+        ["catalogo:page:1", "catalogo:page:3"]
     );
     assert.equal(rpgCommands._internals.parsePage([]), 1);
     assert.equal(rpgCommands._internals.parsePage(["pagina", "3"]), 3);
@@ -196,18 +285,19 @@ test("catalog starts with base buttons and only lists characters after a base is
     try {
         let payload;
         const central = { id: "catalog-bases-test" };
+        const profile = {
+            xp: 0,
+            globalCurrency: 0,
+            initialCharacterId: null,
+            characters: []
+        };
         const message = {
             platform: "discord",
             userId: "123",
             functions: {
                 centralAccounts: {
                     findByPlatform: () => central,
-                    getRpgProfile: () => ({
-                        xp: 0,
-                        globalCurrency: 0,
-                        initialCharacterId: null,
-                        characters: []
-                    })
+                    getRpgProfile: () => profile
                 }
             },
             reply: async value => {
@@ -219,9 +309,15 @@ test("catalog starts with base buttons and only lists characters after a base is
         assert.match(payload.embed.title, /BASES DO CATÁLOGO RPG/);
         assert.match(payload.embed.description, /Base 1 · ORIGINAL/);
         assert.match(payload.embed.description, /Base 2 · REZERO/);
+        assert.match(payload.embed.description, /Você ainda não possui personagens/);
         assert.doesNotMatch(payload.embed.description, /Bruxa Gélida|Personagem Original/);
-        assert.equal(payload.components[0].components[0].data.custom_id, "rpgcatalogo:base:1:1");
+        assert.equal(payload.components[0].components[0].data.custom_id, "catalogo:base:1:1");
 
+        profile.characters.push({ characterId: 1, level: 1, learnedMoveIds: [] });
+        await rpgCommands._internals.executeAction(message, "catalog");
+        assert.doesNotMatch(payload.embed.description, /Você ainda não possui personagens/);
+
+        profile.characters.length = 0;
         message.platform = "telegram";
         await rpgCommands._internals.executeAction(message, "catalog");
         assert.equal(payload.parse_mode, "HTML");
@@ -233,8 +329,8 @@ test("catalog starts with base buttons and only lists characters after a base is
         assert.match(payload.embed.description, /BASE: REZERO/);
         assert.match(payload.embed.description, /Bruxa Gélida/);
         assert.doesNotMatch(payload.embed.description, /Personagem Original/);
-        assert.equal(payload.components[0].components[0].data.custom_id, "rpgcatalogo:view:0:1:2:1");
-        assert.equal(payload.components.at(-1).components[0].data.custom_id, "rpgcatalogo:basespage:1");
+        assert.equal(payload.components[0].components[0].data.custom_id, "catalogo:view:0:1:2:1");
+        assert.equal(payload.components.at(-1).components[0].data.custom_id, "catalogo:basespage:1");
     } finally {
         catalogStore.readCatalog = originalReadCatalog;
     }
@@ -275,43 +371,83 @@ test("Discord and Telegram catalog buttons open a character card with return and
     });
 
     try {
+        profile.characters.push({ characterId: 0, level: 2, learnedMoveIds: [0] });
+        const ownedMessage = {
+            ...makeMessage("discord"),
+            reply: async payload => payload
+        };
+        const ownedList = await rpgCommands._internals.executeAction(ownedMessage, "personagens");
+        assert.equal(
+            ownedList.components[0].components[0].data.custom_id,
+            "meus_personagens:view:0:1"
+        );
+
+        let ownedCard;
+        const ownedView = {
+            customId: "meus_personagens:view:0:1",
+            [Symbol.for("satbot.componentMessageContext")]: makeMessage("discord"),
+            reply: async payload => {
+                ownedCard = payload;
+            }
+        };
+        await rpgCommands.handleInteraction(ownedView, ["meus_personagens"]);
+        assert.deepEqual(
+            ownedCard.components.map(row => row.components[0].data.custom_id),
+            ["meus_personagens:back:1", "catalogo:initial:0"]
+        );
+
+        let ownedListPage;
+        const ownedBack = {
+            customId: "meus_personagens:back:1",
+            [Symbol.for("satbot.componentMessageContext")]: makeMessage("discord"),
+            update: async payload => {
+                ownedListPage = payload;
+            }
+        };
+        await rpgCommands.handleInteraction(ownedBack, ["meus_personagens"]);
+        assert.equal(
+            ownedListPage.components[0].components[0].data.custom_id,
+            "meus_personagens:view:0:1"
+        );
+
+        profile.characters = [];
         let discordCharacterList;
         const discordBase = {
-            customId: "rpgcatalogo:base:1:1",
+            customId: "catalogo:base:1:1",
             [Symbol.for("satbot.componentMessageContext")]: makeMessage("discord"),
             update: async payload => {
                 discordCharacterList = payload;
             }
         };
-        await rpgCommands.handleInteraction(discordBase, ["rpgcatalogo"]);
+        await rpgCommands.handleInteraction(discordBase, ["catalogo"]);
         assert.match(discordCharacterList.embeds[0].data.description, /BASE: REZERO/);
         assert.equal(
             discordCharacterList.components[0].components[0].data.custom_id,
-            "rpgcatalogo:view:0:1:1:1"
+            "catalogo:view:0:1:1:1"
         );
 
         let discordPayload;
         const discordInteraction = {
-            customId: "rpgcatalogo:view:0:1:1:1",
+            customId: "catalogo:view:0:1:1:1",
             [Symbol.for("satbot.componentMessageContext")]: makeMessage("discord"),
             reply: async payload => {
                 discordPayload = payload;
             }
         };
-        await rpgCommands.handleInteraction(discordInteraction, ["rpgcatalogo"]);
+        await rpgCommands.handleInteraction(discordInteraction, ["catalogo"]);
 
         assert.equal(discordPayload.files[0].name, "rpg-personagem-0.png");
         assert.equal(discordPayload.embeds[0].data.title, "Bruxa Gélida");
         assert.equal(typeof discordPayload.embeds[0].data.color, "number");
         assert.deepEqual(
             discordPayload.components.map(row => row.components[0].data.custom_id),
-            ["rpgcatalogo:backbase:1:1:1", "rpgcatalogo:initial:0"]
+            ["catalogo:backbase:1:1:1", "catalogo:initial:0"]
         );
 
         let telegramCharacterList;
         const telegramBase = {
             callbackQuery: {
-                data: "rpgcatalogo:base:1:1",
+                data: "catalogo:base:1:1",
                 message: {}
             },
             [Symbol.for("satbot.componentMessageContext")]: makeMessage("telegram"),
@@ -320,10 +456,10 @@ test("Discord and Telegram catalog buttons open a character card with return and
                 telegramCharacterList = { text, options };
             }
         };
-        await rpgCommands.handleInteraction(telegramBase, ["rpgcatalogo"]);
+        await rpgCommands.handleInteraction(telegramBase, ["catalogo"]);
         assert.equal(
             telegramCharacterList.options.reply_markup.inline_keyboard[0][0].callback_data,
-            "rpgcatalogo:view:0:1:1:1"
+            "catalogo:view:0:1:1:1"
         );
         assert.equal(telegramCharacterList.options.parse_mode, "HTML");
         assert.match(telegramCharacterList.text, /<b>📚 PERSONAGENS DA BASE<\/b>/);
@@ -331,7 +467,7 @@ test("Discord and Telegram catalog buttons open a character card with return and
         let telegramPhotoOptions;
         const telegramInteraction = {
             callbackQuery: {
-                data: "rpgcatalogo:view:0:1:1:1",
+                data: "catalogo:view:0:1:1:1",
                 message: {}
             },
             [Symbol.for("satbot.componentMessageContext")]: makeMessage("telegram"),
@@ -340,31 +476,31 @@ test("Discord and Telegram catalog buttons open a character card with return and
                 telegramPhotoOptions = options;
             }
         };
-        await rpgCommands.handleInteraction(telegramInteraction, ["rpgcatalogo"]);
+        await rpgCommands.handleInteraction(telegramInteraction, ["catalogo"]);
 
         assert.deepEqual(
             telegramPhotoOptions.reply_markup.inline_keyboard.map(row => row[0].callback_data),
-            ["rpgcatalogo:backbase:1:1:1", "rpgcatalogo:initial:0"]
+            ["catalogo:backbase:1:1:1", "catalogo:initial:0"]
         );
         assert.equal(telegramPhotoOptions.parse_mode, "HTML");
         assert.match(telegramPhotoOptions.caption, /<b>Bruxa Gélida<\/b>/);
 
         let discordList;
         const discordBack = {
-            customId: "rpgcatalogo:backbase:1:1:1",
+            customId: "catalogo:backbase:1:1:1",
             [Symbol.for("satbot.componentMessageContext")]: makeMessage("discord"),
             update: async payload => {
                 discordList = payload;
             }
         };
-        await rpgCommands.handleInteraction(discordBack, ["rpgcatalogo"]);
+        await rpgCommands.handleInteraction(discordBack, ["catalogo"]);
         assert.match(discordList.embeds[0].data.description, /BASE: REZERO/);
-        assert.equal(discordList.components[0].components[0].data.custom_id, "rpgcatalogo:view:0:1:1:1");
+        assert.equal(discordList.components[0].components[0].data.custom_id, "catalogo:view:0:1:1:1");
 
         let telegramList;
         const telegramBack = {
             callbackQuery: {
-                data: "rpgcatalogo:backbase:1:1:1",
+                data: "catalogo:backbase:1:1:1",
                 message: { chat: { id: 123 }, message_id: 456, photo: [{}] }
             },
             [Symbol.for("satbot.componentMessageContext")]: makeMessage("telegram"),
@@ -376,11 +512,11 @@ test("Discord and Telegram catalog buttons open a character card with return and
                 }
             }
         };
-        await rpgCommands.handleInteraction(telegramBack, ["rpgcatalogo"]);
+        await rpgCommands.handleInteraction(telegramBack, ["catalogo"]);
         assert.match(telegramList.text, /<b>📂 BASE: REZERO<\/b>/);
         assert.equal(
             telegramList.options.reply_markup.inline_keyboard[0][0].callback_data,
-            "rpgcatalogo:view:0:1:1:1"
+            "catalogo:view:0:1:1:1"
         );
     } finally {
         catalogStore.readCatalog = originalReadCatalog;
@@ -442,7 +578,7 @@ test("WhatsApp catalog lists bases first and pages characters only within a sele
             replyImg: async payload => payload
         };
 
-        const baseList = await rpgCommands._internals.executeAction(message, "initial");
+        const baseList = await rpgCommands._internals.executeAction(message, "catalog");
         const secondBasePage = await rpgCommands._internals.executeAction(message, "catalog", ["2"]);
         const selectedBase = await rpgCommands._internals.executeAction(message, "catalog", ["base", "12"]);
         const secondCharacterPage = await rpgCommands._internals.executeAction(message, "catalog", ["base", "12", "2"]);
@@ -451,6 +587,7 @@ test("WhatsApp catalog lists bases first and pages characters only within a sele
         ]);
 
         assert.match(baseList.text, /\*📚 BASES DO CATÁLOGO RPG\*/);
+        assert.match(baseList.text, /Você ainda não possui personagens/);
         assert.match(baseList.text, /BASE 0/);
         assert.doesNotMatch(baseList.text, /Personagem 0/);
         assert.match(secondBasePage.text, /Página 2\/2/);
@@ -460,7 +597,7 @@ test("WhatsApp catalog lists bases first and pages characters only within a sele
         assert.doesNotMatch(selectedBase.text, /Personagem 10|BASE 0/);
         assert.match(secondCharacterPage.text, /\*Página 2\/2\*/);
         assert.match(secondCharacterPage.text, /Personagem 10/);
-        assert.match(characterCard.caption, /↩️ \*Voltar:\* `!rpgcatalogo base 12 2`/);
+        assert.match(characterCard.caption, /↩️ \*Voltar:\* `!catalogo base 12 2`/);
     } finally {
         catalogStore.readCatalog = originalReadCatalog;
         catalogStore.MEDIA_DIR = originalMediaDir;

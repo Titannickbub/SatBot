@@ -1,10 +1,12 @@
 const fs = require('fs').promises;
 const path = require('path');
 const crypto = require('crypto');
+const { levelForXp } = require('./levelProgression');
 
 function emptyRpgProfile() {
   return {
     xp: 0,
+    ascensao: 0,
     globalCurrency: 0,
     initialCharacterId: null,
     characters: []
@@ -23,6 +25,12 @@ function normalizeRpgProfile(profile) {
       (value.initialCharacterId !== null &&
         (!Number.isInteger(value.initialCharacterId) || value.initialCharacterId < 0)) ||
       !Array.isArray(value.characters)) {
+    throw new Error('RPG profile invalid');
+  }
+  if (!Object.prototype.hasOwnProperty.call(value, 'ascensao')) {
+    value.ascensao = levelForXp(value.xp).level - 1;
+  }
+  if (!Number.isSafeInteger(value.ascensao) || value.ascensao < 0) {
     throw new Error('RPG profile invalid');
   }
   const seenCharacters = new Set();
@@ -63,8 +71,16 @@ function mergeRpgProfiles(targetProfile, sourceProfile) {
       ...character.learnedMoveIds
     ])];
   }
+  const combinedXp = target.xp + source.xp;
+  const combinedLevel = levelForXp(combinedXp).level;
+  const previousHighestLevel = Math.max(
+    levelForXp(target.xp).level,
+    levelForXp(source.xp).level
+  );
   return {
-    xp: target.xp + source.xp,
+    xp: combinedXp,
+    ascensao: target.ascensao + source.ascensao +
+      Math.max(0, combinedLevel - previousHighestLevel),
     globalCurrency: target.globalCurrency + source.globalCurrency,
     initialCharacterId: target.initialCharacterId ?? source.initialCharacterId,
     characters: [...characters.values()]
@@ -164,7 +180,16 @@ class CentralAccountsStore {
     if (!central) throw new Error('central not found');
     if (typeof update !== 'function') throw new Error('RPG profile update must be a function');
     const profile = this.getRpgProfile(centralId);
+    const previousLevel = levelForXp(profile.xp).level;
     const updatedProfile = normalizeRpgProfile(update(profile));
+    const levelGain = Math.max(
+      0,
+      levelForXp(updatedProfile.xp).level - previousLevel
+    );
+    if (!Number.isSafeInteger(updatedProfile.ascensao + levelGain)) {
+      throw new Error('RPG ascension balance exceeds the supported range');
+    }
+    updatedProfile.ascensao += levelGain;
     central.rpg = cloneJson(updatedProfile);
     central.lastActivityAt = this._nowISO();
     this._markDirty();

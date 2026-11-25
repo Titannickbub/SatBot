@@ -1,14 +1,14 @@
 const rpgCommands = require("../../../functions/rpgUserCommands");
 
 module.exports = {
-    name: "rpgpersonagens",
+    name: "meus_personagens",
     category: "contas/RPG",
-    description: "Lista seus personagens RPG em páginas de até 10.",
-    usage: "!rpgpersonagens [página]",
+    description: "Lista os personagens RPG que você possui.",
+    usage: "!meus_personagens [página]",
     async execute(message) {
         return rpgCommands.execute(message, "personagens", message.args || []);
     },
     async handleInteraction(interaction) {
-        return rpgCommands.handleInteraction(interaction, ["rpgpersonagens"]);
+        return rpgCommands.handleInteraction(interaction, ["meus_personagens"]);
     }
 };
