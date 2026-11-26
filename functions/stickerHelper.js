@@ -8,7 +8,7 @@ const config = require("./config");
 
 const execFileAsync = promisify(execFile);
 const WHATSAPP_STATIC_STICKER_LIMIT = 100 * 1024;
-const WHATSAPP_ANIMATED_STICKER_LIMIT = 5 * 1024 * 1024;
+const WHATSAPP_ANIMATED_STICKER_LIMIT = 500 * 1024;
 const WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT = 10;
 const TELEGRAM_VIDEO_STICKER_LIMIT = 256 * 1024;
 const TELEGRAM_VIDEO_STICKER_DURATION_LIMIT = 3;
@@ -37,7 +37,35 @@ function getResizeFilter(mode, size = 512) {
     return `scale=${size}:${size}:force_original_aspect_ratio=decrease,pad=${size}:${size}:(ow-iw)/2:(oh-ih)/2:color=0x00000000`;
 }
 
-async function convertAnimatedToWebp(inputBuffer, mode, maxSizeBytes) {
+async function probeVideoDuration(inputPath) {
+    try {
+        const { stdout } = await execFileAsync(getFfmpegPath(), [
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            "-i", inputPath
+        ], { timeout: 15000, windowsHide: true }).catch(() => ({ stdout: "" }));
+        // ffmpeg probe via -i e stderr parse como fallback
+        const dur = parseFloat(stdout.trim());
+        if (Number.isFinite(dur) && dur > 0) return dur;
+    } catch {}
+    // Fallback: tenta via stderr do ffmpeg -i
+    try {
+        const ffprobeLike = await execFileAsync(getFfmpegPath(), [
+            "-v", "quiet", "-print_format", "json",
+            "-show_streams", "-i", inputPath
+        ], { timeout: 15000, windowsHide: true }).catch(e => ({ stderr: e.stderr || "" }));
+        const durationMatch = (ffprobeLike.stderr || "").match(/Duration:\s*([\d:.]+)/);
+        if (durationMatch) {
+            const parts = durationMatch[1].split(":").map(Number);
+            return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+        }
+    } catch {}
+    return null;
+}
+
+async function convertAnimatedToWebp(inputBuffer, mode, maxSizeBytes, durationLimitSeconds) {
     const tempId = `sticker_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const tempDir = os.tmpdir();
     const inputPath = path.join(tempDir, `${tempId}.media`);
@@ -61,11 +89,27 @@ async function convertAnimatedToWebp(inputBuffer, mode, maxSizeBytes) {
     try {
         fs.writeFileSync(inputPath, inputBuffer);
 
+        // Probe a duração real do arquivo para decidir se bloqueia antes de converter
+        if (durationLimitSeconds != null) {
+            const realDuration = await probeVideoDuration(inputPath);
+            if (realDuration != null && realDuration > durationLimitSeconds) {
+                throw createStickerError(
+                    `GIFs e vídeos para figurinhas do WhatsApp podem ter no máximo ${durationLimitSeconds} segundos (duração detectada: ${Math.ceil(realDuration)}s).`,
+                    "STICKER_DURATION_LIMIT"
+                );
+            }
+        }
+
+        const tArgs = durationLimitSeconds != null
+            ? ["-t", String(durationLimitSeconds)]
+            : [];
+
         for (const attempt of attempts) {
             try {
                 await execFileAsync(getFfmpegPath(), [
                     "-y",
                     "-i", inputPath,
+                    ...tArgs,
                     "-an",
                     "-vf", `fps=${attempt.fps},${getResizeFilter(mode, attempt.size)}`,
                     "-c:v", "libwebp",
@@ -237,14 +281,7 @@ async function createStickerBuffer(inputBuffer, options = {}) {
     const whatsappLimits = options.platform === "whatsapp";
     const durationSeconds = Number(options.durationSeconds);
 
-    if (whatsappLimits &&
-        Number.isFinite(durationSeconds) &&
-        durationSeconds > WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT) {
-        throw createStickerError(
-            `GIFs e vídeos para figurinhas do WhatsApp podem ter no máximo ${WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT} segundos.`,
-            "STICKER_DURATION_LIMIT"
-        );
-    }
+    // Não bloqueia aqui — a duração real é checada dentro de convertAnimatedToWebp via probe do ffmpeg.
 
     const isVideo = mediaType === "video" || mimeType.startsWith("video/");
     const isGif = mediaType === "gif" || mimeType.includes("gif");
@@ -268,6 +305,7 @@ async function createStickerBuffer(inputBuffer, options = {}) {
         ? maxSizeBytes - 512
         : maxSizeBytes;
 
+    // Para GIFs, checa duração antes (via sharp metadata). Videos são checados dentro do convertAnimatedToWebp via probe.
     if (whatsappLimits && isGif && inputMetadata) {
         const duration = getAnimationDurationSeconds(inputMetadata);
         if (duration > WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT) {
@@ -278,8 +316,12 @@ async function createStickerBuffer(inputBuffer, options = {}) {
         }
     }
 
+    const durationLimit = (whatsappLimits && isAnimated && !isGif)
+        ? WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT
+        : null;
+
     let webpResult = isAnimated
-        ? await convertAnimatedToWebp(inputBuffer, mode, conversionMaxSizeBytes)
+        ? await convertAnimatedToWebp(inputBuffer, mode, conversionMaxSizeBytes, durationLimit)
         : await createStaticWebp(inputBuffer, mode, conversionMaxSizeBytes);
 
     if (!Buffer.isBuffer(webpResult) || webpResult.length < 16) {
