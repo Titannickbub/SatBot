@@ -56,16 +56,8 @@ async function createAudioStickerAudio(inputBuffer) {
             "-i", inputPath,
             "-vn",
             "-t", String(MAX_AUDIO_STICKER_SECONDS),
-            "-ar", "16000",
-            "-ac", "1",
             "-c:a", "libopus",
-            "-b:a", "32k",
-            "-vbr", "on",
-            "-compression_level", "10",
-            "-frame_duration", "20",
-            "-application", "voip",
-            "-avoid_negative_ts", "make_zero",
-            "-map_metadata", "-1",
+            "-b:a", "64k",
             "-f", "ogg",
             outputPath
         ], { timeout: 90000, windowsHide: true });

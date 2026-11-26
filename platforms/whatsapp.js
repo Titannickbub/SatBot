@@ -417,10 +417,10 @@ async function start(onMessage) {
           while (
             iterations < 10 &&
             (current.viewOnceMessage?.message ||
-             current.viewOnceMessageV2?.message ||
-             current.viewOnceMessageV2Extension?.message ||
-             current.ephemeralMessage?.message ||
-             current.documentWithCaptionMessage?.message)
+              current.viewOnceMessageV2?.message ||
+              current.viewOnceMessageV2Extension?.message ||
+              current.ephemeralMessage?.message ||
+              current.documentWithCaptionMessage?.message)
           ) {
             current = current.viewOnceMessage?.message ||
               current.viewOnceMessageV2?.message ||
@@ -817,7 +817,7 @@ async function start(onMessage) {
               prepareWAMessageMedia({
                 audio: data.audio,
                 mimetype: "audio/ogg; codecs=opus",
-                ptt: true
+                ptt: false
               }, { upload: sock.waUploadToServer })
             ]);
             const stickerMessage = stickerMedia.stickerMessage;
@@ -836,8 +836,8 @@ async function start(onMessage) {
               quotedMessage: msg.message
             };
             audioMessage.mimetype = "audio/ogg; codecs=opus";
-            audioMessage.ptt = true;
-            audioMessage.seconds = data.durationSeconds;
+            audioMessage.ptt = false;
+            audioMessage.seconds = Math.round(data.durationSeconds) || 1;
             audioMessage.waveform = data.waveform;
 
             const { createAudioStickerMessage, relayAudioSticker } = require("../functions/whatsappAudioSticker");
