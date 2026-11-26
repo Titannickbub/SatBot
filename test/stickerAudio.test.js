@@ -104,7 +104,7 @@ test("audio sticker conversion outputs Opus/Ogg and a waveform", async () => {
     assert.equal(result.waveform.length, 64);
 });
 
-test("large animated WhatsApp GIFs are reduced and accepted up to 5 MB", async () => {
+test("large animated WhatsApp GIFs are reduced and accepted up to 1 MB", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "satbot-sticker-gif-"));
     try {
         const gifPath = path.join(directory, "source.gif");
@@ -130,8 +130,7 @@ test("large animated WhatsApp GIFs are reduced and accepted up to 5 MB", async (
         });
         const metadata = await sharp(sticker, { animated: true, failOn: "none" }).metadata();
 
-        assert.ok(sticker.length > 500 * 1024);
-        assert.ok(sticker.length <= 5 * 1024 * 1024);
+        assert.ok(sticker.length <= 1024 * 1024);
         assert.equal(metadata.format, "webp");
         assert.ok((Number(metadata.pages) || 0) > 1);
     } finally {

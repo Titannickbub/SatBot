@@ -817,7 +817,7 @@ async function start(onMessage) {
               prepareWAMessageMedia({
                 audio: data.audio,
                 mimetype: "audio/ogg; codecs=opus",
-                ptt: false
+                ptt: true
               }, { upload: sock.waUploadToServer })
             ]);
             const stickerMessage = stickerMedia.stickerMessage;
@@ -836,8 +836,7 @@ async function start(onMessage) {
               quotedMessage: msg.message
             };
             audioMessage.mimetype = "audio/ogg; codecs=opus";
-            audioMessage.ptt = false;
-            audioMessage.voiceNote = false;
+            audioMessage.ptt = true;
             audioMessage.seconds = data.durationSeconds;
             audioMessage.waveform = data.waveform;
 

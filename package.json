@@ -1,6 +1,6 @@
 {
   "name": "SatBot",
-  "version": "1.3.8",
+  "version": "1.3.9",
   "description": "sticker fix",
   "main": "index.js",
   "scripts": {

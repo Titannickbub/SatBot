@@ -8,7 +8,7 @@ const config = require("./config");
 
 const execFileAsync = promisify(execFile);
 const WHATSAPP_STATIC_STICKER_LIMIT = 100 * 1024;
-const WHATSAPP_ANIMATED_STICKER_LIMIT = 500 * 1024;
+const WHATSAPP_ANIMATED_STICKER_LIMIT = 1024 * 1024;
 const WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT = 10;
 const TELEGRAM_VIDEO_STICKER_LIMIT = 256 * 1024;
 const TELEGRAM_VIDEO_STICKER_DURATION_LIMIT = 3;
@@ -398,6 +398,8 @@ async function createTelegramSticker(inputBuffer, options = {}) {
 
 /**
  * Injeta ou substitui o bloco de metadados EXIF do pacote em um Buffer de figurinha WebP.
+ * Em WebP, o chunk EXIF deve conter diretamente o TIFF header (sem o prefixo 'Exif\0\0').
+ * Se o WebP for estático simples (VP8/VP8L sem VP8X), injeta o chunk VP8X obrigatório com o bit EXIF.
  * @param {Buffer} buffer 
  * @param {string} packName 
  * @param {string} authorName 
@@ -411,6 +413,10 @@ function addExifToWebp(
 ) {
     if (!Buffer.isBuffer(buffer) || buffer.length < 12) return buffer;
 
+    const riffHeader = buffer.slice(0, 4).toString("ascii");
+    const webpHeader = buffer.slice(8, 12).toString("ascii");
+    if (riffHeader !== "RIFF" || webpHeader !== "WEBP") return buffer;
+
     const json = JSON.stringify({
         "sticker-pack-id": "com.satela.bot",
         "sticker-pack-name": String(packName || "Sat Bot"),
@@ -418,59 +424,81 @@ function addExifToWebp(
         "sticker-pack-description": String(description || ""),
         "emojis": ["📌"]
     });
-
     const jsonBuffer = Buffer.from(json, "utf8");
 
-    const exifHeader = Buffer.from([
-        0x45, 0x78, 0x69, 0x66, 0x00, 0x00, // Exif\0\0
-        0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00, // TIFF header
-        0x01, 0x00, // 1 tag
-        0x41, 0x57, // Tag 0x5741 ("WA")
-        0x07, 0x00  // Type 7
+    // TIFF Header e IFD para o chunk EXIF do WebP (sem prefixo 'Exif\0\0')
+    const tiffHeader = Buffer.from([
+        0x49, 0x49, 0x2A, 0x00, // II* (Little Endian)
+        0x08, 0x00, 0x00, 0x00, // Offset do 1º IFD = 8
+        0x01, 0x00,             // 1 tag
+        0x41, 0x57,             // Tag 0x5741 ("WA")
+        0x07, 0x00              // Type 7 = UNDEFINED
     ]);
     const countBuffer = Buffer.alloc(4);
     countBuffer.writeUInt32LE(jsonBuffer.length, 0);
 
-    const offsetBuffer = Buffer.from([0x1A, 0x00, 0x00, 0x00]); // 26 bytes a partir do início da TIFF
-    const nextIfdBuffer = Buffer.from([0x00, 0x00, 0x00, 0x00]);
+    const offsetBuffer = Buffer.from([0x1A, 0x00, 0x00, 0x00]); // 26 bytes desde o início do TIFF
+    const nextIfdBuffer = Buffer.from([0x00, 0x00, 0x00, 0x00]); // Sem próximo IFD
 
-    const exifData = Buffer.concat([exifHeader, countBuffer, offsetBuffer, nextIfdBuffer, jsonBuffer]);
+    const exifPayload = Buffer.concat([tiffHeader, countBuffer, offsetBuffer, nextIfdBuffer, jsonBuffer]);
 
     const exifChunkHeader = Buffer.alloc(8);
-    exifChunkHeader.write("EXIF", 0);
-    exifChunkHeader.writeUInt32LE(exifData.length, 4);
+    exifChunkHeader.write("EXIF", 0, "ascii");
+    exifChunkHeader.writeUInt32LE(exifPayload.length, 4);
 
-    const padding = exifData.length % 2 !== 0 ? Buffer.from([0x00]) : Buffer.alloc(0);
-    const fullExifChunk = Buffer.concat([exifChunkHeader, exifData, padding]);
+    const padding = exifPayload.length % 2 !== 0 ? Buffer.from([0x00]) : Buffer.alloc(0);
+    const fullExifChunk = Buffer.concat([exifChunkHeader, exifPayload, padding]);
 
-    const riffHeader = buffer.slice(0, 4).toString("ascii");
-    const webpHeader = buffer.slice(8, 12).toString("ascii");
-
-    if (riffHeader !== "RIFF" || webpHeader !== "WEBP") {
-        return buffer;
-    }
-
+    // Parse dos chunks existentes do WebP
     let pos = 12;
-    const chunks = [];
+    const existingChunks = [];
+    let vp8xChunk = null;
+    let hasAlpha = false;
+    let isAnimated = false;
+    let canvasW = 512;
+    let canvasH = 512;
+
     while (pos < buffer.length) {
         if (pos + 8 > buffer.length) break;
         const fourcc = buffer.slice(pos, pos + 4).toString("ascii");
         const chunkSize = buffer.readUInt32LE(pos + 4);
         const totalChunkSize = 8 + chunkSize + (chunkSize % 2);
 
-        if (fourcc !== "EXIF") {
-            chunks.push(buffer.slice(pos, Math.min(pos + totalChunkSize, buffer.length)));
+        if (fourcc === "VP8X") {
+            vp8xChunk = Buffer.from(buffer.slice(pos, Math.min(pos + totalChunkSize, buffer.length)));
+        } else if (fourcc !== "EXIF") {
+            if (fourcc === "ALPH") hasAlpha = true;
+            if (fourcc === "ANIM") isAnimated = true;
+            existingChunks.push(buffer.slice(pos, Math.min(pos + totalChunkSize, buffer.length)));
         }
         pos += totalChunkSize;
     }
 
-    chunks.push(fullExifChunk);
+    if (vp8xChunk) {
+        // Liga o bit EXIF (bit 3 = 0x08) nas flags do VP8X existente (offset 8)
+        vp8xChunk[8] |= 0x08;
+    } else {
+        // Cria o VP8X chunk de 18 bytes obrigatório para metadados EXIF
+        vp8xChunk = Buffer.alloc(18, 0);
+        vp8xChunk.write("VP8X", 0, "ascii");
+        vp8xChunk.writeUInt32LE(10, 4); // tamanho dos dados = 10
+        let flags = 0x08; // bit EXIF
+        if (hasAlpha) flags |= 0x10;
+        if (isAnimated) flags |= 0x02;
+        vp8xChunk[8] = flags;
 
-    const bodyBuffer = Buffer.concat(chunks);
+        // Dimensões canvas - 1 (24-bit UIntLE)
+        vp8xChunk.writeUIntLE(Math.max(0, canvasW - 1), 12, 3);
+        vp8xChunk.writeUIntLE(Math.max(0, canvasH - 1), 15, 3);
+    }
+
+    const bodyChunks = [vp8xChunk, ...existingChunks, fullExifChunk];
+    const bodyBuffer = Buffer.concat(bodyChunks);
+
     const newRiffHeader = Buffer.alloc(12);
-    newRiffHeader.write("RIFF", 0);
+    newRiffHeader.write("RIFF", 0, "ascii");
     newRiffHeader.writeUInt32LE(bodyBuffer.length + 4, 4);
-    newRiffHeader.write("WEBP", 8);
+    newRiffHeader.write("WEBP", 8, "ascii");
 
     return Buffer.concat([newRiffHeader, bodyBuffer]);
 }
