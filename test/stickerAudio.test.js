@@ -71,14 +71,14 @@ test("Baileys audio-sticker protobuf preserves the nested audio message", () => 
         sticker: Buffer.from([1]),
         audio: Buffer.from([2]),
         stickerMessage: { width: 512, height: 512 },
-        audioMessage: { ptt: false, seconds: 1, waveform: Buffer.alloc(64) }
+        audioMessage: { ptt: true, seconds: 1, waveform: Buffer.alloc(64) }
     }, Buffer.alloc(32));
     const encoded = baileys.proto.Message.encode(payload).finish();
     const parsed = baileys.proto.Message.fromObject(payload);
 
     assert.ok(encoded.includes(Buffer.from([0xb2, 0x08])));
     assert.ok(encoded.includes(Buffer.from([0xd2, 0x01])));
-    assert.equal(parsed.audioStickerMessage.message.stickerMessage.audioMessage.ptt, false);
+    assert.equal(parsed.audioStickerMessage.message.stickerMessage.audioMessage.ptt, true);
 });
 
 test("audio sticker relay supplies the required Baileys message id", async () => {
