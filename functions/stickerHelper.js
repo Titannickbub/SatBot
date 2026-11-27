@@ -8,7 +8,7 @@ const config = require("./config");
 
 const execFileAsync = promisify(execFile);
 const WHATSAPP_STATIC_STICKER_LIMIT = 100 * 1024;
-const WHATSAPP_ANIMATED_STICKER_LIMIT = 1024 * 1024;
+const WHATSAPP_ANIMATED_STICKER_LIMIT = 500 * 1024;
 const WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT = 10;
 const TELEGRAM_VIDEO_STICKER_LIMIT = 256 * 1024;
 const TELEGRAM_VIDEO_STICKER_DURATION_LIMIT = 3;
@@ -241,7 +241,7 @@ async function createStaticWebp(inputBuffer, mode, maxSizeBytes) {
     }
 
     const resizeOptions = mode === "cover"
-        ? { fit: "cover" }
+        ? { fit: "fill" }
         : {
             fit: mode,
             background: mode === "contain" ? { r: 0, g: 0, b: 0, alpha: 0 } : undefined
@@ -343,7 +343,7 @@ async function createStickerBuffer(inputBuffer, options = {}) {
 
     // EXIF é opt-in porque alguns clientes do WhatsApp podem renderizar stickers com metadados incorretamente.
     const stickerBuffer = options.addMetadata === true
-        ? await addExifToWebp(
+        ? addExifToWebp(
             webpResult,
             options.packName || config.getBotName(),
             options.authorName || config.getBotName(),
@@ -398,14 +398,12 @@ async function createTelegramSticker(inputBuffer, options = {}) {
 
 /**
  * Injeta ou substitui o bloco de metadados EXIF do pacote em um Buffer de figurinha WebP.
- * Utiliza o node-webpmux (padrão oficial libwebp / Aleatory) com o TIFF header canônico (22 bytes).
  * @param {Buffer} buffer 
  * @param {string} packName 
  * @param {string} authorName 
- * @param {string} description 
- * @returns {Promise<Buffer>}
+ * @returns {Buffer}
  */
-async function addExifToWebp(
+function addExifToWebp(
     buffer,
     packName = config.getBotName(),
     authorName = config.getBotName(),
@@ -413,33 +411,68 @@ async function addExifToWebp(
 ) {
     if (!Buffer.isBuffer(buffer) || buffer.length < 12) return buffer;
 
-    const json = {
+    const json = JSON.stringify({
         "sticker-pack-id": "com.satela.bot",
         "sticker-pack-name": String(packName || "Sat Bot"),
         "sticker-pack-publisher": String(authorName || config.getBotName()),
         "sticker-pack-description": String(description || ""),
         "emojis": ["📌"]
-    };
+    });
 
-    const exifAttr = Buffer.from([
-        0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00,
-        0x01, 0x00, 0x41, 0x57, 0x07, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x16, 0x00, 0x00, 0x00
+    const jsonBuffer = Buffer.from(json, "utf8");
+
+    const exifHeader = Buffer.from([
+        0x45, 0x78, 0x69, 0x66, 0x00, 0x00, // Exif\0\0
+        0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00, // TIFF header
+        0x01, 0x00, // 1 tag
+        0x41, 0x57, // Tag 0x5741 ("WA")
+        0x07, 0x00  // Type 7
     ]);
-    const jsonBuff = Buffer.from(JSON.stringify(json), "utf-8");
-    const exif = Buffer.concat([exifAttr, jsonBuff]);
-    exif.writeUIntLE(jsonBuff.length, 14, 4);
+    const countBuffer = Buffer.alloc(4);
+    countBuffer.writeUInt32LE(jsonBuffer.length, 0);
 
-    try {
-        const webp = require("node-webpmux");
-        const img = new webp.Image();
-        await img.load(buffer);
-        img.exif = exif;
-        return await img.save(null);
-    } catch (err) {
-        console.warn("[STICKER_HELPER] Erro ao injetar EXIF via node-webpmux:", err.message);
+    const offsetBuffer = Buffer.from([0x1A, 0x00, 0x00, 0x00]); // 26 bytes a partir do início da TIFF
+    const nextIfdBuffer = Buffer.from([0x00, 0x00, 0x00, 0x00]);
+
+    const exifData = Buffer.concat([exifHeader, countBuffer, offsetBuffer, nextIfdBuffer, jsonBuffer]);
+
+    const exifChunkHeader = Buffer.alloc(8);
+    exifChunkHeader.write("EXIF", 0);
+    exifChunkHeader.writeUInt32LE(exifData.length, 4);
+
+    const padding = exifData.length % 2 !== 0 ? Buffer.from([0x00]) : Buffer.alloc(0);
+    const fullExifChunk = Buffer.concat([exifChunkHeader, exifData, padding]);
+
+    const riffHeader = buffer.slice(0, 4).toString("ascii");
+    const webpHeader = buffer.slice(8, 12).toString("ascii");
+
+    if (riffHeader !== "RIFF" || webpHeader !== "WEBP") {
         return buffer;
     }
+
+    let pos = 12;
+    const chunks = [];
+    while (pos < buffer.length) {
+        if (pos + 8 > buffer.length) break;
+        const fourcc = buffer.slice(pos, pos + 4).toString("ascii");
+        const chunkSize = buffer.readUInt32LE(pos + 4);
+        const totalChunkSize = 8 + chunkSize + (chunkSize % 2);
+
+        if (fourcc !== "EXIF") {
+            chunks.push(buffer.slice(pos, Math.min(pos + totalChunkSize, buffer.length)));
+        }
+        pos += totalChunkSize;
+    }
+
+    chunks.push(fullExifChunk);
+
+    const bodyBuffer = Buffer.concat(chunks);
+    const newRiffHeader = Buffer.alloc(12);
+    newRiffHeader.write("RIFF", 0);
+    newRiffHeader.writeUInt32LE(bodyBuffer.length + 4, 4);
+    newRiffHeader.write("WEBP", 8);
+
+    return Buffer.concat([newRiffHeader, bodyBuffer]);
 }
 
 module.exports = {

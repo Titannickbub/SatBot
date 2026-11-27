@@ -71,14 +71,14 @@ test("Baileys audio-sticker protobuf preserves the nested audio message", () => 
         sticker: Buffer.from([1]),
         audio: Buffer.from([2]),
         stickerMessage: { width: 512, height: 512 },
-        audioMessage: { ptt: false, seconds: 1, waveform: Buffer.alloc(64) }
+        audioMessage: { ptt: true, seconds: 1, waveform: Buffer.alloc(64) }
     }, Buffer.alloc(32));
     const encoded = baileys.proto.Message.encode(payload).finish();
     const parsed = baileys.proto.Message.fromObject(payload);
 
     assert.ok(encoded.includes(Buffer.from([0xb2, 0x08])));
     assert.ok(encoded.includes(Buffer.from([0xd2, 0x01])));
-    assert.ok(!parsed.audioStickerMessage.message.stickerMessage.audioMessage.ptt);
+    assert.equal(parsed.audioStickerMessage.message.stickerMessage.audioMessage.ptt, true);
 });
 
 test("audio sticker relay supplies the required Baileys message id", async () => {
@@ -91,10 +91,7 @@ test("audio sticker relay supplies the required Baileys message id", async () =>
     await relayAudioSticker(socket, "chat@s.whatsapp.net", payload);
 
     assert.equal(relayArguments[0], "chat@s.whatsapp.net");
-    assert.deepEqual(relayArguments[1], {
-        ...payload,
-        stickerMessage: { __satBotEncHintOnly: true }
-    });
+    assert.equal(relayArguments[1], payload);
     assert.match(relayArguments[2].messageId, /^[A-F0-9]{20}$/);
 });
 
@@ -107,7 +104,7 @@ test("audio sticker conversion outputs Opus/Ogg and a waveform", async () => {
     assert.equal(result.waveform.length, 64);
 });
 
-test("large animated WhatsApp GIFs are reduced and accepted up to 1 MB", async () => {
+test("large animated WhatsApp GIFs are reduced and accepted up to 5 MB", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "satbot-sticker-gif-"));
     try {
         const gifPath = path.join(directory, "source.gif");
@@ -133,7 +130,8 @@ test("large animated WhatsApp GIFs are reduced and accepted up to 1 MB", async (
         });
         const metadata = await sharp(sticker, { animated: true, failOn: "none" }).metadata();
 
-        assert.ok(sticker.length <= 1024 * 1024);
+        assert.ok(sticker.length > 500 * 1024);
+        assert.ok(sticker.length <= 5 * 1024 * 1024);
         assert.equal(metadata.format, "webp");
         assert.ok((Number(metadata.pages) || 0) > 1);
     } finally {

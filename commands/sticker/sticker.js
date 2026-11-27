@@ -22,7 +22,7 @@ Use {prefix}sa para manter a proporção, {prefix}fa para esticar ou {prefix}ra 
 Envie um vídeo com som ou combine uma imagem/vídeo com um áudio respondendo a uma das mídias. O áudio pode ter até 30 segundos.
 
 📏 Limites e detalhes:
-• No WhatsApp, GIFs/vídeos podem ter até 10 segundos. A figurinha animada pode ter até 1 MB (o bot comprime automaticamente). Se o vídeo for maior que 10 segundos, use {prefix}cortar para selecionar o trecho desejado.
+• No WhatsApp, GIFs/vídeos podem ter até 10 segundos. A figurinha animada pode ter até 500 KB (o bot comprime automaticamente). Se o vídeo for maior que 10 segundos, use {prefix}cortar para selecionar o trecho desejado.
 • No Telegram, a figurinha criada também pode ser adicionada ao seu pacote pessoal.
 
 📦 PACOTES PESSOAIS — somente Telegram
@@ -105,7 +105,7 @@ Pacote (Telegram): {prefix}delfig | {prefix}delsticker [respondendo à figurinha
         if (!mediaObj || typeof mediaObj.getBuffer !== "function") {
             const prefix = message.prefix || "!";
             const whatsappLimits = message.platform === "whatsapp"
-                ? "\n\n📏 *Limites do WhatsApp:* imagem até 100 KB; figurinha animada até 1 MB e GIF/vídeo de até 10 segundos. Se o vídeo for mais longo, use `" + (message.prefix || "!") + "cortar` para selecionar o trecho desejado."
+                ? "\n\n📏 *Limites do WhatsApp:* imagem até 100 KB; figurinha animada até 500 KB e GIF/vídeo de até 10 segundos. Se o vídeo for mais longo, use `" + (message.prefix || "!") + "cortar` para selecionar o trecho desejado."
                 : "";
             const audioHelp = message.platform === "whatsapp"
                 ? `\n• \`${prefix}sa\` / \`${prefix}fa\` / \`${prefix}ra\` — figurinha com áudio (até 30 segundos).`
@@ -271,13 +271,13 @@ Pacote (Telegram): {prefix}delfig | {prefix}delsticker [respondendo à figurinha
             if (err.code === "STICKER_SIZE_LIMIT") {
                 const limit = mediaObj.type === "video" || mediaObj.type === "gif" ||
                     String(mediaObj.mimeType || "").toLowerCase().includes("gif")
-                    ? "1 MB para figurinhas animadas"
+                    ? "500 KB para figurinhas animadas"
                     : "100 KB para figurinhas estáticas";
                 const prefix = message.prefix || "!";
                 return message.reply({ text: `❌ A figurinha gerada excedeu o limite do WhatsApp de ${limit} mesmo após a compressão.\n\nTente usar \`${prefix}cortar\` para selecionar um trecho menor do vídeo.` });
             }
             const whatsappLimits = message.platform === "whatsapp"
-                ? ` No WhatsApp: GIFs/vídeos até 10 segundos; figurinha animada até 1 MB (comprimida automaticamente) ou 100 KB se estática. Vídeos mais longos: use \`${message.prefix || "!"}cortar\` para selecionar o trecho.`
+                ? ` No WhatsApp: GIFs/vídeos até 10 segundos; figurinha animada até 500 KB (comprimida automaticamente) ou 100 KB se estática. Vídeos mais longos: use \`${message.prefix || "!"}cortar\` para selecionar o trecho.`
                 : "";
             return message.reply({ text: `❌ Falha ao criar a figurinha. Envie uma imagem, GIF ou vídeo válido.${whatsappLimits}` });
         }
