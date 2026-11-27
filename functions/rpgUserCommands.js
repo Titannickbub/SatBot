@@ -492,9 +492,9 @@ function getPageInstructions(platform, commandName, paged, prefix) {
     if (platform === "whatsapp") {
         if (catalogCommand === "rpgcatalogo") {
             if (mode === "characters") {
-                return `Outra página: ${prefix}catalogo base ${baseIndex} <página>. Card: ${prefix}catalogo ver <id> base ${baseIndex} pagina ${page}. Voltar às bases: ${prefix}catalogo ${basesPage}.`;
+                return `Outra página: ${prefix}catalogo base ${baseIndex} <página>. Card: ${prefix}catalogo personagem <id>. Voltar às bases: ${prefix}catalogo.`;
             }
-            return `Escolher uma base: ${prefix}catalogo base <número>. Próxima página: ${prefix}catalogo <página>.`;
+            return `Escolher uma base: ${prefix}catalogo base <número>. Ver personagem: ${prefix}catalogo personagem <id>.`;
         }
         return `Para abrir outra página: ${prefix}${userCommand} <página>. Card: ${prefix}rpgver <id>.`;
     }
@@ -637,14 +637,39 @@ function getCatalogBases(catalog) {
         .map((name, index) => ({ id: index + 1, name }));
 }
 
-function findCatalogBase(catalog, baseId) {
-    const id = Number(baseId);
-    if (!Number.isInteger(id) || id < 1) {
-        throw new Error("Informe o número da base mostrado na lista.");
+function findCatalogBase(catalog, baseQuery) {
+    if (baseQuery === undefined || baseQuery === null || String(baseQuery).trim() === "") {
+        throw new Error("Informe o nome ou número da base.");
     }
-    const base = getCatalogBases(catalog).find(entry => entry.id === id);
-    if (!base) throw new Error("Essa base não existe no catálogo.");
-    return base;
+    const queryStr = String(baseQuery).trim();
+    const bases = getCatalogBases(catalog);
+
+    // 1. Por número de índice (1, 2, 3...)
+    const id = Number(queryStr);
+    if (Number.isInteger(id) && id >= 1 && id <= bases.length) {
+        const byId = bases.find(entry => entry.id === id);
+        if (byId) return byId;
+    }
+
+    // 2. Por nome exato normalizado
+    const normalized = normalizeSearch(queryStr);
+    const exact = bases.find(entry => normalizeSearch(entry.name) === normalized);
+    if (exact) return exact;
+
+    // 3. Comparação alfanumérica (remove símbolos como :, -, espaços)
+    const cleanQuery = normalized.replace(/[^a-z0-9]/g, "");
+    if (cleanQuery) {
+        const cleanMatch = bases.find(entry =>
+            normalizeSearch(entry.name).replace(/[^a-z0-9]/g, "") === cleanQuery
+        );
+        if (cleanMatch) return cleanMatch;
+    }
+
+    // 4. Busca parcial por nome
+    const partial = bases.find(entry => normalizeSearch(entry.name).includes(normalized));
+    if (partial) return partial;
+
+    throw new Error(`A base "${queryStr}" não existe no catálogo.`);
 }
 
 function renderCatalogPage(characters, catalog) {
@@ -672,7 +697,10 @@ function getPagedAction(message, commandName, args = []) {
     const catalog = catalogStore.readCatalog();
 
     if (commandName === "rpgcatalogo") {
-        if (normalizeSearch(args[0]) === "base") {
+        const bases = getCatalogBases(catalog);
+        const firstArg = normalizeSearch(args[0]);
+
+        if (firstArg === "base") {
             const base = findCatalogBase(catalog, args[1]);
             const items = sortCharactersByBase(catalog.personagens.filter(character =>
                 normalizeSearch(character.base || "Sem base") === normalizeSearch(base.name)
@@ -693,7 +721,28 @@ function getPagedAction(message, commandName, args = []) {
             });
         }
 
-        const items = getCatalogBases(catalog);
+        // Se o primeiro argumento for o nome de uma base (ex: !catalogo rezero 1)
+        if (args.length > 0 && isNaN(Number(args[0])) && firstArg !== "page" && firstArg !== "pagina") {
+            const base = findCatalogBase(catalog, args[0]);
+            const items = sortCharactersByBase(catalog.personagens.filter(character =>
+                normalizeSearch(character.base || "Sem base") === normalizeSearch(base.name)
+            ));
+            const page = parsePage(args.slice(1));
+            return makePagedResponse({
+                platform: message.platform,
+                commandName: "catalogo",
+                title: "📚 PERSONAGENS DA BASE",
+                items,
+                page,
+                renderPage: pageItems => renderCatalogPage(pageItems, catalog),
+                viewableCharacters: items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+                catalogContext: { baseIndex: base.id, basesPage: 1 },
+                metadata: { mode: "characters", baseIndex: base.id, basesPage: 1 },
+                emptyMessage: `Ainda não há personagens na base ${base.name}.`
+            });
+        }
+
+        const items = bases;
         const page = parsePage(args);
         return makePagedResponse({
             platform: message.platform,
@@ -745,7 +794,7 @@ function normalizeSearch(value) {
 
 function findCharacter(catalog, query, prefix = config.getPrefix()) {
     const term = String(query || "").trim();
-    if (!term) throw new Error(`Informe o ID ou o nome do personagem. Exemplo: ${prefix}rpgver 0`);
+    if (!term) throw new Error(`Informe o ID ou o nome do personagem. Exemplo: ${prefix}catalogo personagem 0`);
     if (/^\d+$/.test(term)) {
         const byId = catalog.personagens.find(character => character.id === Number(term));
         if (byId) return byId;
@@ -837,13 +886,13 @@ async function executeAction(message, action = "menu", args = []) {
         if (catalogAction === "help" || catalogAction === "ajuda") {
             return message.reply(formatSimplePayload(message, "📚 COMO USAR O CATÁLOGO RPG", [
                 `1️⃣ Use ${prefix}catalogo para listar as bases disponíveis.`,
-                `2️⃣ Escolha uma base na lista; no WhatsApp, use ${prefix}catalogo base <número> [página].`,
+                `2️⃣ Escolha uma base: ${prefix}catalogo base <número> [página].`,
                 "3️⃣ Escolha um personagem para abrir o card.",
-                `No WhatsApp, abra o card com ${prefix}catalogo ver <id> base <número> pagina <página>.`,
+                `No WhatsApp, abra o card com ${prefix}catalogo personagem <id>.`,
                 `Para escolher o personagem inicial, abra o card de um personagem comum e use o botão ou ${prefix}catalogo escolher <id>.`
             ], 0x7c5ce7));
         }
-        if (catalogAction === "ver" || catalogAction === "abrir") {
+        if (catalogAction === "ver" || catalogAction === "abrir" || catalogAction === "personagem") {
             const baseMarker = args.findIndex((value, index) =>
                 index > 1 && normalizeSearch(value) === "base"
             );

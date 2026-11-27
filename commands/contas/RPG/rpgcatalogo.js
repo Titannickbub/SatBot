@@ -32,8 +32,8 @@ async function sendBases(message) {
     bases.forEach((b, i) => {
         text += `${i + 1}. ${b}\n`;
     });
-    text += `\nUse ${prefix}catalogo <número> ou ${prefix}catalogo <nome> para listar os personagens desta base.\n`;
-    text += `Exemplo: ${prefix}catalogo 1`;
+    text += `\nUse ${prefix}catalogo base <número> ou ${prefix}catalogo base <nome> para listar os personagens.\n`;
+    text += `Exemplo: ${prefix}catalogo base 1`;
     await message.reply({ text });
 }
 
@@ -59,116 +59,139 @@ async function sendCharacters(message, baseName, page = 1) {
     slice.forEach(ch => {
         text += `• ${ch.id} – ${ch.nome}\n`;
     });
-    text += `\nPara ver detalhes de um personagem use ${prefix}catalogo ${baseName} <id>.\n`;
+    text += `\nPara ver o card de um personagem use ${prefix}catalogo personagem <id>.\n`;
     if (page < totalPages) {
-        text += `Para a próxima página use ${prefix}catalogo ${baseName} ${page + 1}.`;
+        text += `Próxima página: ${prefix}catalogo base ${baseName} ${page + 1}`;
     }
     await message.reply({ text });
 }
 
 /**
- * Manipulação principal do comando `!catalogo`.
+ * Manipulação principal do comando `!catalogo`
  *
- * - Sem argumentos → lista as bases.
- * - Número ou "base <n>" → lista personagens da base indicada (página 1).
- * - Nome da base + número da página → lista página específica.
- * - Nome da base + id do personagem → delega ao rpgCommands para exibir o card.
+ * Sintaxe de texto (WhatsApp e plataformas sem UI rica):
+ *   !catalogo                          → lista as bases disponíveis
+ *   !catalogo base <nome|número> [pág] → lista personagens da base, paginado
+ *   !catalogo personagem <id>          → exibe o card do personagem pelo ID
+ *   !catalogo help                     → exibe ajuda do comando
+ *   !catalogo escolher <id>            → escolhe personagem inicial
+ *
+ * Em Discord e Telegram os botões continuam funcionando normalmente via handleInteraction.
  */
 module.exports = {
     name: "catalogo",
     category: "contas/RPG",
     description: "Consulta o catálogo de personagens RPG e permite escolher seu personagem inicial.",
-    usage: "{prefix}catalogo [base|número] [página|id]",
+    usage: "{prefix}catalogo [base <nome|número> [página] | personagem <id> | escolher <id> | help]",
     async execute(message) {
         // Em plataformas com interface rica (Discord, Telegram) delegamos ao fluxo original que gera embeds e botões.
-        // Apenas no WhatsApp usamos a lógica de texto que implementamos.
         if (message.platform !== "whatsapp") {
-            // Mantém comportamento original (embeds, botões etc.)
             return rpgCommands.execute(message, "catalog", message.args || []);
         }
-        // Lógica exclusiva para WhatsApp (texto puro)
+
+        // ── Lógica de texto para WhatsApp (e plataformas sem botões) ──
         const args = message.args || [];
         const prefix = message.prefix;
+
         // Sem argumentos → lista bases
         if (!args.length) {
             await sendBases(message);
             return;
         }
-        const first = args[0].toLowerCase();
+
+        const subcmd = args[0].toLowerCase();
         const bases = getBases();
-        // Ajuda rápida
-        if (first === "help" || first === "ajuda") {
-            const help = `📖 *Como usar ${prefix}catalogo*\n` +
-                `• ${prefix}catalogo – lista todas as bases disponíveis.\n` +
-                `• ${prefix}catalogo <número> – lista os personagens da base de número <número> (página 1).\n` +
-                `• ${prefix}catalogo <nome> – lista os personagens da base "<nome>" (página 1).\n` +
-                `• ${prefix}catalogo <nome> <página> – navega entre as páginas da base.\n` +
-                `• ${prefix}catalogo <nome> <id> – mostra detalhes do personagem com aquele ID.\n` +
-                `Exemplo: ${prefix}catalogo rezero 2`;
+
+        // !catalogo help / !catalogo ajuda
+        if (subcmd === "help" || subcmd === "ajuda") {
+            const help =
+                `📖 *Como usar ${prefix}catalogo*\n` +
+                `• ${prefix}catalogo — lista todas as bases disponíveis.\n` +
+                `• ${prefix}catalogo base <número> [página] — lista personagens da base pelo número.\n` +
+                `• ${prefix}catalogo base <nome> [página] — lista personagens da base pelo nome.\n` +
+                `• ${prefix}catalogo personagem <id> — mostra o card do personagem com aquele ID.\n` +
+                `• ${prefix}catalogo escolher <id> — escolhe um personagem comum como inicial.\n` +
+                `\nExemplos:\n` +
+                `  ${prefix}catalogo base rezero\n` +
+                `  ${prefix}catalogo base 1 2\n` +
+                `  ${prefix}catalogo personagem 0`;
             await message.reply({ text: help });
             return;
         }
-        // Detecta padrão "base <n>"
-        if (first === "base" && args[1]) {
-            const idx = parseInt(args[1], 10) - 1;
-            if (isNaN(idx) || idx < 0 || idx >= bases.length) {
-                await message.reply({ text: `❌ Base número ${args[1]} não encontrada. Use ${prefix}catalogo para ver a lista.` });
+
+        // !catalogo base <nome|número> [página]
+        if (subcmd === "base") {
+            const baseArg = args[1];
+            if (!baseArg) {
+                await message.reply({ text: `❌ Informe o nome ou número da base. Exemplo: ${prefix}catalogo base 1` });
                 return;
             }
-            const baseName = bases[idx];
+            let baseName;
+            if (!isNaN(baseArg)) {
+                // Argumento numérico → índice da lista
+                const idx = parseInt(baseArg, 10) - 1;
+                if (idx < 0 || idx >= bases.length) {
+                    await message.reply({ text: `❌ Base número ${baseArg} não encontrada. Use ${prefix}catalogo para ver a lista.` });
+                    return;
+                }
+                baseName = bases[idx];
+            } else {
+                // Argumento textual → nome da base (busca case-insensitive e alfanumérica)
+                baseName = bases.find(b =>
+                    b.toLowerCase() === baseArg.toLowerCase() ||
+                    b.toLowerCase().replace(/[^a-z0-9]/g, '') === baseArg.toLowerCase().replace(/[^a-z0-9]/g, '')
+                );
+                if (!baseName) {
+                    await message.reply({ text: `❌ Base "${baseArg}" não encontrada. Use ${prefix}catalogo para ver a lista de bases.` });
+                    return;
+                }
+            }
             const page = args[2] && !isNaN(args[2]) ? parseInt(args[2], 10) : 1;
             await sendCharacters(message, baseName, page);
             return;
         }
-        // Se o primeiro argumento for numérico → trata como índice da base
-        if (!isNaN(first)) {
-            const idx = parseInt(first, 10) - 1;
-            if (idx < 0 || idx >= bases.length) {
-                await message.reply({ text: `❌ Base número ${first} não encontrada. Use ${prefix}catalogo para ver a lista.` });
-                return;
-            }
-            const baseName = bases[idx];
-            const page = args[1] && !isNaN(args[1]) ? parseInt(args[1], 10) : 1;
-            await sendCharacters(message, baseName, page);
-            return;
-        }
-        // Primeiro argumento é texto – pode ser nome da base ou ID de personagem
-        const possibleBase = bases.find(b => b.toLowerCase() === first);
+
+        // !catalogo <nome da base> [página] (ex: !catalogo rezero 1)
+        const possibleBase = bases.find(b =>
+            b.toLowerCase() === subcmd ||
+            b.toLowerCase().replace(/[^a-z0-9]/g, '') === subcmd.replace(/[^a-z0-9]/g, '')
+        );
         if (possibleBase) {
-            const second = args[1];
-            if (second && !isNaN(second)) {
-                const third = args[2];
-                if (third && !isNaN(third)) {
-                    // Página especificada
-                    await sendCharacters(message, possibleBase, parseInt(second, 10));
-                } else {
-                    // Verifica se o número corresponde a um ID de personagem da base
-                    const catalog = rpgMaker.readCatalog();
-                    const charExists = catalog.personagens.some(c =>
-                        String(c.base).toLowerCase() === possibleBase.toLowerCase() &&
-                        String(c.id) === second
-                    );
-                    if (charExists) {
-                        // Delegar ao comando original para exibir o card do personagem por ID
-                        return rpgCommands.execute(message, "catalog", args);
-                    } else {
-                        // Tratar como número de página (deve começar em 1)
-                        const pageNum = parseInt(second, 10);
-                        if (pageNum < 1) {
-                            await message.reply({ text: `❌ Página ${pageNum} inválida. Comece a contar a partir de 1.` });
-                            return;
-                        }
-                        await sendCharacters(message, possibleBase, pageNum);
-                    }
-                }
-                return;
-            }
-            // Apenas o nome da base → lista página 1
-            await sendCharacters(message, possibleBase, 1);
+            const page = args[1] && !isNaN(args[1]) ? parseInt(args[1], 10) : 1;
+            await sendCharacters(message, possibleBase, page);
             return;
         }
-        // Nenhuma base encontrada – delega ao comportamento original (busca por ID ou erro)
-        return rpgCommands.execute(message, "catalog", args);
+
+        // !catalogo <número da base> [página] (ex: !catalogo 1 1)
+        if (!isNaN(subcmd)) {
+            const idx = parseInt(subcmd, 10) - 1;
+            if (idx >= 0 && idx < bases.length) {
+                const page = args[1] && !isNaN(args[1]) ? parseInt(args[1], 10) : 1;
+                await sendCharacters(message, bases[idx], page);
+                return;
+            }
+        }
+
+        // !catalogo personagem <id>
+        if (subcmd === "personagem" || subcmd === "ver" || subcmd === "abrir") {
+            const idArg = args[1];
+            if (!idArg) {
+                await message.reply({ text: `❌ Informe o ID do personagem. Exemplo: ${prefix}catalogo personagem 0` });
+                return;
+            }
+            // Delega ao fluxo original passando ["ver", idArg] para exibir o card
+            return rpgCommands.execute(message, "catalog", ["ver", idArg]);
+        }
+
+        // !catalogo escolher <id>
+        if (subcmd === "escolher" || subcmd === "inicial") {
+            return rpgCommands.execute(message, "catalog", args);
+        }
+
+        // Subcomando desconhecido → erro claro, sem vazar ajuda de outra área
+        await message.reply({
+            text: `❓ Subcomando desconhecido. Use ${prefix}catalogo help para ver as opções disponíveis.`
+        });
     },
     async handleInteraction(interaction) {
         // Botões já existentes continuam chamando o handler original
