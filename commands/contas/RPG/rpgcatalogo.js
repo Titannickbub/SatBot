@@ -142,8 +142,24 @@ module.exports = {
                     // Página especificada
                     await sendCharacters(message, possibleBase, parseInt(second, 10));
                 } else {
-                    // Pode ser ID de personagem – delega ao comando original
-                    return rpgCommands.execute(message, "catalog", args);
+                    // Verifica se o número corresponde a um ID de personagem da base
+                    const catalog = rpgMaker.readCatalog();
+                    const charExists = catalog.personagens.some(c =>
+                        String(c.base).toLowerCase() === possibleBase.toLowerCase() &&
+                        String(c.id) === second
+                    );
+                    if (charExists) {
+                        // Delegar ao comando original para exibir o card do personagem por ID
+                        return rpgCommands.execute(message, "catalog", args);
+                    } else {
+                        // Tratar como número de página (deve começar em 1)
+                        const pageNum = parseInt(second, 10);
+                        if (pageNum < 1) {
+                            await message.reply({ text: `❌ Página ${pageNum} inválida. Comece a contar a partir de 1.` });
+                            return;
+                        }
+                        await sendCharacters(message, possibleBase, pageNum);
+                    }
                 }
                 return;
             }
