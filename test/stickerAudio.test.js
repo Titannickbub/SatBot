@@ -104,7 +104,7 @@ test("audio sticker conversion outputs Opus/Ogg and a waveform", async () => {
     assert.equal(result.waveform.length, 64);
 });
 
-test("large animated WhatsApp GIFs are reduced and accepted up to 5 MB", async () => {
+test("large animated WhatsApp GIFs are reduced and accepted up to 500 KB", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "satbot-sticker-gif-"));
     try {
         const gifPath = path.join(directory, "source.gif");
@@ -130,8 +130,7 @@ test("large animated WhatsApp GIFs are reduced and accepted up to 5 MB", async (
         });
         const metadata = await sharp(sticker, { animated: true, failOn: "none" }).metadata();
 
-        assert.ok(sticker.length > 500 * 1024);
-        assert.ok(sticker.length <= 5 * 1024 * 1024);
+        assert.ok(sticker.length <= 500 * 1024);
         assert.equal(metadata.format, "webp");
         assert.ok((Number(metadata.pages) || 0) > 1);
     } finally {
@@ -148,7 +147,12 @@ test("sa combines a WhatsApp image with the quoted audio", async () => {
             background: "#00ff00"
         }
     }).png().toBuffer();
-    const audioBuffer = await fs.readFile(path.join(__dirname, "..", "sinal.mp3"));
+    const ffmpegPath = require("@ffmpeg-installer/ffmpeg").path;
+    const { stdout: audioBuffer } = await execFileAsync(ffmpegPath, [
+        "-f", "lavfi", "-i", "sine=frequency=1000:duration=2",
+        "-c:a", "libmp3lame", "-f", "mp3", "pipe:1"
+    ], { encoding: "buffer", windowsHide: true });
+
     let sentSticker = null;
     const message = {
         platform: "whatsapp",
@@ -186,4 +190,85 @@ test("sa combines a WhatsApp image with the quoted audio", async () => {
     assert.equal(sentSticker.audio.subarray(0, 4).toString("ascii"), "OggS");
     assert.equal(sentSticker.isAnimated, false);
     assert.ok(sentSticker.sticker.includes(Buffer.from("titannickbub.neocities.org")));
+});
+
+test("sa rejects quoted audio over 30 seconds and instructs how to use !cortar", async () => {
+    const imageBuffer = await sharp({
+        create: {
+            width: 64,
+            height: 64,
+            channels: 4,
+            background: "#00ff00"
+        }
+    }).png().toBuffer();
+    const longAudioBuffer = await fs.readFile(path.join(__dirname, "..", "sinal.mp3"));
+    let repliedPayload = null;
+
+    const message = {
+        platform: "whatsapp",
+        command: "sa",
+        prefix: "!",
+        media: {
+            type: "image",
+            mimeType: "image/png",
+            getBuffer: async () => imageBuffer
+        },
+        quoted: {
+            media: {
+                type: "audio",
+                mimeType: "audio/mpeg",
+                raw: { seconds: 193 },
+                getBuffer: async () => longAudioBuffer
+            }
+        },
+        functions: {
+            config: {
+                getStickerConfig: () => ({
+                    packName: "SatBot",
+                    authorName: "SatBot",
+                    description: "venha pro SatBot https://titannickbub.neocities.org/"
+                })
+            }
+        },
+        react: async () => {},
+        replyAudioSticker: async () => {},
+        reply: async payload => { repliedPayload = payload; }
+    };
+
+    await stickerCommand.execute(message);
+
+    assert.ok(repliedPayload);
+    assert.match(repliedPayload.text, /!cortar/);
+    assert.match(repliedPayload.text, /30 segundos/);
+});
+
+test("WhatsApp videos longer than 10 seconds automatically use the first 10 seconds", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "satbot-sticker-video-"));
+    try {
+        const videoPath = path.join(directory, "source.mp4");
+        const ffmpegPath = require("@ffmpeg-installer/ffmpeg").path;
+        await execFileAsync(ffmpegPath, [
+            "-y",
+            "-v", "error",
+            "-f", "lavfi",
+            "-i", "testsrc=size=256x256:rate=10:duration=15",
+            "-pix_fmt", "yuv420p",
+            videoPath
+        ], { timeout: 90000, windowsHide: true });
+
+        const source = await fs.readFile(videoPath);
+        const sticker = await createStickerBuffer(source, {
+            platform: "whatsapp",
+            mimeType: "video/mp4",
+            type: "video",
+            addMetadata: true
+        });
+
+        const metadata = await sharp(sticker, { animated: true, failOn: "none" }).metadata();
+        assert.equal(metadata.format, "webp");
+        assert.ok((Number(metadata.pages) || 0) > 1);
+        assert.ok(sticker.length <= 500 * 1024);
+    } finally {
+        await fs.rm(directory, { recursive: true, force: true });
+    }
 });

@@ -108,8 +108,38 @@ async function createAudioStickerAudio(inputBuffer) {
     }
 }
 
+async function probeAudioDuration(inputBuffer) {
+    if (!Buffer.isBuffer(inputBuffer) || inputBuffer.length === 0) return null;
+    const tempId = `probe_audio_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const inputPath = path.join(os.tmpdir(), `${tempId}.media`);
+    try {
+        fs.writeFileSync(inputPath, inputBuffer);
+        const { stdout } = await execFileAsync(getFfmpegPath(), [
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            "-i", inputPath
+        ], { timeout: 10000, windowsHide: true }).catch(() => ({ stdout: "" }));
+        const dur = parseFloat(stdout.trim());
+        if (Number.isFinite(dur) && dur > 0) return dur;
+
+        const probeResult = await execFileAsync(getFfmpegPath(), [
+            "-i", inputPath
+        ], { timeout: 10000, windowsHide: true }).catch(e => ({ stderr: e.stderr || "" }));
+        const match = (probeResult.stderr || "").match(/Duration:\s*([\d:.]+)/);
+        if (match) {
+            const parts = match[1].split(":").map(Number);
+            return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+        }
+    } catch {} finally {
+        try { fs.unlinkSync(inputPath); } catch {}
+    }
+    return null;
+}
+
 module.exports = {
     MAX_AUDIO_STICKER_SECONDS,
     createWaveform,
-    createAudioStickerAudio
+    createAudioStickerAudio,
+    probeAudioDuration
 };

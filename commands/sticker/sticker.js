@@ -22,7 +22,7 @@ Use {prefix}sa para manter a proporção, {prefix}fa para esticar ou {prefix}ra 
 Envie um vídeo com som ou combine uma imagem/vídeo com um áudio respondendo a uma das mídias. O áudio pode ter até 30 segundos.
 
 📏 Limites e detalhes:
-• No WhatsApp, GIFs/vídeos podem ter até 10 segundos. A figurinha animada pode ter até 500 KB (o bot comprime automaticamente). Se o vídeo for maior que 10 segundos, use {prefix}cortar para selecionar o trecho desejado.
+• No WhatsApp, GIFs/vídeos podem ter até 10 segundos (vídeos mais longos usam automaticamente os 10 primeiros segundos). A figurinha animada pode ter até 500 KB (o bot comprime automaticamente). Se preferir outro trecho, use {prefix}cortar.
 • No Telegram, a figurinha criada também pode ser adicionada ao seu pacote pessoal.
 
 📦 PACOTES PESSOAIS — somente Telegram
@@ -105,7 +105,7 @@ Pacote (Telegram): {prefix}delfig | {prefix}delsticker [respondendo à figurinha
         if (!mediaObj || typeof mediaObj.getBuffer !== "function") {
             const prefix = message.prefix || "!";
             const whatsappLimits = message.platform === "whatsapp"
-                ? "\n\n📏 *Limites do WhatsApp:* imagem até 100 KB; figurinha animada até 500 KB e GIF/vídeo de até 10 segundos. Se o vídeo for mais longo, use `" + (message.prefix || "!") + "cortar` para selecionar o trecho desejado."
+                ? "\n\n📏 *Limites do WhatsApp:* imagem até 100 KB; figurinha animada até 500 KB e GIF/vídeo de até 10 segundos (vídeos mais longos usam os 10 primeiros segundos). Para selecionar outro trecho, use `" + (message.prefix || "!") + "cortar`."
                 : "";
             const audioHelp = message.platform === "whatsapp"
                 ? `\n• \`${prefix}sa\` / \`${prefix}fa\` / \`${prefix}ra\` — figurinha com áudio (até 30 segundos).`
@@ -170,10 +170,26 @@ Pacote (Telegram): {prefix}delfig | {prefix}delsticker [respondendo à figurinha
                 });
 
             if (isAudioSticker) {
-                const { createAudioStickerAudio } = require("../../functions/audioStickerHelper");
+                const { createAudioStickerAudio, probeAudioDuration } = require("../../functions/audioStickerHelper");
                 const audioBuffer = audioMedia === mediaObj
                     ? buffer
                     : await audioMedia.getBuffer();
+
+                // Se o áudio marcado for muito longo (> 30s), ensina a recortar com o !cortar
+                const isMarkedAudio = isAudio(audioMedia);
+                const rawSeconds = Number(audioMedia?.raw?.seconds || audioMedia?.raw?.duration || 0);
+                let duration = rawSeconds;
+                if (!duration || duration <= 0) {
+                    duration = await probeAudioDuration(audioBuffer);
+                }
+
+                if (isMarkedAudio && duration && duration > 30.5) {
+                    const prefix = message.prefix || "!";
+                    return message.reply({
+                        text: `⚠️ O áudio marcado é muito longo! Figurinhas com áudio no WhatsApp suportam no máximo 30 segundos (duração detectada: ${Math.ceil(duration)}s).\n\nUse o comando \`${prefix}cortar <início> <fim>\` (por exemplo: \`${prefix}cortar 00:00 00:20\`) respondendo ao áudio para recortar o trecho desejado e depois tente novamente.`
+                    });
+                }
+
                 const audio = await createAudioStickerAudio(audioBuffer);
                 const metadata = await require("sharp")(stickerBuffer, { animated: true, failOn: "none" }).metadata();
                 await message.replyAudioSticker({

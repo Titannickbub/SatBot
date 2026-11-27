@@ -123,8 +123,9 @@ async function getFileBuffer(media, mediaType) {
         }
     }
 
+    // 1ª tentativa: Baileys nativo usando o host padrão/automático da mídia
     try {
-        const stream = await downloadContentFromMessage(sanitizedMedia, mediaType, { host: "mmg.whatsapp.net" });
+        const stream = await downloadContentFromMessage(sanitizedMedia, mediaType);
         let buffer = Buffer.from([]);
 
         for await (const chunk of stream) {
@@ -135,6 +136,19 @@ async function getFileBuffer(media, mediaType) {
             return buffer;
         }
     } catch (err) {
+        // 2ª tentativa: Baileys nativo forçando mmg.whatsapp.net
+        try {
+            const stream = await downloadContentFromMessage(sanitizedMedia, mediaType, { host: "mmg.whatsapp.net" });
+            let buffer = Buffer.from([]);
+
+            for await (const chunk of stream) {
+                buffer = Buffer.concat([buffer, chunk]);
+            }
+
+            if (buffer && buffer.length > 0) {
+                return buffer;
+            }
+        } catch (_) {}
         console.warn(`[API] downloadContentFromMessage falhou (${err.message || err}). Tentando fallback via axios...`);
     }
 
@@ -173,7 +187,7 @@ async function getFileBuffer(media, mediaType) {
         let response;
         try {
             response = await axios.get(downloadUrl, {
-                responseType: "stream",
+                responseType: "arraybuffer",
                 headers: {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
                     "Origin": "https://web.whatsapp.com"
@@ -183,7 +197,7 @@ async function getFileBuffer(media, mediaType) {
             if (targetMedia.directPath && host !== "mms.whatsapp.net") {
                 const altUrl = `https://mms.whatsapp.net${targetMedia.directPath}`;
                 response = await axios.get(altUrl, {
-                    responseType: "stream",
+                    responseType: "arraybuffer",
                     headers: {
                         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
                         "Origin": "https://web.whatsapp.com"
@@ -195,17 +209,26 @@ async function getFileBuffer(media, mediaType) {
         }
 
         const keys = await getMediaKeys(mediaKey, mediaType);
-        const decipher = crypto.createDecipheriv("aes-256-cbc", keys.cipherKey, keys.iv);
+        const encBuffer = Buffer.from(response.data);
+        // O arquivo criptografado do WhatsApp MMS possui um MAC de 10 bytes no final.
+        // É essencial remover esse MAC antes de descriptografar via AES-CBC com PKCS7.
+        const ciphertext = encBuffer.length > 10
+            ? encBuffer.subarray(0, encBuffer.length - 10)
+            : encBuffer;
 
-        const chunks = [];
-        for await (const chunk of response.data.pipe(decipher)) {
-            chunks.push(chunk);
+        const decipher = crypto.createDecipheriv("aes-256-cbc", keys.cipherKey, keys.iv);
+        let decryptedBuffer;
+        try {
+            decryptedBuffer = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+        } catch {
+            const rawDecipher = crypto.createDecipheriv("aes-256-cbc", keys.cipherKey, keys.iv);
+            rawDecipher.setAutoPadding(false);
+            decryptedBuffer = Buffer.concat([rawDecipher.update(ciphertext), rawDecipher.final()]);
         }
 
-        const decryptedBuffer = Buffer.concat(chunks);
         const fileLength = Number(targetMedia.fileLength || targetMedia.fileLength?.low || 0);
         if (fileLength > 0 && decryptedBuffer.length >= fileLength) {
-            return decryptedBuffer.slice(0, fileLength);
+            return decryptedBuffer.subarray(0, fileLength);
         }
 
         return decryptedBuffer;

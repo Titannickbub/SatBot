@@ -70,36 +70,17 @@ async function convertAnimatedToWebp(inputBuffer, mode, maxSizeBytes, durationLi
     const tempDir = os.tmpdir();
     const inputPath = path.join(tempDir, `${tempId}.media`);
     const outputPath = path.join(tempDir, `${tempId}.webp`);
+    // Reduz bastante a qualidade de cara para compactar rápido sem tentar muitas vezes
     const attempts = [
-        { size: 512, fps: 15, quality: 70 },
-        { size: 512, fps: 12, quality: 60 },
-        { size: 512, fps: 10, quality: 50 },
-        { size: 512, fps: 8, quality: 40 },
-        { size: 512, fps: 6, quality: 30 },
-        { size: 448, fps: 10, quality: 35 },
-        { size: 448, fps: 8, quality: 30 },
-        { size: 384, fps: 10, quality: 30 },
-        { size: 384, fps: 8, quality: 25 },
-        { size: 320, fps: 10, quality: 25 },
-        { size: 320, fps: 8, quality: 20 },
-        { size: 256, fps: 8, quality: 20 },
+        { size: 512, fps: 10, quality: 40 },
+        { size: 360, fps: 8, quality: 25 },
         { size: 256, fps: 6, quality: 15 }
     ];
 
     try {
         fs.writeFileSync(inputPath, inputBuffer);
 
-        // Probe a duração real do arquivo para decidir se bloqueia antes de converter
-        if (durationLimitSeconds != null) {
-            const realDuration = await probeVideoDuration(inputPath);
-            if (realDuration != null && realDuration > durationLimitSeconds) {
-                throw createStickerError(
-                    `GIFs e vídeos para figurinhas do WhatsApp podem ter no máximo ${durationLimitSeconds} segundos (duração detectada: ${Math.ceil(realDuration)}s).`,
-                    "STICKER_DURATION_LIMIT"
-                );
-            }
-        }
-
+        // Se o vídeo for maior que o limite (10s no WhatsApp), usa os 10 primeiros segundos automaticamente
         const tArgs = durationLimitSeconds != null
             ? ["-t", String(durationLimitSeconds)]
             : [];
@@ -247,10 +228,17 @@ async function createStaticWebp(inputBuffer, mode, maxSizeBytes) {
             background: mode === "contain" ? { r: 0, g: 0, b: 0, alpha: 0 } : undefined
         };
 
-    for (const quality of [80, 65, 50, 35, 20]) {
+    // Reduz a qualidade de cara para compactar rápido
+    const attempts = [
+        { size: 512, quality: 50 },
+        { size: 512, quality: 25 },
+        { size: 384, quality: 15 }
+    ];
+
+    for (const attempt of attempts) {
         const result = await image.clone()
-            .resize(512, 512, resizeOptions)
-            .webp({ quality })
+            .resize(attempt.size, attempt.size, resizeOptions)
+            .webp({ quality: attempt.quality })
             .toBuffer();
         if (result.length <= maxSizeBytes) return result;
     }
@@ -305,18 +293,8 @@ async function createStickerBuffer(inputBuffer, options = {}) {
         ? maxSizeBytes - 512
         : maxSizeBytes;
 
-    // Para GIFs, checa duração antes (via sharp metadata). Videos são checados dentro do convertAnimatedToWebp via probe.
-    if (whatsappLimits && isGif && inputMetadata) {
-        const duration = getAnimationDurationSeconds(inputMetadata);
-        if (duration > WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT) {
-            throw createStickerError(
-                `GIFs e vídeos para figurinhas do WhatsApp podem ter no máximo ${WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT} segundos.`,
-                "STICKER_DURATION_LIMIT"
-            );
-        }
-    }
-
-    const durationLimit = (whatsappLimits && isAnimated && !isGif)
+    // Para WhatsApp: GIFs e vídeos de mais de 10s usam automaticamente os primeiros 10 segundos
+    const durationLimit = (whatsappLimits && isAnimated)
         ? WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT
         : null;
 
@@ -332,18 +310,10 @@ async function createStickerBuffer(inputBuffer, options = {}) {
     if (resultMetadata.format !== "webp" || !resultMetadata.width || !resultMetadata.height) {
         throw new Error("A conversão não gerou um WebP válido para figurinha.");
     }
-    if (whatsappLimits && isAnimated && getAnimationDurationSeconds(
-        await sharp(webpResult, { animated: true, failOn: "none" }).metadata()
-    ) > WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT) {
-        throw createStickerError(
-            `GIFs e vídeos para figurinhas do WhatsApp podem ter no máximo ${WHATSAPP_ANIMATED_STICKER_DURATION_LIMIT} segundos.`,
-            "STICKER_DURATION_LIMIT"
-        );
-    }
 
-    // EXIF é opt-in porque alguns clientes do WhatsApp podem renderizar stickers com metadados incorretamente.
+    // EXIF é aplicado via node-webpmux garantindo integridade de cabeçalho VP8X para fotos e vídeos
     const stickerBuffer = options.addMetadata === true
-        ? addExifToWebp(
+        ? await addExifToWebp(
             webpResult,
             options.packName || config.getBotName(),
             options.authorName || config.getBotName(),
@@ -398,12 +368,15 @@ async function createTelegramSticker(inputBuffer, options = {}) {
 
 /**
  * Injeta ou substitui o bloco de metadados EXIF do pacote em um Buffer de figurinha WebP.
+ * Utiliza o node-webpmux (padrão oficial libwebp) garantindo cabeçalho VP8X válido para fotos e vídeos,
+ * evitando que figurinhas saiam quebradas ou deixem de exibir a mídia em clientes WhatsApp.
  * @param {Buffer} buffer 
  * @param {string} packName 
  * @param {string} authorName 
- * @returns {Buffer}
+ * @param {string} description 
+ * @returns {Promise<Buffer>}
  */
-function addExifToWebp(
+async function addExifToWebp(
     buffer,
     packName = config.getBotName(),
     authorName = config.getBotName(),
@@ -411,68 +384,33 @@ function addExifToWebp(
 ) {
     if (!Buffer.isBuffer(buffer) || buffer.length < 12) return buffer;
 
-    const json = JSON.stringify({
-        "sticker-pack-id": "com.satela.bot",
-        "sticker-pack-name": String(packName || "Sat Bot"),
-        "sticker-pack-publisher": String(authorName || config.getBotName()),
-        "sticker-pack-description": String(description || ""),
-        "emojis": ["📌"]
-    });
+    try {
+        const webpmux = require("node-webpmux");
+        const img = new webpmux.Image();
+        await img.load(buffer);
 
-    const jsonBuffer = Buffer.from(json, "utf8");
+        const json = JSON.stringify({
+            "sticker-pack-id": "com.satela.bot",
+            "sticker-pack-name": String(packName || "Sat Bot"),
+            "sticker-pack-publisher": String(authorName || config.getBotName()),
+            "sticker-pack-description": String(description || ""),
+            "emojis": ["📌"]
+        });
 
-    const exifHeader = Buffer.from([
-        0x45, 0x78, 0x69, 0x66, 0x00, 0x00, // Exif\0\0
-        0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00, // TIFF header
-        0x01, 0x00, // 1 tag
-        0x41, 0x57, // Tag 0x5741 ("WA")
-        0x07, 0x00  // Type 7
-    ]);
-    const countBuffer = Buffer.alloc(4);
-    countBuffer.writeUInt32LE(jsonBuffer.length, 0);
+        const exifAttr = Buffer.from([
+            0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00,
+            0x01, 0x00, 0x41, 0x57, 0x07, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x16, 0x00, 0x00, 0x00
+        ]);
+        const jsonBuffer = Buffer.from(json, "utf8");
+        exifAttr.writeUIntLE(jsonBuffer.length, 14, 4);
+        img.exif = Buffer.concat([exifAttr, jsonBuffer]);
 
-    const offsetBuffer = Buffer.from([0x1A, 0x00, 0x00, 0x00]); // 26 bytes a partir do início da TIFF
-    const nextIfdBuffer = Buffer.from([0x00, 0x00, 0x00, 0x00]);
-
-    const exifData = Buffer.concat([exifHeader, countBuffer, offsetBuffer, nextIfdBuffer, jsonBuffer]);
-
-    const exifChunkHeader = Buffer.alloc(8);
-    exifChunkHeader.write("EXIF", 0);
-    exifChunkHeader.writeUInt32LE(exifData.length, 4);
-
-    const padding = exifData.length % 2 !== 0 ? Buffer.from([0x00]) : Buffer.alloc(0);
-    const fullExifChunk = Buffer.concat([exifChunkHeader, exifData, padding]);
-
-    const riffHeader = buffer.slice(0, 4).toString("ascii");
-    const webpHeader = buffer.slice(8, 12).toString("ascii");
-
-    if (riffHeader !== "RIFF" || webpHeader !== "WEBP") {
+        return await img.save(null);
+    } catch (err) {
+        console.warn("[STICKER_HELPER] Falha ao adicionar EXIF via webpmux:", err.message || err);
         return buffer;
     }
-
-    let pos = 12;
-    const chunks = [];
-    while (pos < buffer.length) {
-        if (pos + 8 > buffer.length) break;
-        const fourcc = buffer.slice(pos, pos + 4).toString("ascii");
-        const chunkSize = buffer.readUInt32LE(pos + 4);
-        const totalChunkSize = 8 + chunkSize + (chunkSize % 2);
-
-        if (fourcc !== "EXIF") {
-            chunks.push(buffer.slice(pos, Math.min(pos + totalChunkSize, buffer.length)));
-        }
-        pos += totalChunkSize;
-    }
-
-    chunks.push(fullExifChunk);
-
-    const bodyBuffer = Buffer.concat(chunks);
-    const newRiffHeader = Buffer.alloc(12);
-    newRiffHeader.write("RIFF", 0);
-    newRiffHeader.writeUInt32LE(bodyBuffer.length + 4, 4);
-    newRiffHeader.write("WEBP", 8);
-
-    return Buffer.concat([newRiffHeader, bodyBuffer]);
 }
 
 module.exports = {

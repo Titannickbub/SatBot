@@ -417,16 +417,24 @@ async function start(onMessage) {
           while (
             iterations < 10 &&
             (current.viewOnceMessage?.message ||
-             current.viewOnceMessageV2?.message ||
-             current.viewOnceMessageV2Extension?.message ||
-             current.ephemeralMessage?.message ||
-             current.documentWithCaptionMessage?.message)
+              current.viewOnceMessageV2?.message ||
+              current.viewOnceMessageV2Extension?.message ||
+              current.ephemeralMessage?.message ||
+              current.documentWithCaptionMessage?.message ||
+              current.editedMessage?.message?.protocolMessage?.editedMessage ||
+              current.templateMessage?.hydratedTemplate ||
+              current.templateMessage?.hydratedFourRowTemplate ||
+              current.interactiveMessage?.header)
           ) {
             current = current.viewOnceMessage?.message ||
               current.viewOnceMessageV2?.message ||
               current.viewOnceMessageV2Extension?.message ||
               current.ephemeralMessage?.message ||
-              current.documentWithCaptionMessage?.message;
+              current.documentWithCaptionMessage?.message ||
+              current.editedMessage?.message?.protocolMessage?.editedMessage ||
+              current.templateMessage?.hydratedTemplate ||
+              current.templateMessage?.hydratedFourRowTemplate ||
+              current.interactiveMessage?.header;
             iterations++;
           }
           return current;
@@ -483,8 +491,10 @@ async function start(onMessage) {
           else if (qDocument) {
             const docMime = String(qDocument.mimetype || "").toLowerCase();
             const isAudioDocument = docMime.startsWith("audio/") || /(mp3|mpeg|ogg|opus|wav|m4a|aac|amr|mid|flac)/i.test(docMime);
+            const isImageDocument = docMime.startsWith("image/") || /(jpeg|jpg|png|webp)/i.test(docMime);
+            const isVideoDocument = docMime.startsWith("video/") || /(mp4|mkv|mov|avi)/i.test(docMime);
             qMediaKey = qDocument;
-            qMediaType = isAudioDocument ? "audio" : "document";
+            qMediaType = isAudioDocument ? "audio" : (isImageDocument ? "image" : (isVideoDocument ? "video" : "document"));
             qMimeType = qDocument.mimetype;
           }
           else if (qSticker) { qMediaKey = qSticker; qMediaType = "sticker"; qMimeType = qSticker.mimetype || "image/webp"; }
@@ -500,7 +510,8 @@ async function start(onMessage) {
               getBuffer: async () => {
                 if (_qCachedBuffer) return _qCachedBuffer;
                 const { getFileBuffer } = require("../functions/api");
-                _qCachedBuffer = await getFileBuffer(qMediaKey, qMediaType);
+                const dlType = qDocument && qMediaKey === qDocument ? "document" : qMediaType;
+                _qCachedBuffer = await getFileBuffer(qMediaKey, dlType);
                 return _qCachedBuffer;
               }
             };
@@ -589,8 +600,10 @@ async function start(onMessage) {
             else if (documentMsg) {
               const docMime = String(documentMsg.mimetype || "").toLowerCase();
               const isAudioDocument = docMime.startsWith("audio/") || /(mp3|mpeg|ogg|opus|wav|m4a|aac|amr|mid|flac)/i.test(docMime);
+              const isImageDocument = docMime.startsWith("image/") || /(jpeg|jpg|png|webp)/i.test(docMime);
+              const isVideoDocument = docMime.startsWith("video/") || /(mp4|mkv|mov|avi)/i.test(docMime);
               mediaKey = documentMsg;
-              mediaType = isAudioDocument ? "audio" : "document";
+              mediaType = isAudioDocument ? "audio" : (isImageDocument ? "image" : (isVideoDocument ? "video" : "document"));
               mimeType = documentMsg.mimetype;
             }
             else if (stickerMsg) { mediaKey = stickerMsg; mediaType = "sticker"; mimeType = stickerMsg.mimetype || "image/webp"; }
@@ -606,7 +619,8 @@ async function start(onMessage) {
               getBuffer: async () => {
                 if (_cachedBuffer) return _cachedBuffer;
                 const { getFileBuffer } = require("../functions/api");
-                _cachedBuffer = await getFileBuffer(mediaKey, mediaType);
+                const dlType = documentMsg && mediaKey === documentMsg ? "document" : mediaType;
+                _cachedBuffer = await getFileBuffer(mediaKey, dlType);
                 return _cachedBuffer;
               }
             };
