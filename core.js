@@ -608,7 +608,12 @@ message.core = {
             break;
         }
 
-        if (!command) return;
+        if (!command) {
+        // Resposta amigável quando o comando não é reconhecido
+        const helpMsg = `❓ Comando não reconhecido. Use ${message.prefix}ajuda para ver a lista de comandos disponíveis.`;
+        await message.reply({ text: helpMsg });
+        return;
+    }
     }
 
     const commandCategory = String(command.category || "").toLowerCase();
