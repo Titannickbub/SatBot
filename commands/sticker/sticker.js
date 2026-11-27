@@ -1,58 +1,89 @@
 const { createStickerBuffer, createTelegramSticker } = require("../../functions/stickerHelper");
 const telegramStickerHelper = require("../../functions/telegramStickerHelper");
 
+const AUDIO_CONTAIN_ALIASES = [
+    "sa", "saudio", "figa", "figaudio", "sfiga", "sfigurinhaa", "figurinhaaudio", "sasticker", "stickeraudio"
+];
+const AUDIO_FILL_ALIASES = [
+    "fa", "faudio", "ffiga", "ffigaudio", "ffigurinhaa", "ffigurinhaaudio", "fasticker", "fastickeraudio", "fstickeraudio"
+];
+const AUDIO_COVER_ALIASES = [
+    "ra", "raudio", "rfiga", "rfigaudio", "rfigurinhaa", "rfigurinhaaudio", "rasticker", "rastickeraudio", "rstickeraudio"
+];
+const ALL_AUDIO_ALIASES = [
+    ...AUDIO_CONTAIN_ALIASES,
+    ...AUDIO_FILL_ALIASES,
+    ...AUDIO_COVER_ALIASES
+];
+
 module.exports = {
     name: "sticker",
     aliases: [
         "s", "fig", "figurinha",
         "f", "fsticker", "ffig", "ffigurinha",
         "r", "rsticker", "rfig", "rfigurinha",
-        "sa", "fa", "ra"
+        ...ALL_AUDIO_ALIASES
     ],
-    description: `🖼️ FIGURINHAS DE FOTO, GIF OU VÍDEO
-Disponível no WhatsApp e Telegram. Envie o comando junto da mídia ou responda à mensagem que contém a mídia.
+    description: `🎨 Como utilizar?
 
-📐 Modos de criação:
-• Proporção original: {prefix}sticker, {prefix}s, {prefix}fig ou {prefix}figurinha
-• Esticar para preencher: {prefix}f, {prefix}fsticker, {prefix}ffig ou {prefix}ffigurinha
-• Recortar quadrado pelo centro: {prefix}r, {prefix}rsticker, {prefix}rfig ou {prefix}rfigurinha
+🎬 A partir de um vídeo
 
-🔊 FIGURINHAS COM ÁUDIO — somente WhatsApp
-Use {prefix}sa para manter a proporção, {prefix}fa para esticar ou {prefix}ra para recortar.
-Envie um vídeo com som ou combine uma imagem/vídeo com um áudio respondendo a uma das mídias. O áudio pode ter até 30 segundos.
+Marque um vídeo para gerar uma figurinha baseada na imagem e no áudio dele.
+
+🖼️ Imagem + áudio
+
+Responda a uma mensagem de áudio com uma imagem e coloque o comando na legenda. A figurinha será criada usando a imagem enviada e o áudio selecionado.
+
+⚙️ Comandos de ajuste
+
+Os comandos abaixo permitem escolher como a mídia será adaptada ao formato quadrado da figurinha:
+
+"{prefix}s" — Gera a figurinha em tamanho normal, utilizando fundo transparente para ajustar o tamanho da mídia.
+
+"{prefix}r" — Faz um recorte quadrado no centro da mídia, ocupando toda a extensão da figurinha.
+
+"{prefix}f" — Estica a mídia para preencher o formato quadrado, sem realizar recortes.
+
+🔊 Com áudio (somente WhatsApp):
+
+"{prefix}sa" — Gera a figurinha em tamanho normal, utilizando fundo transparente ou preto para ajustar o tamanho da mídia.
+
+"{prefix}ra" — Faz um recorte quadrado no centro da mídia, ocupando toda a extensão da figurinha.
+
+"{prefix}fa" — Estica a mídia para preencher o formato quadrado, sem realizar recortes.
 
 📏 Limites e detalhes:
 • No WhatsApp, GIFs/vídeos podem ter até 10 segundos (vídeos mais longos usam automaticamente os 10 primeiros segundos). A figurinha animada pode ter até 500 KB (o bot comprime automaticamente). Se preferir outro trecho, use {prefix}cortar.
-• No Telegram, a figurinha criada também pode ser adicionada ao seu pacote pessoal.
+• O áudio da figurinha sonora pode ter até 30 segundos.
 
 📦 PACOTES PESSOAIS — somente Telegram
 • {prefix}delfig ou {prefix}delsticker — responda à figurinha para removê-la do seu pacote.
 • {prefix}delpack, {prefix}deletarpacote ou {prefix}limparpacote — exclui o pacote inteiro.
 
 🛠️ FIGURINHAS E EMOJIS DO SERVIDOR — somente Discord
-• {prefix}dsticker, {prefix}ds, {prefix}dfig ou {prefix}dfigurinha — cria uma figurinha do servidor.
-• {prefix}fdsticker, {prefix}fds, {prefix}fdfig ou {prefix}fdfigurinha — estica a mídia.
-• {prefix}rdsticker, {prefix}rds, {prefix}rdfig ou {prefix}rdfigurinha — recorta pelo centro.
-• {prefix}emoji, {prefix}e, {prefix}semoji ou {prefix}addemoji — cria um emoji; {prefix}femoji/{prefix}fe estica e {prefix}remoji/{prefix}re recorta.
-Esses comandos do Discord são separados do comando sticker e exigem permissão para gerenciar expressões no servidor.`,
+• {prefix}dsticker, {prefix}ds, {prefix}dfig ou {prefix}dfigurinha — cria uma figurinha do servidor ({prefix}fdsticker, {prefix}fds, {prefix}fdfig, {prefix}fdfigurinha estica; {prefix}rdsticker, {prefix}rds, {prefix}rdfig, {prefix}rdfigurinha recorta).
+• {prefix}emoji, {prefix}e, {prefix}semoji ou {prefix}addemoji — cria um emoji ({prefix}femoji, {prefix}fe estica; {prefix}remoji, {prefix}re recorta).`,
     category: "sticker",
     platformSupport: {
         whatsapp: "full",
         telegram: "full",
         discord: "none"
     },
-    usage: `Mídia anexada ao comando ou resposta à mensagem:
-{prefix}sticker | {prefix}s | {prefix}fig | {prefix}figurinha
-{prefix}f | {prefix}fsticker | {prefix}ffig | {prefix}ffigurinha
-{prefix}r | {prefix}rsticker | {prefix}rfig | {prefix}rfigurinha
-Áudio (WhatsApp): {prefix}sa | {prefix}fa | {prefix}ra
-Pacote (Telegram): {prefix}delfig | {prefix}delsticker [respondendo à figurinha]
+    usage: `{prefix}s | {prefix}fig | {prefix}figurinha | {prefix}sticker
+{prefix}r | {prefix}rfig | {prefix}rfigurinha | {prefix}rsticker
+{prefix}f | {prefix}ffig | {prefix}ffigurinha | {prefix}fsticker
+{prefix}sa | {prefix}saudio | {prefix}figa | {prefix}figaudio | {prefix}sfiga | {prefix}sfigurinhaa | {prefix}figurinhaaudio | {prefix}sasticker | {prefix}stickeraudio
+{prefix}ra | {prefix}raudio | {prefix}rfiga | {prefix}rfigaudio | {prefix}rfigurinhaa | {prefix}rfigurinhaaudio | {prefix}rasticker | {prefix}rastickeraudio | {prefix}rstickeraudio
+{prefix}fa | {prefix}faudio | {prefix}ffiga | {prefix}ffigaudio | {prefix}ffigurinhaa | {prefix}ffigurinhaaudio | {prefix}fasticker | {prefix}fastickeraudio | {prefix}fstickeraudio
+{prefix}delfig | {prefix}delsticker
 {prefix}delpack | {prefix}deletarpacote | {prefix}limparpacote`,
     examples: [
-        "{prefix}sticker (com foto/vídeo anexado ou respondendo à mídia)",
-        "{prefix}ffig (mesmas formas de envio; estica a mídia)",
-        "{prefix}rfigurinha (mesmas formas de envio; recorta pelo centro)",
-        "{prefix}sa (vídeo com som ou imagem/vídeo combinado com áudio no WhatsApp)"
+        "{prefix}s (com foto/vídeo anexado ou respondendo à mídia)",
+        "{prefix}r (recorta a mídia em quadrado pelo centro)",
+        "{prefix}f (estica a mídia para preencher o quadrado)",
+        "{prefix}sa (com áudio no WhatsApp: vídeo com som ou imagem respondendo ao áudio)",
+        "{prefix}ra (com áudio recortado pelo centro)",
+        "{prefix}fa (com áudio esticado)"
     ],
 
     async execute(message) {
@@ -65,7 +96,7 @@ Pacote (Telegram): {prefix}delfig | {prefix}delsticker [respondendo à figurinha
         }
 
         const commandName = (message.command || "sticker").toLowerCase();
-        const isAudioSticker = ["sa", "fa", "ra"].includes(commandName);
+        const isAudioSticker = ALL_AUDIO_ALIASES.includes(commandName);
         if (isAudioSticker && message.platform !== "whatsapp") {
             return message.reply({ text: "❌ Figurinhas com áudio estão disponíveis apenas no WhatsApp." });
         }
@@ -96,28 +127,61 @@ Pacote (Telegram): {prefix}delfig | {prefix}delsticker [respondendo à figurinha
                 mediaObj = quotedMedia;
                 audioMedia = quotedMedia;
             } else {
+                const p = message.prefix || "!";
                 return message.reply({
-                    text: `⚠️ Para criar figurinha com áudio, use ${message.prefix || "!"}sa em um vídeo com som, ou combine uma imagem/vídeo com um áudio respondendo a uma das mídias. Use fa para esticar ou ra para recortar. O áudio é limitado a 30 segundos.`
+                    text: `🎨 Como utilizar?
+
+🎬 A partir de um vídeo
+
+Marque um vídeo para gerar uma figurinha baseada na imagem e no áudio dele.
+
+🖼️ Imagem + áudio
+
+Responda a uma mensagem de áudio com uma imagem e coloque o comando na legenda. A figurinha será criada usando a imagem enviada e o áudio selecionado.
+
+⚙️ Comandos de ajuste
+
+Os comandos abaixo permitem escolher como a mídia será adaptada ao formato quadrado da figurinha:
+
+"${p}sa" — Gera a figurinha em tamanho normal, utilizando fundo transparente ou preto para ajustar o tamanho da mídia.
+
+"${p}ra" — Faz um recorte quadrado no centro da mídia, ocupando toda a extensão da figurinha.
+
+"${p}fa" — Estica a mídia para preencher o formato quadrado, sem realizar recortes.`
                 });
             }
         }
 
         if (!mediaObj || typeof mediaObj.getBuffer !== "function") {
-            const prefix = message.prefix || "!";
-            const whatsappLimits = message.platform === "whatsapp"
-                ? "\n\n📏 *Limites do WhatsApp:* imagem até 100 KB; figurinha animada até 500 KB e GIF/vídeo de até 10 segundos (vídeos mais longos usam os 10 primeiros segundos). Para selecionar outro trecho, use `" + (message.prefix || "!") + "cortar`."
-                : "";
-            const audioHelp = message.platform === "whatsapp"
-                ? `\n• \`${prefix}sa\` / \`${prefix}fa\` / \`${prefix}ra\` — figurinha com áudio (até 30 segundos).`
-                : "";
+            const p = message.prefix || "!";
             return message.reply({
-                text: `⚠️ Anexe uma foto/vídeo ao comando ou responda à mensagem de mídia.\n\n` +
-                    `📌 *Modos disponíveis:*\n` +
-                    `• \`${prefix}sticker\` / \`${prefix}s\` / \`${prefix}fig\` / \`${prefix}figurinha\` — proporção original.\n` +
-                    `• \`${prefix}f\` / \`${prefix}fsticker\` / \`${prefix}ffig\` / \`${prefix}ffigurinha\` — esticar.\n` +
-                    `• \`${prefix}r\` / \`${prefix}rsticker\` / \`${prefix}rfig\` / \`${prefix}rfigurinha\` — recortar pelo centro.` +
-                    audioHelp +
-                    whatsappLimits
+                text: `🎨 Como utilizar?
+
+🎬 A partir de um vídeo
+
+Marque um vídeo para gerar uma figurinha baseada na imagem e no áudio dele.
+
+🖼️ Imagem + áudio
+
+Responda a uma mensagem de áudio com uma imagem e coloque o comando na legenda. A figurinha será criada usando a imagem enviada e o áudio selecionado.
+
+⚙️ Comandos de ajuste
+
+Os comandos abaixo permitem escolher como a mídia será adaptada ao formato quadrado da figurinha:
+
+"${p}s" — Gera a figurinha em tamanho normal, utilizando fundo transparente para ajustar o tamanho da mídia.
+
+"${p}r" — Faz um recorte quadrado no centro da mídia, ocupando toda a extensão da figurinha.
+
+"${p}f" — Estica a mídia para preencher o formato quadrado, sem realizar recortes.
+
+🔊 Com áudio (somente WhatsApp):
+
+"${p}sa" — Gera a figurinha em tamanho normal, utilizando fundo transparente ou preto para ajustar o tamanho da mídia.
+
+"${p}ra" — Faz um recorte quadrado no centro da mídia, ocupando toda a extensão da figurinha.
+
+"${p}fa" — Estica a mídia para preencher o formato quadrado, sem realizar recortes.`
             });
         }
 
@@ -130,9 +194,9 @@ Pacote (Telegram): {prefix}delfig | {prefix}delsticker [respondendo à figurinha
             }
 
             let mode = "contain";
-            if (["f", "fsticker", "ffig", "ffigurinha", "fa"].includes(commandName)) {
+            if (["f", "fsticker", "ffig", "ffigurinha", ...AUDIO_FILL_ALIASES].includes(commandName)) {
                 mode = "fill";
-            } else if (["r", "rsticker", "rfig", "rfigurinha", "ra"].includes(commandName)) {
+            } else if (["r", "rsticker", "rfig", "rfigurinha", ...AUDIO_COVER_ALIASES].includes(commandName)) {
                 mode = "cover";
             }
 
