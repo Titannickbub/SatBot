@@ -812,8 +812,29 @@ async function start(onMessage) {
               throw new Error("[WHATSAPP] prepareWAMessageMedia não está disponível nesta versão do Baileys.");
             }
 
+            const uploadStickerToMms = async (filePath, opts) => {
+              const pathMap = baileysPkg.MEDIA_PATH_MAP;
+              if (pathMap && typeof pathMap === "object") {
+                if (!pathMap["audio-sticker"]) {
+                  pathMap["audio-sticker"] = "/mms/sticker";
+                }
+                try {
+                  const uploaded = await sock.waUploadToServer(filePath, {
+                    ...opts,
+                    mediaType: "audio-sticker",
+                  });
+                  if (uploaded && (uploaded.mediaUrl || uploaded.directPath)) {
+                    return uploaded;
+                  }
+                } catch {
+                  // Fallback para upload padrão
+                }
+              }
+              return await sock.waUploadToServer(filePath, opts);
+            };
+
             const [stickerMedia, audioMedia] = await Promise.all([
-              prepareWAMessageMedia({ sticker: data.sticker }, { upload: sock.waUploadToServer }),
+              prepareWAMessageMedia({ sticker: data.sticker }, { upload: uploadStickerToMms }),
               prepareWAMessageMedia({
                 audio: data.audio,
                 mimetype: "audio/ogg; codecs=opus",
@@ -826,21 +847,49 @@ async function start(onMessage) {
               throw new Error("[WHATSAPP] O Baileys não preparou o sticker ou o áudio.");
             }
 
-            stickerMessage.width = data.width;
-            stickerMessage.height = data.height;
+            stickerMessage.width = 512;
+            stickerMessage.height = 512;
             stickerMessage.isAnimated = data.isAnimated === true;
             stickerMessage.isLottie = false;
+            stickerMessage.isAvatar = false;
+            stickerMessage.isAiSticker = false;
+            stickerMessage.stickerSentTs = Date.now();
+            stickerMessage.stickerField24 = 0;
+            stickerMessage.stickerEmoji = "🎵";
             stickerMessage.contextInfo = {
               stanzaId: msg.key.id,
               ...(msg.key.participant ? { participant: msg.key.participant } : {}),
               quotedMessage: msg.message
             };
-            audioMessage.mimetype = "audio/ogg; codecs=opus";
-            audioMessage.ptt = false;
-            audioMessage.seconds = Math.round(data.durationSeconds) || 1;
-            audioMessage.waveform = data.waveform;
 
-            const { createAudioStickerMessage, relayAudioSticker } = require("../functions/whatsappAudioSticker");
+            const normalizedSeconds = Math.max(
+              1,
+              Math.min(30, Math.ceil(Number(data.durationSeconds) || 1))
+            );
+            audioMessage.mimetype = "audio/ogg; codecs=opus";
+            delete audioMessage.ptt;
+            audioMessage.seconds = normalizedSeconds;
+            if (data.waveform) {
+              audioMessage.waveform = data.waveform;
+            }
+
+            const {
+              computeVerifiedStreamingSidecar,
+              createAudioStickerMessage,
+              relayAudioSticker
+            } = require("../functions/whatsappAudioSticker");
+
+            const audioSidecar = await computeVerifiedStreamingSidecar(
+              baileysPkg,
+              data.audio,
+              audioMessage.mediaKey,
+              "audio",
+              audioMessage.fileEncSha256
+            );
+            if (audioSidecar && audioSidecar.length > 0) {
+              audioMessage.streamingSidecar = audioSidecar;
+            }
+
             const payload = createAudioStickerMessage(
               baileysPkg.proto,
               { sticker: data.sticker, audio: data.audio, stickerMessage, audioMessage },

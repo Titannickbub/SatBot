@@ -78,7 +78,7 @@ test("Baileys audio-sticker protobuf preserves the nested audio message", () => 
 
     assert.ok(encoded.includes(Buffer.from([0xb2, 0x08])));
     assert.ok(encoded.includes(Buffer.from([0xd2, 0x01])));
-    assert.equal(parsed.audioStickerMessage.message.stickerMessage.audioMessage.ptt, false);
+    assert.ok(!parsed.audioStickerMessage.message.stickerMessage.audioMessage.ptt);
 });
 
 test("audio sticker relay supplies the required Baileys message id", async () => {
@@ -91,7 +91,10 @@ test("audio sticker relay supplies the required Baileys message id", async () =>
     await relayAudioSticker(socket, "chat@s.whatsapp.net", payload);
 
     assert.equal(relayArguments[0], "chat@s.whatsapp.net");
-    assert.equal(relayArguments[1], payload);
+    assert.deepEqual(relayArguments[1], {
+        ...payload,
+        stickerMessage: { __satBotEncHintOnly: true }
+    });
     assert.match(relayArguments[2].messageId, /^[A-F0-9]{20}$/);
 });
 
