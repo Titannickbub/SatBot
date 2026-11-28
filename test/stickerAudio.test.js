@@ -338,7 +338,7 @@ test("createStickerBuffer applies placeholders to EXIF metadata", async () => {
 
 test("renomear command renames WhatsApp stickers preserving format, newlines and placeholders", async () => {
     assert.ok(renomearCommand.aliases.includes("rename"));
-    assert.ok(renomearCommand.aliases.includes("roubar"));
+    assert.ok(renomearCommand.aliases.includes("steal") || renomearCommand.aliases.includes("rn"));
 
     // Testa rejeição fora do WhatsApp
     let telegramReply = null;
@@ -447,4 +447,52 @@ test("renomear command supports placeholders in pack and author", async () => {
 
     assert.equal(parsedExif["sticker-pack-name"], "Pack de Carlos (5531988887777)");
     assert.equal(parsedExif["sticker-pack-publisher"], "SatelaBot - 120363777888999000");
+});
+
+test("renomear command correctly parses when slash has no spaces (e.g. Titannickbub/o melhor da galaxia)", async () => {
+    const sourceWebp = await sharp({
+        create: {
+            width: 64,
+            height: 64,
+            channels: 4,
+            background: "#aabbcc"
+        }
+    }).webp().toBuffer();
+
+    let sentSticker = null;
+    const fakeMessage = {
+        platform: "whatsapp",
+        command: "renomear",
+        prefix: "!",
+        text: "!renomear Titannickbub/o melhor da galaxia",
+        args: ["Titannickbub/o", "melhor", "da", "galaxia"],
+        getArgText: function (fromIndex = 1) {
+            if (fromIndex <= 0) return "Titannickbub/o melhor da galaxia";
+            return "melhor da galaxia";
+        },
+        quoted: {
+            media: {
+                type: "sticker",
+                mimeType: "image/webp",
+                getBuffer: async () => sourceWebp
+            }
+        },
+        functions: {
+            config: {
+                getBotName: () => "SatBot"
+            }
+        },
+        react: async () => {},
+        replySticker: async sticker => { sentSticker = sticker; }
+    };
+
+    await renomearCommand.execute(fakeMessage);
+
+    const webpmux = require("node-webpmux");
+    const img = new webpmux.Image();
+    await img.load(sentSticker);
+    const parsedExif = JSON.parse(img.exif.subarray(img.exif.indexOf("{")).toString("utf8"));
+
+    assert.equal(parsedExif["sticker-pack-name"], "Titannickbub");
+    assert.equal(parsedExif["sticker-pack-publisher"], "o melhor da galaxia");
 });

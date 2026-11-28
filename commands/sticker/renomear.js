@@ -50,7 +50,7 @@ Exemplo:
 
         let text = "";
         if (typeof message.getArgText === "function") {
-            text = message.getArgText(1);
+            text = message.getArgText(0);
         }
         if (!text && message.text) {
             const prefix = message.prefix || "!";
