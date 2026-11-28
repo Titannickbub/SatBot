@@ -155,7 +155,11 @@ Exemplo:
             }
 
             // Preserva áudio se a figurinha de origem for uma figurinha sonora (audio sticker)
-            const qAudioMsg = message.quoted?.media?.raw?.audioMessage ||
+            // O rawAudioMessage é preenchido pelo adaptador whatsapp.js antes de qualquer unwrap/decode,
+            // garantindo que o dado de áudio não seja perdido pelo Baileys.
+            const qAudioMsg =
+                message.quoted?.media?.rawAudioMessage ||
+                message.quoted?.media?.raw?.audioMessage ||
                 message.quoted?.raw?.stickerMessage?.audioMessage ||
                 message.quoted?.raw?.audioMessage ||
                 message.media?.raw?.audioMessage ||

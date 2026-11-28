@@ -58,7 +58,7 @@ function helpText(message) {
 
 module.exports = {
     name: "setname",
-    aliases: ["setname_chat", "chatname", "rename"],
+    aliases: ["setname_chat", "chatname"],
     category: "adm/configurações",
     description: DESCRIPTION,
     usage: "{prefix}setname help",

@@ -511,11 +511,20 @@ async function start(onMessage) {
           let qMedia = null;
           if (qMediaKey) {
             let _qCachedBuffer = null;
+            // For audio stickers, preserve the embedded audioMessage from rawQMsg
+            // (Baileys may strip field 26 from stickerMessage during decode, so we
+            // read it from the rawQMsg directly — before unwrapMessage is applied)
+            const rawStickerAudio =
+              rawQMsg.stickerMessage?.audioMessage ||
+              rawQMsg.audioStickerMessage?.message?.stickerMessage?.audioMessage ||
+              qSticker?.audioMessage ||
+              null;
             qMedia = {
               type: qMediaType,
               mimeType: qMimeType,
               isViewOnce: isQuotedViewOnce || Boolean(qMediaKey.viewOnce),
               raw: qMediaKey,
+              rawAudioMessage: rawStickerAudio || undefined,
               getBuffer: async () => {
                 if (_qCachedBuffer) return _qCachedBuffer;
                 const { getFileBuffer } = require("../functions/api");
