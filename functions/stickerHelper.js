@@ -103,6 +103,13 @@ async function probeVideoFps(inputPath) {
 function formatStickerPlaceholders(text, message = {}, botNameFallback = null) {
     if (typeof text !== "string" || !text) return text || "";
 
+    // Normaliza quebras de linha e converte literais \n em quebras reais
+    text = text
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .replace(/\\r\\n/g, "\n")
+        .replace(/\\n/g, "\n");
+
     const botName = botNameFallback || (typeof config.getBotName === "function" ? config.getBotName() : "Sat Bot");
 
     // {user}: nome do usuário que fez a figurinha

@@ -43,7 +43,7 @@ module.exports = {
                 : {
                     packName: config.getBotName?.() || "Sat Bot",
                     authorName: config.getBotName?.() || "Sat Bot",
-                    description: "venha pro SatBot https://titannickbub.neocities.org/"
+                    description: "venha pro SatBot\nhttps://titannickbub.neocities.org/"
                 };
 
             const packName = formatStickerPlaceholders(stickerConfig.packName, message, config.getBotName?.());

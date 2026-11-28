@@ -409,14 +409,26 @@ async function alterarStickerConfig(message, subArgs) {
     }
 
     const sub = subArgs[0].toLowerCase();
-    const restText = subArgs.slice(1).join(" ").trim();
+    let restText = "";
+    if (typeof message.getArgText === "function") {
+        restText = message.getArgText(2);
+    }
+    if (!restText && subArgs.length > 1) {
+        restText = subArgs.slice(1).join(" ");
+    }
+    restText = String(restText || "")
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .replace(/\\r\\n/g, "\n")
+        .replace(/\\n/g, "\n")
+        .trim();
 
     if (sub === "pack" || sub === "pacote") {
         if (!restText) {
             return await message.reply({ text: `❌ Informe o nome do pacote.\nExemplo: \`${message.prefix}config sticker pack Meus Stickers\`` });
         }
         const updated = configFn.setStickerPack(restText);
-        return await message.reply({ text: `✅ Nome do pacote de figurinhas atualizado para: *${updated.packName}*` });
+        return await message.reply({ text: `✅ Nome do pacote de figurinhas atualizado para:\n*${updated.packName}*` });
     }
 
     if (sub === "author" || sub === "autor" || sub === "publisher") {
@@ -424,17 +436,17 @@ async function alterarStickerConfig(message, subArgs) {
             return await message.reply({ text: `❌ Informe o nome do autor.\nExemplo: \`${message.prefix}config sticker autor Meu Nome\`` });
         }
         const updated = configFn.setStickerAuthor(restText);
-        return await message.reply({ text: `✅ Autor das figurinhas atualizado para: *${updated.authorName}*` });
+        return await message.reply({ text: `✅ Autor das figurinhas atualizado para:\n*${updated.authorName}*` });
     }
 
     if (sub === "description" || sub === "descricao" || sub === "descrição" || sub === "desc") {
         if (!restText) {
             return await message.reply({
-                text: `❌ Informe a descrição das figurinhas.\nExemplo: \`${message.prefix}config sticker descricao venha pro SatBot https://titannickbub.neocities.org/\``
+                text: `❌ Informe a descrição das figurinhas.\nExemplo: \`${message.prefix}config sticker descricao venha pro SatBot\nhttps://titannickbub.neocities.org/\``
             });
         }
         const updated = configFn.setStickerDescription(restText);
-        return await message.reply({ text: `✅ Descrição das figurinhas atualizada para: *${updated.description}*` });
+        return await message.reply({ text: `✅ Descrição das figurinhas atualizada para:\n*${updated.description}*` });
     }
 
     if (sub === "reset" || sub === "padrao") {
@@ -443,7 +455,20 @@ async function alterarStickerConfig(message, subArgs) {
         return await message.reply({ text: `✅ Configuração de figurinhas restaurada:\n📦 Pacote: *${updated.packName}*\n👤 Autor: *${updated.authorName}*\n📝 Descrição: *${updated.description}*` });
     }
 
-    const fullText = subArgs.join(" ").trim();
+    let fullText = "";
+    if (typeof message.getArgText === "function") {
+        fullText = message.getArgText(1);
+    }
+    if (!fullText) {
+        fullText = subArgs.join(" ");
+    }
+    fullText = String(fullText || "")
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .replace(/\\r\\n/g, "\n")
+        .replace(/\\n/g, "\n")
+        .trim();
+
     if (fullText.includes("|") || fullText.includes(",")) {
         const separator = fullText.includes("|") ? "|" : ",";
         const parts = fullText.split(separator).map(s => s.trim());

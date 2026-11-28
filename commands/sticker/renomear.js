@@ -61,7 +61,12 @@ Exemplo:
         if (!text && Array.isArray(message.args) && message.args.length > 0) {
             text = message.args.join(" ");
         }
-        text = (text || "").trim();
+        text = String(text || "")
+            .replace(/\r\n/g, "\n")
+            .replace(/\r/g, "\n")
+            .replace(/\\r\\n/g, "\n")
+            .replace(/\\n/g, "\n")
+            .trim();
 
         if (!text) {
             const p = message.prefix || "!";
@@ -72,7 +77,7 @@ Exemplo:
                     `*Exemplo:*\n` +
                     `\`${p}renomear figurinha feita / por titannick\`\n\n` +
                     `✨ *Recursos:*\n` +
-                    `• Permite quebras de linha no pacote e autor.\n` +
+                    `• Permite quebras de linha no pacote, autor e descrição.\n` +
                     `• Mantém o formato original da figurinha.\n` +
                     `• Placeholders: \`{user}\`, \`{n_user}\`, \`{name_bot}\`, \`{n_bot}\`, \`{namechat}\`.`
             });
@@ -91,12 +96,27 @@ Exemplo:
 
         let packName = "";
         let authorName = "";
+        let customDesc = "";
 
         if (text.includes("/") || text.includes("|")) {
             const separator = text.includes("/") ? "/" : "|";
             const parts = text.split(separator);
             packName = parts[0].trim();
-            authorName = parts.slice(1).join(separator).trim();
+            if (parts.length >= 3) {
+                authorName = parts[1].trim();
+                customDesc = parts.slice(2).join(separator).trim();
+            } else {
+                authorName = parts.slice(1).join(separator).trim();
+            }
+        } else if (text.includes("\n")) {
+            const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+            if (lines.length >= 2) {
+                packName = lines[0];
+                authorName = lines.slice(1).join("\n");
+            } else {
+                packName = text.trim();
+                authorName = "";
+            }
         } else {
             packName = text.trim();
             authorName = "";
@@ -104,6 +124,13 @@ Exemplo:
 
         const configFn = message.functions?.config || require("../../functions/config");
         const defaultBotName = configFn.getBotName?.() || "Sat Bot";
+        const stickerCfg = typeof configFn.getStickerConfig === "function"
+            ? configFn.getStickerConfig()
+            : {
+                packName: defaultBotName,
+                authorName: defaultBotName,
+                description: "venha pro SatBot\nhttps://titannickbub.neocities.org/"
+            };
 
         if (!packName) {
             packName = defaultBotName;
@@ -114,6 +141,7 @@ Exemplo:
 
         const resolvedPack = formatStickerPlaceholders(packName, message, defaultBotName);
         const resolvedAuthor = formatStickerPlaceholders(authorName, message, defaultBotName);
+        const resolvedDesc = formatStickerPlaceholders(customDesc || stickerCfg.description, message, defaultBotName);
 
         try {
             await message.react("⏳").catch(() => { });
@@ -137,7 +165,7 @@ Exemplo:
                     buffer,
                     resolvedPack,
                     resolvedAuthor,
-                    "",
+                    resolvedDesc,
                     message
                 );
             } else {
@@ -149,6 +177,7 @@ Exemplo:
                     mode: "contain",
                     packName: resolvedPack,
                     authorName: resolvedAuthor,
+                    description: resolvedDesc,
                     addMetadata: true,
                     message
                 });
@@ -157,28 +186,9 @@ Exemplo:
             // Preserva áudio se a figurinha de origem for uma figurinha sonora (audio sticker)
             // O rawAudioMessage é preenchido pelo adaptador whatsapp.js antes de qualquer unwrap/decode,
             // garantindo que o dado de áudio não seja perdido pelo Baileys.
-
-            // ── DEBUG TEMPORÁRIO: remover após confirmar o caminho correto ──
-            {
-                const _qm = message.quoted;
-                console.log("[RENOMEAR DEBUG] quoted.media.rawAudioMessage?", !!_qm?.media?.rawAudioMessage);
-                console.log("[RENOMEAR DEBUG] quoted.media.raw keys:", Object.keys(_qm?.media?.raw || {}));
-                console.log("[RENOMEAR DEBUG] quoted.raw keys:", Object.keys(_qm?.raw || {}));
-                console.log("[RENOMEAR DEBUG] quoted.raw.stickerMessage keys:", Object.keys(_qm?.raw?.stickerMessage || {}));
-                const _ctxQ = message.raw?.message?.extendedTextMessage?.contextInfo?.quotedMessage
-                    || message.raw?.message?.stickerMessage?.contextInfo?.quotedMessage;
-                console.log("[RENOMEAR DEBUG] contextInfo.quotedMessage keys:", Object.keys(_ctxQ || {}));
-                if (_ctxQ?.stickerMessage) console.log("[RENOMEAR DEBUG] ctxQ.stickerMessage keys:", Object.keys(_ctxQ.stickerMessage));
-                if (_ctxQ?.audioStickerMessage) console.log("[RENOMEAR DEBUG] ctxQ.audioStickerMessage keys:", Object.keys(_ctxQ.audioStickerMessage));
-                console.log("[RENOMEAR DEBUG] message.raw.message keys:", Object.keys(message.raw?.message || {}));
-            }
-            // ──────────────────────────────────────────────────────────────
-
             const qAudioMsg =
                 message.quoted?.media?.rawAudioMessage ||
                 message.quoted?.media?.raw?.audioMessage ||
-                message.quoted?.rawQMsg?.stickerMessage?.audioMessage ||
-                message.quoted?.rawQMsg?.audioStickerMessage?.message?.stickerMessage?.audioMessage ||
                 message.quoted?.raw?.stickerMessage?.audioMessage ||
                 message.quoted?.raw?.audioMessage ||
                 message.media?.raw?.audioMessage ||

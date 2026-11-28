@@ -26,7 +26,7 @@ const DEFAULT_CONFIG = {
     sticker: {
         packName: "Sat Bot",
         authorName: "Sat Bot",
-        description: "venha pro SatBot https://titannickbub.neocities.org/"
+        description: "venha pro SatBot\nhttps://titannickbub.neocities.org/"
     },
     botInfo: {
         description: "Um bot multi-plataforma para facilitar sua comunidade.",
@@ -1096,10 +1096,21 @@ function getStickerConfig() {
     };
 }
 
+function _normalizeStickerText(val) {
+    if (typeof val !== "string" || !val) return "";
+    return val
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .replace(/\\r\\n/g, "\n")
+        .replace(/\\n/g, "\n")
+        .trim();
+}
+
 function setStickerPack(packName) {
     const data = load();
     data.sticker = getStickerConfig();
-    data.sticker.packName = packName ? String(packName).trim() : getBotName();
+    const cleanPack = _normalizeStickerText(packName);
+    data.sticker.packName = cleanPack || getBotName();
     save(data);
     return data.sticker;
 }
@@ -1107,7 +1118,8 @@ function setStickerPack(packName) {
 function setStickerAuthor(authorName) {
     const data = load();
     data.sticker = getStickerConfig();
-    data.sticker.authorName = authorName ? String(authorName).trim() : getBotName();
+    const cleanAuthor = _normalizeStickerText(authorName);
+    data.sticker.authorName = cleanAuthor || getBotName();
     save(data);
     return data.sticker;
 }
@@ -1115,7 +1127,7 @@ function setStickerAuthor(authorName) {
 function setStickerDescription(description) {
     const data = load();
     data.sticker = getStickerConfig();
-    const cleanDescription = typeof description === "string" ? description.trim() : "";
+    const cleanDescription = _normalizeStickerText(description);
     data.sticker.description = cleanDescription || DEFAULT_CONFIG.sticker.description;
     save(data);
     return data.sticker;
@@ -1125,13 +1137,13 @@ function setStickerConfig(packName, authorName, description) {
     const data = load();
     data.sticker = getStickerConfig();
     if (typeof packName === "string" && packName.trim()) {
-        data.sticker.packName = packName.trim();
+        data.sticker.packName = _normalizeStickerText(packName);
     }
     if (typeof authorName === "string" && authorName.trim()) {
-        data.sticker.authorName = authorName.trim();
+        data.sticker.authorName = _normalizeStickerText(authorName);
     }
     if (typeof description === "string") {
-        const cleanDescription = description.trim();
+        const cleanDescription = _normalizeStickerText(description);
         data.sticker.description = cleanDescription || DEFAULT_CONFIG.sticker.description;
     }
     save(data);

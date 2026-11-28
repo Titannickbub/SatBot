@@ -51,7 +51,7 @@ test("WhatsApp-generated WebP metadata includes the configured sticker descripti
             background: "#ff0000"
         }
     }).png().toBuffer();
-    const description = "venha pro SatBot https://titannickbub.neocities.org/";
+    const description = "venha pro SatBot\nhttps://titannickbub.neocities.org/";
     const sticker = await createStickerBuffer(source, {
         platform: "whatsapp",
         mimeType: "image/png",
@@ -65,6 +65,7 @@ test("WhatsApp-generated WebP metadata includes the configured sticker descripti
     assert.equal(sticker.toString("ascii", 8, 12), "WEBP");
     assert.ok(sticker.includes(Buffer.from("sticker-pack-description")));
     assert.ok(sticker.includes(Buffer.from("titannickbub.neocities.org")));
+    assert.ok(sticker.includes(Buffer.from("venha pro SatBot\\nhttps://")));
 });
 
 test("Baileys audio-sticker protobuf preserves the nested audio message", () => {
@@ -569,4 +570,100 @@ test("renomear preserves audio when renaming audio stickers", async () => {
 
     assert.equal(parsedExif["sticker-pack-name"], "Pack Som");
     assert.equal(parsedExif["sticker-pack-publisher"], "Autor Som");
+});
+
+test("renomear command supports literal \\n and multiline pack and author", async () => {
+    const sourceWebp = await sharp({
+        create: {
+            width: 64,
+            height: 64,
+            channels: 4,
+            background: "#abcdef"
+        }
+    }).webp().toBuffer();
+
+    let sentSticker = null;
+    const fakeMessage = {
+        platform: "whatsapp",
+        command: "renomear",
+        prefix: "!",
+        text: "!renomear Pack Linha 1\\nLinha 2 / Autor Linha 1\\nLinha 2",
+        getArgText: () => "Pack Linha 1\\nLinha 2 / Autor Linha 1\\nLinha 2",
+        displayName: "Titannick",
+        quoted: {
+            media: {
+                type: "sticker",
+                mimeType: "image/webp",
+                getBuffer: async () => sourceWebp
+            }
+        },
+        functions: {
+            config: {
+                getBotName: () => "SatBot",
+                getStickerConfig: () => ({
+                    packName: "SatBot",
+                    authorName: "SatBot",
+                    description: "venha pro SatBot\nhttps://titannickbub.neocities.org/"
+                })
+            }
+        },
+        react: async () => {},
+        replySticker: async sticker => { sentSticker = sticker; }
+    };
+
+    await renomearCommand.execute(fakeMessage);
+
+    const webpmux = require("node-webpmux");
+    const img = new webpmux.Image();
+    await img.load(sentSticker);
+    const parsedExif = JSON.parse(img.exif.subarray(img.exif.indexOf("{")).toString("utf8"));
+
+    assert.equal(parsedExif["sticker-pack-name"], "Pack Linha 1\nLinha 2");
+    assert.equal(parsedExif["sticker-pack-publisher"], "Autor Linha 1\nLinha 2");
+    assert.equal(parsedExif["sticker-pack-description"], "venha pro SatBot\nhttps://titannickbub.neocities.org/");
+
+    // Testa também separação por quebra de linha sem barra
+    let sentSticker2 = null;
+    const fakeMessage2 = {
+        ...fakeMessage,
+        text: "!renomear PackSozinho\nAutorSozinho",
+        getArgText: () => "PackSozinho\nAutorSozinho",
+        replySticker: async sticker => { sentSticker2 = sticker; }
+    };
+    await renomearCommand.execute(fakeMessage2);
+    const img2 = new webpmux.Image();
+    await img2.load(sentSticker2);
+    const parsedExif2 = JSON.parse(img2.exif.subarray(img2.exif.indexOf("{")).toString("utf8"));
+    assert.equal(parsedExif2["sticker-pack-name"], "PackSozinho");
+    assert.equal(parsedExif2["sticker-pack-publisher"], "AutorSozinho");
+});
+
+test("config sticker preserves newlines in description and pack", async () => {
+    const configCommand = require("../commands/system/configuracoes/config");
+    const configFn = require("../functions/config");
+
+    let replyMsg = null;
+    const fakeMessage = {
+        platform: "whatsapp",
+        command: "config",
+        prefix: "!",
+        text: "!config sticker descricao venha pro SatBot\nhttps://titannickbub.neocities.org/",
+        args: ["sticker", "descricao", "venha", "pro", "SatBot", "https://titannickbub.neocities.org/"],
+        getArgText: (fromIndex) => {
+            if (fromIndex === 2) return "venha pro SatBot\nhttps://titannickbub.neocities.org/";
+            return "";
+        },
+        functions: {
+            config: configFn,
+            owners: {
+                isOwner: () => true
+            }
+        },
+        reply: async (payload) => { replyMsg = payload; }
+    };
+
+    await configCommand.execute(fakeMessage);
+    const updated = configFn.getStickerConfig();
+    assert.equal(updated.description, "venha pro SatBot\nhttps://titannickbub.neocities.org/");
+    assert.ok(replyMsg.text.includes("venha pro SatBot\nhttps://titannickbub.neocities.org/"));
 });

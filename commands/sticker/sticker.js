@@ -207,7 +207,7 @@ Os comandos abaixo permitem escolher como a mídia será adaptada ao formato qua
                 : {
                     packName: configFn.getBotName?.() || "Sat Bot",
                     authorName: configFn.getBotName?.() || "Sat Bot",
-                    description: "venha pro SatBot https://titannickbub.neocities.org/"
+                    description: "venha pro SatBot\nhttps://titannickbub.neocities.org/"
                 };
 
             const packName = formatStickerPlaceholders(stickerConfig.packName, message, configFn.getBotName?.());
