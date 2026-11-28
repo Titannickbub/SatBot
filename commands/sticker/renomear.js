@@ -155,9 +155,15 @@ Exemplo:
             }
 
             // Preserva áudio se a figurinha de origem for uma figurinha sonora (audio sticker)
-            const qAudioMsg = message.quoted?.raw?.audioMessage ||
+            const qAudioMsg = message.quoted?.media?.raw?.audioMessage ||
+                message.quoted?.raw?.stickerMessage?.audioMessage ||
+                message.quoted?.raw?.audioMessage ||
+                message.media?.raw?.audioMessage ||
+                message.media?.raw?.stickerMessage?.audioMessage ||
                 message.raw?.message?.extendedTextMessage?.contextInfo?.quotedMessage?.stickerMessage?.audioMessage ||
-                message.raw?.message?.extendedTextMessage?.contextInfo?.quotedMessage?.audioStickerMessage?.message?.stickerMessage?.audioMessage;
+                message.raw?.message?.extendedTextMessage?.contextInfo?.quotedMessage?.audioStickerMessage?.message?.stickerMessage?.audioMessage ||
+                message.raw?.message?.audioStickerMessage?.message?.stickerMessage?.audioMessage ||
+                message.raw?.message?.stickerMessage?.audioMessage;
 
             if (qAudioMsg && typeof message.replyAudioSticker === "function") {
                 try {

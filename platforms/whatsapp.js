@@ -9,6 +9,12 @@ require("dotenv").config({
 const qrcode = require("qrcode-terminal");
 const QRCode = require("qrcode");
 const baileysPkg = require("@whiskeysockets/baileys");
+const { patchAudioStickerProto } = require("../functions/whatsappAudioSticker");
+try {
+  patchAudioStickerProto(baileysPkg.proto);
+} catch (e) {
+  console.warn("[WHATSAPP] Falha ao aplicar patch proto de áudio sticker:", e.message || e);
+}
 const groupSettings = require("../functions/groupSettings");
 const welcomeHelper = require("../functions/welcomeHelper");
 const autoAccept = require("../functions/autoAccept");
@@ -346,7 +352,8 @@ async function start(onMessage) {
           messageContent.videoMessage ||
           messageContent.audioMessage ||
           messageContent.documentMessage ||
-          messageContent.stickerMessage
+          messageContent.stickerMessage ||
+          messageContent.audioStickerMessage
         );
 
         if (!text && !hasMediaMessage) {
@@ -424,7 +431,8 @@ async function start(onMessage) {
               current.editedMessage?.message?.protocolMessage?.editedMessage ||
               current.templateMessage?.hydratedTemplate ||
               current.templateMessage?.hydratedFourRowTemplate ||
-              current.interactiveMessage?.header)
+              current.interactiveMessage?.header ||
+              current.audioStickerMessage?.message)
           ) {
             current = current.viewOnceMessage?.message ||
               current.viewOnceMessageV2?.message ||
@@ -434,7 +442,8 @@ async function start(onMessage) {
               current.editedMessage?.message?.protocolMessage?.editedMessage ||
               current.templateMessage?.hydratedTemplate ||
               current.templateMessage?.hydratedFourRowTemplate ||
-              current.interactiveMessage?.header;
+              current.interactiveMessage?.header ||
+              current.audioStickerMessage?.message;
             iterations++;
           }
           return current;

@@ -46,6 +46,38 @@ function patchAudioStickerProto(proto) {
         return message;
     };
 
+    if (!StickerMessage.__satBotAudioStickerDecodePatched) {
+        try {
+            const $Reader = require("protobufjs").Reader;
+            const $root = { proto };
+            const origSrc = StickerMessage.decode.toString();
+            const patchedSrc = origSrc.replace(
+                /default:\s+r\.skipType\(t & 7\);/,
+                `case 26:\n                        m.audioMessage = $root.proto.Message.AudioMessage.decode(r, r.uint32());\n                        break;\n                    default:\n                        r.skipType(t & 7);`
+            );
+            StickerMessage.decode = new Function('$Reader', '$root', 'return (' + patchedSrc + ')')($Reader, $root);
+            StickerMessage.__satBotAudioStickerDecodePatched = true;
+        } catch (e) {
+            console.warn("[AUDIO_STICKER] Falha ao aplicar patch no StickerMessage.decode:", e.message || e);
+        }
+    }
+
+    if (!Message.__satBotAudioStickerDecodePatched) {
+        try {
+            const $Reader = require("protobufjs").Reader;
+            const $root = { proto };
+            const origSrc = Message.decode.toString();
+            const patchedSrc = origSrc.replace(
+                /default:\s+r\.skipType\(t & 7\);/,
+                `case 134:\n                    m.audioStickerMessage = $root.proto.Message.FutureProofMessage.decode(r, r.uint32());\n                    break;\n                default:\n                    r.skipType(t & 7);`
+            );
+            Message.decode = new Function('$Reader', '$root', 'return (' + patchedSrc + ')')($Reader, $root);
+            Message.__satBotAudioStickerDecodePatched = true;
+        } catch (e) {
+            console.warn("[AUDIO_STICKER] Falha ao aplicar patch no Message.decode:", e.message || e);
+        }
+    }
+
     Object.defineProperty(Message, "__satBotAudioStickerPatched", { value: true });
 }
 

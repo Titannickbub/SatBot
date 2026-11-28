@@ -496,3 +496,77 @@ test("renomear command correctly parses when slash has no spaces (e.g. Titannick
     assert.equal(parsedExif["sticker-pack-name"], "Titannickbub");
     assert.equal(parsedExif["sticker-pack-publisher"], "o melhor da galaxia");
 });
+
+test("renomear preserves audio when renaming audio stickers", async () => {
+    const sourceWebp = await sharp({
+        create: {
+            width: 64,
+            height: 64,
+            channels: 4,
+            background: "#112233"
+        }
+    }).webp().toBuffer();
+
+    const dummyAudio = Buffer.from("OggSfake_audio_content");
+    let sentAudioSticker = null;
+
+    const fakeMessage = {
+        platform: "whatsapp",
+        command: "renomear",
+        prefix: "!",
+        text: "!renomear Pack Som / Autor Som",
+        getArgText: () => "Pack Som / Autor Som",
+        quoted: {
+            media: {
+                type: "sticker",
+                mimeType: "image/webp",
+                getBuffer: async () => sourceWebp,
+                raw: {
+                    audioMessage: {
+                        seconds: 8,
+                        waveform: Buffer.alloc(64)
+                    }
+                }
+            },
+            raw: {
+                audioMessage: {
+                    seconds: 8,
+                    waveform: Buffer.alloc(64)
+                }
+            }
+        },
+        functions: {
+            config: {
+                getBotName: () => "SatBot"
+            }
+        },
+        react: async () => {},
+        replyAudioSticker: async payload => { sentAudioSticker = payload; }
+    };
+
+    // Mock getFileBuffer para simular download do áudio
+    const api = require("../functions/api");
+    const origGetFileBuffer = api.getFileBuffer;
+    api.getFileBuffer = async (media, type) => {
+        if (type === "audio") return dummyAudio;
+        return origGetFileBuffer ? origGetFileBuffer(media, type) : null;
+    };
+
+    try {
+        await renomearCommand.execute(fakeMessage);
+    } finally {
+        api.getFileBuffer = origGetFileBuffer;
+    }
+
+    assert.ok(sentAudioSticker, "replyAudioSticker must be called for audio stickers");
+    assert.equal(sentAudioSticker.audio, dummyAudio);
+    assert.equal(sentAudioSticker.durationSeconds, 8);
+
+    const webpmux = require("node-webpmux");
+    const img = new webpmux.Image();
+    await img.load(sentAudioSticker.sticker);
+    const parsedExif = JSON.parse(img.exif.subarray(img.exif.indexOf("{")).toString("utf8"));
+
+    assert.equal(parsedExif["sticker-pack-name"], "Pack Som");
+    assert.equal(parsedExif["sticker-pack-publisher"], "Autor Som");
+});
