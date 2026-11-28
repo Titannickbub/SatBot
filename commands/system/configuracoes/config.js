@@ -391,7 +391,14 @@ async function alterarStickerConfig(message, subArgs) {
         return await message.reply({
             text: `🎨 *Configuração de Figurinhas (Stickers)*\n\n` +
                   `📦 *Nome do Pacote (Pack):* ${cfg.packName}\n` +
-                  `👤 *Autor (Publisher):* ${cfg.authorName}\n\n` +
+                  `👤 *Autor (Publisher):* ${cfg.authorName}\n` +
+                  `📝 *Descrição:* ${cfg.description || "Nenhuma"}\n\n` +
+                  `✨ *Placeholders suportados:*\n` +
+                  `• \`{user}\` - Nome do usuário que fez a figurinha\n` +
+                  `• \`{n_user}\` - Número do usuário (quando aplicável)\n` +
+                  `• \`{name_bot}\` - Nome configurado do bot\n` +
+                  `• \`{n_bot}\` - Número conectado ao bot\n` +
+                  `• \`{namechat}\` - Número do grupo que gerou a figurinha\n\n` +
                   `⚙️ *Como alterar:*\n` +
                   `• \`${message.prefix}config sticker pack <nome>\`\n` +
                   `• \`${message.prefix}config sticker autor <nome>\`\n` +

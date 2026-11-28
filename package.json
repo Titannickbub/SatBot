@@ -1,6 +1,6 @@
 {
   "name": "SatBot",
-  "version": "1.3.21",
+  "version": "1.3.22",
   "description": "rpg catalogo & command fix",
   "main": "index.js",
   "scripts": {

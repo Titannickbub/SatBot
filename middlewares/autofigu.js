@@ -1,4 +1,4 @@
-const { createStickerBuffer, createTelegramSticker } = require("../functions/stickerHelper");
+const { createStickerBuffer, createTelegramSticker, formatStickerPlaceholders } = require("../functions/stickerHelper");
 const autofiguHelper = require("../functions/autofiguHelper");
 const config = require("../functions/config");
 
@@ -42,16 +42,23 @@ module.exports = {
                 ? config.getStickerConfig()
                 : {
                     packName: config.getBotName?.() || "Sat Bot",
-                    authorName: config.getBotName?.() || "Sat Bot"
+                    authorName: config.getBotName?.() || "Sat Bot",
+                    description: "venha pro SatBot https://titannickbub.neocities.org/"
                 };
+
+            const packName = formatStickerPlaceholders(stickerConfig.packName, message, config.getBotName?.());
+            const authorName = formatStickerPlaceholders(stickerConfig.authorName, message, config.getBotName?.());
+            const description = formatStickerPlaceholders(stickerConfig.description, message, config.getBotName?.());
 
             if (message.platform === "telegram") {
                 const sticker = await createTelegramSticker(buffer, {
                     mimeType: media.mimeType,
                     type: media.type,
                     mode: "contain",
-                    packName: stickerConfig.packName,
-                    authorName: stickerConfig.authorName
+                    packName,
+                    authorName,
+                    description,
+                    message
                 });
                 await message.replySticker({ sticker: sticker.buffer, format: sticker.format });
             } else {
@@ -61,10 +68,11 @@ module.exports = {
                     platform: message.platform,
                     durationSeconds: media.raw?.seconds,
                     mode: "contain",
-                    packName: stickerConfig.packName,
-                    authorName: stickerConfig.authorName,
-                    description: stickerConfig.description,
-                    addMetadata: true
+                    packName,
+                    authorName,
+                    description,
+                    addMetadata: true,
+                    message
                 });
                 await message.replySticker(sticker);
             }

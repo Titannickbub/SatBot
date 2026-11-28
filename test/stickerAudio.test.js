@@ -9,7 +9,7 @@ const sharp = require("sharp");
 const baileys = require("@whiskeysockets/baileys");
 const stickerCommand = require("../commands/sticker/sticker");
 const { createAudioStickerAudio } = require("../functions/audioStickerHelper");
-const { createStickerBuffer } = require("../functions/stickerHelper");
+const { createStickerBuffer, formatStickerPlaceholders } = require("../functions/stickerHelper");
 const { createAudioStickerMessage, relayAudioSticker } = require("../functions/whatsappAudioSticker");
 
 const execFileAsync = promisify(execFile);
@@ -271,4 +271,66 @@ test("WhatsApp videos longer than 10 seconds automatically use the first 10 seco
     } finally {
         await fs.rm(directory, { recursive: true, force: true });
     }
+});
+
+test("formatStickerPlaceholders accurately replaces user, n_user, name_bot, n_bot, and namechat", () => {
+    const fakeMessage = {
+        displayName: "João",
+        userId: "5511999998888@s.whatsapp.net",
+        botId: "5511888887777@s.whatsapp.net",
+        chatId: "120363428039563411@g.us",
+        chatType: "group"
+    };
+
+    const templatePack = "Pack de {user} ({n_user})";
+    const templateAuthor = "{name_bot} - {n_bot}";
+    const templateDesc = "Gerado no chat {namechat}";
+
+    const resolvedPack = formatStickerPlaceholders(templatePack, fakeMessage, "SatelaBot");
+    const resolvedAuthor = formatStickerPlaceholders(templateAuthor, fakeMessage, "SatelaBot");
+    const resolvedDesc = formatStickerPlaceholders(templateDesc, fakeMessage, "SatelaBot");
+
+    assert.equal(resolvedPack, "Pack de João (5511999998888)");
+    assert.equal(resolvedAuthor, "SatelaBot - 5511888887777");
+    assert.equal(resolvedDesc, "Gerado no chat 120363428039563411");
+});
+
+test("createStickerBuffer applies placeholders to EXIF metadata", async () => {
+    const source = await sharp({
+        create: {
+            width: 64,
+            height: 64,
+            channels: 4,
+            background: "#0000ff"
+        }
+    }).png().toBuffer();
+
+    const fakeMessage = {
+        displayName: "Maria",
+        userId: "5521977776666@s.whatsapp.net",
+        botId: "5511888887777@s.whatsapp.net",
+        chatId: "120363999999999999@g.us",
+        chatType: "group"
+    };
+
+    const sticker = await createStickerBuffer(source, {
+        platform: "whatsapp",
+        mimeType: "image/png",
+        type: "image",
+        packName: "Pack de {user}",
+        authorName: "Criado por {n_user} via {name_bot} ({n_bot})",
+        description: "Chat: {namechat}",
+        addMetadata: true,
+        message: fakeMessage
+    });
+
+    const webpmux = require("node-webpmux");
+    const img = new webpmux.Image();
+    await img.load(sticker);
+    const exifData = img.exif.toString("utf8");
+
+    assert.ok(exifData.includes("Pack de Maria"));
+    assert.ok(exifData.includes("5521977776666"));
+    assert.ok(exifData.includes("5511888887777"));
+    assert.ok(exifData.includes("120363999999999999"));
 });

@@ -65,20 +65,127 @@ async function probeVideoDuration(inputPath) {
     return null;
 }
 
+async function probeVideoFps(inputPath) {
+    try {
+        const { stdout, stderr } = await execFileAsync(getFfmpegPath(), [
+            "-i", inputPath
+        ], { timeout: 15000, windowsHide: true }).catch(err => ({
+            stdout: err.stdout || "",
+            stderr: err.stderr || ""
+        }));
+        const combined = String(stderr || "") + "\n" + String(stdout || "");
+        const match = combined.match(/,\s*([\d.]+)\s*fps/) || combined.match(/,\s*([\d.]+)\s*tbr/);
+        if (match) {
+            const parsed = parseFloat(match[1]);
+            if (Number.isFinite(parsed) && parsed > 0) {
+                return parsed;
+            }
+        }
+    } catch {}
+    return null;
+}
+
+/**
+ * Substitui placeholders em textos de pacote, autor ou descrição da figurinha.
+ * Placeholders suportados:
+ * {user} - Nome do usuário que gerou a figurinha
+ * {n_user} - Número do usuário quando aplicável
+ * {name_bot} - Nome configurado do bot
+ * {n_bot} - Número conectado ao bot
+ * {namechat} - Número do grupo que gerou a figurinha (ou {n_chat})
+ * {name_chat} / {group} - Nome do grupo quando disponível
+ *
+ * @param {string} text 
+ * @param {Object} [message={}] 
+ * @param {string} [botNameFallback] 
+ * @returns {string}
+ */
+function formatStickerPlaceholders(text, message = {}, botNameFallback = null) {
+    if (typeof text !== "string" || !text) return text || "";
+
+    const botName = botNameFallback || (typeof config.getBotName === "function" ? config.getBotName() : "Sat Bot");
+
+    // {user}: nome do usuário que fez a figurinha
+    const user = message.displayName ||
+        message.username ||
+        message.raw?.pushName ||
+        message.sender?.name ||
+        "Usuário";
+
+    // {n_user}: número do usuário quando aplicável
+    let nUser = "";
+    const rawUserId = String(
+        message.userId ||
+        message.sender?.id ||
+        message.raw?.key?.participant ||
+        ""
+    );
+    if (rawUserId) {
+        nUser = rawUserId.split("@")[0].split(":")[0].replace(/\D/g, "");
+    }
+
+    // {name_bot}: nome configurado do bot
+    const nameBot = botName || "Sat Bot";
+
+    // {n_bot}: número conectado ao bot
+    let nBot = "";
+    if (message.botNumber) {
+        nBot = String(message.botNumber).replace(/\D/g, "");
+    } else if (message.botId) {
+        nBot = String(message.botId).split("@")[0].split(":")[0].replace(/\D/g, "");
+    } else if (global.whatsappSock?.user?.id) {
+        nBot = String(global.whatsappSock.user.id).split("@")[0].split(":")[0].replace(/\D/g, "");
+    }
+
+    // {namechat}: número do grupo que gerou a figurinha
+    let namechat = "";
+    const isGroup = message.chatType === "group" ||
+        String(message.chatId || "").endsWith("@g.us") ||
+        Boolean(message.groupId);
+    if (isGroup) {
+        const rawChatId = String(message.chatId || message.groupId || "");
+        namechat = rawChatId.split("@")[0].replace(/^-100/, "").replace(/^-/, "").replace(/\D/g, "");
+    }
+
+    const groupName = message.groupName || message.chatName || namechat || "";
+
+    return text
+        .replace(/\{user\}/gi, user)
+        .replace(/\{n_user\}/gi, nUser)
+        .replace(/\{name_bot\}/gi, nameBot)
+        .replace(/\{n_bot\}/gi, nBot)
+        .replace(/\{namechat\}/gi, namechat)
+        .replace(/\{n_chat\}/gi, namechat)
+        .replace(/\{name_chat\}/gi, groupName)
+        .replace(/\{group\}/gi, groupName);
+}
+
 async function convertAnimatedToWebp(inputBuffer, mode, maxSizeBytes, durationLimitSeconds) {
     const tempId = `sticker_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const tempDir = os.tmpdir();
     const inputPath = path.join(tempDir, `${tempId}.media`);
     const outputPath = path.join(tempDir, `${tempId}.webp`);
-    // Reduz bastante a qualidade de cara para compactar rápido sem tentar muitas vezes
-    const attempts = [
-        { size: 512, fps: 10, quality: 40 },
-        { size: 360, fps: 8, quality: 25 },
-        { size: 256, fps: 6, quality: 15 }
-    ];
 
     try {
         fs.writeFileSync(inputPath, inputBuffer);
+
+        // Detecta o FPS da mídia original e preserva sem reduzir o framerate
+        // Capped em no máximo 20 fps para manter suavidade sem gerar arquivos gigantes
+        const detectedFps = await probeVideoFps(inputPath);
+        const targetFps = detectedFps
+            ? Math.min(Math.max(Math.round(detectedFps), 8), 20)
+            : 18;
+
+        // Reduz a resolução e a qualidade nas tentativas sucessivas sem perder o FPS
+        const attempts = [
+            { size: 512, quality: 40 },
+            { size: 400, quality: 30 },
+            { size: 320, quality: 25 },
+            { size: 256, quality: 20 },
+            { size: 200, quality: 15 },
+            { size: 160, quality: 10 },
+            { size: 128, quality: 10 }
+        ];
 
         // Se o vídeo for maior que o limite (10s no WhatsApp), usa os 10 primeiros segundos automaticamente
         const tArgs = durationLimitSeconds != null
@@ -92,7 +199,7 @@ async function convertAnimatedToWebp(inputBuffer, mode, maxSizeBytes, durationLi
                     "-i", inputPath,
                     ...tArgs,
                     "-an",
-                    "-vf", `fps=${attempt.fps},${getResizeFilter(mode, attempt.size)}`,
+                    "-vf", `fps=${targetFps},${getResizeFilter(mode, attempt.size)}`,
                     "-c:v", "libwebp",
                     "-loop", "0",
                     "-lossless", "0",
@@ -312,12 +419,18 @@ async function createStickerBuffer(inputBuffer, options = {}) {
     }
 
     // EXIF é aplicado via node-webpmux garantindo integridade de cabeçalho VP8X para fotos e vídeos
+    const messageContext = options.message || {};
+    const resolvedPack = formatStickerPlaceholders(options.packName || config.getBotName(), messageContext);
+    const resolvedAuthor = formatStickerPlaceholders(options.authorName || config.getBotName(), messageContext);
+    const resolvedDesc = formatStickerPlaceholders(options.description, messageContext);
+
     const stickerBuffer = options.addMetadata === true
         ? await addExifToWebp(
             webpResult,
-            options.packName || config.getBotName(),
-            options.authorName || config.getBotName(),
-            options.description
+            resolvedPack,
+            resolvedAuthor,
+            resolvedDesc,
+            messageContext
         )
         : webpResult;
     const stickerMetadata = await sharp(stickerBuffer, { failOn: "none" }).metadata();
@@ -338,6 +451,11 @@ async function createTelegramSticker(inputBuffer, options = {}) {
     if (!Buffer.isBuffer(inputBuffer) || inputBuffer.length === 0) {
         throw new Error("Buffer de imagem/vídeo inválido ou vazio.");
     }
+
+    const messageContext = options.message || {};
+    const resolvedPack = formatStickerPlaceholders(options.packName, messageContext);
+    const resolvedAuthor = formatStickerPlaceholders(options.authorName, messageContext);
+    const resolvedDesc = formatStickerPlaceholders(options.description, messageContext);
 
     const mimeType = String(options.mimeType || "").toLowerCase();
     const mediaType = String(options.type || "").toLowerCase();
@@ -361,7 +479,13 @@ async function createTelegramSticker(inputBuffer, options = {}) {
     }
 
     return {
-        buffer: await createStickerBuffer(inputBuffer, { ...options, platform: "telegram" }),
+        buffer: await createStickerBuffer(inputBuffer, {
+            ...options,
+            packName: resolvedPack,
+            authorName: resolvedAuthor,
+            description: resolvedDesc,
+            platform: "telegram"
+        }),
         format: "static"
     };
 }
@@ -374,13 +498,15 @@ async function createTelegramSticker(inputBuffer, options = {}) {
  * @param {string} packName 
  * @param {string} authorName 
  * @param {string} description 
+ * @param {Object} [messageContext={}]
  * @returns {Promise<Buffer>}
  */
 async function addExifToWebp(
     buffer,
     packName = config.getBotName(),
     authorName = config.getBotName(),
-    description = config.getStickerConfig?.().description
+    description = config.getStickerConfig?.().description,
+    messageContext = {}
 ) {
     if (!Buffer.isBuffer(buffer) || buffer.length < 12) return buffer;
 
@@ -389,11 +515,15 @@ async function addExifToWebp(
         const img = new webpmux.Image();
         await img.load(buffer);
 
+        const finalPack = formatStickerPlaceholders(packName || config.getBotName(), messageContext);
+        const finalAuthor = formatStickerPlaceholders(authorName || config.getBotName(), messageContext);
+        const finalDesc = formatStickerPlaceholders(description, messageContext);
+
         const json = JSON.stringify({
             "sticker-pack-id": "com.satela.bot",
-            "sticker-pack-name": String(packName || "Sat Bot"),
-            "sticker-pack-publisher": String(authorName || config.getBotName()),
-            "sticker-pack-description": String(description || ""),
+            "sticker-pack-name": String(finalPack || "Sat Bot"),
+            "sticker-pack-publisher": String(finalAuthor || config.getBotName()),
+            "sticker-pack-description": String(finalDesc || ""),
             "emojis": ["📌"]
         });
 
@@ -416,5 +546,7 @@ async function addExifToWebp(
 module.exports = {
     createStickerBuffer,
     createTelegramSticker,
-    addExifToWebp
+    addExifToWebp,
+    formatStickerPlaceholders,
+    probeVideoFps
 };

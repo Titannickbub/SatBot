@@ -1,4 +1,4 @@
-const { createStickerBuffer, createTelegramSticker } = require("../../functions/stickerHelper");
+const { createStickerBuffer, createTelegramSticker, formatStickerPlaceholders } = require("../../functions/stickerHelper");
 const telegramStickerHelper = require("../../functions/telegramStickerHelper");
 
 const AUDIO_CONTAIN_ALIASES = [
@@ -209,14 +209,19 @@ Os comandos abaixo permitem escolher como a mídia será adaptada ao formato qua
                     description: "venha pro SatBot https://titannickbub.neocities.org/"
                 };
 
+            const packName = formatStickerPlaceholders(stickerConfig.packName, message, configFn.getBotName?.());
+            const authorName = formatStickerPlaceholders(stickerConfig.authorName, message, configFn.getBotName?.());
+            const description = formatStickerPlaceholders(stickerConfig.description, message, configFn.getBotName?.());
+
             const telegramSticker = message.platform === "telegram"
                 ? await createTelegramSticker(buffer, {
                     mimeType: mediaObj.mimeType,
                     type: mediaObj.type,
                     mode,
-                    packName: stickerConfig.packName,
-                    authorName: stickerConfig.authorName,
-                    description: stickerConfig.description
+                    packName,
+                    authorName,
+                    description,
+                    message
                 })
                 : null;
             const stickerBuffer = telegramSticker
@@ -227,10 +232,11 @@ Os comandos abaixo permitem escolher como a mídia será adaptada ao formato qua
                     platform: message.platform,
                     durationSeconds: mediaObj.raw?.seconds,
                     mode,
-                    packName: stickerConfig.packName,
-                    authorName: stickerConfig.authorName,
-                    description: stickerConfig.description,
-                    addMetadata: message.platform === "whatsapp"
+                    packName,
+                    authorName,
+                    description,
+                    addMetadata: message.platform === "whatsapp",
+                    message
                 });
 
             if (isAudioSticker) {
