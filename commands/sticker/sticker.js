@@ -55,6 +55,7 @@ Os comandos abaixo permitem escolher como a mídia será adaptada ao formato qua
 📏 Limites e detalhes:
 • No WhatsApp, GIFs/vídeos podem ter até 10 segundos (vídeos mais longos usam automaticamente os 10 primeiros segundos). A figurinha animada pode ter até 500 KB (o bot comprime automaticamente). Se preferir outro trecho, use {prefix}cortar.
 • O áudio da figurinha sonora pode ter até 30 segundos.
+• {prefix}renomear ou {prefix}rename <pacote> / <autor> — altera as informações de uma figurinha citada (somente WhatsApp).
 
 📦 PACOTES PESSOAIS — somente Telegram
 • {prefix}delfig ou {prefix}delsticker — responda à figurinha para removê-la do seu pacote.

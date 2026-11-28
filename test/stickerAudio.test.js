@@ -8,6 +8,7 @@ const { promisify } = require("node:util");
 const sharp = require("sharp");
 const baileys = require("@whiskeysockets/baileys");
 const stickerCommand = require("../commands/sticker/sticker");
+const renomearCommand = require("../commands/sticker/renomear");
 const { createAudioStickerAudio } = require("../functions/audioStickerHelper");
 const { createStickerBuffer, formatStickerPlaceholders } = require("../functions/stickerHelper");
 const { createAudioStickerMessage, relayAudioSticker } = require("../functions/whatsappAudioSticker");
@@ -333,4 +334,117 @@ test("createStickerBuffer applies placeholders to EXIF metadata", async () => {
     assert.ok(exifData.includes("5521977776666"));
     assert.ok(exifData.includes("5511888887777"));
     assert.ok(exifData.includes("120363999999999999"));
+});
+
+test("renomear command renames WhatsApp stickers preserving format, newlines and placeholders", async () => {
+    assert.ok(renomearCommand.aliases.includes("rename"));
+    assert.ok(renomearCommand.aliases.includes("roubar"));
+
+    // Testa rejeição fora do WhatsApp
+    let telegramReply = null;
+    await renomearCommand.execute({
+        platform: "telegram",
+        reply: async payload => { telegramReply = payload; }
+    });
+    assert.match(telegramReply.text, /WhatsApp/);
+
+    // Cria figurinha original
+    const sourceWebp = await sharp({
+        create: {
+            width: 128,
+            height: 128,
+            channels: 4,
+            background: "#123456"
+        }
+    }).webp().toBuffer();
+
+    let sentSticker = null;
+    const fakeMessage = {
+        platform: "whatsapp",
+        command: "renomear",
+        prefix: "!",
+        text: "!renomear figurinha feita\nlinha 2 / por titannick\nlinha autor",
+        getArgText: () => "figurinha feita\nlinha 2 / por titannick\nlinha autor",
+        displayName: "Titannick",
+        userId: "5511999991111@s.whatsapp.net",
+        botId: "5511888882222@s.whatsapp.net",
+        chatId: "120363111222333444@g.us",
+        chatType: "group",
+        quoted: {
+            media: {
+                type: "sticker",
+                mimeType: "image/webp",
+                getBuffer: async () => sourceWebp
+            }
+        },
+        functions: {
+            config: {
+                getBotName: () => "SatelaBot"
+            }
+        },
+        react: async () => {},
+        replySticker: async sticker => { sentSticker = sticker; }
+    };
+
+    await renomearCommand.execute(fakeMessage);
+
+    assert.ok(Buffer.isBuffer(sentSticker));
+    assert.equal(sentSticker.subarray(8, 12).toString("ascii"), "WEBP");
+
+    const webpmux = require("node-webpmux");
+    const img = new webpmux.Image();
+    await img.load(sentSticker);
+    const parsedExif = JSON.parse(img.exif.subarray(img.exif.indexOf("{")).toString("utf8"));
+
+    assert.equal(parsedExif["sticker-pack-name"], "figurinha feita\nlinha 2");
+    assert.equal(parsedExif["sticker-pack-publisher"], "por titannick\nlinha autor");
+});
+
+test("renomear command supports placeholders in pack and author", async () => {
+    const sourceWebp = await sharp({
+        create: {
+            width: 64,
+            height: 64,
+            channels: 4,
+            background: "#654321"
+        }
+    }).webp().toBuffer();
+
+    let sentSticker = null;
+    const fakeMessage = {
+        platform: "whatsapp",
+        command: "rename",
+        prefix: "!",
+        text: "!rename Pack de {user} ({n_user}) / {name_bot} - {namechat}",
+        getArgText: () => "Pack de {user} ({n_user}) / {name_bot} - {namechat}",
+        displayName: "Carlos",
+        userId: "5531988887777@s.whatsapp.net",
+        botId: "5511888882222@s.whatsapp.net",
+        chatId: "120363777888999000@g.us",
+        chatType: "group",
+        quoted: {
+            media: {
+                type: "sticker",
+                mimeType: "image/webp",
+                getBuffer: async () => sourceWebp
+            }
+        },
+        functions: {
+            config: {
+                getBotName: () => "SatelaBot"
+            }
+        },
+        react: async () => {},
+        replySticker: async sticker => { sentSticker = sticker; }
+    };
+
+    await renomearCommand.execute(fakeMessage);
+
+    const webpmux = require("node-webpmux");
+    const img = new webpmux.Image();
+    await img.load(sentSticker);
+    const parsedExif = JSON.parse(img.exif.subarray(img.exif.indexOf("{")).toString("utf8"));
+
+    assert.equal(parsedExif["sticker-pack-name"], "Pack de Carlos (5531988887777)");
+    assert.equal(parsedExif["sticker-pack-publisher"], "SatelaBot - 120363777888999000");
 });
