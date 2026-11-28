@@ -484,6 +484,16 @@ async function start(onMessage) {
           const isQuotedViewOnce = isViewOnceMessage(rawQMsg);
           const qMsg = unwrapMessage(rawQMsg);
 
+          // DEBUG TEMPORÁRIO: ver estrutura do rawQMsg de figurinhas
+          if (rawQMsg.stickerMessage || rawQMsg.audioStickerMessage) {
+            console.log("[WA DEBUG quoted] rawQMsg keys:", Object.keys(rawQMsg));
+            if (rawQMsg.stickerMessage) console.log("[WA DEBUG quoted] stickerMessage keys:", Object.keys(rawQMsg.stickerMessage));
+            if (rawQMsg.audioStickerMessage) console.log("[WA DEBUG quoted] audioStickerMessage keys:", Object.keys(rawQMsg.audioStickerMessage));
+            console.log("[WA DEBUG quoted] qMsg keys after unwrap:", Object.keys(qMsg));
+            if (qMsg.stickerMessage) console.log("[WA DEBUG quoted] qMsg.stickerMessage keys:", Object.keys(qMsg.stickerMessage));
+          }
+          // ─────────────────────────────────────────────────────────────
+
           const qImage = qMsg.imageMessage;
           const qVideo = qMsg.videoMessage;
           const qAudio = qMsg.audioMessage;
@@ -541,6 +551,7 @@ async function start(onMessage) {
             username: null,
             fromMe: isQuotedFromMe,
             raw: qMsg,
+            rawQMsg: rawQMsg,
             media: qMedia,
             isViewOnce: isQuotedViewOnce,
             text: qMsg.conversation ||

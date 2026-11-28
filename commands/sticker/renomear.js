@@ -157,9 +157,28 @@ Exemplo:
             // Preserva áudio se a figurinha de origem for uma figurinha sonora (audio sticker)
             // O rawAudioMessage é preenchido pelo adaptador whatsapp.js antes de qualquer unwrap/decode,
             // garantindo que o dado de áudio não seja perdido pelo Baileys.
+
+            // ── DEBUG TEMPORÁRIO: remover após confirmar o caminho correto ──
+            {
+                const _qm = message.quoted;
+                console.log("[RENOMEAR DEBUG] quoted.media.rawAudioMessage?", !!_qm?.media?.rawAudioMessage);
+                console.log("[RENOMEAR DEBUG] quoted.media.raw keys:", Object.keys(_qm?.media?.raw || {}));
+                console.log("[RENOMEAR DEBUG] quoted.raw keys:", Object.keys(_qm?.raw || {}));
+                console.log("[RENOMEAR DEBUG] quoted.raw.stickerMessage keys:", Object.keys(_qm?.raw?.stickerMessage || {}));
+                const _ctxQ = message.raw?.message?.extendedTextMessage?.contextInfo?.quotedMessage
+                    || message.raw?.message?.stickerMessage?.contextInfo?.quotedMessage;
+                console.log("[RENOMEAR DEBUG] contextInfo.quotedMessage keys:", Object.keys(_ctxQ || {}));
+                if (_ctxQ?.stickerMessage) console.log("[RENOMEAR DEBUG] ctxQ.stickerMessage keys:", Object.keys(_ctxQ.stickerMessage));
+                if (_ctxQ?.audioStickerMessage) console.log("[RENOMEAR DEBUG] ctxQ.audioStickerMessage keys:", Object.keys(_ctxQ.audioStickerMessage));
+                console.log("[RENOMEAR DEBUG] message.raw.message keys:", Object.keys(message.raw?.message || {}));
+            }
+            // ──────────────────────────────────────────────────────────────
+
             const qAudioMsg =
                 message.quoted?.media?.rawAudioMessage ||
                 message.quoted?.media?.raw?.audioMessage ||
+                message.quoted?.rawQMsg?.stickerMessage?.audioMessage ||
+                message.quoted?.rawQMsg?.audioStickerMessage?.message?.stickerMessage?.audioMessage ||
                 message.quoted?.raw?.stickerMessage?.audioMessage ||
                 message.quoted?.raw?.audioMessage ||
                 message.media?.raw?.audioMessage ||
